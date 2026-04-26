@@ -553,10 +553,6 @@
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         Checks
       </button>
-      <button class="btn-settings" onclick="openAllRechnungen()">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Rechnungen
-      </button>
       <button class="btn-settings" onclick="openLernprotokoll()" style="border-color:rgba(168,139,250,.35);color:rgba(168,139,250,.85)">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
         KI-Lernen
@@ -857,7 +853,6 @@
           background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22><path d=%22M0 0l5 6 5-6%22 fill=%22none%22 stroke=%22white%22 stroke-width=%221.5%22/></svg>');
           background-repeat:no-repeat;background-position:right 8px center;padding-right:24px">
           <option value="check">📋 Angebotscheck</option>
-          <option value="rechnung">🧾 Rechnungsversand</option>
         </select>
         <button onclick="updateEmail()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:4px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:background .15s"
           onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">
@@ -1022,63 +1017,6 @@
       </div>
     </div>
 
-    <div class="side-card">
-    <!-- Rechnung erstellen -->
-    <div class="side-card">
-      <div class="side-card-header" style="background:#4a2c6e">
-        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Rechnung erstellen
-      </div>
-      <div class="side-card-body" style="display:flex;flex-direction:column;gap:10px">
-
-        <!-- Rechnungsempfänger -->
-        <div style="font-size:11.5px;font-weight:600;color:var(--navy)">① Rechnungsempfänger prüfen &amp; anpassen</div>
-        <div class="field">
-          <textarea id="inv_empfaenger"
-            placeholder="WEG Musterstraße 1, 12345 Berlin&#10;c/o Hausverwaltung GmbH&#10;Rechnungsstraße 5&#10;10115 Berlin"
-            onchange="saveInvCorrection()"
-            style="min-height:80px;border:1.5px solid #8b5cf6;border-radius:7px;padding:8px 10px;
-            font-family:'DM Sans',sans-serif;font-size:12px;background:var(--sky);outline:none;
-            width:100%;resize:vertical;line-height:1.6;color:var(--text)"></textarea>
-        </div>
-
-        <!-- Optional: Dienstleister Rechnung für genaue Adresse -->
-        <div style="font-size:11px;color:var(--muted)">Optional: Dienstleister-Rechnung für exakte Adresse hochladen</div>
-        <div class="upload-zone" id="zoneDL" onclick="document.getElementById('fileDL').click()" style="padding:12px">
-          <input type="file" id="fileDL" accept=".pdf" style="display:none" onchange="handleDLFile(this)">
-          <div class="uz-lbl"><strong style="font-size:12px">🧾 Dienstleister-Rechnung</strong></div>
-          <div class="uz-name" id="fnameDL"></div>
-        </div>
-        <div class="ai-status" id="aiStatusDL" style="display:none"></div>
-
-        <!-- Betrag + Datum -->
-        <div style="font-size:11.5px;font-weight:600;color:var(--navy)">② Betrag &amp; Datum</div>
-        <div class="field"><label>Betrag Netto (€)</label>
-          <input type="text" id="inv_betrag" placeholder="z.B. 1.270,66" style="border-color:#8b5cf6;font-weight:600"></div>
-        <div class="field"><label>Rechnungsdatum</label>
-          <input type="date" id="inv_datum"></div>
-
-        <div style="display:flex;gap:8px">
-          <button onclick="previewRechnung()"
-            style="flex:1;background:rgba(74,44,110,.12);color:#4a2c6e;border:1.5px solid #8b5cf6;border-radius:8px;padding:10px;
-            font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;
-            display:flex;align-items:center;justify-content:center;gap:6px;transition:all .18s"
-            onmouseover="this.style.background='rgba(74,44,110,.2)'" onmouseout="this.style.background='rgba(74,44,110,.12)'">
-            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            Vorschau
-          </button>
-          <button onclick="generateRechnung()"
-            style="flex:2;background:#4a2c6e;color:#fff;border:none;border-radius:8px;padding:10px;
-            font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;
-            display:flex;align-items:center;justify-content:center;gap:6px;transition:background .18s"
-            onmouseover="this.style.background='#3a1e5a'" onmouseout="this.style.background='#4a2c6e'">
-            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
-            Herunterladen
-          </button>
-        </div>
-        <div id="invStatus" style="font-size:11.5px;color:var(--muted);text-align:center"></div>
-      </div>
-    </div>
 
     <div class="side-card">
       <div class="side-card-header" style="background:#334d66">
@@ -1182,22 +1120,6 @@
   </div>
 </div>
 
-<!-- Alle Rechnungen Modal -->
-<div id="rechnungenModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(760px,94vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:#4a2c6e;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <span style="color:#fff;font-size:15px;font-weight:700">🧾 Alle Rechnungen</span>
-      <button onclick="document.getElementById('rechnungenModal').style.display='none'"
-        style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
-    </div>
-    <div id="rechnungenList" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
-      <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine gespeicherten Rechnungen.</p>
-    </div>
-    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
-      <button onclick="deleteAllRechnungen()" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Alle löschen</button>
-    </div>
-  </div>
-</div>
 
 <!-- API Key Modal -->
 <div id="apiKeyModal">
@@ -1394,21 +1316,7 @@ async function setupTables() {
       { name: 'ca_anbieter', type: 'singleLineText' },
       { name: 'file1Name', type: 'singleLineText' },
       { name: 'file2Name', type: 'singleLineText' },
-      { name: 'dlFileName', type: 'singleLineText' },
       { name: 'formData', type: 'multilineText' },
-    ]),
-    ensureTable('Rechnungen', [
-      { name: 'id', type: 'singleLineText' },
-      { name: 'api_key', type: 'singleLineText' },
-      { name: 'savedAt', type: 'singleLineText' },
-      { name: 'rechnungsnr', type: 'singleLineText' },
-      { name: 'checkId', type: 'singleLineText' },
-      { name: 'standort', type: 'singleLineText' },
-      { name: 'firma', type: 'singleLineText' },
-      { name: 'betrag', type: 'singleLineText' },
-      { name: 'datum', type: 'singleLineText' },
-      { name: 'fname', type: 'singleLineText' },
-      { name: 'dlFileName', type: 'singleLineText' },
     ]),
     ensureTable('Korrekturen', [
       { name: 'id', type: 'singleLineText' },
@@ -1589,15 +1497,6 @@ function resetForm() {
     const fi = document.getElementById('file' + n);
     if (fi) fi.value = '';
   });
-  // Reset Dienstleister-Rechnung
-  dlFile = null;
-  document.getElementById('zoneDL').classList.remove('has-file');
-  document.getElementById('fnameDL').textContent = '';
-  const fiDL = document.getElementById('fileDL');
-  if (fiDL) fiDL.value = '';
-  const aiDL = document.getElementById('aiStatusDL');
-  if (aiDL) { aiDL.style.display = 'none'; aiDL.textContent = ''; }
-  document.getElementById('inv_empfaenger').value = '';
   extraFiles.length = 0;
   const fiExtra = document.getElementById('fileExtra');
   if (fiExtra) fiExtra.value = '';
@@ -1649,7 +1548,6 @@ function collectFormData() {
     wv_zusammen: g('wv_zusammen'), wa_zusammen: g('wa_zusammen'),
     file1Name:   uploadedFiles[1]?.name || null,
     file2Name:   uploadedFiles[2]?.name || null,
-    dlFileName:  dlFile?.name || null,
     ahw_firma:        document.getElementById('ahw_firma')?.value || '',
     ahw_anschrift:    document.getElementById('ahw_anschrift')?.value || '',
     ahw_email:        document.getElementById('ahw_email')?.value || '',
@@ -1660,8 +1558,6 @@ function collectFormData() {
     ahw_preis:        document.getElementById('ahw_preis')?.value || '',
     ahw_einsatz:      document.getElementById('ahw_einsatz')?.value || '',
     ahw_termin:       document.getElementById('ahw_termin')?.value || '',
-    inv_empfaenger:   document.getElementById('inv_empfaenger')?.value || '',
-    inv_betrag:       document.getElementById('inv_betrag')?.value || '',
     wt_firma: g('wt_firma'), wt_anschrift: g('wt_anschrift'), wt_email: g('wt_email'),
     wt_tel: g('wt_tel'), wt_standort: g('wt_standort'), wt_ansprechpartner: g('wt_ansprechpartner'),
     wt_anzahl_aufzuege: g('wt_anzahl_aufzuege'), wt_wartungen_pro_jahr: g('wt_wartungen_pro_jahr'),
@@ -1685,7 +1581,6 @@ async function saveCheck() {
     ersparnis: data.ersparnis || '', liftaroBet: data.liftaroBet || '',
     cv_anbieter: data.cv_anbieter || '', ca_anbieter: data.ca_anbieter || '',
     file1Name: data.file1Name || '', file2Name: data.file2Name || '',
-    dlFileName: data.dlFileName || '',
     formData: JSON.stringify(data),
   };
   try {
@@ -1769,10 +1664,6 @@ async function loadCheck(data) {
   set('ahw_termin',        data.ahw_termin);
   set('ahw_ansprechpartner', data.ahw_ansprechpartner || '-');
 
-  // Invoice
-  set('inv_empfaenger', data.inv_empfaenger);
-  set('inv_betrag',     data.inv_betrag);
-
   // Wartung AHW fields
   const sw = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   const scb2 = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
@@ -1785,11 +1676,9 @@ async function loadCheck(data) {
   scb2('wt_systemwartung', data.wt_systemwartung);
   scb2('wt_vollwartung',   data.wt_vollwartung !== undefined ? data.wt_vollwartung : true);
   scb2('wt_notruf',        data.wt_notruf_cb   !== undefined ? data.wt_notruf_cb   : true);
-  document.getElementById('inv_datum').value = new Date().toISOString().split('T')[0];
 
   calcSavings();
   updateEmail();
-  autoFillInvEmpfaenger();
   document.getElementById('checksModal').style.display = 'none';
 
   // Status
@@ -1798,7 +1687,6 @@ async function loadCheck(data) {
   bar.innerHTML = `<span>✅</span><span>Check <strong>${data.requestId || 'ohne ID'}</strong> geladen.</span>`;
 
   // Try to reload attachments from save folder
-  const hasFiles = data.file1Name || data.file2Name || data.dlFileName;
   if (saveDirectoryHandle && hasFiles) {
     const rid = data.requestId?.trim();
     const subName = rid ? `Liftaro_Check_${rid}` : null;
@@ -1820,16 +1708,6 @@ async function loadCheck(data) {
           } catch(e) { console.warn(`File ${fname} not found`); }
         }
 
-        // Dienstleister-Rechnung
-        if (data.dlFileName) {
-          try {
-            const fh = await subDir.getFileHandle(data.dlFileName);
-            const file = await fh.getFile();
-            dlFile = file;
-            document.getElementById('zoneDL').classList.add('has-file');
-            document.getElementById('fnameDL').textContent = '✓ ' + data.dlFileName;
-          } catch(e) { console.warn(`DL file ${data.dlFileName} not found`); }
-        }
 
         updateStatus();
       } catch(e) {
@@ -1843,7 +1721,6 @@ async function loadCheck(data) {
 
 function showFileLoadHint(data) {
   const bar = document.getElementById('statusBar');
-  const files = [data.file1Name, data.file2Name, data.dlFileName].filter(Boolean);
   bar.className = 'status-bar';
   bar.innerHTML = `<span>📎</span><span>Check geladen. Anhänge (${files.join(', ')}) bitte erneut hochladen oder Speicherordner auswählen.</span>`;
 }
@@ -1975,24 +1852,6 @@ vielen Dank für Ihre Anfrage zur Prüfung des Angebots Nr. ${angebotnr || '–'
 
 Für eine Beauftragung antworten Sie einfach auf diese Email.`;
 
-  } else {
-    // Rechnungsversand template
-    const rechnungsnr = localStorage.getItem('liftaro_rechnungsnr') || '–';
-    const betrag = document.getElementById('inv_betrag').value.trim();
-    const faellig = (() => {
-      const d = new Date(document.getElementById('inv_datum').value || new Date());
-      d.setDate(d.getDate() + 14);
-      return d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
-    })();
-
-    subjEl.textContent = `Rechnung Nr. ${rechnungsnr} – Erfolgsprovision Angebotscheck${rid ? ' ' + rid : ''}, ${standort || '–'}`;
-    bodyEl.textContent = `Sehr geehrte Damen und Herren,
-
-anbei erhalten Sie unsere Rechnung Nr. ${rechnungsnr} über die vereinbarte Erfolgsprovision für den Angebotscheck${rid ? ' ' + rid : ''} am Standort ${standort || '–'}, Fabriknummer ${fabrik || '–'}.
-
-Bitte überweisen Sie den Betrag${betrag ? ' von ' + betrag + ' € zzgl. 19% MwSt.' : ''} bis zum ${faellig} auf das in der Rechnung angegebene Konto.
-
-Bei Fragen stehen wir Ihnen gerne zur Verfügung.`;
   }
 }
 
@@ -2029,548 +1888,8 @@ function watchEmailFields() {
   });
 }
 
-// ── Auto-fill Rechnungsempfänger from AHW fields ─────────────────
-function autoFillInvEmpfaenger() {
-  const el = document.getElementById('inv_empfaenger');
-  if (!el || el.value.trim()) return; // Don't overwrite if already filled
-  const standort   = document.getElementById('f_standort')?.value.trim()   || '';
-  const firma      = document.getElementById('ahw_firma')?.value.trim()     || document.getElementById('f_firma')?.value.trim() || '';
-  const anschrift  = document.getElementById('ahw_anschrift')?.value.trim() || '';
-  if (!standort && !firma) return;
-  let addr = '';
-  if (standort) addr += `WEG ${standort}\n`;
-  if (firma)    addr += `c/o ${firma}\n`;
-  if (anschrift) {
-    // Try to split "Straße 5, 12345 Berlin" into two lines
-    const parts = anschrift.split(',').map(s => s.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      addr += parts[0] + '\n' + parts.slice(1).join(', ');
-    } else {
-      addr += anschrift;
-    }
-  }
-  el.value = addr.trim();
-}
 
-// ── Rechnungen verwalten ──────────────────────────────────────────
 
-async function saveRechnungRecord(rechnungsnr, fname) {
-  if (!APP_KEYS.airtableWriteKey) return;
-  const rid      = document.getElementById('f_requestid').value.trim();
-  const standort = document.getElementById('f_standort').value.trim();
-  const firma    = document.getElementById('f_firma').value.trim();
-  const betrag   = document.getElementById('inv_betrag').value.trim();
-  const datum    = document.getElementById('inv_datum').value;
-  try {
-    await atWrite('Rechnungen', {
-      id: 'R' + Date.now(), api_key: APP_KEYS.user?.api_key || '',
-      savedAt: new Date().toISOString(), rechnungsnr, checkId: rid || '',
-      standort, firma, betrag, datum, fname, dlFileName: dlFile?.name || '',
-    });
-  } catch(e) { console.warn('saveRechnungRecord error:', e.message); }
-}
-
-async function loadRechnungenFromAirtable() {
-  if (!APP_KEYS.user) return [];
-  try {
-    const recs = await atRead('Rechnungen', "{api_key}='" + APP_KEYS.user.api_key + "'");
-    return recs.map(r => ({ ...r.fields, _recordId: r.id }));
-  } catch(e) { console.warn('loadRechnungen error:', e); return []; }
-}
-
-async function openAllRechnungen() {
-  document.getElementById('rechnungenModal').style.display = 'flex';
-  const list = document.getElementById('rechnungenList');
-  list.innerHTML = '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #ddd;border-top-color:#4a2c6e;border-radius:50%;animation:spin .8s linear infinite"></div> Rechnungen werden geladen …</div>';
-
-  const records = await loadRechnungenFromAirtable();
-  window._rechnungenCache = records;
-
-  if (records.length === 0) {
-    list.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine gespeicherten Rechnungen.</p>';
-    return;
-  }
-
-  const total = records.reduce((s, r) => s + (parseFloat((r.betrag||'0').replace(/\./g,'').replace(',','.')) || 0), 0);
-  const totalStr = total.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
-
-  list.innerHTML = '<div style="background:linear-gradient(135deg,#4a2c6e,#2d1a45);border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-    + '<span style="color:rgba(255,255,255,.7);font-size:12px">' + records.length + ' Rechnung' + (records.length !== 1 ? 'en' : '') + ' gesamt</span>'
-    + '<span style="color:#a78bfa;font-size:15px;font-weight:700">Σ ' + totalStr + ' € (netto)</span></div>'
-    + records.map((r, i) =>
-      '<div style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px">'
-      + '<div style="flex:1;min-width:0">'
-      + '<div style="font-weight:700;font-size:13px;color:#4a2c6e">Rechnung Nr. ' + r.rechnungsnr
-      + '<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:8px">' + (r.datum ? new Date(r.datum).toLocaleDateString('de-DE') : '') + '</span></div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (r.firma||'–') + ' · ' + (r.standort||'–') + '</div>'
-      + '<div style="font-size:12px;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-      + '<span style="color:#4a2c6e;font-weight:600">' + (r.betrag ? r.betrag + ' € netto' : '–') + '</span>'
-      + '<span style="background:#f0e8ff;border:1px solid #c4b5fd;border-radius:4px;padding:1px 7px;font-size:10.5px;color:#4a2c6e;cursor:pointer" onclick="downloadRechnungFile(' + i + ')">⬇ Rechnung herunterladen</span>'
-      + (r.dlFileName ? '<span style="background:#f0fae8;border:1px solid #b8dfaa;border-radius:4px;padding:1px 7px;font-size:10.5px;color:#3a6e1a;cursor:pointer" onclick="downloadDLFile(' + i + ')">⬇ Dienstleister-Rechnung</span>'
-        : '<span style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:1px 7px;font-size:10.5px;color:#aaa">Dienstleister-Rechnung nicht verfügbar</span>')
-      + (r.checkId ? '<span style="background:var(--sky2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:10.5px;color:var(--navy);cursor:pointer" onclick="downloadCheckPDFById(this.dataset.id)" data-id="' + r.checkId + '">📋 Check ' + r.checkId + '</span>' : '')
-      + '</div></div>'
-      + '<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">'
-      + '<span style="font-size:10.5px;color:var(--muted)">' + (r.savedAt ? new Date(r.savedAt).toLocaleDateString('de-DE') : '') + '</span>'
-      + '<button onclick="deleteRechnungAt(' + i + ')" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">🗑</button>'
-      + '</div></div>'
-    ).join('');
-}
-
-async function deleteRechnungAt(i) {
-  const r = window._rechnungenCache?.[i];
-  if (!r || !confirm('Diesen Rechnungseintrag löschen?')) return;
-  if (r._recordId) await atDelete('Rechnungen', r._recordId).catch(()=>{});
-  openAllRechnungen();
-}
-
-async function deleteAllRechnungen() {
-  if (!confirm('Alle Rechnungseinträge löschen?')) return;
-  const recs = await loadRechnungenFromAirtable();
-  for (const r of recs) { if (r._recordId) await atDelete('Rechnungen', r._recordId).catch(()=>{}); }
-  openAllRechnungen();
-}
-
-
-async function downloadRechnungFile(i) {
-  const records = safeParseJSON(localStorage.getItem('liftaro_rechnungen'), '[]');
-  const r = records[i];
-  if (!r) return;
-
-  // Try to find the file in the save folder
-  if (saveDirectoryHandle && r.checkId) {
-    try {
-      const subDir = await saveDirectoryHandle.getDirectoryHandle(`Liftaro_Check_${r.checkId}`);
-      const fh     = await subDir.getFileHandle(r.fname);
-      const file   = await fh.getFile();
-      const url    = URL.createObjectURL(file);
-      const a      = document.createElement('a'); a.href=url; a.download=r.fname; a.click();
-      URL.revokeObjectURL(url);
-      return;
-    } catch(e) { /* fall through to re-generate */ }
-  }
-
-  // File not found in folder – re-generate the PDF using stored data
-  // Load the check into the form temporarily, generate, then restore
-  const checks = safeParseJSON(localStorage.getItem('liftaro_checks'), '[]');
-  const check  = checks.find(c => c.id === r.checkId || c.requestId === r.checkId);
-
-  if (!check) {
-    alert(`Rechnungsdatei nicht gefunden. Bitte Speicherordner auswählen oder den Check neu laden und Rechnung erneut erstellen.`);
-    return;
-  }
-
-  // Temporarily set inv fields from record and re-generate
-  const prevBetrag = document.getElementById('inv_betrag').value;
-  const prevDatum  = document.getElementById('inv_datum').value;
-  const prevEmpf   = document.getElementById('inv_empfaenger').value;
-
-  document.getElementById('inv_betrag').value     = r.betrag || '';
-  document.getElementById('inv_datum').value      = r.datum  || new Date().toISOString().split('T')[0];
-  document.getElementById('inv_empfaenger').value = check.inv_empfaenger || '';
-
-  // Also set form fields needed for buildRechnungPDF
-  const prevRid      = document.getElementById('f_requestid').value;
-  const prevStandort = document.getElementById('f_standort').value;
-  const prevFabrik   = document.getElementById('f_fabrik').value;
-  document.getElementById('f_requestid').value = check.requestId || '';
-  document.getElementById('f_standort').value  = check.standort  || '';
-  document.getElementById('f_fabrik').value    = check.fabrik    || '';
-
-  try {
-    // Use the stored rechnungsnr (don't generate a new one)
-    const savedNum = localStorage.getItem('liftaro_rechnungsnr');
-    localStorage.setItem('liftaro_rechnungsnr', String(parseInt(r.rechnungsnr) - 1));
-    const { blob, fname } = await buildRechnungPDF(true);
-    localStorage.setItem('liftaro_rechnungsnr', savedNum); // restore counter
-
-    const url = URL.createObjectURL(blob);
-    const a   = document.createElement('a'); a.href=url; a.download=r.fname || fname; a.click();
-    URL.revokeObjectURL(url);
-  } catch(e) {
-    alert('Fehler beim Erstellen: ' + e.message);
-  }
-
-  // Restore form fields
-  document.getElementById('inv_betrag').value     = prevBetrag;
-  document.getElementById('inv_datum').value      = prevDatum;
-  document.getElementById('inv_empfaenger').value = prevEmpf;
-  document.getElementById('f_requestid').value    = prevRid;
-  document.getElementById('f_standort').value     = prevStandort;
-  document.getElementById('f_fabrik').value       = prevFabrik;
-}
-
-async function downloadCheckPDFById(checkId) {
-  // Load the check and re-generate the PDF
-  const checks = safeParseJSON(localStorage.getItem('liftaro_checks'), '[]');
-  const check = checks.find(c => c.id === checkId || c.requestId === checkId);
-  if (!check) {
-    alert(`Check "${checkId}" nicht in der Datenbank gefunden. Bitte den Check öffnen und PDF manuell herunterladen.`);
-    return;
-  }
-  // Try to find the file in save folder
-  if (saveDirectoryHandle) {
-    try {
-      const subName = `Liftaro_Check_${checkId}`;
-      const subDir  = await saveDirectoryHandle.getDirectoryHandle(subName);
-      const fname   = `Liftaro_Check_${checkId}.pdf`;
-      const fh      = await subDir.getFileHandle(fname);
-      const file    = await fh.getFile();
-      const url     = URL.createObjectURL(file);
-      const a       = document.createElement('a'); a.href=url; a.download=fname; a.click();
-      URL.revokeObjectURL(url);
-      return;
-    } catch(e) { /* fall through */ }
-  }
-  alert(`PDF-Datei nicht im Ordner gefunden. Bitte den Check "${checkId}" laden und das PDF erneut erstellen.`);
-}
-
-// ── Rechnung: Dienstleister-Rechnung Upload & AI Extract ────────────────
-let dlFile = null;
-
-async function handleDLFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  dlFile = file;
-  document.getElementById('zoneDL').classList.add('has-file');
-  document.getElementById('fnameDL').textContent = '✓ ' + file.name;
-  saveFileToFolder(file, file.name);
-
-  // AI: extract recipient address
-  if (!APP_KEYS.anthropicKey) { requireApiKey(() => extractDLAddress(file)); return; }
-  extractDLAddress(file);
-}
-
-async function extractDLAddress(file) {
-  const statusEl = document.getElementById('aiStatusDL');
-  statusEl.style.display = 'flex';
-  statusEl.className = 'ai-status loading';
-  statusEl.innerHTML = '<span class="ai-spin"></span> KI liest Rechnungsempfänger aus …';
-
-  try {
-    let pdfText = '';
-    let useVision = false;
-
-    try {
-      pdfText = await extractTextFromPDF(file);
-      if (isGarbledText(pdfText)) {
-        useVision = true;
-      }
-    } catch(e) {
-      useVision = true;
-    }
-
-    const corrections = safeParseJSON(localStorage.getItem('liftaro_inv_corrections'), '[]');
-    const hint = corrections.length > 0
-      ? '\n\nGelernte Korrekturen:\n' + corrections.slice(-3).map(c => `Wenn wie "${c.ai.slice(0,40)}..." → korrigiert zu:\n${c.user}`).join('\n\n')
-      : '';
-
-    const instrPrompt = `Analysiere dieses Dokument und extrahiere den Rechnungsempfänger (Auftraggeber/Kunde – NICHT den Absender).
-Der Rechnungsempfänger ist die Hausverwaltung oder WEG.
-Antworte NUR mit der vollständigen Rechnungsanschrift, mehrzeilig, im Format:
-WEG [Straße, Hausnummer, PLZ, Ort]
-c/o [Name der Hausverwaltung]
-[Straße Hausverwaltung]
-[PLZ Ort Hausverwaltung]
-Falls keine WEG-Struktur erkennbar, einfach die Empfängeradresse mehrzeilig ausgeben.${hint}`;
-
-    let result;
-    if (useVision) {
-      statusEl.innerHTML = '<span class="ai-spin"></span> Scan erkannt – nutze Bilderkennung …';
-      // Render max 2 pages as images (address is always near the start)
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfLib = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const numPages = Math.min(pdfLib.numPages, 2);
-      const imageContent = [];
-      for (let p = 1; p <= numPages; p++) {
-        const b64 = await renderPDFPageToBase64(file, p, 1.0);
-        imageContent.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } });
-      }
-      imageContent.push({ type: 'text', text: instrPrompt });
-
-      result = await callClaude([{ role: 'user', content: imageContent }]);
-    } else {
-      result = await callClaude([{ role: 'user', content: instrPrompt + '\n\nRechnungstext:\n' + pdfText.slice(0, 5000) }]);
-    }
-
-    const addr = result.trim();
-    document.getElementById('inv_empfaenger').value = addr;
-    statusEl.className = 'ai-status done';
-    statusEl.innerHTML = useVision
-      ? '✓ Empfänger via Bilderkennung ausgelesen – bitte prüfen'
-      : '✓ Empfänger ausgelesen – bitte prüfen';
-    document.getElementById('inv_empfaenger').dataset.aiAddr = addr;
-
-  } catch(e) {
-    statusEl.className = 'ai-status error';
-    statusEl.innerHTML = '⚠ Fehler: ' + e.message;
-  }
-}
-
-function saveInvCorrection() {
-  const el = document.getElementById('inv_empfaenger');
-  const aiAddr = el.dataset.aiAddr;
-  const userAddr = el.value.trim();
-  if (!aiAddr || !userAddr || aiAddr === userAddr) return;
-  const corrections = safeParseJSON(localStorage.getItem('liftaro_inv_corrections'), '[]');
-  corrections.push({ ai: aiAddr, user: userAddr, ts: Date.now() });
-  if (corrections.length > 20) corrections.splice(0, corrections.length - 20);
-  localStorage.setItem('liftaro_inv_corrections', JSON.stringify(corrections));
-}
-
-// ── Rechnung generieren ───────────────────────────────────────────
-function getNextRechnungsnummer() {
-  let num = parseInt(localStorage.getItem('liftaro_rechnungsnr') || '20260559');
-  num++;
-  localStorage.setItem('liftaro_rechnungsnr', String(num));
-  return String(num);
-}
-
-function parseNettoPreis(str) {
-  if (!str) return 0;
-  let s = str.replace(/[€\s]/g,'');
-  if (/^[\d\.]+,[\d]{1,2}$/.test(s)) s = s.replace(/\./g,'').replace(',','.');
-  else s = s.replace(/,(?=\d{3})/g,'');
-  return parseFloat(s) || 0;
-}
-
-async function generateRechnung() {
-  const statusEl = document.getElementById('invStatus');
-  statusEl.style.color = 'var(--muted)';
-  saveInvCorrection();
-  statusEl.textContent = '⏳ Rechnung wird erstellt …';
-
-  try {
-    const { blob, rechnungsnr, fname } = await buildRechnungPDF(true);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download=fname; a.click();
-    URL.revokeObjectURL(url);
-    saveFileToFolder(blob, fname);
-    if (dlFile) saveFileToFolder(dlFile, dlFile.name);
-
-    // Save invoice record to localStorage
-    saveRechnungRecord(rechnungsnr, fname);
-
-    statusEl.style.color = 'var(--green2)';
-    statusEl.textContent = `✓ Rechnung Nr. ${rechnungsnr} erstellt`;
-
-    // Update email template with new number
-    updateEmail();
-  } catch(e) {
-    statusEl.style.color = '#c0392b';
-    statusEl.textContent = '⚠ ' + e.message;
-  }
-}
-
-async function previewRechnung() {
-  const statusEl = document.getElementById('invStatus');
-  statusEl.textContent = '⏳ Vorschau wird erstellt …';
-  try {
-    const { blob } = await buildRechnungPDF(false); // false = no new number
-    const url = URL.createObjectURL(blob);
-    // Reuse existing preview modal
-    document.getElementById('previewModal').classList.add('show');
-    document.getElementById('previewTitle').textContent = '🧾 Rechnungsvorschau';
-    document.getElementById('pageInfo').textContent = '1 / 1';
-    document.getElementById('prevPage').style.display = 'none';
-    document.getElementById('nextPage').style.display = 'none';
-    const wrap = document.getElementById('previewWrap');
-    wrap.innerHTML = '<div class="preview-loading"><div class="spin" style="width:24px;height:24px;border:3px solid #555;border-top-color:#8b5cf6;border-radius:50%;animation:spin .8s linear infinite"></div> Wird gerendert …</div>';
-    // Render via PDF.js
-    const arrayBuffer = await blob.arrayBuffer();
-    const pdfDocPrev = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    wrap.innerHTML = '';
-    const maxW = Math.min(wrap.clientWidth - 40, 760);
-    for (let p = 1; p <= pdfDocPrev.numPages; p++) {
-      const page = await pdfDocPrev.getPage(p);
-      const vp   = page.getViewport({ scale: 1 });
-      const scale = maxW / vp.width;
-      const svp  = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = svp.width; canvas.height = svp.height;
-      canvas.style.cssText = `display:block;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.4);width:${svp.width}px;max-width:100%;flex-shrink:0`;
-      wrap.appendChild(canvas);
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport: svp }).promise;
-    }
-    document.getElementById('pageInfo').textContent = `${pdfDocPrev.numPages} Seite${pdfDocPrev.numPages !== 1 ? 'n' : ''}`;
-    statusEl.textContent = '';
-  } catch(e) {
-    statusEl.style.color = '#c0392b';
-    statusEl.textContent = '⚠ ' + e.message;
-  }
-}
-
-async function buildRechnungPDF(useNewNumber) {
-  const rid        = document.getElementById('f_requestid').value.trim();
-  const standort   = document.getElementById('f_standort').value.trim();
-  const fabrik     = document.getElementById('f_fabrik').value.trim();
-  const empfaenger = document.getElementById('inv_empfaenger').value.trim();
-  const betragStr  = document.getElementById('inv_betrag').value.trim();
-  const datum      = document.getElementById('inv_datum').value;
-
-  const netto = parseNettoPreis(betragStr);
-  if (!netto) throw new Error('Bitte Betrag eingeben.');
-
-  const rechnungsnr = useNewNumber ? getNextRechnungsnummer()
-    : (localStorage.getItem('liftaro_rechnungsnr') || '20260560') + '-Vorschau';
-
-  const mwst   = netto * 0.19;
-  const brutto = netto + mwst;
-  const formatDE = v => v.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
-
-  const rDatum = datum ? new Date(datum) : new Date();
-  const rDatumStr  = rDatum.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
-  const faellig    = new Date(rDatum); faellig.setDate(faellig.getDate() + 14);
-  const faelligStr = faellig.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
-
-  const { PDFDocument, rgb, StandardFonts } = PDFLib;
-  const doc   = await PDFDocument.create();
-  const page  = doc.addPage([595.28, 841.89]);
-  const { width: W, height: H } = page.getSize();
-
-  const fontR = await doc.embedFont(StandardFonts.Helvetica);
-  const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
-
-  const navy  = rgb(0.102, 0.227, 0.361);
-  const green = rgb(0.490, 0.761, 0.259);
-  const gray  = rgb(0.42, 0.51, 0.60);
-  const black = rgb(0.08, 0.08, 0.08);
-  const white = rgb(1, 1, 1);
-  const lightBg = rgb(0.96, 0.97, 0.99);
-
-  // ── Header bar ──
-  const headerH = 74;
-  page.drawRectangle({ x:0, y:H-headerH, width:W, height:headerH, color:navy });
-
-  // Embed logo
-  try {
-    const logoBytes = Uint8Array.from(atob(LOGO_INV_B64), c => c.charCodeAt(0));
-    const logoImg = await doc.embedPng(logoBytes);
-    const logoH = 52;
-    const logoW = logoImg.width * (logoH / logoImg.height);
-    page.drawImage(logoImg, { x:28, y:H-headerH+(headerH-logoH)/2, width:logoW, height:logoH });
-  } catch(e) {
-    page.drawText('Liftaro GmbH', { x:28, y:H-38, size:18, font:fontB, color:white });
-  }
-
-  // RECHNUNG top right
-  page.drawText('RECHNUNG', { x:W-148, y:H-36, size:17, font:fontB, color:green });
-  page.drawText(`Nr. ${rechnungsnr}`, { x:W-148, y:H-54, size:9, font:fontR, color:rgb(0.75,0.85,0.95) });
-
-  // ── Sender address line ──
-  page.drawText('Liftaro GmbH · Gustavburger Weg 6 · 55116 Mainz', {
-    x:28, y:H-88, size:7.5, font:fontR, color:gray
-  });
-
-  // ── Recipient address block ──
-  const addrLines = empfaenger.split('\n').filter(l => l.trim());
-  let ay = H - 108;
-  addrLines.forEach(line => {
-    page.drawText(line.trim(), { x:28, y:ay, size:10.5, font:fontR, color:black });
-    ay -= 16;
-  });
-
-  // ── Invoice meta (right) ──
-  const metaX = 355;
-  const meta = [
-    ['Rechnungsnummer:', rechnungsnr],
-    ['Rechnungsdatum:', rDatumStr],
-    ['Zahlungsziel:', faelligStr],
-  ];
-  let my = H - 108;
-  meta.forEach(([label, val]) => {
-    page.drawText(label, { x:metaX, y:my, size:9, font:fontB, color:gray });
-    page.drawText(val,   { x:metaX+118, y:my, size:9, font:fontR, color:black });
-    my -= 17;
-  });
-
-  // ── Section title ──
-  const titleY = H - 225;
-  page.drawText('Rechnung', { x:28, y:titleY, size:15, font:fontB, color:navy });
-  page.drawLine({ start:{x:28,y:titleY-7}, end:{x:W-28,y:titleY-7}, thickness:1.2, color:green });
-
-  // ── Table header ──
-  const thY = titleY - 32;
-  page.drawRectangle({ x:28, y:thY-12, width:W-56, height:22, color:navy });
-  page.drawText('Pos.', { x:36, y:thY-6, size:9, font:fontB, color:white });
-  page.drawText('Leistungsbeschreibung', { x:74, y:thY-6, size:9, font:fontB, color:white });
-  page.drawText('Betrag (netto)', { x:W-120, y:thY-6, size:9, font:fontB, color:white });
-
-  // ── Line item ──
-  const ersparnis = document.getElementById('savings-display').textContent.replace('–','').trim();
-  const desc1 = `Erfolgsprovision für die Einsparung von Aufzugsdienstleistungen (50% der Einsparung).`;
-  const desc2 = `Angebotscheck${rid?' '+rid:''}, Standort: ${standort||'–'}, Fabriknummer: ${fabrik||'–'}`;
-  const desc3 = `Einsparung gesamt: ${ersparnis} | Provision 50%: ${formatDE(netto)}`;
-
-  const rowH = 58;
-  const rowY = thY - 26;
-  page.drawRectangle({ x:28, y:rowY-rowH+14, width:W-56, height:rowH, color:lightBg });
-
-  page.drawText('1', { x:36, y:rowY, size:10, font:fontR, color:black });
-  page.drawText(desc1, { x:74, y:rowY,    size:9.5, font:fontR, color:black, maxWidth:370 });
-  page.drawText(desc2, { x:74, y:rowY-14, size:9.5, font:fontR, color:black, maxWidth:370 });
-  page.drawText(desc3, { x:74, y:rowY-28, size:8.5, font:fontR, color:gray,  maxWidth:370 });
-  page.drawText(formatDE(netto), { x:W-120, y:rowY, size:10, font:fontB, color:black });
-
-  // ── Totals (fixed spacing) ──
-  const lineH = 20; // strict line height to prevent overlap
-  const totTop = rowY - rowH - 10;
-
-  page.drawLine({ start:{x:28,y:totTop+10}, end:{x:W-28,y:totTop+10}, thickness:0.5, color:rgb(0.82,0.86,0.90) });
-
-  // Netto row
-  page.drawText('Nettobetrag:', { x:W-220, y:totTop-4,          size:10, font:fontR, color:black });
-  page.drawText(formatDE(netto), { x:W-100, y:totTop-4,         size:10, font:fontR, color:black });
-
-  // MwSt row
-  page.drawText('zzgl. 19 % MwSt.:', { x:W-220, y:totTop-4-lineH, size:10, font:fontR, color:black });
-  page.drawText(formatDE(mwst),        { x:W-100, y:totTop-4-lineH, size:10, font:fontR, color:black });
-
-  // Brutto highlight – extra gap of 14pt below MwSt line
-  const bruttoY = totTop - 4 - lineH*2 - 14;
-  page.drawRectangle({ x:W-228, y:bruttoY-5, width:200, height:24, color:navy });
-  page.drawText('Gesamtbetrag:', { x:W-218, y:bruttoY+4, size:11, font:fontB, color:white });
-  page.drawText(formatDE(brutto), { x:W-100, y:bruttoY+4, size:11, font:fontB, color:green });
-
-  // ── Payment info ──
-  const payY = bruttoY - 44;
-  page.drawLine({ start:{x:28,y:payY+16}, end:{x:W-28,y:payY+16}, thickness:0.5, color:rgb(0.82,0.86,0.90) });
-  page.drawText('Zahlungsinformationen', { x:28, y:payY, size:10, font:fontB, color:navy });
-  const payInfo = [
-    `Bitte überweisen Sie ${formatDE(brutto)} bis zum ${faelligStr}:`,
-    'Liftaro GmbH · IBAN: DE87 6009 0100 0639 3100 01 · BIC: VOBADESS',
-    `Verwendungszweck: Rechnung ${rechnungsnr}`,
-  ];
-  let py = payY - 16;
-  payInfo.forEach(line => {
-    page.drawText(line, { x:28, y:py, size:9, font:fontR, color:gray });
-    py -= 13;
-  });
-
-  // ── Footer ──
-  page.drawRectangle({ x:0, y:0, width:W, height:50, color:lightBg });
-  page.drawLine({ start:{x:0,y:50}, end:{x:W,y:50}, thickness:0.5, color:rgb(0.82,0.86,0.90) });
-  const footerCols = [
-    ['Liftaro GmbH', 'Gustavburger Weg 6, 55116 Mainz'],
-    ['GF: Francesco Ricioppo', 'USt-ID: DE45 697 8044'],
-    ['info@liftaro.de', 'Tel.: 015792369293'],
-    ['IBAN: DE87 6009 0100 0639 3100 01', 'BIC: VOBADESS'],
-  ];
-  const colW = W / footerCols.length;
-  footerCols.forEach((col, ci) => {
-    let fy = 34;
-    col.forEach(line => {
-      page.drawText(line, { x:8+ci*colW, y:fy, size:7.5, font:fontR, color:gray });
-      fy -= 12;
-    });
-  });
-
-  // Return blob and metadata
-  const pdfBytes = await doc.save();
-  const blob  = new Blob([pdfBytes], { type:'application/pdf' });
-  const fname = `Liftaro_Rechnung_${rechnungsnr}_${rid||'Check'}.pdf`;
-  return { blob, rechnungsnr, fname };
-}
 
 // ── Export / Import Checks ────────────────────────────────────────
 function exportChecks() {
@@ -3268,7 +2587,6 @@ function syncFromVorliegend() {
   }
 
   calcSavings();
-  autoFillInvEmpfaenger();
 
   const bar = document.getElementById('statusBar');
   bar.className = 'status-bar ok';
@@ -3329,8 +2647,6 @@ function calcSavings() {
   if (savings > 0) {
     liftaroEl.textContent = formatEuro(savings * 0.5);
     liftaroEl.style.background = 'var(--navy)';
-    const invBetrag = document.getElementById('inv_betrag');
-    if (invBetrag) invBetrag.value = (savings * 0.5).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
   } else {
     liftaroEl.textContent = '– €'; liftaroEl.style.background = '#8a9ab0';
   }
@@ -3638,7 +2954,6 @@ async function generatePDF() {
     saveFileToFolder(new Blob([pdfBytes], {type:'application/pdf'}), `Liftaro_Check_${rid}.pdf`);
     if (uploadedFiles[1]) saveFileToFolder(uploadedFiles[1], uploadedFiles[1].name);
     if (uploadedFiles[2]) saveFileToFolder(uploadedFiles[2], uploadedFiles[2].name);
-    if (dlFile)           saveFileToFolder(dlFile, dlFile.name);
 
     // Auto-save this check
     saveCheck();
@@ -3667,12 +2982,10 @@ function appInit() {
   document.getElementById('ahw_tel').value = '015888634515';
   document.getElementById('ahw_ansprechpartner').value = '-';
   document.getElementById('ahw_einsatz').value = '0,00 €';
-  document.getElementById('inv_datum').value = new Date().toISOString().split('T')[0];
   updateKeyStatus();
   updateEmail();
   watchEmailFields();
   restoreSaveFolder();
-  setTimeout(autoFillInvEmpfaenger, 500);
   watchFieldForCorrections();
 } // end appInit
 
