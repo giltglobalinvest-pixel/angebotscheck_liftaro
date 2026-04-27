@@ -421,10 +421,26 @@ const pdfWorkerReady = Promise.resolve();</script>
   }
   .preview-close:hover { background: #e05050; }
   .preview-canvas-wrap {
-    flex: 1; overflow-y: auto; overflow-x: hidden;
-    display: flex; flex-direction: column; align-items: center;
+    flex: 1; overflow: auto;
+    display: flex; flex-direction: column; align-items: safe center;
     padding: 14px 10px; background: #3a3a3a; gap: 12px;
+    cursor: grab;
   }
+  .preview-canvas-wrap.is-panning { cursor: grabbing; }
+  .preview-canvas-wrap.is-panning canvas { pointer-events: none; }
+  .preview-zoom {
+    display: flex; align-items: center; gap: 2px; margin-left: 10px;
+    background: rgba(255,255,255,.08); border-radius: 5px; padding: 2px;
+  }
+  .zoom-btn {
+    background: transparent; border: none; color: #fff;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    padding: 3px 8px; border-radius: 4px; line-height: 1;
+    font-family: 'DM Sans', sans-serif; transition: background .12s;
+    min-width: 22px;
+  }
+  .zoom-btn:hover { background: rgba(255,255,255,.18); }
+  .zoom-label { min-width: 46px; font-size: 11.5px; }
   .preview-loading {
     color: rgba(255,255,255,.6); font-size: 13px;
     display: flex; align-items: center; gap: 10px; padding: 30px;
@@ -1065,6 +1081,11 @@ const pdfWorkerReady = Promise.resolve();</script>
         <button class="preview-nav" id="prevPage" onclick="changePage(-1)">&#8592;</button>
         <span class="preview-page-info" id="pageInfo">– / –</span>
         <button class="preview-nav" id="nextPage" onclick="changePage(1)">&#8594;</button>
+        <div class="preview-zoom">
+          <button class="zoom-btn" onclick="zoomOut()" title="Verkleinern (Ctrl+-)">−</button>
+          <button class="zoom-btn zoom-label" onclick="zoomReset()" id="zoomLabel" title="Zurücksetzen (100%)">100%</button>
+          <button class="zoom-btn" onclick="zoomIn()" title="Vergrößern (Ctrl++)">+</button>
+        </div>
       </div>
       <button class="preview-close" onclick="closePreview()">✕ Schließen</button>
     </div>
@@ -2816,10 +2837,33 @@ async function previewErgebnis() {
 let previewPdfDoc = null;
 let previewCurrentPage = 1;
 let previewTotalPages = 0;
+let previewZoom = 1.0;
+const PREVIEW_ZOOM_MIN = 0.5;
+const PREVIEW_ZOOM_MAX = 3.0;
+const PREVIEW_ZOOM_STEP = 0.25;
+let _previewRenderToken = 0;
+
+function zoomIn()    { setPreviewZoom(previewZoom + PREVIEW_ZOOM_STEP); }
+function zoomOut()   { setPreviewZoom(previewZoom - PREVIEW_ZOOM_STEP); }
+function zoomReset() { setPreviewZoom(1.0); }
+function setPreviewZoom(z) {
+  z = Math.round(z * 100) / 100;
+  z = Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, z));
+  if (z === previewZoom) return;
+  previewZoom = z;
+  const lbl = document.getElementById('zoomLabel');
+  if (lbl) lbl.textContent = Math.round(z * 100) + '%';
+  if (previewPdfDoc) renderAllPreviewPages();
+}
 
 async function openPreview(num) {
   const file = uploadedFiles[num];
   if (!file) return;
+
+  // Zoom auf 100% zurücksetzen, wenn neue PDF geöffnet wird
+  previewZoom = 1.0;
+  const lbl = document.getElementById('zoomLabel');
+  if (lbl) lbl.textContent = '100%';
 
   document.getElementById('previewModal').classList.add('show');
   document.body.classList.add('preview-open');
@@ -2839,24 +2883,31 @@ async function openPreview(num) {
 async function renderAllPreviewPages() {
   if (!previewPdfDoc) return;
   const wrap = document.getElementById('previewWrap');
+  const myToken = ++_previewRenderToken;
   wrap.innerHTML = '';
 
-  // Use the modal box width minus padding for scaling
+  // Use the modal box width minus padding for base scaling (fit-to-width at 100%)
   const maxW = Math.min(wrap.clientWidth - 40, 760);
+  const dpr = window.devicePixelRatio || 1;
 
   for (let pageNum = 1; pageNum <= previewTotalPages; pageNum++) {
+    if (myToken !== _previewRenderToken) return; // newer render in progress
     const page = await previewPdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 1 });
-    const scale = maxW / viewport.width;
-    const scaledViewport = page.getViewport({ scale });
+    const baseViewport = page.getViewport({ scale: 1 });
+    const fitScale = maxW / baseViewport.width;
+    const cssScale = fitScale * previewZoom;
+    const renderScale = cssScale * dpr;
+    const renderViewport = page.getViewport({ scale: renderScale });
+    const cssViewport    = page.getViewport({ scale: cssScale });
 
     const canvas = document.createElement('canvas');
-    canvas.width  = scaledViewport.width;
-    canvas.height = scaledViewport.height;
-    canvas.style.cssText = `display:block;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.4);width:${scaledViewport.width}px;height:${scaledViewport.height}px;max-width:100%;flex-shrink:0`;
+    canvas.width  = renderViewport.width;
+    canvas.height = renderViewport.height;
+    canvas.style.cssText = `display:block;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.4);width:${cssViewport.width}px;height:${cssViewport.height}px;flex-shrink:0`;
 
     wrap.appendChild(canvas);
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderViewport }).promise;
+    if (myToken !== _previewRenderToken) return;
   }
 
   document.getElementById('pageInfo').textContent = `${previewTotalPages} Seite${previewTotalPages !== 1 ? 'n' : ''}`;
@@ -2884,10 +2935,59 @@ function closePreview() {
 // Keyboard navigation
 document.addEventListener('keydown', e => {
   if (!document.getElementById('previewModal').classList.contains('show')) return;
+  // Zoom-Shortcuts (Ctrl/Cmd +/-/0)
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn();    return; }
+    if (e.key === '-')                  { e.preventDefault(); zoomOut();   return; }
+    if (e.key === '0')                  { e.preventDefault(); zoomReset(); return; }
+  }
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changePage(1);
   if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   changePage(-1);
   if (e.key === 'Escape') closePreview();
 });
+
+// Strg/Cmd + Mausrad zum Zoomen über dem Vorschaubereich
+document.addEventListener('wheel', e => {
+  const wrap = document.getElementById('previewWrap');
+  if (!wrap || !wrap.contains(e.target)) return;
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  if (e.deltaY < 0) zoomIn(); else zoomOut();
+}, { passive: false });
+
+// Pan / Verschieben mit gedrückter Maustaste (Hand-Tool)
+(function setupPreviewPan() {
+  const wrap = document.getElementById('previewWrap');
+  if (!wrap) return;
+  let panning = false;
+  let startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+
+  wrap.addEventListener('mousedown', e => {
+    // Nur primäre Maustaste, und nicht beim Klick auf Bedienelemente
+    if (e.button !== 0) return;
+    panning = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startScrollLeft = wrap.scrollLeft;
+    startScrollTop  = wrap.scrollTop;
+    wrap.classList.add('is-panning');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!panning) return;
+    wrap.scrollLeft = startScrollLeft - (e.clientX - startX);
+    wrap.scrollTop  = startScrollTop  - (e.clientY - startY);
+  });
+
+  const stopPan = () => {
+    if (!panning) return;
+    panning = false;
+    wrap.classList.remove('is-panning');
+  };
+  document.addEventListener('mouseup',    stopPan);
+  document.addEventListener('mouseleave', stopPan);
+})();
 
 // ── Extra file uploads ────────────────────────────────────────────
 function handleExtraFiles(input) {
