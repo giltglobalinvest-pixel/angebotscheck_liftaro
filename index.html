@@ -7,7 +7,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const pdfWorkerReady = Promise.resolve();</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Dancing+Script:wght@700&display=swap');
 
@@ -2256,8 +2257,9 @@ function fileToBase64(file) {
 
 // ── PDF Text Extraction via PDF.js ────────────────────────────────
 async function extractTextFromPDF(file) {
+  await pdfWorkerReady;
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
   let fullText = '';
   const maxPages = Math.min(pdf.numPages, 8);
   for (let i = 1; i <= maxPages; i++) {
@@ -2277,8 +2279,9 @@ function isGarbledText(text) {
 }
 
 async function renderPDFPageToBase64(file, pageNum = 1, scale = 1.5) {
+  await pdfWorkerReady;
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
   const page = await pdf.getPage(pageNum);
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement('canvas');
@@ -2314,8 +2317,9 @@ async function extractFromPDF(num, file) {
 
     if (useVision) {
       statusEl.innerHTML = '<span class="ai-spin"></span> Scan erkannt – nutze Bilderkennung …';
+      await pdfWorkerReady;
       const arrayBuffer = await file.arrayBuffer();
-      const pdfLib2 = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pdfLib2 = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
 
       // For Wartung contracts: key info is usually on page 2 (contract page)
       // For Reparatur: first 2 pages
@@ -2423,12 +2427,104 @@ Angebotstext:
 ${textForAI}`;
     }
 
+    // Build messages: in Vision-Modus PROMPT_PLACEHOLDER ersetzen
+    let messages;
+    if (useVision) {
+      const last = messageContent[messageContent.length - 1];
+      if (last && last.type === 'text') last.text = userPrompt;
+      messages = [{ role: 'user', content: messageContent }];
+    } else {
+      messages = [{ role: 'user', content: userPrompt }];
+    }
 
+    const text = await callClaude(messages, systemPrompt);
+
+    // JSON parsen (Backticks falls vorhanden entfernen)
+    const clean = text.replace(/```json|```/g, '').trim();
+    const data = JSON.parse(clean);
+
+    const setField = (id, val) => {
+      if (val === undefined || val === null || val === '') return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = val;
+      rememberAIValue(id, val);
+    };
+    const setCheck = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.checked = !!val;
+    };
+
+    if (checkType === 'wartung') {
+      const p = col === 'V' ? 'wv' : 'wa';
+      setField(`${p}_laufzeit`,   data.laufzeit);
+      setField(`${p}_kuendigung`, data.kuendigung);
+      setField(`${p}_anzahl`,     data.anzahl_wartungen);
+      setField(`${p}_typ`,        data.wartungstyp);
+      setField(`${p}_kosten`,     data.kosten_pro_jahr);
+      setField(`${p}_zusammen`,   data.zusammenfassung);
+      setCheck(`${p}_tuev_begl`,  data.tuev_begleitung);
+      setCheck(`${p}_tuev_pruef`, data.tuev_pruefung);
+      setCheck(`${p}_entstoer`,   data.entstoerung);
+      setCheck(`${p}_notruf`,     data.notruf);
+
+      if (isFirst) {
+        setField('f_fabrik',   data.fabriknummer);
+        setField('f_standort', data.standort);
+        setField('f_firma',    data.firmenname);
+        const sf = (id, val) => { if (val) { const el = document.getElementById(id); if (el) el.value = val; } };
+        sf('ahw_firma',     data.firmenname);
+        sf('ahw_anschrift', data.firma_anschrift);
+        sf('ahw_standort',  data.standort);
+        if (data.fabriknummer) {
+          const erl = document.getElementById('ahw_erlaeuterung');
+          if (erl) erl.value = 'Fabriknummer: ' + data.fabriknummer;
+        }
+        if (typeof autoFillInvEmpfaenger === 'function') autoFillInvEmpfaenger();
+      }
+    } else {
+      const p = col === 'V' ? 'cv' : 'ca';
+      setField(`${p}_angebotnr`,  data.angebotsnummer);
+      setField(`${p}_anbieter`,   data.anbieter);
+      setField(`${p}_lieferzeit`, data.lieferzeit);
+      setField(`${p}_gwl`,        data.gewaehrleistung);
+      setField(`${p}_preis`,      data.preis);
+
+      if (isFirst) {
+        setField('f_fabrik',   data.fabriknummer);
+        setField('f_standort', data.standort);
+        setField('f_firma',    data.firmenname);
+        setField('f_name',     data.name_betreiber);
+        setField('f_tel',      data.tel_betreiber);
+        setField('f_leistung', data.leistungsumfang);
+
+        const sf = (id, val) => { if (val) { const el = document.getElementById(id); if (el) el.value = val; } };
+        sf('ahw_firma',     data.firmenname);
+        sf('ahw_anschrift', data.firma_anschrift);
+        sf('ahw_standort',  data.standort);
+        sf('ahw_leistung',  data.leistung_stichpunkte);
+        if (data.fabriknummer) {
+          const erl = document.getElementById('ahw_erlaeuterung');
+          if (erl) erl.value = 'Fabriknummer: ' + data.fabriknummer;
+        }
+        if (typeof autoFillInvEmpfaenger === 'function') autoFillInvEmpfaenger();
+      }
+    }
+
+    if (typeof calcSavings === 'function') calcSavings();
+
+    statusEl.className = 'ai-status done';
+    statusEl.innerHTML = '✓ Felder automatisch ausgefüllt';
+    if (typeof updateEmail === 'function') updateEmail();
+    if (typeof addChatMsg === 'function') {
+      addChatMsg('ai', `Angebot ${num === 1 ? '(Vorliegend)' : '(Alternativ)'} ausgelesen: ${data.anbieter || 'Anbieter unbekannt'}${data.preis ? ', ' + data.preis : ''}.`);
+    }
 
   } catch(e) {
     console.error(e);
     statusEl.className = 'ai-status error';
     statusEl.innerHTML = '⚠ Fehler: ' + e.message;
+    if (typeof addChatMsg === 'function') addChatMsg('ai', `Fehler beim Auslesen: ${e.message}`);
   }
 }
 
@@ -2732,8 +2828,9 @@ async function openPreview(num) {
   document.getElementById('previewWrap').innerHTML =
     '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #555;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite"></div> Wird geladen …</div>';
 
+  await pdfWorkerReady;
   const arrayBuffer = await file.arrayBuffer();
-  previewPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  previewPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
   previewTotalPages = previewPdfDoc.numPages;
 
   await renderAllPreviewPages();
