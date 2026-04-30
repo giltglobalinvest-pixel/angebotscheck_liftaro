@@ -685,8 +685,19 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="section">
           <div class="section-title">Allgemeine Daten</div>
           <div class="section-inner">
+            <!-- Große Checknummer-Anzeige oben -->
+            <div id="checkNrBanner" style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:linear-gradient(135deg,var(--navy),#1f4d80);color:#fff;padding:14px 20px;border-radius:10px;margin-bottom:14px;flex-wrap:wrap">
+              <div>
+                <div id="f_requestid_label" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;opacity:.8">Reparaturcheck-Nummer</div>
+                <div id="f_requestid_display" style="font-size:28px;font-weight:800;font-family:'DM Mono',monospace;letter-spacing:.5px;line-height:1.1;margin-top:2px">–</div>
+                <input type="hidden" id="f_requestid">
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;opacity:.8">Anfragenummer</div>
+                <input type="text" id="f_anfrageNr" placeholder="Anfragenummer" oninput="updateEmail()" style="background:rgba(255,255,255,.16);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;outline:none;text-align:right;min-width:160px;margin-top:4px">
+              </div>
+            </div>
             <div class="field-row r4">
-              <div class="field"><label id="f_requestid_label">Reparaturcheck Nummer</label><input type="text" id="f_requestid" placeholder="z.B. A_2026100"></div>
               <div class="field"><label>Datum</label><input type="date" id="f_datum"></div>
               <div class="field"><label>Fabriknummer</label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug"></div>
             </div>
@@ -1334,6 +1345,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         </label>
       </div>
       <div id="adminCheckActions" style="display:none;gap:8px">
+        <button onclick="renumberAllChecks()" title="Alle Checks fortlaufend nummerieren ab C_1200 – Admin" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🔢 Neu nummerieren</button>
         <button onclick="deleteUnnumberedChecks()" title="Alle Checks ohne Checknummer löschen – Admin" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🧹 Ohne ID löschen</button>
         <button onclick="deleteAllChecks()" title="Alle Checks löschen – Admin" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Alle löschen</button>
       </div>
@@ -1643,6 +1655,7 @@ async function setupTables() {
     { name: 'alternativ_pdf',   type: 'multipleAttachments' },
     { name: 'ergebnis_pdf',     type: 'multipleAttachments' },
     { name: 'status',           type: 'singleLineText' },
+    { name: 'anfrageNr',        type: 'singleLineText' },
   ]);
   // Verträge-Tabelle
   try {
@@ -1791,7 +1804,7 @@ function resetForm() {
   if (!confirm('Formular wirklich zurücksetzen? Alle eingegebenen Daten werden gelöscht.')) return;
 
   // Clear all inputs
-  const ids = ['f_requestid','f_datum','f_fabrik','f_standort','f_firma','f_name','f_tel',
+  const ids = ['f_requestid','f_anfrageNr','f_datum','f_fabrik','f_standort','f_firma','f_name','f_tel',
     'cv_angebotnr','cv_anbieter','cv_lieferzeit','cv_gwl','cv_preis',
     'ca_angebotnr','ca_anbieter','ca_lieferzeit','ca_gwl','ca_preis',
     'ahw_firma','ahw_anschrift','ahw_standort','ahw_leistung','ahw_erlaeuterung','ahw_preis','ahw_termin',
@@ -1811,6 +1824,8 @@ function resetForm() {
   document.getElementById('ahw_tel').value = '015888634515';
   document.getElementById('ahw_einsatz').value = '0,00 €';
   document.getElementById('f_status').value = '1';
+  const ridDispReset = document.getElementById('f_requestid_display');
+  if (ridDispReset) ridDispReset.textContent = '–';
 
   // Reset smileys & savings
   ['savings-display','savings-pct','savings-liftaro'].forEach(id => {
@@ -1872,6 +1887,7 @@ function collectFormData() {
     id:          g('f_requestid'),
     savedAt:     new Date().toISOString(),
     requestId:   g('f_requestid'),
+    anfrageNr:   g('f_anfrageNr'),
     datum:       g('f_datum'),
     fabrik:      g('f_fabrik'),
     standort:    g('f_standort'),
@@ -1936,23 +1952,26 @@ function isAdmin() {
 }
 
 // Fortlaufende Check-ID generieren: A_<Jahr><N\u00fcr>, ab 100, base-weit eindeutig
+// Fortlaufende Check-Nummer: C_<n> ab 1200, ein gemeinsamer Nummernkreis für
+// Reparatur- und Vertragschecks.
 async function generateCheckId() {
-  const year = new Date().getFullYear();
-  const prefix = `A_${year}`;
-  let maxNr = 99; // 100 ist die erste vergebene Nummer
+  let maxNr = 1199; // 1200 ist die erste vergebene Nummer
   try {
     const recs = await atRead('Checks');
     for (const r of recs) {
-      const id = r.fields?.id || '';
-      // beliebiges Jahr akzeptieren, damit fortlaufend ohne Reset
-      const m = id.match(/^A_(\d{4})(\d+)$/);
-      if (m) {
-        const nr = parseInt(m[2], 10);
-        if (!isNaN(nr) && nr > maxNr) maxNr = nr;
+      const id = (r.fields?.id || '').toString();
+      // Neues Format C_1200, sowie alte Formate akzeptieren (A_<Jahr><Nr>)
+      let nr = NaN;
+      const m1 = id.match(/^C_(\d+)$/);
+      if (m1) nr = parseInt(m1[1], 10);
+      else {
+        const m2 = id.match(/^A_(\d{4})(\d+)$/);
+        if (m2) nr = parseInt(m2[2], 10);
       }
+      if (!isNaN(nr) && nr > maxNr) maxNr = nr;
     }
   } catch(e) { console.warn('generateCheckId lookup failed:', e.message); }
-  return prefix + (maxNr + 1);
+  return 'C_' + (maxNr + 1);
 }
 
 async function saveCheck(reporter) {
@@ -1962,12 +1981,14 @@ async function saveCheck(reporter) {
     return;
   }
   r.step('collect', 'Formulardaten sammeln');
-  // Auto-ID generieren, falls keine eingegeben wurde
+  // Auto-ID generieren, falls keine vergeben wurde (Banner synchron halten)
   const ridEl = document.getElementById('f_requestid');
   if (ridEl && !ridEl.value.trim()) {
     try {
       const newId = await generateCheckId();
       ridEl.value = newId;
+      const disp = document.getElementById('f_requestid_display');
+      if (disp) disp.textContent = newId;
     } catch(e) { console.warn('Auto-ID fehlgeschlagen:', e.message); }
   }
   const data = collectFormData();
@@ -1987,6 +2008,7 @@ async function saveCheck(reporter) {
     ersparnis: data.ersparnis || '', liftaroBet: data.liftaroBet || '',
     cv_anbieter: data.cv_anbieter || '', ca_anbieter: data.ca_anbieter || '',
     file1Name: data.file1Name || '', file2Name: data.file2Name || '',
+    anfrageNr: data.anfrageNr || '',
     status: data.status || '1',
     formData: JSON.stringify(data),
   };
@@ -2176,6 +2198,10 @@ async function loadCheck(data) {
 
   // Main form fields
   set('f_requestid',  data.requestId);
+  // Banner synchronisieren
+  const ridDisp = document.getElementById('f_requestid_display');
+  if (ridDisp) ridDisp.textContent = data.requestId || '–';
+  set('f_anfrageNr', data.anfrageNr);
   set('f_datum',      data.datum);
   set('f_fabrik',     data.fabrik);
   set('f_standort',   data.standort);
@@ -2347,7 +2373,8 @@ function showFileLoadHint(files) {
 async function loadChecksFromAirtable() {
   if (!APP_KEYS.user) return [];
   try {
-    const recs = await atRead('Checks', "{api_key}='" + APP_KEYS.user.api_key + "'");
+    // Geteilter Datenpool: alle User sehen alle Checks
+    const recs = await atRead('Checks');
     return recs.map(r => {
       const d = safeParseJSON(r.fields.formData, {});
       d._recordId = r.id;
@@ -2358,6 +2385,8 @@ async function loadChecksFromAirtable() {
       // Status aus Top-Level übernehmen, falls in formData fehlt
       if (!d.status && r.fields.status) d.status = r.fields.status;
       if (!d.status) d.status = '1';
+      // Anfragenummer Top-Level-Fallback
+      if (!d.anfrageNr && r.fields.anfrageNr) d.anfrageNr = r.fields.anfrageNr;
       return Object.keys(d).length > 1 ? d : r.fields;
     });
   } catch(e) { console.warn('loadChecks error:', e); return []; }
@@ -2510,7 +2539,7 @@ function filterChecks() {
     const tokens = q.split(/\s+/).filter(Boolean);
     working = working.filter(c => {
       const hay = [
-        c.id, c.requestId, c.firma, c.standort, c.fabrik, c.datum, c.checkType,
+        c.id, c.requestId, c.anfrageNr, c.firma, c.standort, c.fabrik, c.datum, c.checkType,
         c.cv_anbieter, c.ca_anbieter, c.cv_angebotnr, c.ca_angebotnr,
         c.cv_preis, c.ca_preis, c.ersparnis,
         c.name, c.tel, c.ap,
@@ -2618,6 +2647,7 @@ function renderChecksList(checks, query) {
       + '<div style="flex:1">'
       + '<div style="font-weight:700;font-size:13.5px;color:var(--navy)">'
       + (c.requestId ? 'Check ' + c.requestId : 'Check ohne ID')
+      + (c.anfrageNr ? '<span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">· Anfrage: <strong style="color:var(--text);font-family:\'DM Mono\',monospace">' + c.anfrageNr + '</strong></span>' : '')
       + '<span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">' + (c.datum || '') + '</span>'
       + typeBadge + ahwBadge + '</div>'
       + '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (c.firma || '–') + ' · ' + (c.standort || '–') + '</div>'
@@ -2735,6 +2765,56 @@ async function deleteAllChecks() {
   const checks = await loadChecksFromAirtable();
   if (!checks.length) { showToast('Keine Checks vorhanden.', 'ok'); return; }
   await deleteRecordsWithProgress(checks, 'Lösche alle Checks');
+  openAllChecks();
+}
+
+// Bestehende Checks fortlaufend nummerieren ab C_1200 (sortiert nach savedAt aufsteigend)
+async function renumberAllChecks() {
+  if (!isAdmin()) { showToast('Nur Admins dürfen Checks neu nummerieren.', 'error'); return; }
+  const checks = await loadChecksFromAirtable();
+  if (!checks.length) { showToast('Keine Checks vorhanden.', 'ok'); return; }
+  if (!confirm(`Wirklich alle ${checks.length} Checks neu nummerieren ab C_1200?\n\nBestehende IDs (z. B. A_2026100) werden überschrieben.`)) return;
+
+  // Aufsteigend nach savedAt sortieren – ältester Check bekommt C_1200
+  const sorted = [...checks].sort((a, b) => {
+    const ta = a.savedAt ? Date.parse(a.savedAt) : 0;
+    const tb = b.savedAt ? Date.parse(b.savedAt) : 0;
+    return ta - tb;
+  });
+
+  const bar = document.getElementById('statusBar');
+  let done = 0, fail = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const c = sorted[i];
+    const newId = 'C_' + (1200 + i);
+    if (bar) {
+      bar.className = 'status-bar';
+      bar.innerHTML = `<span>🔢</span><span>Nummeriere: ${done} / ${sorted.length} …</span>`;
+    }
+    try {
+      // formData neu serialisieren mit neuer ID
+      const merged = { ...c, id: newId, requestId: newId };
+      delete merged._recordId; delete merged._attVorliegend;
+      delete merged._attAlternativ; delete merged._attErgebnis;
+      const fields = {
+        id: newId, requestId: newId,
+        formData: JSON.stringify(merged),
+      };
+      await atUpdate('Checks', c._recordId, fields);
+      done++;
+    } catch(e) {
+      console.warn('Renumber fehlgeschlagen für', c._recordId, e.message);
+      fail++;
+    }
+    // Rate-Limit-Pause alle 5 Updates
+    if ((i + 1) % 5 === 0) await new Promise(r => setTimeout(r, 250));
+  }
+
+  if (bar) {
+    bar.className = fail ? 'status-bar error' : 'status-bar ok';
+    bar.innerHTML = `<span>${fail ? '⚠' : '✓'}</span><span>Nummerierung abgeschlossen: ${done} aktualisiert${fail ? `, ${fail} Fehler` : ''}.</span>`;
+    setTimeout(() => { bar.className = 'status-bar'; bar.innerHTML = ''; }, 5000);
+  }
   openAllChecks();
 }
 
@@ -3043,9 +3123,9 @@ function switchTab(type) {
   document.getElementById('section-wartung').style.display   = isWartung ? '' : 'none';
   document.getElementById('kuendigung-row').style.display    = isWartung ? '' : 'none';
 
-  // Label dynamisch je nach Modus
+  // Banner-Label dynamisch je nach Modus
   const lbl = document.getElementById('f_requestid_label');
-  if (lbl) lbl.textContent = isWartung ? 'Vertragscheck Nummer' : 'Reparaturcheck Nummer';
+  if (lbl) lbl.textContent = isWartung ? 'Vertragscheck-Nummer' : 'Reparaturcheck-Nummer';
 
   // Toggle AHW sidebar card
   document.getElementById('ahw-reparatur-body').style.display = isWartung ? 'none' : 'flex';
@@ -3515,8 +3595,8 @@ async function saveCorrection(fieldId, aiValue, userValue) {
   if (!APP_KEYS.airtableWriteKey) return;
   const apiKey = APP_KEYS.user?.api_key || '';
   try {
-    const existing = await atRead('Korrekturen',
-      "AND({api_key}='" + apiKey + "',{fieldId}='" + fieldId + "')");
+    // Geteilter Datenpool: Duplikat-Prüfung user-übergreifend für dasselbe Feld
+    const existing = await atRead('Korrekturen', "{fieldId}='" + fieldId + "'");
     // Check exact duplicate
     if (existing.some(r => r.fields.aiValue === String(aiValue) && r.fields.userValue === String(userValue))) return;
     await atWrite('Korrekturen', {
@@ -3535,7 +3615,8 @@ async function getCorrectionsCache() {
   if (_correctionsCache) return _correctionsCache;
   if (!APP_KEYS.user) return [];
   try {
-    const recs = await atRead('Korrekturen', "{api_key}='" + APP_KEYS.user.api_key + "'");
+    // Geteilter Datenpool: alle User sehen alle Korrekturen / KI-Lernprotokoll
+    const recs = await atRead('Korrekturen');
     _correctionsCache = recs.map(r => ({ ...r.fields, _recordId: r.id }));
     return _correctionsCache;
   } catch(e) { return []; }
@@ -4351,8 +4432,7 @@ async function buildAszendioWartungPDF(angebotsnr) {
     });
   }
 
-  // 4 · Auftragsbestätigung – Datum Auftragnehmer (Datum Auftraggeber bleibt leer für manuelle Unterschrift)
-  draw(today, 60, 712, 10);
+  // 4 · Auftragsbestätigung – Datum bleibt komplett leer für manuelle Unterschrift
 
   pdfDoc.setTitle('Aszendio Servicevertrag – ' + (g('wt_firma') || 'Kunde'));
   pdfDoc.setAuthor('Aszendio Aufzugservice GmbH');
@@ -5422,7 +5502,8 @@ function closeVertragEditor() {
 async function loadVertraege() {
   if (!APP_KEYS.user) return [];
   try {
-    const recs = await atRead('Vertraege', "{api_key}='" + APP_KEYS.user.api_key + "'");
+    // Geteilter Datenpool: alle User sehen alle Verträge
+    const recs = await atRead('Vertraege');
     return recs.map(r => ({
       ...r.fields,
       _recordId: r.id,
