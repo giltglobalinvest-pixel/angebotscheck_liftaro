@@ -553,9 +553,12 @@ const pdfWorkerReady = Promise.resolve();</script>
 <div class="topbar" style="flex-direction:column;padding:0;gap:0">
   <!-- Row 1: Brand + Status + User -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 28px;border-bottom:1px solid rgba(255,255,255,.07)">
-    <div>
-      <div class="topbar-title">liftaro</div>
-      <div class="topbar-sub">Angebotscheck &middot; Transparent. Effizient. Optimiert.</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div>
+        <div class="topbar-title">liftaro</div>
+        <div class="topbar-sub">Angebotscheck &middot; Transparent. Effizient. Optimiert.</div>
+      </div>
+      <span id="appVersionBadge" title="App-Version" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.85);font-family:'DM Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.4px;padding:3px 9px;border-radius:12px">–</span>
     </div>
     <div id="connStatus" style="display:none;align-items:center;gap:10px">
       <div style="display:flex;gap:6px">
@@ -586,6 +589,10 @@ const pdfWorkerReady = Promise.resolve();</script>
       <button class="btn-settings" onclick="openDashboard()" style="border-color:rgba(125,194,66,.35);color:rgba(168,224,112,.95)">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Dashboard
+      </button>
+      <button class="btn-settings" onclick="openRechnungenModal()" style="border-color:rgba(245,158,11,.35);color:rgba(252,211,77,.95)">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        Rechnungen
       </button>
       <button class="btn-settings" onclick="openLernprotokoll()" style="border-color:rgba(168,139,250,.35);color:rgba(168,139,250,.85)">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
@@ -694,7 +701,7 @@ const pdfWorkerReady = Promise.resolve();</script>
               </div>
               <div style="text-align:right">
                 <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;opacity:.8">Anfragenummer</div>
-                <input type="text" id="f_anfrageNr" placeholder="Anfragenummer" oninput="updateEmail()" style="background:rgba(255,255,255,.16);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;outline:none;text-align:right;min-width:160px;margin-top:4px">
+                <input type="text" id="f_anfrageNr" placeholder="Anfragenummer" oninput="updateEmail()" style="background:#fff;border:1.5px solid rgba(255,255,255,.3);color:#1a3a5c;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;outline:none;text-align:right;min-width:160px;margin-top:4px">
               </div>
             </div>
             <div class="field-row r4">
@@ -710,6 +717,11 @@ const pdfWorkerReady = Promise.resolve();</script>
               <div class="field"><label>Tel. (Betreiber)</label><input type="tel" id="f_tel" placeholder="+49 …"></div>
               <div class="field"><label style="white-space:nowrap">Ansprechperson</label><input type="text" id="f_ap" placeholder="Name Liftaro"></div>
               <div class="field"><label>Tel. Liftaro</label><input type="tel" id="f_tl" placeholder="+49 …"></div>
+              <!-- Hidden: Status-Übergangs-Daten (werden im Modal abgefragt) -->
+              <input type="hidden" id="f_beauftragt_von">
+              <input type="hidden" id="f_beauftragt_am">
+              <input type="hidden" id="f_beauftragt_wie">
+              <input type="hidden" id="f_auftrag_ausgefuehrt">
               <div class="field" id="f_status_field"><label>Status</label>
                 <select id="f_status" onchange="onMainStatusChange()" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
                   <option value="1">1 · Check gemacht</option>
@@ -895,6 +907,18 @@ const pdfWorkerReady = Promise.resolve();</script>
               <input type="hidden" id="f_kuendigung_ab" value="">
             </div>
           </div>
+        </div>
+
+        <!-- Rechnung erstellen (nur bei Status 3 = Abrechenbar) -->
+        <div id="invoiceBtnRow" style="display:none;margin-top:14px;padding:14px 18px;background:linear-gradient(135deg,#fff8e1,#fdf3d3);border-left:4px solid #f59e0b;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:#a06a00;text-transform:uppercase;letter-spacing:.4px">Status: Abrechenbar</div>
+            <div style="font-size:13px;color:var(--text);margin-top:2px">Dieser Check kann jetzt in Rechnung gestellt werden.</div>
+          </div>
+          <button onclick="createInvoiceFromCurrentCheck()" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;padding:10px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            Rechnung erstellen
+          </button>
         </div>
 
         <div class="legal-block" id="legal-block">
@@ -1213,6 +1237,165 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Dashboard-Modal -->
+<!-- Status-Übergang-Modal (Status 2 = Beauftragt, Status 3 = Abrechenbar) -->
+<div id="statusTransitionModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5200;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:14px;width:min(560px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <span id="stm_title" style="color:#fff;font-size:15px;font-weight:700">Status ändern</span>
+      <button onclick="closeStatusTransition(false)" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:18px 22px">
+      <div id="stm_intro" style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5"></div>
+      <input type="hidden" id="stm_target_status">
+      <input type="hidden" id="stm_check_index">
+
+      <!-- Felder für Status 2 (Beauftragt) -->
+      <div id="stm_section_2" style="display:none;flex-direction:column;gap:12px">
+        <div class="field"><label>Wer hat beauftragt?</label>
+          <input type="text" id="stm_beauftragt_von" placeholder="z. B. Hr. Müller, Hausverwaltung Maier">
+        </div>
+        <div class="field"><label>Wann wurde beauftragt?</label>
+          <input type="date" id="stm_beauftragt_am">
+        </div>
+        <div class="field"><label>Wie wurde beauftragt?</label>
+          <select id="stm_beauftragt_wie" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
+            <option value="">– bitte wählen –</option>
+            <option value="Telefonisch">Telefonisch</option>
+            <option value="E-Mail">E-Mail</option>
+            <option value="Persönlich">Persönlich</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Brief">Brief</option>
+            <option value="Sonstiges">Sonstiges</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Felder für Status 3 (Abrechenbar) -->
+      <div id="stm_section_3" style="display:none;flex-direction:column;gap:12px">
+        <div class="field"><label>Wurde der Auftrag vollständig ausgeführt?</label>
+          <select id="stm_ausgefuehrt" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
+            <option value="">– bitte wählen –</option>
+            <option value="Ja">Ja, vollständig ausgeführt</option>
+            <option value="Teilweise">Teilweise ausgeführt</option>
+            <option value="Nein">Nein</option>
+          </select>
+        </div>
+        <div style="background:var(--sky);border-radius:8px;padding:12px 14px">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Optionale Anhänge</div>
+          <div class="field" style="margin-bottom:8px">
+            <label>Rechnung des Servicebetriebs (PDF/Bild)</label>
+            <input type="file" id="stm_service_rechnung" accept=".pdf,image/*">
+            <div id="stm_service_rechnung_existing" style="font-size:11.5px;color:var(--muted);margin-top:4px"></div>
+          </div>
+          <div class="field">
+            <label>Arbeitsbericht (PDF/Bild)</label>
+            <input type="file" id="stm_arbeitsbericht" accept=".pdf,image/*">
+            <div id="stm_arbeitsbericht_existing" style="font-size:11.5px;color:var(--muted);margin-top:4px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;align-items:center;gap:10px">
+      <button onclick="closeStatusTransition(false)" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">Abbrechen</button>
+      <button onclick="confirmStatusTransition()" id="stm_btn_confirm" style="background:var(--navy);border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Status setzen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rechnungs-Übersicht-Modal -->
+<div id="rechnungenModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <span style="color:#fff;font-size:15px;font-weight:700">📑 Rechnungen</span>
+      <button onclick="document.getElementById('rechnungenModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+    </div>
+    <div style="padding:12px 22px 0;flex-shrink:0">
+      <div style="position:relative">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="rechnungenSearch" oninput="filterRechnungen()" placeholder="Suchen nach Rechnungsnr., Empfänger, Check-ID …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
+      </div>
+      <div id="rechnungenTypeFilter" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center">
+        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Typ:</span>
+      </div>
+      <div id="rechnungenInfo" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:14px"></div>
+    </div>
+    <div id="rechnungenList" style="flex:1;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:10px">
+      <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Noch keine Rechnungen.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Rechnungs-Editor-Modal -->
+<div id="rechnungEditorModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px">
+      <div>
+        <div style="color:#fff;font-size:15px;font-weight:700">📑 Rechnung</div>
+        <div id="rechnungEditorSubtitle" style="color:rgba(255,255,255,.6);font-size:11.5px;margin-top:2px">Neue Rechnung</div>
+      </div>
+      <button onclick="closeRechnungEditor()" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:18px 22px">
+      <input type="hidden" id="rg_recordId">
+      <input type="hidden" id="rg_check_id">
+      <input type="hidden" id="rg_checkType">
+
+      <div style="background:var(--sky);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px">Rechnungsnr.</div>
+          <div id="rg_nr_display" style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--navy);margin-top:2px">–</div>
+          <input type="hidden" id="rg_nr">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px">Datum</div>
+          <input type="text" id="rg_datum" style="border:1.5px solid var(--border);border-radius:6px;padding:5px 9px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;outline:none;width:120px;margin-top:2px">
+        </div>
+      </div>
+
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Rechnungsempfänger</div>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
+        <div class="field"><label>WEG (z. B. „WEG Musterstr. 12, Berlin")</label><input type="text" id="rg_empfaenger_weg" placeholder="WEG …"></div>
+        <div class="field"><label>Firma / Hausverwaltung</label><input type="text" id="rg_empfaenger_firma"></div>
+        <div class="field"><label>Anschrift (Straße, PLZ, Ort)</label><input type="text" id="rg_empfaenger_anschrift"></div>
+        <div class="field"><label>Ansprechpartner (optional)</label><input type="text" id="rg_empfaenger_ansprechpartner"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div class="field"><label>Leistungszeitraum</label><input type="text" id="rg_leistungszeitraum" placeholder="z.B. 01.05.2026"></div>
+        <div class="field"><label>Zahlungsziel (Tage)</label><input type="text" id="rg_zahlungsziel" value="14"></div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px"><label>Leistungsumfang</label>
+        <textarea id="rg_leistungsumfang" rows="6" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:12px;background:var(--sky);outline:none;resize:vertical"></textarea>
+      </div>
+
+      <div style="background:#f3faea;border-left:4px solid var(--green);border-radius:6px;padding:12px 16px;margin-bottom:6px">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;font-size:13px;line-height:1.6">
+          <div>Netto:</div><div id="rg_netto_display" style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">– €</div>
+          <div>+ 19 % MwSt.:</div><div id="rg_mwst_display" style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">– €</div>
+          <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px;font-weight:700;color:var(--navy)">Gesamtbetrag:</div>
+          <div id="rg_brutto_display" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px;text-align:right;font-family:'DM Mono',monospace;font-weight:800;color:var(--navy);font-size:15px">– €</div>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>Netto-Betrag (manuell überschreibbar)</label>
+          <input type="text" id="rg_netto" oninput="updateRechnungBetrag()" placeholder="z.B. 4.678,00 €">
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px">
+        <button onclick="previewRechnung()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">👁 Vorschau</button>
+        <button id="rg_btnDownload" onclick="downloadRechnung()" style="display:none;background:#fff;border:1.5px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">⬇ Download</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="rg_btnDelete" onclick="deleteRechnungCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
+        <button onclick="saveRechnung()" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">💾 Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="dashboardModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
   <div style="background:#fff;border-radius:16px;width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -1385,7 +1568,40 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v2.0';
+const APP_VERSION = 'V6.5';
+
+// ── Rechnungs-Konfiguration ───────────────────────────────────────
+const LIFTARO_INVOICE = {
+  firma:        'Liftaro GmbH',
+  strasse:      'Gustavburger Weg 6',
+  plz_ort:      '55116 Mainz',
+  tel:          '015888634515',
+  email:        'info@liftaro.de',
+  web:          'www.liftaro.de',
+  geschaeftsfuehrer: 'Francesco Ricioppo',
+  hrb:          'HRB 55116',
+  amtsgericht:  'Amtsgericht Mainz',
+  ust_id:       'DE45 697 8044',
+  steuernr:     '',
+  bank:         'Volksbank',
+  iban:         'DE52 6009 0100 0757 5770 08',
+  bic:          'VOBADESS',
+};
+const INVOICE_START_NR = 291000;
+const INVOICE_DEFAULT_LEISTUNG_REPARATUR =
+  'Beratungsleistung Reparaturcheck:\n' +
+  '• Analyse und Bewertung des vorliegenden Reparaturangebots\n' +
+  '• Einholung und Vergleich eines Alternativangebots\n' +
+  '• Wirtschaftliche und technische Bewertung gemäß Beratervertrag §2\n' +
+  '• Empfehlung zur Vergabeentscheidung\n\n' +
+  'Vergütung gemäß §4 Beratervertrag: 50 % der realisierten Nettoeinsparung.';
+const INVOICE_DEFAULT_LEISTUNG_WARTUNG =
+  'Beratungsleistung Wartungs-/Servicevertrags-Optimierung:\n' +
+  '• Analyse des bestehenden Wartungsvertrags\n' +
+  '• Einholung eines optimierten Alternativvertrags\n' +
+  '• Begleitung des Vertragswechsels gemäß Beratervertrag §2\n\n' +
+  'Vergütung gemäß §4 Beratervertrag: 50 % der jährlichen Nettoeinsparung.';
+const INVOICE_MWST = 0.19;
 const _k1 = 'patu8KWM';
 const _k2 = '8aWByxCGL';
 const _k3 = '.69fae5d9fa4b94c266b42';
@@ -1656,6 +1872,15 @@ async function setupTables() {
     { name: 'ergebnis_pdf',     type: 'multipleAttachments' },
     { name: 'status',           type: 'singleLineText' },
     { name: 'anfrageNr',        type: 'singleLineText' },
+    // Status-Übergangsdaten (2 = Beauftragt)
+    { name: 'beauftragt_von',    type: 'singleLineText' },
+    { name: 'beauftragt_am',     type: 'singleLineText' },
+    { name: 'beauftragt_wie',    type: 'singleLineText' },
+    // Status-Übergangsdaten (3 = Abrechenbar)
+    { name: 'auftrag_ausgefuehrt', type: 'singleLineText' },
+    // Optionale Anhänge nach Ausführung
+    { name: 'service_rechnung_pdf', type: 'multipleAttachments' },
+    { name: 'arbeitsbericht_pdf',   type: 'multipleAttachments' },
   ]);
   // Verträge-Tabelle
   try {
@@ -1677,6 +1902,33 @@ async function setupTables() {
       { name: 'vertrag_signed_pdf', type: 'multipleAttachments' },
     ]);
   } catch(e) { console.warn('Vertraege-Schema konnte nicht angelegt werden:', e.message); }
+
+  // Rechnungen-Tabelle
+  try {
+    await ensureTable('Rechnungen', [
+      { name: 'id',              type: 'singleLineText' },
+      { name: 'rechnungsnr',     type: 'singleLineText' },
+      { name: 'savedAt',         type: 'singleLineText' },
+      { name: 'rechnungsdatum',  type: 'singleLineText' },
+      { name: 'check_id',        type: 'singleLineText' },
+      { name: 'checkType',       type: 'singleLineText' },
+      { name: 'empfaenger_weg',       type: 'singleLineText' },
+      { name: 'empfaenger_firma',     type: 'singleLineText' },
+      { name: 'empfaenger_anschrift', type: 'singleLineText' },
+      { name: 'empfaenger_ansprechpartner', type: 'singleLineText' },
+      { name: 'leistungszeitraum',    type: 'singleLineText' },
+      { name: 'leistungsumfang',      type: 'multilineText' },
+      { name: 'zahlungsziel_tage',    type: 'singleLineText' },
+      { name: 'netto',                type: 'singleLineText' },
+      { name: 'mwst',                 type: 'singleLineText' },
+      { name: 'brutto',               type: 'singleLineText' },
+      { name: 'api_key',         type: 'singleLineText' },
+    ]);
+    await ensureFields('Rechnungen', [
+      { name: 'rechnung_pdf',   type: 'multipleAttachments' },
+      { name: 'empfaenger_weg', type: 'singleLineText' },
+    ]);
+  } catch(e) { console.warn('Rechnungen-Schema konnte nicht angelegt werden:', e.message); }
 }
 
 // ── App init ──────────────────────────────────────────────────────
@@ -1744,6 +1996,8 @@ async function showLoginScreen() {
   if (ls) { ls.style.display = 'flex'; }
   const lv = document.getElementById('loginVersion');
   if (lv) lv.textContent = APP_VERSION;
+  const tv = document.getElementById('appVersionBadge');
+  if (tv) tv.textContent = APP_VERSION;
   // Run connection check on login screen
   checkAirtableConnection();
 }
@@ -1897,6 +2151,10 @@ function collectFormData() {
     ap:          g('f_ap'),
     tl:          g('f_tl'),
     status:      g('f_status') || '1',
+    beauftragt_von: g('f_beauftragt_von'),
+    beauftragt_am:  g('f_beauftragt_am'),
+    beauftragt_wie: g('f_beauftragt_wie'),
+    auftrag_ausgefuehrt: g('f_auftrag_ausgefuehrt'),
     cv_angebotnr: g('cv_angebotnr'), cv_anbieter: g('cv_anbieter'),
     cv_lieferzeit: g('cv_lieferzeit'), cv_gwl: g('cv_gwl'), cv_preis: g('cv_preis'),
     ca_angebotnr: g('ca_angebotnr'), ca_anbieter: g('ca_anbieter'),
@@ -2009,6 +2267,10 @@ async function saveCheck(reporter) {
     cv_anbieter: data.cv_anbieter || '', ca_anbieter: data.ca_anbieter || '',
     file1Name: data.file1Name || '', file2Name: data.file2Name || '',
     anfrageNr: data.anfrageNr || '',
+    beauftragt_von: data.beauftragt_von || '',
+    beauftragt_am:  data.beauftragt_am  || '',
+    beauftragt_wie: data.beauftragt_wie || '',
+    auftrag_ausgefuehrt: data.auftrag_ausgefuehrt || '',
     status: data.status || '1',
     formData: JSON.stringify(data),
   };
@@ -2040,6 +2302,8 @@ async function saveCheck(reporter) {
       if (uploadedFiles[1]) uploads.push({ field: 'vorliegendes_pdf', blob: uploadedFiles[1], name: uploadedFiles[1].name });
       if (uploadedFiles[2]) uploads.push({ field: 'alternativ_pdf',   blob: uploadedFiles[2], name: uploadedFiles[2].name });
       if (_pendingErgebnisPdfBlob) uploads.push({ field: 'ergebnis_pdf', blob: _pendingErgebnisPdfBlob, name: _pendingErgebnisPdfName });
+      if (window._pendingServiceRechnung) uploads.push({ field: 'service_rechnung_pdf', blob: window._pendingServiceRechnung, name: window._pendingServiceRechnung.name });
+      if (window._pendingArbeitsbericht)  uploads.push({ field: 'arbeitsbericht_pdf',   blob: window._pendingArbeitsbericht,  name: window._pendingArbeitsbericht.name });
 
       for (const u of uploads) {
         const stepKey = 'upload_' + u.field;
@@ -2053,6 +2317,9 @@ async function saveCheck(reporter) {
         }
       }
       // Ergebnis-PDF wurde gespeichert → Pending-Marker zurücksetzen
+      // Pending-Anhänge zurücksetzen
+      if (window._pendingServiceRechnung) window._pendingServiceRechnung = null;
+      if (window._pendingArbeitsbericht)  window._pendingArbeitsbericht  = null;
       if (_pendingErgebnisPdfBlob) {
         _pendingErgebnisPdfBlob = null;
         _pendingErgebnisPdfName = null;
@@ -2211,6 +2478,13 @@ async function loadCheck(data) {
   set('f_ap',         data.ap  || 'Samet Battal');
   set('f_tl',         data.tl  || '015888634515');
   set('f_status',     data.status || '1');
+  set('f_beauftragt_von',     data.beauftragt_von     || '');
+  set('f_beauftragt_am',      data.beauftragt_am      || '');
+  set('f_beauftragt_wie',     data.beauftragt_wie     || '');
+  set('f_auftrag_ausgefuehrt', data.auftrag_ausgefuehrt || '');
+  window._lastConfirmedStatus = data.status || '1';
+  if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
+  if (typeof applyStatusFieldLock === 'function') applyStatusFieldLock();
 
   // Vergleichstabelle
   set('cv_angebotnr',  data.cv_angebotnr);
@@ -2382,6 +2656,13 @@ async function loadChecksFromAirtable() {
       d._attVorliegend = r.fields.vorliegendes_pdf || null;
       d._attAlternativ = r.fields.alternativ_pdf   || null;
       d._attErgebnis   = r.fields.ergebnis_pdf     || null;
+      d._attServiceRechnung = r.fields.service_rechnung_pdf || null;
+      d._attArbeitsbericht  = r.fields.arbeitsbericht_pdf   || null;
+      // Top-Level-Fallbacks für Status-Übergangs-Daten
+      if (!d.beauftragt_von && r.fields.beauftragt_von) d.beauftragt_von = r.fields.beauftragt_von;
+      if (!d.beauftragt_am  && r.fields.beauftragt_am)  d.beauftragt_am  = r.fields.beauftragt_am;
+      if (!d.beauftragt_wie && r.fields.beauftragt_wie) d.beauftragt_wie = r.fields.beauftragt_wie;
+      if (!d.auftrag_ausgefuehrt && r.fields.auftrag_ausgefuehrt) d.auftrag_ausgefuehrt = r.fields.auftrag_ausgefuehrt;
       // Status aus Top-Level übernehmen, falls in formData fehlt
       if (!d.status && r.fields.status) d.status = r.fields.status;
       if (!d.status) d.status = '1';
@@ -2667,11 +2948,15 @@ function renderChecksList(checks, query) {
           : '')
       + (() => {
           const sm = getCheckStatusMeta(c);
+          const locked = sm.value === '4' && !isAdmin();
           let opts = '';
           CHECK_STATUS.forEach(s => {
             opts += `<option value="${s.value}"${s.value === sm.value ? ' selected' : ''}>${s.label}</option>`;
           });
-          return `<select onchange="event.stopPropagation();setCheckStatus(${i}, this.value)" onclick="event.stopPropagation()" title="Status ändern" style="border:1.5px solid ${sm.color};color:${sm.color};background:${sm.color}11;border-radius:5px;padding:3px 6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none">${opts}</select>`;
+          const lockedAttrs = locked ? ' disabled' : '';
+          const lockedTitle = locked ? '🔒 Abgerechnet – nur Admins können den Status ändern.' : 'Status ändern';
+          const lockedStyle = locked ? ';cursor:not-allowed;opacity:.7' : '';
+          return `<select${lockedAttrs} onchange="event.stopPropagation();setCheckStatus(${i}, this.value)" onclick="event.stopPropagation()" title="${lockedTitle}" style="border:1.5px solid ${sm.color};color:${sm.color};background:${sm.color}11;border-radius:5px;padding:3px 6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none${lockedStyle}">${opts}</select>`;
         })()
       + (isAdmin()
           ? '<button onclick="event.stopPropagation();deleteCheckAt(' + i + ')" title="Check l\u00f6schen (Admin)" style="background:none;border:1px solid #e0a09a;color:#a8312f;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">\ud83d\uddd1 L\u00f6schen</button>'
@@ -2687,28 +2972,190 @@ async function setCheckStatus(idx, newStatus) {
   if (!c || !c._recordId) return;
   const old = getCheckStatus(c);
   if (old === newStatus) return;
+  // Schutz: Status "Abgerechnet" kann nur von Admins geändert werden
+  if (old === '4' && !isAdmin()) {
+    showToast('Status "Abgerechnet" kann nur von Admins geändert werden.', 'error');
+    filterChecks(); // Dropdown rollt zurück
+    return;
+  }
+  // Bei Übergängen auf 2 oder 3: Status-Übergangs-Modal öffnen
+  if (newStatus === '2' || newStatus === '3') {
+    openStatusTransition(idx, newStatus, c, () => {
+      // Dropdown im Listeneintrag wieder zurücksetzen
+      filterChecks();
+    });
+    return;
+  }
+  // Bei anderen Übergängen direkt speichern
+  await applyCheckStatusChange(idx, newStatus, {});
+}
+
+// Schreibt einen Status-Wechsel ohne weitere Felder direkt zurück
+async function applyCheckStatusChange(idx, newStatus, extraFields) {
+  const cache = window._checksCache || [];
+  const c = cache[idx];
+  if (!c || !c._recordId) return;
+  const old = getCheckStatus(c);
   // Optimistisch updaten
-  c.status = newStatus;
+  Object.assign(c, extraFields || {}, { status: newStatus });
   showToast('Status wird gespeichert …', 'ok');
   try {
-    // Top-Level-Feld + Status in formData (falls vorhanden) konsistent halten
-    let formData = c;
+    let formData = null;
     try {
-      // Versuche formData neu zu serialisieren falls bekannt
-      const merged = { ...c, status: newStatus };
-      delete merged._recordId; delete merged._attVorliegend; delete merged._attAlternativ; delete merged._attErgebnis;
+      const merged = { ...c };
+      delete merged._recordId; delete merged._attVorliegend; delete merged._attAlternativ;
+      delete merged._attErgebnis; delete merged._attServiceRechnung; delete merged._attArbeitsbericht;
       formData = JSON.stringify(merged);
-    } catch(e) { formData = null; }
-    const fields = { status: newStatus };
+    } catch(e) {}
+    const fields = Object.assign({ status: newStatus }, extraFields || {});
     if (typeof formData === 'string') fields.formData = formData;
     await atUpdate('Checks', c._recordId, fields);
     showToast(`Status auf "${getCheckStatusMeta(c).short}" geändert.`, 'ok');
     renderChecksStatusChips();
     filterChecks();
+    return c._recordId;
   } catch(e) {
-    c.status = old; // Rollback
+    c.status = old;
     showToast('Fehler: ' + e.message, 'error');
     filterChecks();
+    throw e;
+  }
+}
+
+// ── Status-Übergangs-Modal ────────────────────────────────────────
+// _stmCtx: { mode: 'list'|'form', idx, recordId, target, onClose }
+let _stmCtx = null;
+
+function openStatusTransition(idx, target, c, onClose) {
+  _stmCtx = { mode: 'list', idx, recordId: c?._recordId, target, c, onClose };
+  showStatusTransitionModal(target, c);
+}
+
+function openStatusTransitionFromForm(target) {
+  // Ohne idx – Daten kommen aus dem Hauptformular und werden beim Confirm gespeichert
+  _stmCtx = { mode: 'form', target };
+  // Vorhandene Werte aus dem aktuell geladenen Check (falls in collectFormData enthalten) verwenden
+  const c = collectFormData ? collectFormData() : {};
+  showStatusTransitionModal(target, c);
+}
+
+function showStatusTransitionModal(target, c) {
+  c = c || {};
+  const isB = target === '2', isA = target === '3';
+  document.getElementById('stm_section_2').style.display = isB ? 'flex' : 'none';
+  document.getElementById('stm_section_3').style.display = isA ? 'flex' : 'none';
+  document.getElementById('stm_target_status').value = target;
+
+  const titleEl = document.getElementById('stm_title');
+  const introEl = document.getElementById('stm_intro');
+  if (isB) {
+    titleEl.textContent = 'Status: 2 · Beauftragt';
+    introEl.textContent = 'Bitte gib an, wer wann und wie den Auftrag erteilt hat.';
+    document.getElementById('stm_beauftragt_von').value = c.beauftragt_von || '';
+    document.getElementById('stm_beauftragt_am').value  = c.beauftragt_am  || new Date().toISOString().split('T')[0];
+    document.getElementById('stm_beauftragt_wie').value = c.beauftragt_wie || '';
+  } else if (isA) {
+    titleEl.textContent = 'Status: 3 · Abrechenbar';
+    introEl.textContent = 'Bitte bestätige, ob der Auftrag ausgeführt wurde. Du kannst optional Belege hochladen.';
+    document.getElementById('stm_ausgefuehrt').value = c.auftrag_ausgefuehrt || '';
+    // Anhang-Inputs leeren
+    document.getElementById('stm_service_rechnung').value = '';
+    document.getElementById('stm_arbeitsbericht').value   = '';
+    // Hinweise auf existierende Anhänge
+    const showExisting = (att, divId) => {
+      const div = document.getElementById(divId);
+      if (!div) return;
+      if (att && att.length) {
+        const a = att[0];
+        div.innerHTML = `Aktuell hinterlegt: <strong>${a.filename || 'Datei'}</strong> &nbsp;<button type="button" onclick="downloadAttachment('${(a.url||'').replace(/'/g,'&#39;')}','${(a.filename||'datei.pdf').replace(/'/g,'&#39;')}')" style="background:none;border:1px solid var(--border);color:var(--blue-mid);border-radius:4px;padding:1px 7px;font-size:11px;cursor:pointer">⬇</button>`;
+      } else div.textContent = '';
+    };
+    showExisting(c._attServiceRechnung, 'stm_service_rechnung_existing');
+    showExisting(c._attArbeitsbericht,  'stm_arbeitsbericht_existing');
+  }
+  document.getElementById('statusTransitionModal').style.display = 'flex';
+}
+
+function closeStatusTransition(success) {
+  document.getElementById('statusTransitionModal').style.display = 'none';
+  if (_stmCtx?.mode === 'list' && !success && _stmCtx?.onClose) {
+    // Bei Abbruch in Liste: Dropdown wieder auf alten Wert zurückrollen
+    _stmCtx.onClose();
+  }
+  _stmCtx = null;
+}
+
+async function confirmStatusTransition() {
+  if (!_stmCtx) return;
+  const target = _stmCtx.target;
+  const fields = {};
+  if (target === '2') {
+    const von = document.getElementById('stm_beauftragt_von').value.trim();
+    const am  = document.getElementById('stm_beauftragt_am').value.trim();
+    const wie = document.getElementById('stm_beauftragt_wie').value;
+    if (!von || !am || !wie) { showToast('Bitte alle Felder ausfüllen.', 'error'); return; }
+    fields.beauftragt_von = von;
+    fields.beauftragt_am  = am;
+    fields.beauftragt_wie = wie;
+  } else if (target === '3') {
+    const aus = document.getElementById('stm_ausgefuehrt').value;
+    if (!aus) { showToast('Bitte Ausführungs-Status wählen.', 'error'); return; }
+    fields.auftrag_ausgefuehrt = aus;
+  }
+
+  const btn = document.getElementById('stm_btn_confirm');
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = 'Wird gespeichert …';
+
+  try {
+    if (_stmCtx.mode === 'list') {
+      // Direkt in Airtable updaten
+      const recordId = await applyCheckStatusChange(_stmCtx.idx, target, fields);
+      // Optionale Anhänge bei Status 3 hochladen
+      if (target === '3' && recordId) {
+        const upload = async (inputId, fieldName) => {
+          const f = document.getElementById(inputId)?.files?.[0];
+          if (!f) return;
+          try { await atUploadAttachment(recordId, fieldName, f, f.name); }
+          catch(e) { console.warn(fieldName + ' Upload:', e.message); }
+        };
+        await upload('stm_service_rechnung', 'service_rechnung_pdf');
+        await upload('stm_arbeitsbericht',   'arbeitsbericht_pdf');
+      }
+      // Cache neu laden, damit Anhänge sichtbar werden
+      window._checksCache = await loadChecksFromAirtable();
+      filterChecks();
+    } else {
+      // Form-Mode: Werte ins Hauptformular schreiben + f_status setzen
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      Object.entries(fields).forEach(([k, v]) => set('f_' + k, v));
+      set('f_status', target);
+      // Banner für Hauptformular-Hinweis aktualisieren
+      const meta = CHECK_STATUS.find(s => s.value === target);
+      const bar = document.getElementById('statusBar');
+      if (bar && meta) {
+        bar.className = 'status-bar';
+        bar.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color}"></span><span>Status auf <strong>${meta.label}</strong> gesetzt – nicht vergessen zu speichern.</span>`;
+      }
+      if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
+      if (typeof applyStatusFieldLock === 'function') applyStatusFieldLock();
+      // Optionale Anhänge merken (werden beim nächsten saveCheck mit hochgeladen)
+      if (target === '3') {
+        const sf = document.getElementById('stm_service_rechnung')?.files?.[0];
+        const ab = document.getElementById('stm_arbeitsbericht')?.files?.[0];
+        if (sf) window._pendingServiceRechnung = sf;
+        if (ab) window._pendingArbeitsbericht  = ab;
+        if (sf || ab) showToast('Anhänge werden beim nächsten Speichern hochgeladen.', 'ok');
+      }
+    }
+    closeStatusTransition(true);
+  } catch(e) {
+    console.error(e);
+    showToast('Fehler: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
   }
 }
 
@@ -3833,6 +4280,7 @@ async function previewErgebnis() {
       document.getElementById('row_kuendigung'),
       document.getElementById('btnSyncRep'),
       document.getElementById('btnSyncWart'),
+      document.getElementById('invoiceBtnRow'),
     ];
     const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
@@ -4195,6 +4643,7 @@ async function generatePDF() {
       document.getElementById('row_kuendigung'),
       document.getElementById('btnSyncRep'),
       document.getElementById('btnSyncWart'),
+      document.getElementById('invoiceBtnRow'),
     ];
     const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
@@ -4325,6 +4774,8 @@ async function generatePDF() {
 
 // ── App Init (runs after login) ─────────────────────────────────
 function appInit() {
+  const tv = document.getElementById('appVersionBadge');
+  if (tv) tv.textContent = APP_VERSION;
   document.getElementById('f_ap').value = 'Samet Battal';
   document.getElementById('f_tl').value = '015888634515';
   document.getElementById('f_datum').value = new Date().toISOString().split('T')[0];
@@ -4346,6 +4797,8 @@ function appInit() {
     recomputeWartungKuendigung('a');
   }
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
+  if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
+  if (typeof applyStatusFieldLock === 'function') applyStatusFieldLock();
 } // end appInit
 
 // ── AHW Wartungsvertrag generieren ───────────────────────────────
@@ -5195,12 +5648,156 @@ async function autoSaveIfData() {
 // Bewusst nur ein Visual-Hint im Status-Bar – persistiert wird mit "Speichern".
 function onMainStatusChange() {
   const v = document.getElementById('f_status')?.value || '1';
+  // Bei Wechsel auf 2/3: Modal öffnen, Status erst nach Bestätigung übernehmen
+  if (v === '2' || v === '3') {
+    // Vorher prüfen, ob Pflichtfelder bereits gefüllt sind (aus loadCheck)
+    const hasFields = (v === '2')
+      ? document.getElementById('f_beauftragt_von').value && document.getElementById('f_beauftragt_am').value && document.getElementById('f_beauftragt_wie').value
+      : !!document.getElementById('f_auftrag_ausgefuehrt').value;
+    if (!hasFields) {
+      // Status zurücksetzen, bis das Modal bestätigt wurde
+      const prev = window._lastConfirmedStatus || '1';
+      document.getElementById('f_status').value = prev;
+      openStatusTransitionFromForm(v);
+      return;
+    }
+  }
+  window._lastConfirmedStatus = v;
   const meta = CHECK_STATUS.find(s => s.value === v);
   const bar = document.getElementById('statusBar');
   if (bar && meta) {
     bar.className = 'status-bar';
     bar.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color}"></span><span>Status auf <strong>${meta.label}</strong> gesetzt – nicht vergessen zu speichern.</span>`;
   }
+  updateInvoiceButtonVisibility();
+}
+
+// Rechnungs-Button nur sichtbar bei Status 3 = Abrechenbar
+function updateInvoiceButtonVisibility() {
+  const status = document.getElementById('f_status')?.value || '1';
+  const row = document.getElementById('invoiceBtnRow');
+  if (row) row.style.display = status === '3' ? 'flex' : 'none';
+}
+
+// Status-Dropdown im Hauptformular bei Status 4 (Abgerechnet) für Nicht-Admins sperren
+function applyStatusFieldLock() {
+  const sel = document.getElementById('f_status');
+  if (!sel) return;
+  const isAbgerechnet = sel.value === '4';
+  const userIsAdmin = (typeof isAdmin === 'function') ? isAdmin() : false;
+  if (isAbgerechnet && !userIsAdmin) {
+    sel.disabled = true;
+    sel.style.cursor = 'not-allowed';
+    sel.style.opacity = '0.7';
+    sel.title = '🔒 Status "Abgerechnet" – nur Admins können den Status ändern.';
+  } else {
+    sel.disabled = false;
+    sel.style.cursor = '';
+    sel.style.opacity = '';
+    sel.title = '';
+  }
+  // Zusätzlich: Ab Status 2 (Beauftragt) wird das gesamte Check-Formular eingefroren
+  applyCheckFreeze();
+}
+
+// Friert das gesamte Check-Formular ein, sobald Status >= 2 (Beauftragt) – außer für Admins.
+// Admins können weiterhin alles bearbeiten (z.B. für Korrekturen).
+function applyCheckFreeze() {
+  const status = document.getElementById('f_status')?.value || '1';
+  const userIsAdmin = (typeof isAdmin === 'function') ? isAdmin() : false;
+  // Frozen ab Status 2, 3 oder 4
+  const frozen = (status === '2' || status === '3' || status === '4') && !userIsAdmin;
+
+  // Banner einblenden
+  let banner = document.getElementById('checkFrozenBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'checkFrozenBanner';
+    banner.style.cssText = 'display:none;position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#1e293b,#334155);color:#fff;padding:10px 16px;font-family:\'DM Sans\',sans-serif;font-size:12.5px;font-weight:600;border-radius:8px;margin-bottom:12px;box-shadow:0 4px 12px rgba(0,0,0,.15);align-items:center;gap:10px';
+    banner.innerHTML = '<span style="font-size:16px">🔒</span><span id="checkFrozenText">Dieser Check ist eingefroren und kann nicht mehr bearbeitet werden.</span>';
+    const printArea = document.getElementById('print-area');
+    if (printArea) printArea.insertBefore(banner, printArea.firstChild);
+  }
+
+  // Welche Felder werden gesperrt?
+  const printArea = document.getElementById('print-area');
+  if (!printArea) return;
+  const inputs = printArea.querySelectorAll('input, select, textarea, [contenteditable="true"]');
+  inputs.forEach(el => {
+    // Ausnahme: Status-Dropdown selbst (eigene Logik), Datums-Anzeige
+    if (el.id === 'f_status') return;
+    if (frozen) {
+      if (el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        el.dataset.frozenWasReadonly = el.readOnly ? '1' : '0';
+        el.dataset.frozenWasDisabled = el.disabled ? '1' : '0';
+        if (el.type === 'checkbox' || el.type === 'radio' || el.tagName === 'SELECT' || el.type === 'file') {
+          el.disabled = true;
+        } else {
+          el.readOnly = true;
+        }
+        el.style.background = '#f3f4f6';
+        el.style.cursor = 'not-allowed';
+      } else if (el.getAttribute('contenteditable') === 'true') {
+        el.dataset.frozenWasEditable = 'true';
+        el.setAttribute('contenteditable', 'false');
+        el.style.background = '#f3f4f6';
+        el.style.cursor = 'not-allowed';
+      }
+    } else {
+      // Auftauen
+      if (el.dataset.frozenWasReadonly === '0') el.readOnly = false;
+      if (el.dataset.frozenWasDisabled === '0') el.disabled = false;
+      if (el.dataset.frozenWasEditable === 'true') el.setAttribute('contenteditable', 'true');
+      delete el.dataset.frozenWasReadonly;
+      delete el.dataset.frozenWasDisabled;
+      delete el.dataset.frozenWasEditable;
+      el.style.background = '';
+      el.style.cursor = '';
+    }
+  });
+
+  // Ergebnis-Buttons (PDF erstellen, Empfehlung) sperren
+  const lockBtns = ['btnGenerate','btnEmpfehlung','btnDownloadFull'];
+  lockBtns.forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    if (frozen) {
+      b.dataset.frozenWasDisabled = b.disabled ? '1' : '0';
+      // PDF-Erstellen darf weiterhin funktionieren – nur Bearbeitungs-Aktionen sperren
+      if (id === 'btnEmpfehlung') {
+        b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed';
+      }
+    } else {
+      if (b.dataset.frozenWasDisabled === '0') b.disabled = false;
+      delete b.dataset.frozenWasDisabled;
+      b.style.opacity = '';
+      b.style.cursor = '';
+    }
+  });
+
+  if (banner) {
+    if (frozen) {
+      banner.style.display = 'flex';
+      const txt = document.getElementById('checkFrozenText');
+      if (txt) {
+        const meta = (typeof getCheckStatusMeta === 'function')
+          ? CHECK_STATUS.find(s => s.value === status) : null;
+        txt.textContent = `Dieser Check ist eingefroren (Status: ${meta?.label || status}). Bearbeitungen sind nicht mehr möglich – nur Admins können Änderungen vornehmen.`;
+      }
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+}
+
+// Rechnung aus aktuell geladenem Check erstellen
+function createInvoiceFromCurrentCheck() {
+  const data = collectFormData();
+  if (!data.id && !data.requestId) {
+    showToast('Bitte erst den Check speichern, bevor du eine Rechnung erstellst.', 'error');
+    return;
+  }
+  openRechnungEditor(data, null);
 }
 
 // ── Rahmenverträge ────────────────────────────────────────────────
@@ -5761,6 +6358,665 @@ function renderDashboard() {
       Stand: ${new Date().toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short'})} · Matching erfolgt über normalisierten Firmennamen.
     </div>
   `;
+}
+
+// ── Rechnungen ────────────────────────────────────────────────────
+let _rechnungenCache = [];
+let _rechnungPreviewBlob = null;
+window._rechnungenTypeFilter = window._rechnungenTypeFilter || new Set();
+
+async function generateRechnungsnummer() {
+  let max = INVOICE_START_NR - 1;
+  try {
+    const recs = await atRead('Rechnungen');
+    for (const r of recs) {
+      const n = parseInt((r.fields?.rechnungsnr || '').toString().replace(/[^\d]/g,''), 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+  } catch(e) { console.warn('generateRechnungsnummer:', e.message); }
+  return String(max + 1);
+}
+
+async function loadRechnungen() {
+  try {
+    const recs = await atRead('Rechnungen');
+    return recs.map(r => ({ ...r.fields, _recordId: r.id, _attRechnung: r.fields.rechnung_pdf || null }));
+  } catch(e) { console.warn('loadRechnungen:', e.message); return []; }
+}
+
+function getRechnungData() {
+  const g = id => document.getElementById(id)?.value?.trim() || '';
+  return {
+    recordId:  g('rg_recordId'),
+    nr:        g('rg_nr'),
+    datum:     g('rg_datum'),
+    check_id:  g('rg_check_id'),
+    checkType: g('rg_checkType'),
+    empfaenger_weg:             g('rg_empfaenger_weg'),
+    empfaenger_firma:           g('rg_empfaenger_firma'),
+    empfaenger_anschrift:       g('rg_empfaenger_anschrift'),
+    empfaenger_ansprechpartner: g('rg_empfaenger_ansprechpartner'),
+    leistungszeitraum: g('rg_leistungszeitraum'),
+    zahlungsziel:      g('rg_zahlungsziel') || '14',
+    leistungsumfang:   g('rg_leistungsumfang'),
+    netto:             g('rg_netto'),
+  };
+}
+
+function _parseEuroIntern(s) {
+  if (!s) return 0;
+  const cleaned = String(s).replace(/[^\d,.\-]/g, '').replace(/\./g,'').replace(',', '.');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+function _fmtEuroDE(n) {
+  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+}
+
+function updateRechnungBetrag() {
+  const netto = _parseEuroIntern(document.getElementById('rg_netto')?.value || '');
+  const mwst  = netto * INVOICE_MWST;
+  const brutto = netto + mwst;
+  document.getElementById('rg_netto_display').textContent = _fmtEuroDE(netto);
+  document.getElementById('rg_mwst_display').textContent  = _fmtEuroDE(mwst);
+  document.getElementById('rg_brutto_display').textContent = _fmtEuroDE(brutto);
+}
+
+async function openRechnungEditor(check, existing) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : String(v); };
+  // Reset
+  ['rg_recordId','rg_nr','rg_datum','rg_check_id','rg_checkType',
+   'rg_empfaenger_weg','rg_empfaenger_firma','rg_empfaenger_anschrift','rg_empfaenger_ansprechpartner',
+   'rg_leistungszeitraum','rg_zahlungsziel','rg_leistungsumfang','rg_netto'].forEach(id => set(id, ''));
+  document.getElementById('rg_btnDownload').style.display = 'none';
+  document.getElementById('rg_btnDelete').style.display   = 'none';
+  _rechnungPreviewBlob = null;
+  // Editor entsperren (für neuen Rechnungs-Entwurf)
+  lockRechnungEditor(false);
+  // Subtitle zurücksetzen
+  const subtitle = document.getElementById('rechnungEditorSubtitle');
+  if (subtitle) { subtitle.textContent = 'Neue Rechnung'; subtitle.style.color = ''; }
+
+  if (existing) {
+    set('rg_recordId', existing._recordId);
+    set('rg_nr',       existing.rechnungsnr);
+    set('rg_datum',    existing.rechnungsdatum);
+    set('rg_check_id', existing.check_id);
+    set('rg_checkType', existing.checkType);
+    set('rg_empfaenger_weg',             existing.empfaenger_weg);
+    set('rg_empfaenger_firma',           existing.empfaenger_firma);
+    set('rg_empfaenger_anschrift',       existing.empfaenger_anschrift);
+    set('rg_empfaenger_ansprechpartner', existing.empfaenger_ansprechpartner);
+    set('rg_leistungszeitraum', existing.leistungszeitraum);
+    set('rg_zahlungsziel',      existing.zahlungsziel_tage || '14');
+    set('rg_leistungsumfang',   existing.leistungsumfang);
+    set('rg_netto',             existing.netto);
+    document.getElementById('rg_btnDownload').style.display = 'inline-flex';
+    document.getElementById('rg_btnDelete').style.display   = 'none'; // GoBD: keine Löschung
+    // Editor sperren – festgeschriebene Rechnung
+    lockRechnungEditor(true);
+    showRechnungSavedBanner(existing.rechnungsnr);
+  } else if (check) {
+    const nr = await generateRechnungsnummer();
+    set('rg_nr',       nr);
+    set('rg_datum',    formatDateDE(new Date()));
+    set('rg_check_id', check.id || check.requestId || '');
+    set('rg_checkType', getCheckType(check));
+    set('rg_empfaenger_weg',       check.standort ? 'WEG ' + check.standort : '');
+    set('rg_empfaenger_firma',     check.firma || check.ahw_firma || '');
+    set('rg_empfaenger_anschrift', check.ahw_anschrift || check.standort || '');
+    set('rg_empfaenger_ansprechpartner', check.name || check.ahw_ansprechpartner || '');
+    set('rg_leistungszeitraum', formatDateDE(new Date()));
+    set('rg_zahlungsziel',      '14');
+    const isWartung = getCheckType(check) === 'wartung';
+    set('rg_leistungsumfang', isWartung ? INVOICE_DEFAULT_LEISTUNG_WARTUNG : INVOICE_DEFAULT_LEISTUNG_REPARATUR);
+    set('rg_netto', check.liftaroBet || '');
+    document.getElementById('rechnungEditorSubtitle').textContent = `Neue Rechnung · Check ${check.id || check.requestId || ''}`;
+  }
+
+  document.getElementById('rg_nr_display').textContent = document.getElementById('rg_nr').value || '–';
+  updateRechnungBetrag();
+  document.getElementById('rechnungEditorModal').style.display = 'flex';
+}
+
+function closeRechnungEditor() {
+  document.getElementById('rechnungEditorModal').style.display = 'none';
+}
+
+// PDF-Generator: Rechnung als A4-PDF (mit pdf-lib drawText auf weißem Hintergrund)
+async function buildRechnungPDF() {
+  const d = getRechnungData();
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+  const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helvBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const A4_W = 595.28, A4_H = 841.89;
+  const page = pdfDoc.addPage([A4_W, A4_H]);
+  const M = 50; // margin
+  let y = A4_H - M;
+
+  const drawText = (text, x, yPos, size = 10, font = helv, color = rgb(0.1,0.1,0.1)) => {
+    page.drawText(String(text), { x, y: yPos, size, font, color });
+  };
+  const drawLine = (yPos, width = 1, color = rgb(0.85,0.85,0.85)) => {
+    page.drawRectangle({ x: M, y: yPos, width: A4_W - 2*M, height: width, color });
+  };
+
+  // Absender oben links (Mini-Zeile)
+  drawText(`${LIFTARO_INVOICE.firma} · ${LIFTARO_INVOICE.strasse} · ${LIFTARO_INVOICE.plz_ort}`, M, y, 7.5, helv, rgb(0.4,0.4,0.4));
+  y -= 14;
+
+  // Empfänger-Block (links) – nur die oberste Zeile fett
+  let empfY = y - 10;
+  if (d.empfaenger_weg) {
+    drawText(d.empfaenger_weg, M, empfY, 11, helvBold);
+    empfY -= 14;
+    if (d.empfaenger_firma) {
+      drawText(d.empfaenger_firma, M, empfY, 10, helv);
+      empfY -= 13;
+    }
+  } else if (d.empfaenger_firma) {
+    drawText(d.empfaenger_firma, M, empfY, 11, helvBold);
+    empfY -= 14;
+  }
+  if (d.empfaenger_ansprechpartner) {
+    drawText(d.empfaenger_ansprechpartner, M, empfY, 10, helv); empfY -= 13;
+  }
+  drawText(d.empfaenger_anschrift || '', M, empfY, 10, helv);
+
+  // Absender-Block oben rechts
+  let absX = A4_W - M - 200;
+  let absY = y - 10;
+  drawText(LIFTARO_INVOICE.firma,     absX, absY, 10, helvBold); absY -= 13;
+  drawText(LIFTARO_INVOICE.strasse,   absX, absY, 9.5, helv);    absY -= 12;
+  drawText(LIFTARO_INVOICE.plz_ort,   absX, absY, 9.5, helv);    absY -= 12;
+  absY -= 4;
+  drawText('Tel.: ' + LIFTARO_INVOICE.tel,   absX, absY, 9, helv); absY -= 11;
+  drawText('E-Mail: ' + LIFTARO_INVOICE.email, absX, absY, 9, helv); absY -= 11;
+  drawText('Web: ' + LIFTARO_INVOICE.web,    absX, absY, 9, helv); absY -= 11;
+
+  // Titel
+  y = absY - 30;
+  drawText('RECHNUNG', M, y, 22, helvBold, rgb(0.1,0.23,0.36));
+  y -= 30;
+
+  // Rechnungs-Metadaten
+  const today = d.datum || formatDateDE(new Date());
+  const due = (() => {
+    const dt = parseDateDE(d.datum || formatDateDE(new Date()));
+    if (!dt) return '';
+    const tage = parseInt(d.zahlungsziel || '14', 10) || 14;
+    dt.setDate(dt.getDate() + tage);
+    return formatDateDE(dt);
+  })();
+  drawText('Rechnungsnummer:',   M, y, 9, helv, rgb(0.4,0.4,0.4)); drawText(d.nr || '',         M+115, y, 11, helvBold);
+  y -= 14;
+  drawText('Rechnungsdatum:',    M, y, 9, helv, rgb(0.4,0.4,0.4)); drawText(today,              M+115, y, 11, helvBold);
+  y -= 14;
+  drawText('Leistungszeitraum:', M, y, 9, helv, rgb(0.4,0.4,0.4)); drawText(d.leistungszeitraum || today, M+115, y, 11, helvBold);
+  y -= 14;
+  drawText('Check-Referenz:',    M, y, 9, helv, rgb(0.4,0.4,0.4)); drawText(d.check_id || '–',  M+115, y, 11, helvBold);
+  y -= 14;
+  drawText('Fällig bis:',        M, y, 9, helv, rgb(0.4,0.4,0.4)); drawText(due || '',          M+115, y, 11, helvBold);
+
+  y -= 24;
+  drawLine(y); y -= 16;
+
+  // Leistungsumfang
+  drawText('Leistungsbeschreibung', M, y, 10.5, helvBold);
+  y -= 16;
+  const lines = String(d.leistungsumfang || '').split(/\n/);
+  for (const ln of lines) {
+    // Wortumbruch bei langen Zeilen
+    const maxW = A4_W - 2*M;
+    const words = ln.split(/\s+/);
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (helv.widthOfTextAtSize(test, 10) > maxW && cur) {
+        drawText(cur, M, y, 10, helv); y -= 13; cur = w;
+      } else cur = test;
+    }
+    if (cur) { drawText(cur, M, y, 10, helv); y -= 13; }
+    if (!ln.trim()) y -= 4;
+  }
+
+  y -= 12;
+  drawLine(y); y -= 18;
+
+  // Beträge rechtsbündig
+  const netto = _parseEuroIntern(d.netto);
+  const mwst  = netto * INVOICE_MWST;
+  const brutto = netto + mwst;
+  const rightX = A4_W - M;
+  const rightLabel = (label, value, size = 10, bold = false) => {
+    const f = bold ? helvBold : helv;
+    const w = f.widthOfTextAtSize(value, size);
+    drawText(label, A4_W - M - 200, y, size, f);
+    drawText(value, rightX - w, y, size, f);
+  };
+  rightLabel('Nettobetrag:', _fmtEuroDE(netto));
+  y -= 14;
+  rightLabel('zzgl. 19 % MwSt.:', _fmtEuroDE(mwst));
+  y -= 16;
+  drawLine(y, 0.5, rgb(0.5,0.5,0.5)); y -= 16;
+  rightLabel('Gesamtbetrag:', _fmtEuroDE(brutto), 12, true);
+
+  y -= 36;
+  drawText(
+    `Bitte überweisen Sie den Gesamtbetrag von ${_fmtEuroDE(brutto)} unter Angabe der Rechnungsnummer ${d.nr || '–'} bis spätestens ${due || ''}.`,
+    M, y, 9.5, helv, rgb(0.3,0.3,0.3)
+  );
+  y -= 20;
+  drawText('Vielen Dank für Ihre Zusammenarbeit.', M, y, 10, helv, rgb(0.1,0.23,0.36));
+
+  // Footer mit Bankverbindung & Pflichtangaben
+  const footerY = M + 70;
+  drawLine(footerY, 0.5, rgb(0.85,0.85,0.85));
+  let fy = footerY - 12;
+  drawText('Bankverbindung:', M, fy, 8, helvBold, rgb(0.4,0.4,0.4));
+  drawText(LIFTARO_INVOICE.bank,  M+90, fy, 8, helv, rgb(0.4,0.4,0.4));
+  fy -= 10;
+  drawText('IBAN:',           M, fy, 8, helvBold, rgb(0.4,0.4,0.4));
+  drawText(LIFTARO_INVOICE.iban, M+90, fy, 8, helv, rgb(0.4,0.4,0.4));
+  drawText('BIC:',            M+260, fy, 8, helvBold, rgb(0.4,0.4,0.4));
+  drawText(LIFTARO_INVOICE.bic,  M+285, fy, 8, helv, rgb(0.4,0.4,0.4));
+  fy -= 14;
+  drawText(`${LIFTARO_INVOICE.firma} · ${LIFTARO_INVOICE.hrb} ${LIFTARO_INVOICE.amtsgericht} · GF: ${LIFTARO_INVOICE.geschaeftsfuehrer}`, M, fy, 7.5, helv, rgb(0.5,0.5,0.5));
+  fy -= 9;
+  drawText(`USt-IdNr.: ${LIFTARO_INVOICE.ust_id} · Steuernr.: ${LIFTARO_INVOICE.steuernr}`, M, fy, 7.5, helv, rgb(0.5,0.5,0.5));
+
+  // Check-Ergebnis-PDF als weitere Seite(n) anhängen, falls vorhanden
+  // - Wenn aktuell ein Check geladen ist und d.check_id mit dessen ID übereinstimmt:
+  //   → Cover frisch erzeugen (gleiche Logik wie generatePDF, ohne Download)
+  // - Sonst: aus Airtable das gespeicherte ergebnis_pdf des Checks laden
+  try {
+    const currentRid = document.getElementById('f_requestid')?.value?.trim();
+    let checkPdfBlob = null;
+    if (d.check_id && currentRid && d.check_id === currentRid) {
+      // Cover aus dem aktuell offenen Check rendern
+      checkPdfBlob = await buildCheckCoverBlob();
+    } else if (d.check_id) {
+      // Aus Airtable holen
+      try {
+        const recs = await atRead('Checks', "{id}='" + d.check_id + "'");
+        const rec = recs && recs[0];
+        const att = rec?.fields?.ergebnis_pdf;
+        if (att && att.length && att[0].url) {
+          const resp = await fetch(att[0].url);
+          if (resp.ok) checkPdfBlob = await resp.blob();
+        }
+      } catch(e) { console.warn('Check-PDF-Lookup:', e.message); }
+    }
+    if (checkPdfBlob) {
+      const checkBytes = new Uint8Array(await checkPdfBlob.arrayBuffer());
+      const checkDoc = await PDFDocument.load(checkBytes);
+      const pages = await pdfDoc.copyPages(checkDoc, checkDoc.getPageIndices());
+      pages.forEach(p => pdfDoc.addPage(p));
+    }
+  } catch(e) { console.warn('Check-Anhang fehlgeschlagen:', e.message); }
+
+  pdfDoc.setTitle('Rechnung ' + (d.nr || ''));
+  pdfDoc.setAuthor(LIFTARO_INVOICE.firma);
+  pdfDoc.setCreationDate(new Date());
+
+  const out = await pdfDoc.save();
+  const blob = new Blob([out], { type: 'application/pdf' });
+  const filename = `Rechnung_${d.nr || 'neu'}_${(d.empfaenger_firma || 'Kunde').replace(/\s+/g,'_')}.pdf`;
+  return { blob, filename };
+}
+
+// Erzeugt das Cover-PDF des aktuell geladenen Checks (1 Seite, wie beim "PDF erstellen")
+async function buildCheckCoverBlob() {
+  const printArea = document.getElementById('print-area');
+  if (!printArea) return null;
+  // Gleiche Hide-Liste wie beim regulären Erstellen
+  const empBtn = document.getElementById('btnEmpfehlung');
+  const prevEmp = empBtn ? empBtn.style.display : null;
+  if (empBtn) empBtn.style.display = 'none';
+  const hideForPdf = [
+    document.getElementById('f_status_field'),
+    document.getElementById('row_kuendfrist'),
+    document.getElementById('row_vertragsbeginn'),
+    document.getElementById('row_kuendigung'),
+    document.getElementById('btnSyncRep'),
+    document.getElementById('btnSyncWart'),
+    document.getElementById('invoiceBtnRow'),
+  ];
+  const prev = hideForPdf.map(el => el ? el.style.display : null);
+  hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
+  if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
+  try {
+    const canvas = await html2canvas(printArea, {
+      scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
+      width: printArea.scrollWidth, height: printArea.scrollHeight,
+    });
+    const { PDFDocument } = PDFLib;
+    const doc = await PDFDocument.create();
+    const png = await doc.embedPng(canvas.toDataURL('image/png'));
+    const A4_W = 595.28, A4_H = 841.89;
+    const widthScale = A4_W / png.width;
+    const drawW = A4_W;
+    const drawH = png.height * widthScale;
+    const pageH = Math.max(A4_H, drawH);
+    const page = doc.addPage([A4_W, pageH]);
+    page.drawImage(png, { x: 0, y: pageH - drawH, width: drawW, height: drawH });
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: 'application/pdf' });
+  } finally {
+    if (empBtn) empBtn.style.display = prevEmp || '';
+    hideForPdf.forEach((el, i) => { if (el) el.style.display = prev[i] || ''; });
+  }
+}
+
+async function previewRechnung() {
+  try {
+    const { blob, filename } = await buildRechnungPDF();
+    _rechnungPreviewBlob = blob;
+    openPreviewBlob(blob, '📑 ' + filename);
+  } catch(e) { console.error(e); showToast('Vorschau fehlgeschlagen: ' + e.message, 'error'); }
+}
+
+async function downloadRechnung() {
+  try {
+    const { blob, filename } = await buildRechnungPDF();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch(e) { showToast('Download fehlgeschlagen: ' + e.message, 'error'); }
+}
+
+async function saveRechnung() {
+  if (!APP_KEYS.airtableWriteKey) { showToast('Nicht eingeloggt.', 'error'); return; }
+  const d = getRechnungData();
+  if (!d.empfaenger_firma) { showToast('Bitte Empfänger-Firma angeben.', 'error'); return; }
+  const netto = _parseEuroIntern(d.netto);
+  const fields = {
+    id:              'RG-' + (d.nr || Date.now()),
+    rechnungsnr:     d.nr,
+    savedAt:         new Date().toISOString(),
+    rechnungsdatum:  d.datum,
+    check_id:        d.check_id,
+    checkType:       d.checkType || 'reparatur',
+    empfaenger_weg:             d.empfaenger_weg,
+    empfaenger_firma:           d.empfaenger_firma,
+    empfaenger_anschrift:       d.empfaenger_anschrift,
+    empfaenger_ansprechpartner: d.empfaenger_ansprechpartner,
+    leistungszeitraum: d.leistungszeitraum,
+    leistungsumfang:   d.leistungsumfang,
+    zahlungsziel_tage: String(d.zahlungsziel || '14'),
+    netto:  _fmtEuroDE(netto),
+    mwst:   _fmtEuroDE(netto * INVOICE_MWST),
+    brutto: _fmtEuroDE(netto * (1 + INVOICE_MWST)),
+    api_key: APP_KEYS.user?.api_key || 'unknown',
+  };
+  // GoBD-Schutz: Bestehende Rechnungen können nicht mehr verändert werden
+  if (d.recordId) {
+    showToast('Bestehende Rechnungen sind festgeschrieben (GoBD) – keine Änderung möglich.', 'error');
+    return;
+  }
+  // Bestätigung vor finaler Festschreibung
+  if (!confirm(`Rechnung ${d.nr || ''} jetzt erstellen und festschreiben?\n\nNach Bestätigung ist die Rechnung gemäß ordnungsgemäßer Buchführung (GoBD) unveränderlich.`)) {
+    return;
+  }
+  showToast('Rechnung wird festgeschrieben …', 'ok');
+  try {
+    // Schema-Reparatur: fehlende Felder vor dem Schreiben anlegen
+    try {
+      await ensureFields('Rechnungen', [
+        { name: 'id',              type: 'singleLineText' },
+        { name: 'rechnungsnr',     type: 'singleLineText' },
+        { name: 'savedAt',         type: 'singleLineText' },
+        { name: 'rechnungsdatum',  type: 'singleLineText' },
+        { name: 'check_id',        type: 'singleLineText' },
+        { name: 'checkType',       type: 'singleLineText' },
+        { name: 'empfaenger_weg',       type: 'singleLineText' },
+        { name: 'empfaenger_firma',     type: 'singleLineText' },
+        { name: 'empfaenger_anschrift', type: 'singleLineText' },
+        { name: 'empfaenger_ansprechpartner', type: 'singleLineText' },
+        { name: 'leistungszeitraum',    type: 'singleLineText' },
+        { name: 'leistungsumfang',      type: 'multilineText' },
+        { name: 'zahlungsziel_tage',    type: 'singleLineText' },
+        { name: 'netto',                type: 'singleLineText' },
+        { name: 'mwst',                 type: 'singleLineText' },
+        { name: 'brutto',               type: 'singleLineText' },
+        { name: 'api_key',              type: 'singleLineText' },
+        { name: 'rechnung_pdf',         type: 'multipleAttachments' },
+      ]);
+    } catch(e) { console.warn('ensureFields(Rechnungen) bei Save:', e.message); }
+
+    let recordId = d.recordId;
+    const writeWithFallback = async (action, payload) => {
+      try {
+        return await action(payload);
+      } catch(e) {
+        // Falls einzelne Felder unbekannt sind: rausfiltern, neu versuchen
+        const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+        if (m && m[1] && payload[m[1]] !== undefined) {
+          const reduced = { ...payload };
+          delete reduced[m[1]];
+          console.warn('Feld unbekannt, retry ohne:', m[1]);
+          return await action(reduced);
+        }
+        throw e;
+      }
+    };
+    if (recordId) {
+      await writeWithFallback(p => atUpdate('Rechnungen', recordId, p), fields);
+    } else {
+      const res = await writeWithFallback(p => atWrite('Rechnungen', p), fields);
+      recordId = res.id;
+      document.getElementById('rg_recordId').value = recordId;
+    }
+    // PDF erzeugen + hochladen
+    const { blob, filename } = await buildRechnungPDF();
+    if (recordId && blob.size <= 5*1024*1024) {
+      try { await atUploadAttachment(recordId, 'rechnung_pdf', blob, filename); }
+      catch(e) { console.warn('Rechnungs-PDF Upload fehlgeschlagen:', e.message); }
+    }
+    document.getElementById('rg_btnDownload').style.display = 'inline-flex';
+    document.getElementById('rg_btnDelete').style.display   = 'none'; // GoBD: kein nachträgliches Löschen aus Editor
+    // Editor sperren (GoBD): alle Felder readonly, Speicher-Button ausblenden
+    lockRechnungEditor(true);
+    // Bestätigungs-Banner im Editor anzeigen
+    showRechnungSavedBanner(d.nr);
+
+    // Zugehörigen Check automatisch auf Status 4 (Abgerechnet) setzen
+    let checkStatusInfo = '';
+    if (d.check_id) {
+      try {
+        const recs = await atRead('Checks', "{id}='" + d.check_id + "'");
+        const rec = recs && recs[0];
+        if (rec) {
+          // Status auch in formData synchronisieren
+          let formDataStr = null;
+          try {
+            const fd = safeParseJSON(rec.fields.formData, {});
+            fd.status = '4';
+            formDataStr = JSON.stringify(fd);
+          } catch(e) {}
+          const upd = { status: '4' };
+          if (formDataStr) upd.formData = formDataStr;
+          await atUpdate('Checks', rec.id, upd);
+          // Cache aktualisieren falls Übersicht offen war
+          if (window._checksCache) {
+            const cached = window._checksCache.find(x => x._recordId === rec.id);
+            if (cached) cached.status = '4';
+          }
+          // Wenn dieser Check gerade im Hauptformular geladen ist, dort Status auch setzen
+          const formEl = document.getElementById('f_status');
+          const ridEl = document.getElementById('f_requestid');
+          if (formEl && ridEl && ridEl.value === d.check_id) {
+            formEl.value = '4';
+            window._lastConfirmedStatus = '4';
+            if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
+            applyStatusFieldLock();
+          }
+          checkStatusInfo = ` · Check ${d.check_id} auf "Abgerechnet" gesetzt.`;
+        }
+      } catch(e) { console.warn('Check-Status-Update fehlgeschlagen:', e.message); }
+    }
+
+    // Status-Bar als globale Erfolgsmeldung
+    const bar = document.getElementById('statusBar');
+    if (bar) {
+      bar.className = 'status-bar ok';
+      bar.innerHTML = `<span>✅</span><span>Rechnung <strong>${d.nr || ''}</strong> erfolgreich erstellt und festgeschrieben.${checkStatusInfo}</span>`;
+    }
+    if (document.getElementById('rechnungenModal').style.display !== 'none') openRechnungenModal();
+  } catch(e) {
+    console.error(e);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+    const bar = document.getElementById('statusBar');
+    if (bar) {
+      bar.className = 'status-bar error';
+      bar.innerHTML = `<span>⚠</span><span>Speichern fehlgeschlagen: ${e.message}</span>`;
+    }
+  }
+}
+
+// Editor-Schreibschutz für festgeschriebene Rechnungen (GoBD)
+function lockRechnungEditor(locked) {
+  const ids = [
+    'rg_datum','rg_empfaenger_weg','rg_empfaenger_firma','rg_empfaenger_anschrift',
+    'rg_empfaenger_ansprechpartner','rg_leistungszeitraum','rg_zahlungsziel',
+    'rg_leistungsumfang','rg_netto'
+  ];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (locked) {
+      el.setAttribute('readonly', 'readonly');
+      el.style.background = '#f3f4f6';
+      el.style.cursor = 'not-allowed';
+    } else {
+      el.removeAttribute('readonly');
+      el.style.background = '';
+      el.style.cursor = '';
+    }
+  });
+  const saveBtn = document.querySelector('#rechnungEditorModal button[onclick="saveRechnung()"]');
+  if (saveBtn) saveBtn.style.display = locked ? 'none' : '';
+}
+
+function showRechnungSavedBanner(nr) {
+  // Im Editor-Modal oben einen unmissverständlichen Erfolgs-Hinweis anzeigen
+  const subtitle = document.getElementById('rechnungEditorSubtitle');
+  if (subtitle) {
+    subtitle.innerHTML = `🔒 Rechnung ${nr || ''} festgeschrieben (GoBD)`;
+    subtitle.style.color = '#bef264';
+  }
+}
+
+async function deleteRechnungCurrent() {
+  const recordId = document.getElementById('rg_recordId').value;
+  if (!recordId) { closeRechnungEditor(); return; }
+  if (!confirm('Diese Rechnung wirklich löschen?')) return;
+  try { await atDelete('Rechnungen', recordId); }
+  catch(e) { showToast('Löschen fehlgeschlagen: ' + e.message, 'error'); return; }
+  closeRechnungEditor();
+  if (document.getElementById('rechnungenModal').style.display !== 'none') openRechnungenModal();
+}
+
+async function openRechnungenModal() {
+  document.getElementById('rechnungenModal').style.display = 'flex';
+  const list = document.getElementById('rechnungenList');
+  list.innerHTML = '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite"></div> Rechnungen werden geladen …</div>';
+  _rechnungenCache = await loadRechnungen();
+  document.getElementById('rechnungenSearch').value = '';
+  renderRechnungenTypeChips();
+  filterRechnungen();
+}
+
+function renderRechnungenTypeChips() {
+  const wrap = document.getElementById('rechnungenTypeFilter');
+  if (!wrap) return;
+  const label = wrap.querySelector('span'); wrap.innerHTML = '';
+  if (label) wrap.appendChild(label);
+  const types = [
+    { value: 'reparatur', label: '🔧 Reparaturcheck', color: 'var(--navy)' },
+    { value: 'wartung',   label: '🔄 Vertragscheck',  color: '#0e6655' },
+  ];
+  types.forEach(t => {
+    const cnt = _rechnungenCache.filter(r => (r.checkType || 'reparatur') === t.value).length;
+    const active = window._rechnungenTypeFilter.has(t.value);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = `${t.label} (${cnt})`;
+    btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid ${active ? t.color : 'var(--border)'};background:${active ? t.color : '#fff'};color:${active ? '#fff' : t.color};font-family:'DM Sans',sans-serif;transition:all .15s`;
+    btn.onclick = () => {
+      const set = window._rechnungenTypeFilter;
+      if (set.has(t.value)) set.delete(t.value); else set.add(t.value);
+      renderRechnungenTypeChips(); filterRechnungen();
+    };
+    wrap.appendChild(btn);
+  });
+  if (window._rechnungenTypeFilter.size) {
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.textContent = '✕';
+    reset.style.cssText = 'padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:\'DM Sans\',sans-serif';
+    reset.onclick = () => { window._rechnungenTypeFilter.clear(); renderRechnungenTypeChips(); filterRechnungen(); };
+    wrap.appendChild(reset);
+  }
+}
+
+function filterRechnungen() {
+  const items = _rechnungenCache;
+  const q = (document.getElementById('rechnungenSearch')?.value || '').toLowerCase().trim();
+  const typeSet = window._rechnungenTypeFilter;
+  let working = items;
+  if (typeSet.size) working = working.filter(r => typeSet.has(r.checkType || 'reparatur'));
+  if (q) {
+    const tokens = q.split(/\s+/).filter(Boolean);
+    working = working.filter(r => {
+      const hay = [r.rechnungsnr, r.empfaenger_firma, r.empfaenger_anschrift, r.check_id, r.brutto, r.rechnungsdatum]
+        .filter(Boolean).join(' ').toLowerCase();
+      return tokens.every(t => hay.includes(t));
+    });
+  }
+  // Sortierung: höchste Rechnungsnr. zuerst
+  working = [...working].sort((a, b) => parseInt((b.rechnungsnr||'0'),10) - parseInt((a.rechnungsnr||'0'),10));
+  document.getElementById('rechnungenInfo').textContent =
+    (q || typeSet.size) ? `${working.length} von ${items.length} Rechnungen` : '';
+  renderRechnungenList(working);
+}
+
+function renderRechnungenList(items) {
+  const list = document.getElementById('rechnungenList');
+  if (!items.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine Rechnungen.</p>';
+    return;
+  }
+  list.innerHTML = items.map(r => {
+    const i = _rechnungenCache.indexOf(r);
+    const typeBadge = (r.checkType === 'wartung')
+      ? '<span style="background:#0e6655;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">🔄 Vertrag</span>'
+      : '<span style="background:var(--navy);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">🔧 Reparatur</span>';
+    const dlChip = (r._attRechnung && r._attRechnung.length)
+      ? `<button onclick="event.stopPropagation();downloadAttachment('${(r._attRechnung[0].url||'').replace(/'/g,'&#39;')}','${(r._attRechnung[0].filename||'rechnung.pdf').replace(/'/g,'&#39;')}')" style="background:var(--navy);color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">📑 PDF</button>`
+      : '';
+    return `<div onclick="openRechnungByIndex(${i})" style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13.5px;color:var(--navy)">Rechnung ${r.rechnungsnr || '–'}${typeBadge}
+          <span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">${r.rechnungsdatum || ''}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${r.empfaenger_firma || '–'} · ${r.empfaenger_anschrift || ''}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">Check: <strong style="font-family:'DM Mono',monospace;color:var(--text)">${r.check_id || '–'}</strong></div>
+        <div style="margin-top:6px">${dlChip}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px">Gesamtbetrag</div>
+        <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--navy)">${r.brutto || '–'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openRechnungByIndex(i) {
+  const r = _rechnungenCache[i];
+  if (!r) return;
+  openRechnungEditor(null, r);
 }
 </script>
 
