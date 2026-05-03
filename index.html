@@ -1122,9 +1122,9 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <!-- Mobile-Only: Inline-PDF-Viewer (werden nach loadCheck befüllt) -->
-        <div id="mobileVorliegendViewer" style="display:none;margin-top:20px"></div>
-        <div id="mobileAlternativViewer" style="display:none;margin-top:20px"></div>
         <div id="mobileResultViewer" style="display:none;margin-top:20px"></div>
+        <div id="mobileVorliegendViewer" style="display:none;margin-top:14px"></div>
+        <div id="mobileAlternativViewer" style="display:none;margin-top:14px"></div>
 
         <!-- REPARATUR SECTION -->
         <div id="section-reparatur" class="hide-on-mobile">
@@ -1383,7 +1383,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   <!-- Sidebar -->
   <div class="sidebar">
 
-    <div class="side-card">
+    <div class="side-card hide-on-mobile">
       <div class="side-card-header">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         Vorliegendes Angebot
@@ -1960,7 +1960,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.7';
+const APP_VERSION = 'V7.8';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4762,8 +4762,9 @@ async function openResultPreview(coverBlob, fullBlob, title) {
 }
 
 // Mobile: Generischer Inline-PDF-Viewer (für Vorliegendes / Alternativ / Ergebnis)
+// Zeigt nur die erste Seite. Volle Ansicht mit allen Seiten + Zoom via Vollbild-Button.
 async function renderMobilePdfViewer(opts) {
-  const { wrapId, blobKey, url, icon, label, emptyText } = opts;
+  const { wrapId, blobKey, url, icon, label, emptyText, headerBg } = opts;
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
   // Vorherigen Blob immer leeren
@@ -4772,14 +4773,27 @@ async function renderMobilePdfViewer(opts) {
   const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
   if (!isMobile) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
 
+  // Kachel-Wrapper bauen (Header in Navy, Body weiß)
+  const headerBgColor = headerBg || 'var(--navy)';
+  const tileShell = (innerBodyHtml) => `
+    <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(26,58,92,.10);border:1px solid var(--border)">
+      <div style="background:${headerBgColor};padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div style="color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;letter-spacing:.2px">${icon} ${label}</div>
+        ${url ? `<button onclick="openMobilePdfFullscreen('${blobKey}', '${(icon + ' ' + label).replace(/'/g, "\\'")}')" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Vollbild</button>` : ''}
+      </div>
+      <div style="padding:14px 14px 12px;background:#fff">${innerBodyHtml}</div>
+    </div>`;
+
   if (!url) {
     wrap.style.display = 'block';
-    wrap.innerHTML = `<div style="background:#fff;border-radius:12px;border:1px dashed var(--border);padding:18px 16px;text-align:center;color:var(--muted);font-size:12px"><div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">${icon} ${label}</div>${emptyText || 'Noch kein PDF gespeichert.'}</div>`;
+    wrap.innerHTML = tileShell(`<div style="text-align:center;color:var(--muted);font-size:12.5px;padding:8px 6px">${emptyText || 'Noch kein PDF gespeichert.'}</div>`);
     return;
   }
 
   wrap.style.display = 'block';
-  wrap.innerHTML = `<div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:18px 16px;text-align:center;color:var(--muted);font-size:12px"><div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">${icon} ${label}</div><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>PDF wird geladen …</div>`;
+  wrap.innerHTML = tileShell(`<div style="text-align:center;color:var(--muted);font-size:12.5px;padding:14px 6px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>PDF wird geladen …</div>`);
 
   try {
     await pdfWorkerReady;
@@ -4790,43 +4804,38 @@ async function renderMobilePdfViewer(opts) {
     window[blobKey] = blob;
     const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
 
-    wrap.innerHTML = '';
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;padding:0 2px;flex-wrap:wrap';
-    header.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px">'
-      + `<div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px">${icon} ${label}</div>`
-      + '<div style="font-size:11px;color:var(--muted)">'+pdf.numPages+' Seite'+(pdf.numPages>1?'n':'')+'</div>'
-      + '</div>'
-      + `<button onclick="openMobilePdfFullscreen('${blobKey}', '${(icon + ' ' + label).replace(/'/g, "\\'")}')" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">`
-      + '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-      + 'Vorschau Vollbild</button>';
-    wrap.appendChild(header);
+    // Kachel mit echtem Vollbild-Button neu rendern (jetzt url vorhanden)
+    wrap.innerHTML = tileShell('<div id="' + wrapId + '_canvasSlot"></div>' +
+      (pdf.numPages > 1
+        ? `<div style="margin-top:8px;font-size:11px;color:var(--muted);text-align:center;font-style:italic">Seite 1 von ${pdf.numPages} · für weitere Seiten Vollbild öffnen</div>`
+        : ''));
 
-    const containerWidth = Math.max(280, wrap.clientWidth - 4);
+    const slot = document.getElementById(wrapId + '_canvasSlot');
+    const containerWidth = Math.max(260, (slot ? slot.clientWidth : wrap.clientWidth) - 4);
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const baseViewport = page.getViewport({ scale: 1.0 });
-      const scale = containerWidth / baseViewport.width;
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = Math.floor(viewport.width * dpr);
-      canvas.height = Math.floor(viewport.height * dpr);
-      canvas.style.width = '100%';
-      canvas.style.height = 'auto';
-      canvas.style.marginBottom = '10px';
-      canvas.style.boxShadow = '0 4px 16px rgba(0,0,0,.10)';
-      canvas.style.borderRadius = '8px';
-      canvas.style.display = 'block';
-      canvas.style.background = '#fff';
-      await page.render({ canvasContext: ctx, viewport, transform: dpr !== 1 ? [dpr,0,0,dpr,0,0] : null }).promise;
-      wrap.appendChild(canvas);
-    }
+    // NUR Seite 1 rendern
+    const page = await pdf.getPage(1);
+    const baseViewport = page.getViewport({ scale: 1.0 });
+    const scale = containerWidth / baseViewport.width;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    canvas.style.borderRadius = '6px';
+    canvas.style.display = 'block';
+    canvas.style.background = '#fff';
+    canvas.style.boxShadow = '0 1px 6px rgba(0,0,0,.08)';
+    canvas.style.cursor = 'zoom-in';
+    canvas.title = 'Tippen für Vollbild-Vorschau';
+    canvas.onclick = () => openMobilePdfFullscreen(blobKey, icon + ' ' + label);
+    await page.render({ canvasContext: ctx, viewport, transform: dpr !== 1 ? [dpr,0,0,dpr,0,0] : null }).promise;
+    if (slot) slot.appendChild(canvas); else wrap.appendChild(canvas);
   } catch(e) {
-    wrap.innerHTML = `<div style="background:#fff5f5;border:1px solid #f5c2c0;color:#a8312f;border-radius:10px;padding:14px;font-size:12px">⚠ ${label} konnte nicht geladen werden: ${e.message}</div>`;
+    wrap.innerHTML = tileShell(`<div style="background:#fff5f5;border:1px solid #f5c2c0;color:#a8312f;border-radius:8px;padding:12px;font-size:12px">⚠ konnte nicht geladen werden: ${e.message}</div>`);
   }
 }
 
