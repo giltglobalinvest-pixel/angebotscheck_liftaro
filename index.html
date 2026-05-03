@@ -1121,7 +1121,9 @@ const pdfWorkerReady = Promise.resolve();</script>
           </div>
         </div>
 
-        <!-- Mobile-Only: Ergebnis-PDF Inline-Viewer (wird nach loadCheck befüllt) -->
+        <!-- Mobile-Only: Inline-PDF-Viewer (werden nach loadCheck befüllt) -->
+        <div id="mobileVorliegendViewer" style="display:none;margin-top:20px"></div>
+        <div id="mobileAlternativViewer" style="display:none;margin-top:20px"></div>
         <div id="mobileResultViewer" style="display:none;margin-top:20px"></div>
 
         <!-- REPARATUR SECTION -->
@@ -1958,7 +1960,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.4';
+const APP_VERSION = 'V7.5';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2989,9 +2991,13 @@ async function loadCheck(data) {
   updateStatus();
   r.finish(true);
 
-  // Mobile: Ergebnis-PDF inline anzeigen (anstelle der ausgeblendeten Vergleichstabelle)
+  // Mobile: Inline-PDF-Viewer befüllen (anstelle der ausgeblendeten Vergleichstabelle)
   if (typeof renderMobileResultPdf === 'function') {
-    const ergUrl = (data._attErgebnis && data._attErgebnis.length) ? data._attErgebnis[0].url : '';
+    const vUrl = (data._attVorliegend && data._attVorliegend.length) ? data._attVorliegend[0].url : '';
+    const aUrl = (data._attAlternativ && data._attAlternativ.length) ? data._attAlternativ[0].url : '';
+    const ergUrl = (data._attErgebnis  && data._attErgebnis.length)  ? data._attErgebnis[0].url  : '';
+    renderMobileVorliegendPdf(vUrl);
+    renderMobileAlternativPdf(aUrl);
     renderMobileResultPdf(ergUrl);
   }
 
@@ -4755,33 +4761,33 @@ async function openResultPreview(coverBlob, fullBlob, title) {
   await openPreviewBlob(coverBlob, '✓ ' + (title || 'Liftaro Check'));
 }
 
-// Mobile: Ergebnis-PDF inline im Formular rendern (anstelle der ausgeblendeten Vergleichstabelle)
-async function renderMobileResultPdf(url) {
-  const wrap = document.getElementById('mobileResultViewer');
+// Mobile: Generischer Inline-PDF-Viewer (für Vorliegendes / Alternativ / Ergebnis)
+async function renderMobilePdfViewer(opts) {
+  const { wrapId, blobKey, url, icon, label, emptyText } = opts;
+  const wrap = document.getElementById(wrapId);
   if (!wrap) return;
-  // Vorherigen Blob immer leeren (Wechsel zwischen Checks)
-  window._mobileResultBlob = null;
+  // Vorherigen Blob immer leeren
+  window[blobKey] = null;
   // Nur auf Mobile rendern
   const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
   if (!isMobile) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
 
   if (!url) {
     wrap.style.display = 'block';
-    wrap.innerHTML = '<div style="background:#fff;border-radius:12px;border:1px dashed var(--border);padding:24px 16px;text-align:center;color:var(--muted);font-size:13px">Noch kein Ergebnis-PDF gespeichert.<br><span style="font-size:11px">Erst einmal am Desktop ein PDF erstellen.</span></div>';
+    wrap.innerHTML = `<div style="background:#fff;border-radius:12px;border:1px dashed var(--border);padding:18px 16px;text-align:center;color:var(--muted);font-size:12px"><div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">${icon} ${label}</div>${emptyText || 'Noch kein PDF gespeichert.'}</div>`;
     return;
   }
 
   wrap.style.display = 'block';
-  wrap.innerHTML = '<div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:24px 16px;text-align:center;color:var(--muted);font-size:13px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Ergebnis-PDF wird geladen …</div>';
+  wrap.innerHTML = `<div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:18px 16px;text-align:center;color:var(--muted);font-size:12px"><div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">${icon} ${label}</div><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>PDF wird geladen …</div>`;
 
   try {
     await pdfWorkerReady;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const buf = await resp.arrayBuffer();
-    // Blob für Vollbild-Vorschau speichern
     const blob = new Blob([buf], { type: 'application/pdf' });
-    window._mobileResultBlob = blob;
+    window[blobKey] = blob;
     const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
 
     wrap.innerHTML = '';
@@ -4789,15 +4795,14 @@ async function renderMobileResultPdf(url) {
     header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;padding:0 2px;flex-wrap:wrap';
     header.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px">'
-      + '<div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px">📋 Ergebnis-PDF</div>'
+      + `<div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px">${icon} ${label}</div>`
       + '<div style="font-size:11px;color:var(--muted)">'+pdf.numPages+' Seite'+(pdf.numPages>1?'n':'')+'</div>'
       + '</div>'
-      + '<button onclick="openMobileResultFullscreen()" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:\'DM Sans\',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">'
+      + `<button onclick="openMobilePdfFullscreen('${blobKey}', '${(icon + ' ' + label).replace(/'/g, "\\'")}')" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">`
       + '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
       + 'Vorschau Vollbild</button>';
     wrap.appendChild(header);
 
-    // Container-Breite ermitteln
     const containerWidth = Math.max(280, wrap.clientWidth - 4);
 
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -4807,7 +4812,6 @@ async function renderMobileResultPdf(url) {
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      // Retina-Display
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.floor(viewport.width * dpr);
       canvas.height = Math.floor(viewport.height * dpr);
@@ -4822,29 +4826,70 @@ async function renderMobileResultPdf(url) {
       wrap.appendChild(canvas);
     }
   } catch(e) {
-    wrap.innerHTML = `<div style="background:#fff5f5;border:1px solid #f5c2c0;color:#a8312f;border-radius:10px;padding:14px;font-size:12px">⚠ Ergebnis-PDF konnte nicht geladen werden: ${e.message}</div>`;
+    wrap.innerHTML = `<div style="background:#fff5f5;border:1px solid #f5c2c0;color:#a8312f;border-radius:10px;padding:14px;font-size:12px">⚠ ${label} konnte nicht geladen werden: ${e.message}</div>`;
   }
 }
 
-// Auch beim Reset auf Mobile leeren
-function clearMobileResultPdf() {
-  const wrap = document.getElementById('mobileResultViewer');
-  if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
-  window._mobileResultBlob = null;
+// Wrapper-Funktion (Backwards-Compat) für Ergebnis-PDF
+function renderMobileResultPdf(url) {
+  return renderMobilePdfViewer({
+    wrapId: 'mobileResultViewer',
+    blobKey: '_mobileResultBlob',
+    url,
+    icon: '📋',
+    label: 'Ergebnis-PDF',
+    emptyText: 'Noch kein Ergebnis-PDF gespeichert.<br><span style="font-size:11px">Erst einmal am Desktop ein PDF erstellen.</span>'
+  });
+}
+function renderMobileVorliegendPdf(url) {
+  return renderMobilePdfViewer({
+    wrapId: 'mobileVorliegendViewer',
+    blobKey: '_mobileVorliegendBlob',
+    url,
+    icon: '📄',
+    label: 'Vorliegendes Angebot',
+    emptyText: 'Kein vorliegendes Angebot hinterlegt.'
+  });
+}
+function renderMobileAlternativPdf(url) {
+  return renderMobilePdfViewer({
+    wrapId: 'mobileAlternativViewer',
+    blobKey: '_mobileAlternativBlob',
+    url,
+    icon: '📋',
+    label: 'Alternativangebot',
+    emptyText: 'Kein Alternativangebot hinterlegt.'
+  });
 }
 
-// Öffnet das gespeicherte Ergebnis-PDF in der bestehenden Preview-Modal (Vollbild + Zoom)
-async function openMobileResultFullscreen() {
-  const blob = window._mobileResultBlob;
+function clearMobileResultPdf() {
+  const ids = ['mobileVorliegendViewer','mobileAlternativViewer','mobileResultViewer'];
+  ids.forEach(id => {
+    const w = document.getElementById(id);
+    if (w) { w.innerHTML = ''; w.style.display = 'none'; }
+  });
+  window._mobileResultBlob = null;
+  window._mobileVorliegendBlob = null;
+  window._mobileAlternativBlob = null;
+}
+
+// Generisches Vollbild-Öffnen für Mobile-Inline-PDFs
+async function openMobilePdfFullscreen(blobKey, title) {
+  const blob = window[blobKey];
   if (!blob) {
-    showToast('Ergebnis-PDF nicht geladen.', 'error');
+    showToast('PDF nicht geladen.', 'error');
     return;
   }
   try {
-    await openPreviewBlob(blob, '📋 Ergebnis-Vorschau');
+    await openPreviewBlob(blob, title || 'Vorschau');
   } catch(e) {
     showToast('Fehler beim Öffnen der Vorschau: ' + e.message, 'error');
   }
+}
+
+// Backwards-Compat: alter Name
+function openMobileResultFullscreen() {
+  return openMobilePdfFullscreen('_mobileResultBlob', '📋 Ergebnis-Vorschau');
 }
 
 // Aktuell hochgeladene PDF (Vorliegend / Alternativ) lokal herunterladen
