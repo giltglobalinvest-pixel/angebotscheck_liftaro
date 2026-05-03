@@ -838,6 +838,24 @@ const pdfWorkerReady = Promise.resolve();</script>
       color: #4a5568 !important;
     }
 
+    /* === "Alle Checks" Modal: zuverlässiges Scrollen nur in der Liste === */
+    #checksModal > div {
+      height: 100dvh !important;
+      max-height: 100dvh !important;
+      overflow: hidden !important;
+    }
+    #checksList {
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain !important;
+      touch-action: pan-y !important;
+    }
+    /* Status-Dropdown in der Check-Liste auf Mobile sperren */
+    #checksList select {
+      pointer-events: none !important;
+      opacity: 0.85;
+      cursor: not-allowed !important;
+    }
+
     /* === Datumsfeld: gleiche Breite wie andere Felder (iOS-Fix) === */
     .field input[type="date"] {
       -webkit-appearance: none;
@@ -980,11 +998,11 @@ const pdfWorkerReady = Promise.resolve();</script>
 
     <div style="height:1px;background:rgba(255,255,255,.1);margin:10px 8px"></div>
     <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.6px;padding:0 8px;margin-bottom:4px">Aktionen</div>
-    <button class="mobile-menu-item" onclick="closeMobileMenu();saveWithVisualization()" style="background:rgba(125,194,66,.18);border-color:rgba(125,194,66,.4);color:#a8e070">
+    <button class="mobile-menu-item hide-on-mobile" onclick="closeMobileMenu();saveWithVisualization()" style="background:rgba(125,194,66,.18);border-color:rgba(125,194,66,.4);color:#a8e070">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       Speichern
     </button>
-    <button class="mobile-menu-item" onclick="closeMobileMenu();resetForm()" style="color:#fca5a5">
+    <button class="mobile-menu-item hide-on-mobile" onclick="closeMobileMenu();resetForm()" style="color:#fca5a5">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
       Reset
     </button>
@@ -1883,7 +1901,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     <div id="checksList" style="flex:1;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:10px">
       <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine gespeicherten Checks.</p>
     </div>
-    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div id="checksModalFooter" class="hide-on-mobile" style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <div style="display:flex;gap:8px">
         <button onclick="exportChecks()"
           style="background:var(--navy);border:none;color:#fff;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px">
@@ -1937,7 +1955,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.1';
+const APP_VERSION = 'V7.2';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
