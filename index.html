@@ -1271,7 +1271,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <input type="hidden" id="f_leistung">
 
         <!-- Ergebnis Liftaro -->
-        <div class="section" style="margin-top:20px">
+        <div class="section hide-on-mobile" id="section-ergebnis" style="margin-top:20px">
           <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
             Ergebnis Liftaro
             <button id="btnEmpfehlung" class="hide-on-mobile" onclick="requireApiKey(generateEmpfehlung)"
@@ -1958,7 +1958,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.3';
+const APP_VERSION = 'V7.4';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4759,6 +4759,8 @@ async function openResultPreview(coverBlob, fullBlob, title) {
 async function renderMobileResultPdf(url) {
   const wrap = document.getElementById('mobileResultViewer');
   if (!wrap) return;
+  // Vorherigen Blob immer leeren (Wechsel zwischen Checks)
+  window._mobileResultBlob = null;
   // Nur auf Mobile rendern
   const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
   if (!isMobile) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
@@ -4777,12 +4779,22 @@ async function renderMobileResultPdf(url) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const buf = await resp.arrayBuffer();
+    // Blob für Vollbild-Vorschau speichern
+    const blob = new Blob([buf], { type: 'application/pdf' });
+    window._mobileResultBlob = blob;
     const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
 
     wrap.innerHTML = '';
     const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;padding:0 2px';
-    header.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px">📋 Ergebnis-PDF</div><div style="font-size:11px;color:var(--muted)">'+pdf.numPages+' Seite'+(pdf.numPages>1?'n':'')+'</div>';
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;padding:0 2px;flex-wrap:wrap';
+    header.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px">'
+      + '<div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px">📋 Ergebnis-PDF</div>'
+      + '<div style="font-size:11px;color:var(--muted)">'+pdf.numPages+' Seite'+(pdf.numPages>1?'n':'')+'</div>'
+      + '</div>'
+      + '<button onclick="openMobileResultFullscreen()" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:\'DM Sans\',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">'
+      + '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+      + 'Vorschau Vollbild</button>';
     wrap.appendChild(header);
 
     // Container-Breite ermitteln
@@ -4818,6 +4830,21 @@ async function renderMobileResultPdf(url) {
 function clearMobileResultPdf() {
   const wrap = document.getElementById('mobileResultViewer');
   if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
+  window._mobileResultBlob = null;
+}
+
+// Öffnet das gespeicherte Ergebnis-PDF in der bestehenden Preview-Modal (Vollbild + Zoom)
+async function openMobileResultFullscreen() {
+  const blob = window._mobileResultBlob;
+  if (!blob) {
+    showToast('Ergebnis-PDF nicht geladen.', 'error');
+    return;
+  }
+  try {
+    await openPreviewBlob(blob, '📋 Ergebnis-Vorschau');
+  } catch(e) {
+    showToast('Fehler beim Öffnen der Vorschau: ' + e.message, 'error');
+  }
 }
 
 // Aktuell hochgeladene PDF (Vorliegend / Alternativ) lokal herunterladen
