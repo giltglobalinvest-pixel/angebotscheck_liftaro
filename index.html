@@ -819,6 +819,25 @@ const pdfWorkerReady = Promise.resolve();</script>
     /* === Auf mobilen Geräten ausblenden === */
     .hide-on-mobile { display: none !important; }
 
+    /* === Upload-Zonen (Drop-Areas) auf Mobile ausblenden — nur Ansicht === */
+    .upload-zone { display: none !important; }
+
+    /* === Allgemeine Daten: nicht editierbar auf Mobile === */
+    #section-allgemein input,
+    #section-allgemein textarea,
+    #section-allgemein select {
+      pointer-events: none !important;
+      background: #eef3f8 !important;
+      color: #4a5568 !important;
+      cursor: not-allowed !important;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    #section-allgemein #f_anfrageNr {
+      background: #f5f5f5 !important;
+      color: #4a5568 !important;
+    }
+
     /* === Datumsfeld: gleiche Breite wie andere Felder (iOS-Fix) === */
     .field input[type="date"] {
       -webkit-appearance: none;
@@ -1039,7 +1058,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div class="form-body">
         <!-- Allgemeine Daten (shared) -->
-        <div class="section">
+        <div class="section" id="section-allgemein">
           <div class="section-title">Allgemeine Daten</div>
           <div class="section-inner">
             <!-- Große Checknummer-Anzeige oben -->
@@ -1234,7 +1253,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="section" style="margin-top:20px">
           <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
             Ergebnis Liftaro
-            <button id="btnEmpfehlung" onclick="requireApiKey(generateEmpfehlung)"
+            <button id="btnEmpfehlung" class="hide-on-mobile" onclick="requireApiKey(generateEmpfehlung)"
               style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;
               font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer"
               onmouseover="this.style.background='var(--green2)'"
@@ -1918,7 +1937,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.0';
+const APP_VERSION = 'V7.1';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
