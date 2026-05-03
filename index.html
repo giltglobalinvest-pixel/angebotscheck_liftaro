@@ -1121,6 +1121,9 @@ const pdfWorkerReady = Promise.resolve();</script>
           </div>
         </div>
 
+        <!-- Mobile-Only: Ergebnis-PDF Inline-Viewer (wird nach loadCheck befüllt) -->
+        <div id="mobileResultViewer" style="display:none;margin-top:20px"></div>
+
         <!-- REPARATUR SECTION -->
         <div id="section-reparatur" class="hide-on-mobile">
           <div class="section" style="margin-top:20px">
@@ -1185,7 +1188,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <!-- WARTUNG SECTION -->
-        <div id="section-wartung" style="display:none">
+        <div id="section-wartung" class="hide-on-mobile" style="display:none">
           <div class="section" style="margin-top:20px">
             <div class="section-title">Vertragsvergleich</div>
             <div style="overflow:hidden">
@@ -1955,7 +1958,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.2';
+const APP_VERSION = 'V7.3';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2985,6 +2988,12 @@ async function loadCheck(data) {
   }
   updateStatus();
   r.finish(true);
+
+  // Mobile: Ergebnis-PDF inline anzeigen (anstelle der ausgeblendeten Vergleichstabelle)
+  if (typeof renderMobileResultPdf === 'function') {
+    const ergUrl = (data._attErgebnis && data._attErgebnis.length) ? data._attErgebnis[0].url : '';
+    renderMobileResultPdf(ergUrl);
+  }
 
   // Falls in Airtable nichts war: alter Local-Folder-Fallback
   if (loadedFromAirtable) return;
@@ -4744,6 +4753,71 @@ async function openPreviewBlob(blob, title) {
 // Vorschau des Ergebnis-PDFs
 async function openResultPreview(coverBlob, fullBlob, title) {
   await openPreviewBlob(coverBlob, '✓ ' + (title || 'Liftaro Check'));
+}
+
+// Mobile: Ergebnis-PDF inline im Formular rendern (anstelle der ausgeblendeten Vergleichstabelle)
+async function renderMobileResultPdf(url) {
+  const wrap = document.getElementById('mobileResultViewer');
+  if (!wrap) return;
+  // Nur auf Mobile rendern
+  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  if (!isMobile) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+
+  if (!url) {
+    wrap.style.display = 'block';
+    wrap.innerHTML = '<div style="background:#fff;border-radius:12px;border:1px dashed var(--border);padding:24px 16px;text-align:center;color:var(--muted);font-size:13px">Noch kein Ergebnis-PDF gespeichert.<br><span style="font-size:11px">Erst einmal am Desktop ein PDF erstellen.</span></div>';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:24px 16px;text-align:center;color:var(--muted);font-size:13px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Ergebnis-PDF wird geladen …</div>';
+
+  try {
+    await pdfWorkerReady;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+
+    wrap.innerHTML = '';
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;padding:0 2px';
+    header.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px">📋 Ergebnis-PDF</div><div style="font-size:11px;color:var(--muted)">'+pdf.numPages+' Seite'+(pdf.numPages>1?'n':'')+'</div>';
+    wrap.appendChild(header);
+
+    // Container-Breite ermitteln
+    const containerWidth = Math.max(280, wrap.clientWidth - 4);
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const baseViewport = page.getViewport({ scale: 1.0 });
+      const scale = containerWidth / baseViewport.width;
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      // Retina-Display
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = '100%';
+      canvas.style.height = 'auto';
+      canvas.style.marginBottom = '10px';
+      canvas.style.boxShadow = '0 4px 16px rgba(0,0,0,.10)';
+      canvas.style.borderRadius = '8px';
+      canvas.style.display = 'block';
+      canvas.style.background = '#fff';
+      await page.render({ canvasContext: ctx, viewport, transform: dpr !== 1 ? [dpr,0,0,dpr,0,0] : null }).promise;
+      wrap.appendChild(canvas);
+    }
+  } catch(e) {
+    wrap.innerHTML = `<div style="background:#fff5f5;border:1px solid #f5c2c0;color:#a8312f;border-radius:10px;padding:14px;font-size:12px">⚠ Ergebnis-PDF konnte nicht geladen werden: ${e.message}</div>`;
+  }
+}
+
+// Auch beim Reset auf Mobile leeren
+function clearMobileResultPdf() {
+  const wrap = document.getElementById('mobileResultViewer');
+  if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
 }
 
 // Aktuell hochgeladene PDF (Vorliegend / Alternativ) lokal herunterladen
