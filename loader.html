@@ -31,7 +31,7 @@ body{display:flex;align-items:center;justify-content:center;background:#0d0d0d;c
 <div class="loader" id="loader">
 <div class="icon">🚀</div>
 <div class="title">Liftaro Angebotscheck</div>
-<div class="sub">WÃ¤hle eine Version</div>
+<div class="sub">Wähle eine Version</div>
 <div id="content">
 <div class="spinner"></div>
 <div class="status" id="status">Lade Versionsliste...</div>
@@ -57,7 +57,7 @@ var cacheKey='app_cache_'+REPO;
 try{var c=localStorage.getItem(cacheKey);if(c)window._cachedApp=c;}catch(e){}
 function injectMonitor(html){
 var mon='<script>(function(){try{var R="'+REPO+'",F="'+FILENAME+'",CK="app_cache_"+R,P='+POLL_MIN+'*60*1000;'
-+'function showUpdateBanner(){if(document.getElementById("__upd_banner"))return;var b=document.createElement("div");b.id="__upd_banner";b.style.cssText="position:fixed;top:0;left:0;right:0;background:#00e676;color:#000;padding:10px 14px;text-align:center;font-family:-apple-system,sans-serif;font-size:13px;z-index:999999;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);padding-top:calc(10px + env(safe-area-inset-top, 0px))";b.innerHTML="â¨ Neue Version verfÃ¼gbar â hier klicken zum Aktualisieren";b.onclick=function(){location.reload();};document.body.appendChild(b);}'
++'function showUpdateBanner(){if(document.getElementById("__upd_banner"))return;var b=document.createElement("div");b.id="__upd_banner";b.style.cssText="position:fixed;top:0;left:0;right:0;background:#00e676;color:#000;padding:10px 14px;text-align:center;font-family:-apple-system,sans-serif;font-size:13px;z-index:999999;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);padding-top:calc(10px + env(safe-area-inset-top, 0px))";b.innerHTML="✨ Neue Version verfügbar – hier klicken zum Aktualisieren";b.onclick=function(){location.reload();};document.body.appendChild(b);}'
 +'function chk(){fetch("https://raw.githubusercontent.com/"+R+"/main/"+F+"?t="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)return;return r.text();}).then(function(t){if(!t)return;var c=null;try{c=localStorage.getItem(CK);}catch(e){}if(c&&t!==c){showUpdateBanner();}}).catch(function(){});}'
 +'setTimeout(chk,30000);setInterval(chk,P);'
 +'document.addEventListener("visibilitychange",function(){if(!document.hidden)chk();});'
