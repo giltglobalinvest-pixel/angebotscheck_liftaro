@@ -1960,7 +1960,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V7.6';
+const APP_VERSION = 'V7.7';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7593,7 +7593,7 @@ function renderRechnungenList(items) {
       ? '<span style="background:#0e6655;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">🔄 Vertrag</span>'
       : '<span style="background:var(--navy);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">🔧 Reparatur</span>';
     const dlChip = (r._attRechnung && r._attRechnung.length)
-      ? `<button onclick="event.stopPropagation();downloadAttachment('${(r._attRechnung[0].url||'').replace(/'/g,'&#39;')}','${(r._attRechnung[0].filename||'rechnung.pdf').replace(/'/g,'&#39;')}')" style="background:var(--navy);color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">📑 PDF</button>`
+      ? `<button onclick="event.stopPropagation();rechnungPdfAction('${(r._attRechnung[0].url||'').replace(/'/g,'&#39;')}','${(r._attRechnung[0].filename||'rechnung.pdf').replace(/'/g,'&#39;')}')" style="background:var(--navy);color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">📑 PDF</button>`
       : '';
     return `<div onclick="openRechnungByIndex(${i})" style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer">
       <div style="flex:1">
@@ -7613,9 +7613,42 @@ function renderRechnungenList(items) {
 }
 
 function openRechnungByIndex(i) {
+  // Mobile: Rechnungen nicht im Editor öffnen – nur Vorschau erlaubt
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    const r = _rechnungenCache[i];
+    if (r && r._attRechnung && r._attRechnung.length) {
+      const a = r._attRechnung[0];
+      previewRechnungPdf(a.url, a.filename || ('Rechnung_' + (r.rechnungsnr || '')) + '.pdf');
+    } else {
+      showToast('Keine PDF-Datei zu dieser Rechnung vorhanden.', 'error');
+    }
+    return;
+  }
   const r = _rechnungenCache[i];
   if (!r) return;
   openRechnungEditor(null, r);
+}
+
+// Action für PDF-Button in Rechnungen-Liste: Mobile = Vorschau, Desktop = Download
+function rechnungPdfAction(url, filename) {
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    return previewRechnungPdf(url, filename);
+  }
+  return downloadAttachment(url, filename);
+}
+
+// PDF einer Rechnung in der Vorschau-Modal öffnen (Mobile + Desktop)
+async function previewRechnungPdf(url, filename) {
+  if (!url) { showToast('Keine PDF-URL.', 'error'); return; }
+  showToast('Rechnung wird geladen …', 'ok');
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    await openPreviewBlob(blob, '📑 ' + (filename || 'Rechnung'));
+  } catch(e) {
+    showToast('Fehler beim Laden: ' + (e.message || e), 'error');
+  }
 }
 
 // ── Mobile-Menü-Drawer ────────────────────────────────────────────
