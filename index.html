@@ -203,19 +203,29 @@ const pdfWorkerReady = Promise.resolve();</script>
   }
 
   /* === Frozen Form: bei aktivem/gekündigtem Vertrag bzw. abgerechnetem Reparaturcheck === */
-  .frozen-form-area input:not([type="hidden"]):not(#f_status):not(#f_anfrageNr),
+  /* Strenge Sperre via pointer-events:none + visueller Indikator. */
+  .frozen-form-area input:not([type="hidden"]):not(#f_status),
   .frozen-form-area textarea,
   .frozen-form-area select:not(#f_status),
-  .frozen-form-area .compare-table input,
   .frozen-form-area [contenteditable="true"] {
     pointer-events: none !important;
     background: #eef2f6 !important;
-    color: #6b7280 !important;
+    color: #4a5568 !important;
     cursor: not-allowed !important;
+    caret-color: transparent !important;
     -webkit-user-select: text;
     user-select: text;
   }
-  .frozen-form-area .compare-table { opacity: 0.85; }
+  /* Vergleichstabelle inputs: zusätzlich abgrauen */
+  .frozen-form-area .compare-table input,
+  .frozen-form-area .compare-table td input {
+    pointer-events: none !important;
+    background: #eef2f6 !important;
+    color: #4a5568 !important;
+    cursor: not-allowed !important;
+  }
+  .frozen-form-area .compare-table { opacity: 0.92; }
+  /* Buttons innerhalb des Print-Area sperren — außer PDF-Vorschau/Generator/Print-Buttons */
   .frozen-form-area button:not([data-frozen-allow]):not(.btn-preview):not(#btnGenerate):not(#btnDownloadFull) {
     pointer-events: none !important;
     opacity: 0.4 !important;
@@ -223,6 +233,30 @@ const pdfWorkerReady = Promise.resolve();</script>
   }
   .frozen-form-area .upload-zone { pointer-events: none !important; opacity: 0.5 !important; }
   .frozen-form-area .w-check { pointer-events: none !important; }
+  /* Hover-Effekte auf gefrorenen Eingabefeldern unterbinden */
+  .frozen-form-area input:not(#f_status):focus,
+  .frozen-form-area textarea:focus,
+  .frozen-form-area select:not(#f_status):focus { outline: none !important; box-shadow: none !important; }
+  /* Visuelle "Locked"-Border auf wichtige Bereiche legen */
+  .frozen-form-area #section-allgemein .section-inner,
+  .frozen-form-area #section-reparatur .section,
+  .frozen-form-area #section-wartung .section { position: relative; }
+  .frozen-form-area #section-allgemein .section-inner::after,
+  .frozen-form-area #section-reparatur .section::after,
+  .frozen-form-area #section-wartung .section::after {
+    content: '🔒 GoBD-geschützt — keine Änderungen möglich';
+    position: absolute;
+    top: 6px; right: 8px;
+    font-size: 10px;
+    background: rgba(168, 50, 47, 0.12);
+    color: #a8312f;
+    border: 1px solid rgba(168, 50, 47, 0.25);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    pointer-events: none;
+    letter-spacing: .3px;
+  }
 
   /* Einheitliches Count-Badge — rot, kompakt, animiert */
   .btn-badge {
@@ -2277,7 +2311,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.14';
+const APP_VERSION = 'V8.15';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7129,9 +7163,18 @@ function applyStatusFieldLock() {
 // Admins können weiterhin alles bearbeiten (z.B. für Korrekturen).
 function applyCheckFreeze() {
   const status = document.getElementById('f_status')?.value || '1';
+  const isVertrag = (typeof currentFormCheckType === 'function') && currentFormCheckType() === 'wartung';
   const userIsAdmin = (typeof isAdmin === 'function') ? isAdmin() : false;
-  // Frozen ab Status 2, 3 oder 4
-  const frozen = (status === '2' || status === '3' || status === '4') && !userIsAdmin;
+  // GoBD-strikt für Vertragschecks: Status 2 (aktiv) und 3 (gekündigt) sind IMMER eingefroren —
+  // auch für Admins. (Wer den Vertragscheck wirklich nochmal bearbeiten muss, setzt den Status
+  // erst manuell zurück auf 1 "Check gemacht".)
+  // Reparaturchecks: Status 2/3/4 = frozen, Admins können bearbeiten.
+  let frozen;
+  if (isVertrag) {
+    frozen = (status === '2' || status === '3');
+  } else {
+    frozen = (status === '2' || status === '3' || status === '4') && !userIsAdmin;
+  }
 
   // Banner einblenden
   let banner = document.getElementById('checkFrozenBanner');
@@ -7248,20 +7291,26 @@ function applyCheckFreeze() {
       const txt = document.getElementById('checkFrozenText');
       if (txt) {
         // Typ-abhängige Status-Liste
-        const isVertrag = (typeof currentFormCheckType === 'function') && currentFormCheckType() === 'wartung';
         const list = isVertrag ? CHECK_STATUS_VERTRAG : CHECK_STATUS;
         const meta = list.find(s => s.value === status) || null;
-        let intro = `Dieser Check ist eingefroren (Status: ${meta?.label || status}).`;
+        let intro, hint;
         if (isVertrag && status === '2') {
-          intro = `Der Wartungsvertrag ist aktiv (Status: ${meta?.label || status}). Inhalt eingefroren.`;
+          intro = `Wartungsvertrag aktiv — der Check ist GoBD-geschützt eingefroren.`;
+          hint  = `Um Daten zu korrigieren, setze den Status zuerst zurück auf "1 · Check gemacht".`;
         } else if (isVertrag && status === '3') {
-          intro = `Der Wartungsvertrag wurde gekündigt (Status: ${meta?.label || status}). Inhalt eingefroren.`;
+          intro = `Wartungsvertrag gekündigt — der Check ist final eingefroren.`;
+          hint  = `Es sind keine Änderungen mehr möglich.`;
+        } else {
+          intro = `Check eingefroren (Status: ${meta?.label || status}).`;
+          hint  = userIsAdmin ? '' : 'Nur Admins können Änderungen vornehmen.';
         }
-        txt.textContent = `${intro} Bearbeitungen, KI-Generierung und Datenübernahme sind nicht mehr möglich – nur Admins können Änderungen vornehmen.`;
+        txt.textContent = `${intro} ${hint}`.trim();
       }
-      banner.style.background = (status === '3' && (typeof currentFormCheckType === 'function') && currentFormCheckType() === 'wartung')
+      banner.style.background = (isVertrag && status === '3')
         ? 'linear-gradient(135deg,#a8312f,#7a1e1d)'  // Gekündigt = rot
-        : 'linear-gradient(135deg,#1e293b,#334155)'; // sonst dunkel
+        : (isVertrag && status === '2')
+          ? 'linear-gradient(135deg,#0e6655,#0a4a3c)' // Aktiv = grün
+          : 'linear-gradient(135deg,#1e293b,#334155)'; // sonst dunkel
     } else {
       banner.style.display = 'none';
     }
