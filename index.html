@@ -923,6 +923,11 @@ const pdfWorkerReady = Promise.resolve();</script>
         Dashboard
         <span id="dashboardDueBadge" title="Fällige Jahresrechnungen" style="display:none;background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;font-family:'DM Mono',monospace;margin-left:2px">0</span>
       </button>
+      <button class="btn-settings" onclick="openDueBillingsModal()" style="border-color:rgba(125,194,66,.35);color:rgba(168,224,112,.95);position:relative">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Fälligkeiten
+        <span id="dueBillingsBadge" title="Fällige Jahresrechnungen" style="display:none;background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;font-family:'DM Mono',monospace;margin-left:2px">0</span>
+      </button>
       <button class="btn-settings" onclick="openRechnungenModal()" style="border-color:rgba(245,158,11,.35);color:rgba(252,211,77,.95)">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
         Rechnungen
@@ -987,6 +992,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openDashboard()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Dashboard
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openDueBillingsModal()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Fälligkeiten
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openRechnungenModal()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
@@ -1864,6 +1873,54 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- Fälligkeiten-Modal: alle fälligen / unklaren Vertragsabrechnungen + direkter "Rechnung erstellen"-Button -->
+<div id="dueBillingsModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:5050;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(1080px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:#0e6655;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span>Fälligkeiten</span>
+          <span id="dueBillingsCount" style="background:rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:2px 9px;font-size:11.5px;font-weight:700">0</span>
+        </div>
+        <div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px">Aktive Vertragschecks mit anstehender Jahresrechnung — direkt abrechnen</div>
+      </div>
+      <button onclick="document.getElementById('dueBillingsModal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+    </div>
+
+    <!-- Filter + Suche + Sort -->
+    <div style="padding:12px 22px 0;flex-shrink:0;display:flex;flex-direction:column;gap:8px">
+      <div style="position:relative">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="dueBillingsSearch" oninput="renderDueBillings()" placeholder="Suchen nach Firma, Standort, Check-ID, Anfragenummer …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
+      </div>
+      <div id="dueBillingsFilterChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Filter:</span>
+        <!-- Chips werden via JS gerendert -->
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Sortierung:</span>
+        <select id="dueBillingsSort" onchange="renderDueBillings()" style="border:1.5px solid var(--border);border-radius:14px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;background:#fff;cursor:pointer;outline:none">
+          <option value="date_asc">Fälligkeit · früheste zuerst</option>
+          <option value="date_desc">Fälligkeit · späteste zuerst</option>
+          <option value="firma_asc">Firma · A–Z</option>
+          <option value="periode_desc">Periode · höchste zuerst</option>
+        </select>
+        <button id="dueBillingsRefreshBtn" onclick="loadDueBillings(true)" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:4px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--muted)" title="Daten neu laden">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          Aktualisieren
+        </button>
+      </div>
+      <div id="dueBillingsInfo" style="font-size:11px;color:var(--muted);min-height:14px"></div>
+    </div>
+
+    <!-- Tabelle (Liste) -->
+    <div id="dueBillingsList" style="flex:1;overflow-y:auto;padding:8px 22px 18px">
+      <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:#0e6655;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>
+    </div>
+  </div>
+</div>
+
 <div id="dashboardModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
   <div style="background:#fff;border-radius:16px;width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -2037,7 +2094,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.5';
+const APP_VERSION = 'V8.6';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2503,9 +2560,12 @@ async function showApp() {
   checkAllConnections();
   // Run existing init
   appInit();
-  // Dashboard-Badge initial laden (Anzahl fälliger Vertragsrechnungen)
+  // Dashboard- + Fälligkeiten-Badge initial laden
   if (typeof refreshDashboardDueBadge === 'function') {
-    setTimeout(() => refreshDashboardDueBadge(), 1500);
+    setTimeout(() => {
+      refreshDashboardDueBadge();
+      if (typeof refreshDueBillingsBadge === 'function') refreshDueBillingsBadge();
+    }, 1500);
   }
 }
 
@@ -3244,6 +3304,7 @@ async function openAllChecks() {
   const checks = await loadChecksFromAirtable();
   window._checksCache = checks;
   if (typeof refreshDashboardDueBadge === 'function') refreshDashboardDueBadge();
+  if (typeof refreshDueBillingsBadge === 'function') refreshDueBillingsBadge();
 
   // Suchfeld leeren beim Öffnen
   const sEl = document.getElementById('checksSearch');
@@ -7467,6 +7528,264 @@ async function refreshDashboardDueBadge() {
   } catch(e) { console.warn('Dashboard-Badge:', e.message); }
 }
 
+// ── Fälligkeiten-Modal: separate Vollseiten-Ansicht für alle fälligen Vertragsabrechnungen ──
+window._dueBillingsCache = [];
+window._dueBillingsFilter = 'all'; // 'overdue' | 'due14' | 'due30' | 'noDate' | 'all'
+
+async function openDueBillingsModal() {
+  document.getElementById('dueBillingsModal').style.display = 'flex';
+  await loadDueBillings(false);
+}
+
+async function loadDueBillings(forceReload) {
+  const list = document.getElementById('dueBillingsList');
+  if (forceReload || !window._checksCache || !window._checksCache.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:#0e6655;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>';
+    try {
+      window._checksCache = await loadChecksFromAirtable();
+    } catch(e) {
+      list.innerHTML = `<div style="color:#a8312f;font-size:13px;padding:30px;text-align:center">⚠ Fehler beim Laden: ${e.message}</div>`;
+      return;
+    }
+  }
+  // Aktive Vertragschecks filtern + Bucket-Berechnung
+  const today = new Date(); today.setHours(0,0,0,0);
+  window._dueBillingsCache = (window._checksCache || [])
+    .filter(c => c.checkType === 'wartung' && getCheckStatus(c) === '2')
+    .map(c => {
+      const naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      let bucket = 'noDate', days = null, dueDate = null;
+      if (naechsteStr) {
+        const d = new Date(naechsteStr + 'T00:00:00');
+        if (!isNaN(d.getTime())) {
+          dueDate = d;
+          days = Math.round((d - today) / 86400000);
+          if (days < 0)        bucket = 'overdue';
+          else if (days <= 14) bucket = 'due14';
+          else if (days <= 30) bucket = 'due30';
+          else                 bucket = 'later';
+        }
+      }
+      return { c, bucket, days, dueDate, dueStr: naechsteStr };
+    });
+  renderDueBillingsChips();
+  renderDueBillings();
+}
+
+function setDueBillingsFilter(v) {
+  window._dueBillingsFilter = v;
+  renderDueBillingsChips();
+  renderDueBillings();
+}
+
+function renderDueBillingsChips() {
+  const wrap = document.getElementById('dueBillingsFilterChips');
+  if (!wrap) return;
+  const items = window._dueBillingsCache || [];
+  const counts = { all: items.length, overdue: 0, due14: 0, due30: 0, noDate: 0, later: 0 };
+  items.forEach(x => { counts[x.bucket]++; });
+  // Filter ohne "later" — laufende Verträge mit Termin in mehr als 30 Tagen sind nicht relevant für die Liste
+  const buckets = [
+    { v: 'overdue', label: '⏰ Überfällig',         color: '#a8312f' },
+    { v: 'due14',   label: '🔔 In 14 Tagen',         color: '#f59e0b' },
+    { v: 'due30',   label: '📅 In 30 Tagen',         color: '#5a7da8' },
+    { v: 'noDate',  label: '❓ Ohne Termin',          color: '#94a3b8' },
+    { v: 'all',     label: 'Alle aktiven',            color: '#0e6655' },
+  ];
+  // Erste span (Label) behalten
+  const label = wrap.querySelector('span');
+  wrap.innerHTML = '';
+  if (label) wrap.appendChild(label);
+  buckets.forEach(b => {
+    const cnt = counts[b.v] || 0;
+    const active = window._dueBillingsFilter === b.v;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = `${b.label} (${cnt})`;
+    btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${active ? b.color : 'var(--border)'};background:${active ? b.color : '#fff'};color:${active ? '#fff' : b.color};font-family:'DM Sans',sans-serif;transition:all .15s`;
+    btn.onclick = () => setDueBillingsFilter(b.v);
+    wrap.appendChild(btn);
+  });
+}
+
+function renderDueBillings() {
+  const list = document.getElementById('dueBillingsList');
+  const info = document.getElementById('dueBillingsInfo');
+  const cntEl = document.getElementById('dueBillingsCount');
+  if (!list) return;
+  let items = window._dueBillingsCache || [];
+  // Filter nach Bucket
+  const f = window._dueBillingsFilter;
+  if (f === 'overdue' || f === 'due14' || f === 'due30' || f === 'noDate') {
+    items = items.filter(x => x.bucket === f);
+  } else if (f === 'all') {
+    // Standard: zeige Überfällig + 14/30 Tage + Ohne Termin (nicht "later")
+    items = items.filter(x => x.bucket !== 'later');
+  }
+  // Suche
+  const q = (document.getElementById('dueBillingsSearch')?.value || '').trim().toLowerCase();
+  if (q) {
+    items = items.filter(x => {
+      const c = x.c;
+      const hay = [c.firma, c.standort, c.requestId, c.anfrageNr, c.id].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  // Sortierung
+  const sort = document.getElementById('dueBillingsSort')?.value || 'date_asc';
+  items.sort((a, b) => {
+    if (sort === 'date_asc') {
+      // overdue first (kleinster diff)
+      const ax = a.days == null ? 99999 : a.days;
+      const bx = b.days == null ? 99999 : b.days;
+      return ax - bx;
+    }
+    if (sort === 'date_desc') {
+      const ax = a.days == null ? -99999 : a.days;
+      const bx = b.days == null ? -99999 : b.days;
+      return bx - ax;
+    }
+    if (sort === 'firma_asc') return (a.c.firma || '').localeCompare(b.c.firma || '');
+    if (sort === 'periode_desc') return (parseInt(b.c.abrechnungs_anzahl||'0',10) - parseInt(a.c.abrechnungs_anzahl||'0',10));
+    return 0;
+  });
+  if (cntEl) cntEl.textContent = String(items.length);
+  if (info) info.textContent = items.length === 0 ? 'Keine Einträge im aktuellen Filter.' : `${items.length} Eintrag${items.length===1?'':'e'}`;
+
+  if (!items.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px;font-style:italic">Keine fälligen Abrechnungen.</div>';
+    return;
+  }
+
+  // Tabelle rendern
+  const headerRow = `
+    <thead>
+      <tr style="background:#f3f7fb;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px">
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Firma · Standort</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Check-ID</th>
+        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);width:70px">Periode</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Fälligkeit</th>
+        <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);width:170px">Aktion</th>
+      </tr>
+    </thead>`;
+
+  const rows = items.map(x => {
+    const c = x.c;
+    const reqIdEsc = (c.requestId || '').replace(/'/g, "\\'");
+    const dueDe = x.dueStr ? new Date(x.dueStr).toLocaleDateString('de-DE') : '–';
+    const periodeIdx = (parseInt(c.abrechnungs_anzahl || '0', 10) || 0) + 1;
+    let badge = '';
+    if (x.bucket === 'overdue') {
+      badge = `<span style="background:#a8312f;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">⏰ ${Math.abs(x.days)} Tag${Math.abs(x.days)===1?'':'e'} überfällig</span>`;
+    } else if (x.bucket === 'due14') {
+      badge = `<span style="background:#f59e0b;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">🔔 ${x.days === 0 ? 'heute' : 'in ' + x.days + ' Tag' + (x.days===1?'':'en')}</span>`;
+    } else if (x.bucket === 'due30') {
+      badge = `<span style="background:#5a7da8;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">📅 in ${x.days} Tagen</span>`;
+    } else if (x.bucket === 'noDate') {
+      badge = `<span style="background:#94a3b8;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">❓ kein Termin</span>`;
+    } else {
+      badge = `<span style="background:#94a3b8;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">in ${x.days} Tagen</span>`;
+    }
+    // "Rechnung erstellen" nur wenn Termin existiert UND <= 14 Tage in der Zukunft (oder überfällig)
+    const canCreate = (x.bucket === 'overdue' || x.bucket === 'due14');
+    const canCreateLater = (x.bucket === 'due30');
+    const actionBtn = canCreate
+      ? `<button onclick="createInvoiceForVertragscheck('${reqIdEsc}')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>Rechnung erstellen</button>`
+      : canCreateLater
+        ? `<span style="font-size:11px;color:var(--muted);font-style:italic">Erstellbar ab ${new Date(x.dueDate.getTime() - 14*86400000).toLocaleDateString('de-DE')}</span>`
+        : `<span style="font-size:11px;color:var(--muted);font-style:italic">${x.bucket==='noDate' ? 'Termin fehlt' : '–'}</span>`;
+    const openBtn = `<button onclick="openVertragscheckFromDueList('${reqIdEsc}')" title="Check öffnen" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 9px;font-size:11px;cursor:pointer;margin-left:5px;font-family:'DM Sans',sans-serif">↗</button>`;
+    return `
+      <tr style="font-size:12.5px;border-bottom:1px solid var(--border)">
+        <td style="padding:10px;vertical-align:top">
+          <div style="font-weight:700;color:var(--navy)">${(c.firma || '–').replace(/[<>"&]/g,'')}</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${(c.standort || '').replace(/[<>"&]/g,'')}</div>
+        </td>
+        <td style="padding:10px;vertical-align:top">
+          <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${(c.requestId || '–').replace(/[<>"&]/g,'')}</div>
+          ${c.anfrageNr ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Anfr.: <strong style="font-family:'DM Mono',monospace;color:var(--text)">${c.anfrageNr}</strong></div>` : ''}
+        </td>
+        <td style="padding:10px;vertical-align:top;text-align:center">
+          <span style="background:#0e6655;color:#fff;border-radius:6px;padding:3px 10px;font-size:11.5px;font-weight:700;font-family:'DM Mono',monospace">#${periodeIdx}</span>
+        </td>
+        <td style="padding:10px;vertical-align:top">
+          <div style="font-family:'DM Mono',monospace;font-weight:600">${dueDe}</div>
+          <div style="margin-top:4px">${badge}</div>
+        </td>
+        <td style="padding:10px;vertical-align:top;text-align:right">
+          ${actionBtn}${openBtn}
+        </td>
+      </tr>`;
+  }).join('');
+
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      ${headerRow}
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// Direkter Klick auf "Rechnung erstellen" in der Fälligkeiten-Liste
+function createInvoiceForVertragscheck(requestId) {
+  if (!requestId) return;
+  const entry = (window._dueBillingsCache || []).find(x => x.c.requestId === requestId);
+  if (!entry) { showToast('Eintrag nicht gefunden.', 'error'); return; }
+  const c = entry.c;
+  // Sicherheitsprüfung: nur wenn fällig oder überfällig
+  if (entry.bucket !== 'overdue' && entry.bucket !== 'due14') {
+    showToast('Diese Rechnung ist erst ab 14 Tagen vor Fälligkeit erstellbar.', 'error');
+    return;
+  }
+  // Vertragscheck-Daten in den Rechnungs-Editor laden
+  // Wichtig: openRechnungEditor erwartet das Check-Objekt mit den Feldern
+  // (id, requestId, firma, standort, naechste_abrechnung_am, abrechnungs_anzahl, ...)
+  // → das haben wir aus _dueBillingsCache.c
+  const data = { ...c, id: c.id || c.requestId };
+  // Modal schließen und Editor öffnen (Editor öffnet als overlay mit z-index 5100, dueBillingsModal=5050)
+  openRechnungEditor(data, null);
+}
+
+// Aus Fälligkeiten-Liste den Vertragscheck im Hauptformular öffnen
+function openVertragscheckFromDueList(requestId) {
+  if (!requestId) return;
+  const checks = window._checksCache || [];
+  const c = checks.find(x => x.requestId === requestId);
+  if (!c) { showToast('Check nicht gefunden.', 'error'); return; }
+  document.getElementById('dueBillingsModal').style.display = 'none';
+  if (typeof loadCheck === 'function') loadCheck(c);
+  setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
+}
+
+// Badge auf dem Fälligkeiten-Menü-Button (analog zum Dashboard-Badge)
+async function refreshDueBillingsBadge() {
+  const badge = document.getElementById('dueBillingsBadge');
+  if (!badge) return;
+  try {
+    const checks = window._checksCache && window._checksCache.length
+      ? window._checksCache
+      : await loadChecksFromAirtable();
+    const today = new Date(); today.setHours(0,0,0,0);
+    let count = 0;
+    for (const c of checks) {
+      if (c.checkType !== 'wartung') continue;
+      if (getCheckStatus(c) !== '2') continue;
+      const naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      if (!naechsteStr) continue;
+      const d = new Date(naechsteStr + 'T00:00:00');
+      if (isNaN(d.getTime())) continue;
+      const diff = Math.round((d - today) / 86400000);
+      if (diff <= 14) count++;
+    }
+    if (count > 0) {
+      badge.style.display = 'inline-flex';
+      badge.textContent = String(count);
+      badge.title = `${count} Jahresrechnung${count === 1 ? '' : 'en'} fällig`;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { console.warn('DueBillings-Badge:', e.message); }
+}
+
 // Vom Dashboard aus einen Check öffnen (z.B. Klick auf fällige Vertragsabrechnung)
 function openCheckFromDashboard(requestId) {
   if (!requestId) return;
@@ -8292,6 +8611,14 @@ async function saveRechnung() {
       bar.innerHTML = `<span>✅</span><span>Rechnung <strong>${d.nr || ''}</strong> erfolgreich erstellt und festgeschrieben.${checkStatusInfo}</span>`;
     }
     if (document.getElementById('rechnungenModal').style.display !== 'none') openRechnungenModal();
+    // Bei Vertragsrechnungen: Fälligkeiten-Modal + Badges aktualisieren
+    if (d.checkType === 'wartung') {
+      if (typeof refreshDashboardDueBadge === 'function') refreshDashboardDueBadge();
+      if (typeof refreshDueBillingsBadge === 'function') refreshDueBillingsBadge();
+      if (document.getElementById('dueBillingsModal').style.display !== 'none') {
+        loadDueBillings(true).catch(() => {});
+      }
+    }
   } catch(e) {
     console.error(e);
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
