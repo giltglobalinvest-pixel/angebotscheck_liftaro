@@ -2322,7 +2322,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.18';
+const APP_VERSION = 'V8.19';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7202,9 +7202,18 @@ function applyCheckFreeze() {
   const printArea = document.getElementById('print-area');
   if (!printArea) return;
   // Aggressive Sperre via CSS-Klasse (deckt auch Tabellenfelder, Buttons, Upload-Zonen ab)
-  if (frozen) printArea.classList.add('frozen-form-area');
-  else        printArea.classList.remove('frozen-form-area');
-  const inputs = printArea.querySelectorAll('input, select, textarea, [contenteditable="true"]');
+  // Wendet die Klasse auch auf die Sidebar (Vorliegend/Alternativ/Anhänge/AHW-Card) an,
+  // damit dort ebenfalls keine Uploads/Edits möglich sind.
+  const sidebar = document.querySelector('.sidebar');
+  if (frozen) {
+    printArea.classList.add('frozen-form-area');
+    if (sidebar) sidebar.classList.add('frozen-form-area');
+  } else {
+    printArea.classList.remove('frozen-form-area');
+    if (sidebar) sidebar.classList.remove('frozen-form-area');
+  }
+  // Inputs sowohl im Print-Area als auch in der Sidebar einsammeln
+  const inputs = document.querySelectorAll('#print-area input, #print-area select, #print-area textarea, #print-area [contenteditable="true"], .sidebar input, .sidebar select, .sidebar textarea, .sidebar [contenteditable="true"]');
   inputs.forEach(el => {
     // Ausnahme: Status-Dropdown selbst (eigene Logik), Datums-Anzeige
     if (el.id === 'f_status') return;
