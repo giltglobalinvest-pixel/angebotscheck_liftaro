@@ -2277,7 +2277,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.12';
+const APP_VERSION = 'V8.13';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2754,6 +2754,8 @@ async function showApp() {
   if (typeof silentVersionCheck === 'function') {
     setTimeout(() => silentVersionCheck(), 2500);
   }
+  // Sicherheits-Reset: falls body.overflow durch alten Bug "hidden" hängt
+  document.body.style.overflow = '';
 }
 
 async function appStart() {
@@ -7843,13 +7845,39 @@ window._dueBillingsFilter = 'all'; // 'overdue' | 'due14' | 'due30' | 'noDate' |
 
 async function openDueBillingsModal() {
   document.getElementById('dueBillingsModal').style.display = 'flex';
-  document.body.style.overflow = 'hidden'; // verhindert Hintergrund-Scroll
   await loadDueBillings(false);
 }
 function closeDueBillingsModal() {
   document.getElementById('dueBillingsModal').style.display = 'none';
-  document.body.style.overflow = '';
 }
+
+// Safety-Net: stelle sicher dass body.overflow nie versehentlich hängen bleibt
+// (passiert wenn ein Modal geschlossen wird ohne durch unsere close-Funktion)
+(function ensureBodyScrollNeverStuck(){
+  function check() {
+    const modal = document.getElementById('dueBillingsModal');
+    const drawer = document.getElementById('mobileMenuDrawer');
+    const checks = document.getElementById('checksModal');
+    const rechnungen = document.getElementById('rechnungenModal');
+    const editor = document.getElementById('rechnungEditorModal');
+    const dashboard = document.getElementById('dashboardModal');
+    const vertrEdit = document.getElementById('vertragEditorModal');
+    const vertraege = document.getElementById('vertraegeModal');
+    const stm = document.getElementById('statusTransitionModal');
+    const lern = document.getElementById('lernModal');
+    const visu = document.getElementById('saveVisualModal');
+    const det = document.getElementById('checksDetailsModal');
+    const apikey = document.getElementById('apiKeyModal');
+    const anyModalOpen = [modal, drawer, checks, rechnungen, editor, dashboard, vertrEdit, vertraege, stm, lern, visu, det, apikey]
+      .some(m => m && m.style.display && m.style.display !== 'none');
+    if (!anyModalOpen && document.body.style.overflow === 'hidden') {
+      document.body.style.overflow = '';
+    }
+  }
+  // Bei jedem Click + alle 1.5s prüfen
+  document.addEventListener('click', check, true);
+  setInterval(check, 1500);
+})();
 
 async function loadDueBillings(forceReload) {
   const list = document.getElementById('dueBillingsList');
