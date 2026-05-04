@@ -1475,7 +1475,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <!-- Rechnung erstellen (Reparaturcheck: Status 3 / Vertragscheck: ab 14 Tage vor naechste_abrechnung_am) -->
-        <div id="invoiceBtnRow" style="display:none;margin-top:14px;padding:14px 18px;background:linear-gradient(135deg,#fff8e1,#fdf3d3);border-left:4px solid #f59e0b;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div id="invoiceBtnRow" class="hide-on-mobile" style="display:none;margin-top:14px;padding:14px 18px;background:linear-gradient(135deg,#fff8e1,#fdf3d3);border-left:4px solid #f59e0b;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
           <div>
             <div id="invoiceBtnRowTitle" style="font-size:12px;font-weight:600;color:#a06a00;text-transform:uppercase;letter-spacing:.4px">Status: Abrechenbar</div>
             <div id="invoiceBtnRowSub" style="font-size:13px;color:var(--text);margin-top:2px">Dieser Check kann jetzt in Rechnung gestellt werden.</div>
@@ -2251,7 +2251,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.8';
+const APP_VERSION = 'V8.9';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7136,6 +7136,10 @@ function applyCheckFreeze() {
 
 // Rechnung aus aktuell geladenem Check erstellen
 function createInvoiceFromCurrentCheck() {
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    showToast('Rechnungen können nur am Desktop erstellt werden.', 'error');
+    return;
+  }
   const data = collectFormData();
   if (!data.id && !data.requestId) {
     showToast('Bitte erst den Check speichern, bevor du eine Rechnung erstellst.', 'error');
@@ -7846,11 +7850,22 @@ function renderDueBillings() {
     // "Rechnung erstellen" nur wenn Termin existiert UND <= 14 Tage in der Zukunft (oder überfällig)
     const canCreate = (x.bucket === 'overdue' || x.bucket === 'due14');
     const canCreateLater = (x.bucket === 'due30');
-    const actionBtn = canCreate
-      ? `<button onclick="createInvoiceForVertragscheck('${reqIdEsc}')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>Rechnung erstellen</button>`
-      : canCreateLater
-        ? `<span style="font-size:11px;color:var(--muted);font-style:italic">Erstellbar ab ${new Date(x.dueDate.getTime() - 14*86400000).toLocaleDateString('de-DE')}</span>`
-        : `<span style="font-size:11px;color:var(--muted);font-style:italic">${x.bucket==='noDate' ? 'Termin fehlt' : '–'}</span>`;
+    const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+    let actionBtn;
+    if (isMobile) {
+      // Mobile: Rechnungserstellung gesperrt – nur Hinweis
+      actionBtn = canCreate
+        ? '<span style="font-size:11px;color:var(--muted);font-style:italic;display:inline-flex;align-items:center;gap:4px"><span>🔒</span><span>Nur Desktop</span></span>'
+        : canCreateLater
+          ? `<span style="font-size:11px;color:var(--muted);font-style:italic">Erstellbar ab ${new Date(x.dueDate.getTime() - 14*86400000).toLocaleDateString('de-DE')}</span>`
+          : `<span style="font-size:11px;color:var(--muted);font-style:italic">${x.bucket==='noDate' ? 'Termin fehlt' : '–'}</span>`;
+    } else {
+      actionBtn = canCreate
+        ? `<button onclick="createInvoiceForVertragscheck('${reqIdEsc}')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>Rechnung erstellen</button>`
+        : canCreateLater
+          ? `<span style="font-size:11px;color:var(--muted);font-style:italic">Erstellbar ab ${new Date(x.dueDate.getTime() - 14*86400000).toLocaleDateString('de-DE')}</span>`
+          : `<span style="font-size:11px;color:var(--muted);font-style:italic">${x.bucket==='noDate' ? 'Termin fehlt' : '–'}</span>`;
+    }
     const openBtn = `<button onclick="openVertragscheckFromDueList('${reqIdEsc}')" title="Check öffnen" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 9px;font-size:11px;cursor:pointer;margin-left:5px;font-family:'DM Sans',sans-serif">↗</button>`;
     return `
       <tr style="font-size:12.5px;border-bottom:1px solid var(--border)">
@@ -7884,6 +7899,10 @@ function renderDueBillings() {
 
 // Direkter Klick auf "Rechnung erstellen" in der Fälligkeiten-Liste
 function createInvoiceForVertragscheck(requestId) {
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    showToast('Rechnungen können nur am Desktop erstellt werden.', 'error');
+    return;
+  }
   if (!requestId) return;
   const entry = (window._dueBillingsCache || []).find(x => x.c.requestId === requestId);
   if (!entry) { showToast('Eintrag nicht gefunden.', 'error'); return; }
@@ -7894,11 +7913,7 @@ function createInvoiceForVertragscheck(requestId) {
     return;
   }
   // Vertragscheck-Daten in den Rechnungs-Editor laden
-  // Wichtig: openRechnungEditor erwartet das Check-Objekt mit den Feldern
-  // (id, requestId, firma, standort, naechste_abrechnung_am, abrechnungs_anzahl, ...)
-  // → das haben wir aus _dueBillingsCache.c
   const data = { ...c, id: c.id || c.requestId };
-  // Modal schließen und Editor öffnen (Editor öffnet als overlay mit z-index 5100, dueBillingsModal=5050)
   openRechnungEditor(data, null);
 }
 
@@ -8560,6 +8575,10 @@ async function downloadRechnung() {
 }
 
 async function saveRechnung() {
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    showToast('Rechnungen können nur am Desktop erstellt/gespeichert werden.', 'error');
+    return;
+  }
   if (!APP_KEYS.airtableWriteKey) { showToast('Nicht eingeloggt.', 'error'); return; }
   const d = getRechnungData();
   if (!d.empfaenger_firma) { showToast('Bitte Empfänger-Firma angeben.', 'error'); return; }
