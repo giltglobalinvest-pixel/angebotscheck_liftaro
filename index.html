@@ -1324,6 +1324,18 @@ const pdfWorkerReady = Promise.resolve();</script>
           <span id="invoiceWaitText">Nächste Jahresrechnung erstellbar ab –.</span>
         </div>
 
+        <!-- Vertragscheck: Jahresrechnungs-Historie (nur sichtbar wenn checkType=wartung + Status=2/3 + min. 1 Rechnung existiert) -->
+        <div id="vertragInvoiceHistory" style="display:none;margin-top:14px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          <div style="background:#0e6655;color:#fff;padding:10px 16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+              <span>Jahresrechnungs-Historie</span>
+            </div>
+            <span id="vertragInvoiceHistoryCount" style="background:rgba(255,255,255,.2);border-radius:10px;padding:1px 9px;font-size:11px">0</span>
+          </div>
+          <div id="vertragInvoiceHistoryList" style="padding:8px 14px 12px"></div>
+        </div>
+
         <div class="legal-block" id="legal-block">
           Die Vergütung von Liftaro beträgt 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.
         </div>
@@ -2024,7 +2036,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.3';
+const APP_VERSION = 'V8.4';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3112,6 +3124,11 @@ async function loadCheck(data) {
     renderMobileVorliegendPdf(vUrl);
     renderMobileAlternativPdf(aUrl);
     renderMobileResultPdf(ergUrl);
+  }
+
+  // Vertragscheck: Jahresrechnungs-Historie befüllen (asynchron)
+  if (typeof refreshVertragInvoiceHistory === 'function') {
+    refreshVertragInvoiceHistory().catch(e => console.warn('History-refresh:', e.message));
   }
 
   // Falls in Airtable nichts war: alter Local-Folder-Fallback
@@ -7299,6 +7316,71 @@ function toggleDashStatus(v) {
   renderDashboard();
 }
 
+// ── Vertragscheck-Jahresrechnungs-Historie im Hauptformular ────────
+async function refreshVertragInvoiceHistory() {
+  const wrap = document.getElementById('vertragInvoiceHistory');
+  const list = document.getElementById('vertragInvoiceHistoryList');
+  const cnt  = document.getElementById('vertragInvoiceHistoryCount');
+  if (!wrap || !list) return;
+
+  // Nur bei Vertragschecks
+  const isVertrag = currentFormCheckType() === 'wartung';
+  const checkId = document.getElementById('f_requestid')?.value?.trim() || '';
+  if (!isVertrag || !checkId) { wrap.style.display = 'none'; return; }
+
+  list.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:10px"><div class="spin" style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></div>Rechnungen werden geladen …</div>';
+  wrap.style.display = 'block';
+
+  try {
+    const recs = await atRead('Rechnungen', "{check_id}='" + checkId + "'");
+    if (!recs || !recs.length) {
+      if (cnt) cnt.textContent = '0';
+      list.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:14px;font-style:italic">Noch keine Jahresrechnung erstellt.</div>';
+      return;
+    }
+    // Nach periode_index (oder rechnungsdatum) sortieren — neueste zuerst
+    const items = recs.map(r => ({ ...r.fields, _recordId: r.id })).sort((a, b) => {
+      const ai = parseInt(a.periode_index || '0', 10) || 0;
+      const bi = parseInt(b.periode_index || '0', 10) || 0;
+      if (ai !== bi) return bi - ai;
+      const ad = a.rechnungsdatum || '';
+      const bd = b.rechnungsdatum || '';
+      return bd.localeCompare(ad);
+    });
+    if (cnt) cnt.textContent = String(items.length);
+
+    list.innerHTML = items.map(r => {
+      const att = r.rechnung_pdf && r.rechnung_pdf[0];
+      const url = att ? (att.url || '') : '';
+      const fname = att ? (att.filename || ('Rechnung_' + (r.rechnungsnr || '') + '.pdf')) : '';
+      const periode = r.periode_index ? `Periode ${r.periode_index}` : '';
+      const von = r.abrechnungsperiode_von ? new Date(r.abrechnungsperiode_von).toLocaleDateString('de-DE') : '';
+      const bis = r.abrechnungsperiode_bis ? new Date(r.abrechnungsperiode_bis).toLocaleDateString('de-DE') : '';
+      const periodeRange = (von && bis) ? `${von} – ${bis}` : '';
+      const datum = r.rechnungsdatum || '';
+      return `
+        <div style="background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-top:6px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:var(--navy)">
+              ${r.rechnungsnr || '–'}
+              ${periode ? `<span style="background:#0e6655;color:#fff;border-radius:4px;padding:1px 7px;font-size:10.5px;margin-left:6px">${periode}</span>` : ''}
+              <span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">${datum}</span>
+            </div>
+            ${periodeRange ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px">📅 ${periodeRange}</div>` : ''}
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${r.empfaenger_firma || '–'} · ${r.brutto || '–'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${url ? `<button onclick="rechnungPdfAction('${url.replace(/'/g,'&#39;')}','${fname.replace(/'/g,'&#39;')}')" style="background:var(--navy);color:#fff;border:none;border-radius:5px;padding:5px 10px;font-size:11.5px;cursor:pointer;display:inline-flex;align-items:center;gap:4px"><span>📑</span><span>PDF</span></button>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    console.warn('Historie-Fetch fehlgeschlagen:', e.message);
+    list.innerHTML = `<div style="color:#a8312f;font-size:12px;padding:10px;text-align:center">⚠ Konnte Rechnungen nicht laden: ${e.message}</div>`;
+    if (cnt) cnt.textContent = '–';
+  }
+}
+
 // Vom Dashboard aus einen Check öffnen (z.B. Klick auf fällige Vertragsabrechnung)
 function openCheckFromDashboard(requestId) {
   if (!requestId) return;
@@ -8101,6 +8183,10 @@ async function saveRechnung() {
               setF('f_letzte_abrechnung_am', upd.letzte_abrechnung_am);
               if (upd.naechste_abrechnung_am) setF('f_naechste_abrechnung_am', upd.naechste_abrechnung_am);
               setF('f_abrechnungs_anzahl', upd.abrechnungs_anzahl);
+              // Historie neu laden (zeigt die gerade festgeschriebene Rechnung)
+              if (typeof refreshVertragInvoiceHistory === 'function') {
+                refreshVertragInvoiceHistory().catch(e => console.warn('History-refresh:', e.message));
+              }
             } else {
               const formEl = document.getElementById('f_status');
               if (formEl) formEl.value = '4';
