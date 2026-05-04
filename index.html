@@ -267,26 +267,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   .frozen-form-area input:not(#f_status):focus,
   .frozen-form-area textarea:focus,
   .frozen-form-area select:not(#f_status):focus { outline: none !important; box-shadow: none !important; }
-  /* Visuelle "Locked"-Border auf wichtige Bereiche legen */
-  .frozen-form-area #section-allgemein .section-inner,
-  .frozen-form-area #section-reparatur .section,
-  .frozen-form-area #section-wartung .section { position: relative; }
-  .frozen-form-area #section-allgemein .section-inner::after,
-  .frozen-form-area #section-reparatur .section::after,
-  .frozen-form-area #section-wartung .section::after {
-    content: '🔒 GoBD-geschützt — keine Änderungen möglich';
-    position: absolute;
-    top: 6px; right: 8px;
-    font-size: 10px;
-    background: rgba(168, 50, 47, 0.12);
-    color: #a8312f;
-    border: 1px solid rgba(168, 50, 47, 0.25);
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-weight: 600;
-    pointer-events: none;
-    letter-spacing: .3px;
-  }
+  /* (Per-Section-Lock-Badges wieder entfernt — der große Banner oben reicht) */
 
   /* Einheitliches Count-Badge — rot, kompakt, animiert */
   .btn-badge {
@@ -2341,7 +2322,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.17';
+const APP_VERSION = 'V8.18';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
