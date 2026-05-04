@@ -2023,7 +2023,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.1';
+const APP_VERSION = 'V8.2';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7161,6 +7161,22 @@ function toggleDashStatus(v) {
   renderDashboard();
 }
 
+// Vom Dashboard aus einen Check öffnen (z.B. Klick auf fällige Vertragsabrechnung)
+function openCheckFromDashboard(requestId) {
+  if (!requestId) return;
+  const checks = window._dashAllChecks || [];
+  const c = checks.find(x => x.requestId === requestId);
+  if (!c) { showToast('Check nicht gefunden.', 'error'); return; }
+  // Cache für Liste auch aktualisieren
+  window._checksCache = checks;
+  // Dashboard schließen
+  document.getElementById('dashboardModal').style.display = 'none';
+  // Check ins Hauptformular laden
+  if (typeof loadCheck === 'function') loadCheck(c);
+  // Nach kurzer Verzögerung zum Anfang scrollen damit der Hinweis-Banner sichtbar ist
+  setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
+}
+
 function renderDashboard() {
   const checksAll = window._dashAllChecks || [];
   const vertraege = window._dashAllVertraege || [];
@@ -7215,6 +7231,79 @@ function renderDashboard() {
 
   const matchPct = checks.length ? Math.round(matched * 100 / checks.length) : 0;
 
+  // ── Fällige Vertragsabrechnungen berechnen (Verträge mit Status 2 + naechste_abrechnung_am gesetzt) ──
+  const today = new Date(); today.setHours(0,0,0,0);
+  const aktiveVertraege = checksAll.filter(c => c.checkType === 'wartung' && getCheckStatus(c) === '2');
+  const billingBuckets = { overdue: [], due14: [], due30: [], later: [], noDate: [] };
+  for (const c of aktiveVertraege) {
+    const naechsteStr = (c.naechste_abrechnung_am || '').trim();
+    if (!naechsteStr) { billingBuckets.noDate.push({c, days: null}); continue; }
+    const d = new Date(naechsteStr + 'T00:00:00');
+    if (isNaN(d.getTime())) { billingBuckets.noDate.push({c, days: null}); continue; }
+    const diff = Math.round((d - today) / 86400000);
+    if (diff < 0) billingBuckets.overdue.push({c, days: diff, date: naechsteStr});
+    else if (diff <= 14) billingBuckets.due14.push({c, days: diff, date: naechsteStr});
+    else if (diff <= 30) billingBuckets.due30.push({c, days: diff, date: naechsteStr});
+    else billingBuckets.later.push({c, days: diff, date: naechsteStr});
+  }
+  // Sort each bucket by days asc
+  ['overdue','due14','due30','later'].forEach(k => billingBuckets[k].sort((a,b) => a.days - b.days));
+
+  // Item-Renderer für Fälligkeitsliste
+  const renderBillingItem = (entry) => {
+    const c = entry.c;
+    const date = entry.date ? new Date(entry.date).toLocaleDateString('de-DE') : '–';
+    const daysTxt = entry.days == null
+      ? '<span style="color:var(--muted)">kein Datum</span>'
+      : entry.days < 0
+        ? `<span style="color:#a8312f;font-weight:700">${Math.abs(entry.days)} Tag${Math.abs(entry.days)===1?'':'e'} überfällig</span>`
+        : entry.days === 0
+          ? '<span style="color:#a06a00;font-weight:700">heute fällig</span>'
+          : `<span style="color:var(--muted)">in ${entry.days} Tag${entry.days===1?'':'en'}</span>`;
+    const periodeIdx = (parseInt(c.abrechnungs_anzahl || '0', 10) || 0) + 1;
+    const ridEsc = (c.requestId || '').replace(/'/g, "\\'");
+    const firmaEsc = (c.firma || '–').replace(/[<>"&]/g, '');
+    const standortEsc = (c.standort || '').replace(/[<>"&]/g, '');
+    return `
+      <div onclick="openCheckFromDashboard('${ridEsc}')" style="background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='var(--sky2)'" onmouseout="this.style.background='var(--sky)'">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--navy)">${firmaEsc}<span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">${standortEsc}</span></div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px">
+            <span>📅 ${date}</span>
+            <span>· Periode ${periodeIdx}</span>
+            <span>· Check ${c.requestId || '–'}</span>
+          </div>
+        </div>
+        <div style="font-size:11.5px;text-align:right;white-space:nowrap">${daysTxt}</div>
+      </div>`;
+  };
+
+  const renderBucket = (bucket, label, color, icon) => {
+    if (!bucket.length) return '';
+    return `
+      <div style="background:#fff;border:1px solid var(--border);border-left:4px solid ${color};border-radius:10px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <span>${icon}</span><span>${label}</span>
+          <span style="background:${color};color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700">${bucket.length}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">${bucket.map(renderBillingItem).join('')}</div>
+      </div>`;
+  };
+
+  const billingBlock = aktiveVertraege.length === 0 ? '' : `
+    <div style="margin-top:6px">
+      <div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+        <span style="background:#0e6655;color:#fff;border-radius:4px;padding:2px 8px;font-size:10px">🔁 Fällige Vertragsabrechnungen</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">${aktiveVertraege.length} aktive Verträge</span>
+      </div>
+      ${billingBuckets.overdue.length || billingBuckets.due14.length || billingBuckets.due30.length || billingBuckets.noDate.length
+        ? `${renderBucket(billingBuckets.overdue, 'Überfällig', '#a8312f', '⏰')}
+           ${renderBucket(billingBuckets.due14,   'In 14 Tagen fällig', '#f59e0b', '🔔')}
+           ${renderBucket(billingBuckets.due30,   'In 30 Tagen fällig', '#5a7da8', '📅')}
+           ${renderBucket(billingBuckets.noDate,  'Ohne Abrechnungstermin', '#94a3b8', '❓')}`
+        : `<div style="background:#f3faea;border:1px solid #d1ecb1;color:#3d7a14;border-radius:8px;padding:10px 14px;font-size:12.5px">✓ Alle ${aktiveVertraege.length} aktiven Verträge sind aktuell — die nächsten Abrechnungen sind ${billingBuckets.later.length} mal in mehr als 30 Tagen fällig.</div>`}
+    </div>`;
+
   // Status-Filter-Toolbar
   const statusChipsHtml = CHECK_STATUS.map(s => {
     const cnt = checksAll.filter(c => getCheckStatus(c) === s.value).length;
@@ -7237,7 +7326,10 @@ function renderDashboard() {
       ${kachel('Verträge gesamt',   vertraege.length, '#2d5f96', `${signedCount} unterschrieben · ${openCount} offen`)}
       ${kachel('Checks gesamt',     checks.length,    '#7dc242', `${checksReparatur} Reparatur · ${checksWartung} Vertrag`)}
       ${kachel('Verknüpfte Checks', `${matched} <span style="font-size:14px;color:var(--muted);font-weight:400">/ ${checks.length}</span>`, '#1a3a5c', `${matchPct}% Vertragskunden-Treffer`)}
+      ${aktiveVertraege.length ? kachel('Aktive Verträge', aktiveVertraege.length, '#0e6655', `${billingBuckets.overdue.length} überfällig · ${billingBuckets.due14.length} in 14 Tagen`) : ''}
     </div>
+
+    ${billingBlock}
 
     <div style="margin-top:6px">
       <div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
