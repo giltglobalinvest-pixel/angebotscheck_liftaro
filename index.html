@@ -2277,7 +2277,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.11';
+const APP_VERSION = 'V8.12';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -5609,28 +5609,39 @@ async function checkForAppUpdate() {
       } catch(e) { console.warn('caches clear:', e.message); }
     }
 
-    // 3) Pre-fetch der neuen Version mit cache:no-store, damit
-    //    der Browser die frische Datei in den Disk-Cache holt
+    // 3) Loader-localStorage-Cache invalidieren (wichtig!)
+    //    Der Loader speichert die zuletzt geladene index.html in localStorage.
+    //    Ohne Löschung könnte er im Offline-Fallback die alte Version anzeigen.
     try {
-      const tag = remote + '_' + Date.now();
-      await fetch(window.location.pathname + '?_v=' + tag, { cache: 'no-store' });
-    } catch(e) { console.warn('prefetch failed:', e.message); }
+      const repos = ['giltglobalinvest-pixel/angebotscheck_liftaro'];
+      for (const r of repos) {
+        localStorage.removeItem('app_cache_' + r);
+        localStorage.removeItem('app_cache_' + r + '_at');
+      }
+      localStorage.setItem('liftaro_last_seen_version', remote);
+    } catch(e) {}
 
-    // 4) localStorage-Marker setzen, damit der Loader (falls vorhanden) merkt,
-    //    dass nach Reload mit der neuen Version gearbeitet wird
-    try { localStorage.setItem('liftaro_last_seen_version', remote); } catch(e) {}
-
-    // 5) Hard-Reload mit starkem Cache-Bust und Versions-Tag in URL
-    const u = new URL(window.location.href);
-    // Alte Cache-Buster entfernen, damit URL nicht endlos länger wird
-    u.searchParams.delete('_v');
-    u.searchParams.delete('t');
-    u.searchParams.delete('cb');
-    u.searchParams.delete('nocache');
-    u.searchParams.set('_v', remote);
-    u.searchParams.set('t', Date.now().toString());
-    // location.href statt replace: erzwingt eine neue Navigation, kein Back-Cache-Reuse
-    window.location.href = u.toString();
+    // 4) GEZIELT zum LOADER navigieren (nicht zur direkten index.html)
+    //    Begründung: Der Loader (loader.html) holt index.html *immer* frisch
+    //    via raw.githubusercontent.com mit `cache:'no-store'`. Damit umgehen wir
+    //    die GitHub-Pages-CDN- und Browser-Disk-Caches komplett.
+    try {
+      const origin = window.location.origin;
+      // Pfad ohne loader.html / index.html und ohne abschließenden Slash
+      let base = window.location.pathname
+        .replace(/(loader|index)\.html$/i, '')
+        .replace(/\/$/, '');
+      const loaderUrl = origin + base + '/loader.html?_v=' + encodeURIComponent(remote) + '&t=' + Date.now();
+      try { window.stop(); } catch(_) {}
+      window.location.replace(loaderUrl);
+    } catch(e) {
+      // Fallback: einfacher Reload mit Cache-Bust
+      const u = new URL(window.location.href);
+      u.searchParams.delete('_v'); u.searchParams.delete('t');
+      u.searchParams.set('_v', remote);
+      u.searchParams.set('t', Date.now().toString());
+      window.location.href = u.toString();
+    }
   } catch(e) {
     if (badge) badge.textContent = origText || APP_VERSION;
     showToast('Update-Check fehlgeschlagen: ' + (e.message || e), 'error');
