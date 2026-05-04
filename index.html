@@ -918,9 +918,10 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
         Verträge
       </button>
-      <button class="btn-settings" onclick="openDashboard()" style="border-color:rgba(125,194,66,.35);color:rgba(168,224,112,.95)">
+      <button class="btn-settings" onclick="openDashboard()" style="border-color:rgba(125,194,66,.35);color:rgba(168,224,112,.95);position:relative">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Dashboard
+        <span id="dashboardDueBadge" title="Fällige Jahresrechnungen" style="display:none;background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;font-family:'DM Mono',monospace;margin-left:2px">0</span>
       </button>
       <button class="btn-settings" onclick="openRechnungenModal()" style="border-color:rgba(245,158,11,.35);color:rgba(252,211,77,.95)">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
@@ -2036,7 +2037,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.4';
+const APP_VERSION = 'V8.5';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2502,6 +2503,10 @@ async function showApp() {
   checkAllConnections();
   // Run existing init
   appInit();
+  // Dashboard-Badge initial laden (Anzahl fälliger Vertragsrechnungen)
+  if (typeof refreshDashboardDueBadge === 'function') {
+    setTimeout(() => refreshDashboardDueBadge(), 1500);
+  }
 }
 
 async function appStart() {
@@ -3238,6 +3243,7 @@ async function openAllChecks() {
 
   const checks = await loadChecksFromAirtable();
   window._checksCache = checks;
+  if (typeof refreshDashboardDueBadge === 'function') refreshDashboardDueBadge();
 
   // Suchfeld leeren beim Öffnen
   const sEl = document.getElementById('checksSearch');
@@ -6826,22 +6832,61 @@ function applyCheckFreeze() {
     }
   });
 
-  // Ergebnis-Buttons (PDF erstellen, Empfehlung) sperren
-  const lockBtns = ['btnGenerate','btnEmpfehlung','btnDownloadFull'];
-  lockBtns.forEach(id => {
+  // Bearbeitungs-Buttons sperren:
+  //  • btnEmpfehlung  → keine KI-Zusammenfassung mehr
+  //  • btnSyncRep / btnSyncWart → keine Datenübernahme zwischen Spalten
+  //  • btnAhwPreview / btnAhwGenerate / btnAhwWartungPreview / Wartungs-Erstellen-Buttons (Sidebar)
+  // PDF-Erstellen/Vorschau bleibt erlaubt (kein Datenverlust).
+  const lockBtnIds = ['btnEmpfehlung','btnSyncRep','btnSyncWart','btnAhwPreview','btnAhwGenerate','btnAhwWartungPreview'];
+  lockBtnIds.forEach(id => {
     const b = document.getElementById(id);
     if (!b) return;
     if (frozen) {
-      b.dataset.frozenWasDisabled = b.disabled ? '1' : '0';
-      // PDF-Erstellen darf weiterhin funktionieren – nur Bearbeitungs-Aktionen sperren
-      if (id === 'btnEmpfehlung') {
-        b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed';
-      }
+      if (b.dataset.frozenWasDisabled === undefined) b.dataset.frozenWasDisabled = b.disabled ? '1' : '0';
+      b.disabled = true;
+      b.style.opacity = '0.5';
+      b.style.cursor  = 'not-allowed';
+      b.title = '🔒 Bearbeitung gesperrt – Check ist eingefroren.';
     } else {
       if (b.dataset.frozenWasDisabled === '0') b.disabled = false;
       delete b.dataset.frozenWasDisabled;
       b.style.opacity = '';
-      b.style.cursor = '';
+      b.style.cursor  = '';
+      if (b.title && b.title.startsWith('🔒')) b.title = '';
+    }
+  });
+  // Wartungs-Erstellen-Button hat keine ID – über onclick-Selector erfassen
+  const wartungBtn = document.querySelector('button[onclick="generateAHWWartung()"]');
+  if (wartungBtn) {
+    if (frozen) {
+      if (wartungBtn.dataset.frozenWasDisabled === undefined) wartungBtn.dataset.frozenWasDisabled = wartungBtn.disabled ? '1' : '0';
+      wartungBtn.disabled = true;
+      wartungBtn.style.opacity = '0.5';
+      wartungBtn.style.cursor = 'not-allowed';
+    } else if (wartungBtn.dataset.frozenWasDisabled !== undefined) {
+      if (wartungBtn.dataset.frozenWasDisabled === '0') wartungBtn.disabled = false;
+      delete wartungBtn.dataset.frozenWasDisabled;
+      wartungBtn.style.opacity = '';
+      wartungBtn.style.cursor = '';
+    }
+  }
+  // Datei-Uploads sperren (Vorliegend, Alternativ, Extra) — Klicks auf Upload-Zonen unterbinden
+  const uploadZoneIds = ['zone1','zone2','zoneExtra'];
+  uploadZoneIds.forEach(id => {
+    const z = document.getElementById(id);
+    if (!z) return;
+    if (frozen) {
+      z.dataset.frozenOnclick = z.getAttribute('onclick') || '';
+      z.removeAttribute('onclick');
+      z.style.pointerEvents = 'none';
+      z.style.opacity = '0.5';
+      z.style.cursor = 'not-allowed';
+    } else if (z.dataset.frozenOnclick !== undefined) {
+      if (z.dataset.frozenOnclick) z.setAttribute('onclick', z.dataset.frozenOnclick);
+      delete z.dataset.frozenOnclick;
+      z.style.pointerEvents = '';
+      z.style.opacity = '';
+      z.style.cursor = '';
     }
   });
 
@@ -6850,10 +6895,21 @@ function applyCheckFreeze() {
       banner.style.display = 'flex';
       const txt = document.getElementById('checkFrozenText');
       if (txt) {
-        const meta = (typeof getCheckStatusMeta === 'function')
-          ? CHECK_STATUS.find(s => s.value === status) : null;
-        txt.textContent = `Dieser Check ist eingefroren (Status: ${meta?.label || status}). Bearbeitungen sind nicht mehr möglich – nur Admins können Änderungen vornehmen.`;
+        // Typ-abhängige Status-Liste
+        const isVertrag = (typeof currentFormCheckType === 'function') && currentFormCheckType() === 'wartung';
+        const list = isVertrag ? CHECK_STATUS_VERTRAG : CHECK_STATUS;
+        const meta = list.find(s => s.value === status) || null;
+        let intro = `Dieser Check ist eingefroren (Status: ${meta?.label || status}).`;
+        if (isVertrag && status === '2') {
+          intro = `Der Wartungsvertrag ist aktiv (Status: ${meta?.label || status}). Inhalt eingefroren.`;
+        } else if (isVertrag && status === '3') {
+          intro = `Der Wartungsvertrag wurde gekündigt (Status: ${meta?.label || status}). Inhalt eingefroren.`;
+        }
+        txt.textContent = `${intro} Bearbeitungen, KI-Generierung und Datenübernahme sind nicht mehr möglich – nur Admins können Änderungen vornehmen.`;
       }
+      banner.style.background = (status === '3' && (typeof currentFormCheckType === 'function') && currentFormCheckType() === 'wartung')
+        ? 'linear-gradient(135deg,#a8312f,#7a1e1d)'  // Gekündigt = rot
+        : 'linear-gradient(135deg,#1e293b,#334155)'; // sonst dunkel
     } else {
       banner.style.display = 'none';
     }
@@ -7379,6 +7435,36 @@ async function refreshVertragInvoiceHistory() {
     list.innerHTML = `<div style="color:#a8312f;font-size:12px;padding:10px;text-align:center">⚠ Konnte Rechnungen nicht laden: ${e.message}</div>`;
     if (cnt) cnt.textContent = '–';
   }
+}
+
+// Badge auf dem Dashboard-Button: Anzahl fälliger Jahresrechnungen (überfällig + ≤14 Tage)
+async function refreshDashboardDueBadge() {
+  const badge = document.getElementById('dashboardDueBadge');
+  if (!badge) return;
+  try {
+    const checks = window._checksCache && window._checksCache.length
+      ? window._checksCache
+      : await loadChecksFromAirtable();
+    const today = new Date(); today.setHours(0,0,0,0);
+    let dueCount = 0;
+    for (const c of checks) {
+      if (c.checkType !== 'wartung') continue;
+      if (getCheckStatus(c) !== '2') continue;
+      const naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      if (!naechsteStr) continue;
+      const d = new Date(naechsteStr + 'T00:00:00');
+      if (isNaN(d.getTime())) continue;
+      const diff = Math.round((d - today) / 86400000);
+      if (diff <= 14) dueCount++;
+    }
+    if (dueCount > 0) {
+      badge.style.display = 'inline-flex';
+      badge.textContent = String(dueCount);
+      badge.title = `${dueCount} Jahresrechnung${dueCount === 1 ? '' : 'en'} fällig — Dashboard öffnen`;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { console.warn('Dashboard-Badge:', e.message); }
 }
 
 // Vom Dashboard aus einen Check öffnen (z.B. Klick auf fällige Vertragsabrechnung)
