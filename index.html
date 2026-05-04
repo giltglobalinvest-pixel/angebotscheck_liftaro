@@ -202,6 +202,28 @@ const pdfWorkerReady = Promise.resolve();</script>
     flex-shrink: 0;
   }
 
+  /* === Frozen Form: bei aktivem/gekündigtem Vertrag bzw. abgerechnetem Reparaturcheck === */
+  .frozen-form-area input:not([type="hidden"]):not(#f_status):not(#f_anfrageNr),
+  .frozen-form-area textarea,
+  .frozen-form-area select:not(#f_status),
+  .frozen-form-area .compare-table input,
+  .frozen-form-area [contenteditable="true"] {
+    pointer-events: none !important;
+    background: #eef2f6 !important;
+    color: #6b7280 !important;
+    cursor: not-allowed !important;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .frozen-form-area .compare-table { opacity: 0.85; }
+  .frozen-form-area button:not([data-frozen-allow]):not(.btn-preview):not(#btnGenerate):not(#btnDownloadFull) {
+    pointer-events: none !important;
+    opacity: 0.4 !important;
+    cursor: not-allowed !important;
+  }
+  .frozen-form-area .upload-zone { pointer-events: none !important; opacity: 0.5 !important; }
+  .frozen-form-area .w-check { pointer-events: none !important; }
+
   /* Einheitliches Count-Badge — rot, kompakt, animiert */
   .btn-badge {
     background: #ef4444;
@@ -1298,6 +1320,35 @@ const pdfWorkerReady = Promise.resolve();</script>
           </div>
         </div>
 
+        <!-- ◉ Rechnung-Bereich: ganz oben, immer sichtbar wenn relevant -->
+        <!-- Rechnung erstellen (Reparaturcheck: Status 3 / Vertragscheck: ab 14 Tage vor naechste_abrechnung_am) -->
+        <div id="invoiceBtnRow" class="hide-on-mobile" style="display:none;margin-top:14px;padding:14px 18px;background:linear-gradient(135deg,#fff8e1,#fdf3d3);border-left:4px solid #f59e0b;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div id="invoiceBtnRowTitle" style="font-size:12px;font-weight:600;color:#a06a00;text-transform:uppercase;letter-spacing:.4px">Status: Abrechenbar</div>
+            <div id="invoiceBtnRowSub" style="font-size:13px;color:var(--text);margin-top:2px">Dieser Check kann jetzt in Rechnung gestellt werden.</div>
+          </div>
+          <button onclick="createInvoiceFromCurrentCheck()" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;padding:10px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <span id="invoiceBtnLabel">Rechnung erstellen</span>
+          </button>
+        </div>
+        <!-- Vertrags-Hinweis: Nächste Jahresrechnung noch nicht fällig -->
+        <div id="invoiceWaitRow" style="display:none;margin-top:14px;padding:12px 18px;background:#f3f7fb;border-left:4px solid #5a7da8;border-radius:6px;align-items:center;gap:10px;font-size:12.5px;color:var(--text)">
+          <span style="font-size:18px">⏳</span>
+          <span id="invoiceWaitText">Nächste Jahresrechnung erstellbar ab –.</span>
+        </div>
+        <!-- Vertragscheck: Jahresrechnungs-Historie -->
+        <div id="vertragInvoiceHistory" style="display:none;margin-top:14px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          <div style="background:#0e6655;color:#fff;padding:10px 16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+              <span>Jahresrechnungs-Historie</span>
+            </div>
+            <span id="vertragInvoiceHistoryCount" style="background:rgba(255,255,255,.2);border-radius:10px;padding:1px 9px;font-size:11px">0</span>
+          </div>
+          <div id="vertragInvoiceHistoryList" style="padding:8px 14px 12px"></div>
+        </div>
+
         <!-- Mobile-Only: Inline-PDF-Viewer (werden nach loadCheck befüllt) -->
         <div id="mobileResultViewer" style="display:none;margin-top:20px"></div>
         <div id="mobileVorliegendViewer" style="display:none;margin-top:14px"></div>
@@ -1476,35 +1527,6 @@ const pdfWorkerReady = Promise.resolve();</script>
               <input type="hidden" id="f_kuendigung_ab" value="">
             </div>
           </div>
-        </div>
-
-        <!-- Rechnung erstellen (Reparaturcheck: Status 3 / Vertragscheck: ab 14 Tage vor naechste_abrechnung_am) -->
-        <div id="invoiceBtnRow" class="hide-on-mobile" style="display:none;margin-top:14px;padding:14px 18px;background:linear-gradient(135deg,#fff8e1,#fdf3d3);border-left:4px solid #f59e0b;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div>
-            <div id="invoiceBtnRowTitle" style="font-size:12px;font-weight:600;color:#a06a00;text-transform:uppercase;letter-spacing:.4px">Status: Abrechenbar</div>
-            <div id="invoiceBtnRowSub" style="font-size:13px;color:var(--text);margin-top:2px">Dieser Check kann jetzt in Rechnung gestellt werden.</div>
-          </div>
-          <button onclick="createInvoiceFromCurrentCheck()" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;padding:10px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            <span id="invoiceBtnLabel">Rechnung erstellen</span>
-          </button>
-        </div>
-        <!-- Vertrags-Hinweis: Nächste Jahresrechnung noch nicht fällig -->
-        <div id="invoiceWaitRow" style="display:none;margin-top:14px;padding:12px 18px;background:#f3f7fb;border-left:4px solid #5a7da8;border-radius:6px;align-items:center;gap:10px;font-size:12.5px;color:var(--text)">
-          <span style="font-size:18px">⏳</span>
-          <span id="invoiceWaitText">Nächste Jahresrechnung erstellbar ab –.</span>
-        </div>
-
-        <!-- Vertragscheck: Jahresrechnungs-Historie (nur sichtbar wenn checkType=wartung + Status=2/3 + min. 1 Rechnung existiert) -->
-        <div id="vertragInvoiceHistory" style="display:none;margin-top:14px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
-          <div style="background:#0e6655;color:#fff;padding:10px 16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-              <span>Jahresrechnungs-Historie</span>
-            </div>
-            <span id="vertragInvoiceHistoryCount" style="background:rgba(255,255,255,.2);border-radius:10px;padding:1px 9px;font-size:11px">0</span>
-          </div>
-          <div id="vertragInvoiceHistoryList" style="padding:8px 14px 12px"></div>
         </div>
 
         <div class="legal-block" id="legal-block">
@@ -2046,7 +2068,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
         <div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px">Aktive Vertragschecks mit anstehender Jahresrechnung — direkt abrechnen</div>
       </div>
-      <button onclick="document.getElementById('dueBillingsModal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+      <button onclick="closeDueBillingsModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
     </div>
 
     <!-- Filter + Suche + Sort -->
@@ -2076,7 +2098,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     </div>
 
     <!-- Tabelle (Liste) -->
-    <div id="dueBillingsList" style="flex:1;overflow-y:auto;padding:8px 22px 18px">
+    <div id="dueBillingsList" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 22px 18px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">
       <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:#0e6655;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>
     </div>
   </div>
@@ -2255,7 +2277,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.10';
+const APP_VERSION = 'V8.11';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3224,7 +3246,12 @@ async function loadCheck(data) {
   set('f_beauftragt_am',      data.beauftragt_am      || '');
   set('f_beauftragt_wie',     data.beauftragt_wie     || '');
   set('f_auftrag_ausgefuehrt', data.auftrag_ausgefuehrt || '');
-  set('f_naechste_abrechnung_am', data.naechste_abrechnung_am || '');
+  // Vertragscheck: wenn naechste_abrechnung_am leer, aus Vertragsbeginn ableiten
+  let nextBilling = data.naechste_abrechnung_am || '';
+  if (!nextBilling && data.checkType === 'wartung' && typeof _computeNextBillingDate === 'function') {
+    nextBilling = _computeNextBillingDate(data);
+  }
+  set('f_naechste_abrechnung_am', nextBilling);
   set('f_letzte_abrechnung_am',   data.letzte_abrechnung_am   || '');
   set('f_abrechnungs_anzahl',     data.abrechnungs_anzahl     || '');
   set('f_gekuendigt_am',          data.gekuendigt_am          || '');
@@ -7004,7 +7031,17 @@ function updateInvoiceButtonVisibility() {
     row.style.display = 'none';
     return;
   }
-  const naechsteStr = document.getElementById('f_naechste_abrechnung_am')?.value?.trim() || '';
+  let naechsteStr = document.getElementById('f_naechste_abrechnung_am')?.value?.trim() || '';
+  if (!naechsteStr) {
+    // Fallback: aus Vertragsbeginn (Wartungs-Tabellenfeld) ableiten
+    const formC = (typeof collectFormData === 'function') ? collectFormData() : {};
+    naechsteStr = _computeNextBillingDate(formC);
+    if (naechsteStr) {
+      // Auch ins Hidden-Feld schreiben, damit Save den Wert mitnimmt
+      const el = document.getElementById('f_naechste_abrechnung_am');
+      if (el && !el.value) el.value = naechsteStr;
+    }
+  }
   if (!naechsteStr) {
     row.style.display = 'none';
     return;
@@ -7086,6 +7123,9 @@ function applyCheckFreeze() {
   // Welche Felder werden gesperrt?
   const printArea = document.getElementById('print-area');
   if (!printArea) return;
+  // Aggressive Sperre via CSS-Klasse (deckt auch Tabellenfelder, Buttons, Upload-Zonen ab)
+  if (frozen) printArea.classList.add('frozen-form-area');
+  else        printArea.classList.remove('frozen-form-area');
   const inputs = printArea.querySelectorAll('input, select, textarea, [contenteditable="true"]');
   inputs.forEach(el => {
     // Ausnahme: Status-Dropdown selbst (eigene Logik), Datums-Anzeige
@@ -7759,13 +7799,45 @@ async function refreshDashboardDueBadge() {
   } catch(e) { console.warn('Dashboard-Badge:', e.message); }
 }
 
+// ── Helper: aus Vertragsbeginn (DD.MM.YYYY) die ISO-Form ermitteln ──
+function _vertragsbeginnIso(c) {
+  const candidates = [c?.naechste_abrechnung_am, c?.wt_vertragsbeginn, c?.wv_vertragsbeginn, c?.wa_vertragsbeginn];
+  for (const cand of candidates) {
+    if (!cand) continue;
+    const s = String(cand).trim();
+    if (!s) continue;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // ISO
+    const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  }
+  return '';
+}
+// ── Hilfsfunktion: nächste Abrechnung aus Vertragsbeginn + abgerechnete Perioden berechnen ──
+function _computeNextBillingDate(c) {
+  const beginnIso = _vertragsbeginnIso(c);
+  if (!beginnIso) return '';
+  const count = parseInt(c?.abrechnungs_anzahl || '0', 10) || 0;
+  const d = new Date(beginnIso + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  d.setFullYear(d.getFullYear() + count);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // ── Fälligkeiten-Modal: separate Vollseiten-Ansicht für alle fälligen Vertragsabrechnungen ──
 window._dueBillingsCache = [];
 window._dueBillingsFilter = 'all'; // 'overdue' | 'due14' | 'due30' | 'noDate' | 'all'
 
 async function openDueBillingsModal() {
   document.getElementById('dueBillingsModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden'; // verhindert Hintergrund-Scroll
   await loadDueBillings(false);
+}
+function closeDueBillingsModal() {
+  document.getElementById('dueBillingsModal').style.display = 'none';
+  document.body.style.overflow = '';
 }
 
 async function loadDueBillings(forceReload) {
@@ -7780,11 +7852,16 @@ async function loadDueBillings(forceReload) {
     }
   }
   // Aktive Vertragschecks filtern + Bucket-Berechnung
+  // Fallback: Wenn naechste_abrechnung_am leer ist, aus Vertragsbeginn + abrechnungs_anzahl ableiten
   const today = new Date(); today.setHours(0,0,0,0);
   window._dueBillingsCache = (window._checksCache || [])
     .filter(c => c.checkType === 'wartung' && getCheckStatus(c) === '2')
     .map(c => {
-      const naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      let naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      if (!naechsteStr) {
+        // Fallback: aus Vertragsbeginn ableiten
+        naechsteStr = _computeNextBillingDate(c);
+      }
       let bucket = 'noDate', days = null, dueDate = null;
       if (naechsteStr) {
         const d = new Date(naechsteStr + 'T00:00:00');
@@ -8011,7 +8088,8 @@ async function refreshDueBillingsBadge() {
     for (const c of checks) {
       if (c.checkType !== 'wartung') continue;
       if (getCheckStatus(c) !== '2') continue;
-      const naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      let naechsteStr = (c.naechste_abrechnung_am || '').trim();
+      if (!naechsteStr) naechsteStr = _computeNextBillingDate(c);
       if (!naechsteStr) continue;
       const d = new Date(naechsteStr + 'T00:00:00');
       if (isNaN(d.getTime())) continue;
