@@ -2007,7 +2007,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.0';
+const APP_VERSION = 'V8.0.1';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2153,7 +2153,12 @@ async function atUpdate(table, recordId, fields) {
     headers: { 'Authorization': 'Bearer ' + APP_KEYS.airtableWriteKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
-  return await res.json();
+  const data = await res.json();
+  if (!res.ok || (data && data.error)) {
+    const errMsg = (data && data.error && (data.error.message || data.error.type)) || res.statusText || 'HTTP ' + res.status;
+    throw new Error(errMsg);
+  }
+  return data;
 }
 
 async function blobToBase64(blob) {
@@ -3518,7 +3523,26 @@ async function applyCheckStatusChange(idx, newStatus, extraFields) {
     } catch(e) {}
     const fields = Object.assign({ status: newStatus }, extraFields || {});
     if (typeof formData === 'string') fields.formData = formData;
-    await atUpdate('Checks', c._recordId, fields);
+    // Retry-Fallback: unbekannte Felder rausfiltern (für Status-spezifische Felder, die noch nicht in Airtable existieren)
+    const tryUpdate = async (payload) => {
+      let attempt = 0;
+      while (true) {
+        try { return await atUpdate('Checks', c._recordId, payload); }
+        catch(e) {
+          const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+          if (m && m[1] && payload[m[1]] !== undefined && attempt < 8) {
+            const reduced = { ...payload };
+            delete reduced[m[1]];
+            console.warn('Feld unbekannt, retry ohne:', m[1]);
+            payload = reduced;
+            attempt++;
+            continue;
+          }
+          throw e;
+        }
+      }
+    };
+    await tryUpdate(fields);
     showToast(`Status auf "${getCheckStatusMeta(c).short}" geändert.`, 'ok');
     renderChecksStatusChips();
     filterChecks();
