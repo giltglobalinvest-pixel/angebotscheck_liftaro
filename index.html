@@ -8,6 +8,10 @@
 <meta name="apple-mobile-web-app-title" content="Liftaro">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a3a5c">
+<!-- Cache-Steuerung: index.html selbst nicht aggressiv cachen, damit Updates schneller ankommen -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Reparaturangebot – Liftaro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
@@ -2251,7 +2255,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.9';
+const APP_VERSION = 'V8.10';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2723,6 +2727,10 @@ async function showApp() {
       refreshDashboardDueBadge();
       if (typeof refreshDueBillingsBadge === 'function') refreshDueBillingsBadge();
     }, 1500);
+  }
+  // Stille Versionsprüfung nach Login (markiert Badge wenn neue Version verfügbar)
+  if (typeof silentVersionCheck === 'function') {
+    setTimeout(() => silentVersionCheck(), 2500);
   }
 }
 
@@ -5520,7 +5528,8 @@ async function checkForAppUpdate() {
     showToast('Suche nach Updates …', 'ok');
 
     // Aktuellsten Commit für index.html aus GitHub holen (öffentliches Repo, keine Auth nötig)
-    const apiUrl = 'https://api.github.com/repos/giltglobalinvest-pixel/angebotscheck_liftaro/commits?path=index.html&per_page=1';
+    // Eigener Cache-Bust auch für GitHub API (manche Proxies cachen die Antwort)
+    const apiUrl = 'https://api.github.com/repos/giltglobalinvest-pixel/angebotscheck_liftaro/commits?path=index.html&per_page=1&_=' + Date.now();
     const r = await fetch(apiUrl, {
       headers: { 'Accept': 'application/vnd.github.v3+json' },
       cache: 'no-store'
@@ -5547,24 +5556,85 @@ async function checkForAppUpdate() {
     const ok = confirm(
       `Neue Version verfügbar: ${remote}\n` +
       `Du nutzt aktuell: ${APP_VERSION}\n\n` +
-      `Jetzt aktualisieren?\n(Die Seite wird mit Cache-Bust neu geladen.)`
+      `Jetzt aktualisieren?\n` +
+      `→ Browser-Cache wird gelöscht\n` +
+      `→ Service Worker werden entfernt\n` +
+      `→ Die Seite wird komplett neu geladen`
     );
     if (!ok) return;
 
-    // Cache-Bust: Versionsparameter in URL setzen, dann reload.
-    // Funktioniert auch im Loader-iFrame (location bezieht sich auf das Frame).
-    try {
-      const u = new URL(window.location.href);
-      u.searchParams.set('_v', Date.now().toString());
-      window.location.replace(u.toString());
-    } catch(_) {
-      // Fallback: einfacher Reload
-      window.location.reload();
+    showToast('Lade neue Version – Cache wird gelöscht …', 'ok');
+    if (badge) badge.textContent = '⏳';
+
+    // 1) Alle Service Worker entfernen (falls vorhanden)
+    if ('serviceWorker' in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister().catch(()=>{})));
+      } catch(e) { console.warn('SW unregister:', e.message); }
     }
+
+    // 2) Cache-Storage komplett leeren (PWA + andere Caches)
+    if ('caches' in window) {
+      try {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n).catch(()=>{})));
+      } catch(e) { console.warn('caches clear:', e.message); }
+    }
+
+    // 3) Pre-fetch der neuen Version mit cache:no-store, damit
+    //    der Browser die frische Datei in den Disk-Cache holt
+    try {
+      const tag = remote + '_' + Date.now();
+      await fetch(window.location.pathname + '?_v=' + tag, { cache: 'no-store' });
+    } catch(e) { console.warn('prefetch failed:', e.message); }
+
+    // 4) localStorage-Marker setzen, damit der Loader (falls vorhanden) merkt,
+    //    dass nach Reload mit der neuen Version gearbeitet wird
+    try { localStorage.setItem('liftaro_last_seen_version', remote); } catch(e) {}
+
+    // 5) Hard-Reload mit starkem Cache-Bust und Versions-Tag in URL
+    const u = new URL(window.location.href);
+    // Alte Cache-Buster entfernen, damit URL nicht endlos länger wird
+    u.searchParams.delete('_v');
+    u.searchParams.delete('t');
+    u.searchParams.delete('cb');
+    u.searchParams.delete('nocache');
+    u.searchParams.set('_v', remote);
+    u.searchParams.set('t', Date.now().toString());
+    // location.href statt replace: erzwingt eine neue Navigation, kein Back-Cache-Reuse
+    window.location.href = u.toString();
   } catch(e) {
     if (badge) badge.textContent = origText || APP_VERSION;
     showToast('Update-Check fehlgeschlagen: ' + (e.message || e), 'error');
   }
+}
+
+// Auto-Hinweis: Bei Login prüfen, ob auf GitHub eine neuere Version vorhanden ist.
+// Statt aufdringlichem Banner blinkt nur der Versions-Badge sanft.
+async function silentVersionCheck() {
+  try {
+    const apiUrl = 'https://api.github.com/repos/giltglobalinvest-pixel/angebotscheck_liftaro/commits?path=index.html&per_page=1&_=' + Date.now();
+    const r = await fetch(apiUrl, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' },
+      cache: 'no-store'
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    const msg = (data[0] && data[0].commit && data[0].commit.message) || '';
+    const m = msg.match(/Deploy\s+(V[0-9.]+)/);
+    const remote = m ? m[1] : null;
+    if (!remote || remote === APP_VERSION) return;
+    // Neue Version vorhanden → Versions-Badge sanft markieren + Tooltip
+    const badge = document.getElementById('appVersionBadge');
+    if (badge) {
+      badge.style.background = 'rgba(125,194,66,.4)';
+      badge.style.borderColor = 'rgba(168,224,112,.6)';
+      badge.style.color = '#fff';
+      badge.title = `Neue Version ${remote} verfügbar – klicken zum Aktualisieren`;
+      badge.textContent = APP_VERSION + ' → ' + remote;
+    }
+  } catch(e) { /* Stillschweigen bei Fehler — kein Toast */ }
 }
 
 // Aktuell hochgeladene PDF (Vorliegend / Alternativ) lokal herunterladen
