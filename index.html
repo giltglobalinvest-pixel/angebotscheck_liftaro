@@ -1982,8 +1982,9 @@ const pdfWorkerReady = Promise.resolve();</script>
           <input type="file" accept=".json" style="display:none" onchange="importChecks(this)">
         </label>
       </div>
-      <div id="adminCheckActions" style="display:none;gap:8px">
+      <div id="adminCheckActions" style="display:none;gap:8px;flex-wrap:wrap">
         <button onclick="renumberAllChecks()" title="Alle Checks fortlaufend nummerieren ab C_1200 – Admin" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🔢 Neu nummerieren</button>
+        <button onclick="migrateVertragschecks()" title="Bestandsdaten-Migration: alle Vertragsrechnungen löschen, Vertragschecks auf Status 'aktiv' zurücksetzen – Admin" style="background:#fff;border:1px solid #2a5c3a;color:#2a5c3a;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🔄 Vertragschecks migrieren</button>
         <button onclick="deleteUnnumberedChecks()" title="Alle Checks ohne Checknummer löschen – Admin" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🧹 Ohne ID löschen</button>
         <button onclick="deleteAllChecks()" title="Alle Checks löschen – Admin" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Alle löschen</button>
       </div>
@@ -2023,7 +2024,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.2';
+const APP_VERSION = 'V8.3';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3832,6 +3833,143 @@ async function deleteAllChecks() {
   if (!checks.length) { showToast('Keine Checks vorhanden.', 'ok'); return; }
   await deleteRecordsWithProgress(checks, 'Lösche alle Checks');
   openAllChecks();
+}
+
+// ── Migration: Vertragschecks auf neues Status-Modell zurücksetzen ──
+// Löscht alle Rechnungen, die zu Vertragschecks gehören; setzt Status der Vertragschecks auf '2' (aktiv);
+// initialisiert abrechnungs_anzahl=0 und naechste_abrechnung_am aus dem Vertragsbeginn
+async function migrateVertragschecks() {
+  if (!isAdmin()) { showToast('Nur Admins dürfen migrieren.', 'error'); return; }
+  const bar = document.getElementById('statusBar');
+
+  // 1. Daten laden
+  const checksAll = await loadChecksFromAirtable();
+  const vertragschecks = checksAll.filter(c => c.checkType === 'wartung');
+  const rechnungen = await loadRechnungen();
+  const vertragsRechnungen = rechnungen.filter(r => {
+    const isWartungInvoice = (r.checkType === 'wartung');
+    if (isWartungInvoice) return true;
+    // Fallback: über check_id mappen falls checkType nicht gesetzt war
+    if (!r.check_id) return false;
+    const c = vertragschecks.find(x => x.id === r.check_id || x.requestId === r.check_id);
+    return !!c;
+  });
+
+  if (!vertragschecks.length && !vertragsRechnungen.length) {
+    showToast('Keine Vertragschecks oder -rechnungen zum Migrieren gefunden.', 'ok');
+    return;
+  }
+
+  const msg = `Migration der Vertragsabrechnung\n\n` +
+    `• ${vertragsRechnungen.length} Vertragsrechnung(en) werden GELÖSCHT (inkl. PDF-Anhänge)\n` +
+    `• ${vertragschecks.length} Vertragscheck(s) werden auf Status "Vertrag aktiv" zurückgesetzt\n` +
+    `• abrechnungs_anzahl wird auf 0 gesetzt\n` +
+    `• naechste_abrechnung_am wird aus dem Vertragsbeginn (wt_vertragsbeginn / wv_vertragsbeginn) initialisiert\n\n` +
+    `Diese Aktion kann nicht rückgängig gemacht werden.\nWirklich fortfahren?`;
+  if (!confirm(msg)) return;
+
+  let rDeleted = 0, rFail = 0;
+  let cUpdated = 0, cFail = 0;
+
+  // 2. Rechnungen löschen (Batch)
+  if (vertragsRechnungen.length) {
+    if (bar) { bar.className = 'status-bar'; bar.innerHTML = `<span>🔄</span><span>Lösche ${vertragsRechnungen.length} Vertragsrechnungen …</span>`; }
+    const ids = vertragsRechnungen.map(r => r._recordId).filter(Boolean);
+    for (let i = 0; i < ids.length; i += 10) {
+      const batch = ids.slice(i, i + 10);
+      try {
+        const out = await atDeleteBatch('Rechnungen', batch);
+        rDeleted += out.length;
+      } catch(e) {
+        console.warn('Batch-Delete fehlgeschlagen:', e.message);
+        rFail += batch.length;
+      }
+      if (i + 10 < ids.length) await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  // Helper: DD.MM.YYYY → YYYY-MM-DD
+  const parseDeIso = (s) => {
+    if (!s) return '';
+    const m = s.toString().trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    // ISO bereits?
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return '';
+  };
+
+  // 3. Vertragschecks updaten
+  for (let i = 0; i < vertragschecks.length; i++) {
+    const c = vertragschecks[i];
+    if (bar) { bar.className = 'status-bar'; bar.innerHTML = `<span>🔄</span><span>Setze Vertragschecks zurück: ${cUpdated} / ${vertragschecks.length} …</span>`; }
+    try {
+      // Vertragsbeginn aus Wartungs-Tabellenfeldern ermitteln
+      const beginnDe = (c.wt_vertragsbeginn || c.wv_vertragsbeginn || '').trim();
+      const beginnIso = parseDeIso(beginnDe);
+      // formData neu serialisieren
+      const merged = { ...c };
+      delete merged._recordId; delete merged._attVorliegend;
+      delete merged._attAlternativ; delete merged._attErgebnis;
+      delete merged._attServiceRechnung; delete merged._attArbeitsbericht;
+      delete merged._attSignedVertrag;
+      merged.status = '2';
+      merged.abrechnungs_anzahl = '0';
+      merged.letzte_abrechnung_am = '';
+      if (beginnIso) merged.naechste_abrechnung_am = beginnIso;
+      // Optional: gekuendigt_* Felder leeren falls vorhanden (kein gekündigter Status mehr)
+      merged.gekuendigt_am = '';
+      merged.gekuendigt_grund = '';
+
+      const upd = {
+        status: '2',
+        abrechnungs_anzahl: '0',
+        letzte_abrechnung_am: '',
+        gekuendigt_am: '',
+        gekuendigt_grund: '',
+        formData: JSON.stringify(merged),
+      };
+      if (beginnIso) upd.naechste_abrechnung_am = beginnIso;
+
+      // writeWithFallback für unbekannte Felder
+      const tryUpdate = async (payload) => {
+        let attempt = 0;
+        while (true) {
+          try { return await atUpdate('Checks', c._recordId, payload); }
+          catch(e) {
+            const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+            if (m && m[1] && payload[m[1]] !== undefined && attempt < 8) {
+              const reduced = { ...payload }; delete reduced[m[1]];
+              console.warn('Feld unbekannt, retry ohne:', m[1]);
+              payload = reduced; attempt++; continue;
+            }
+            throw e;
+          }
+        }
+      };
+      await tryUpdate(upd);
+      cUpdated++;
+    } catch(e) {
+      console.warn('Migration fehlgeschlagen für', c._recordId, e.message);
+      cFail++;
+    }
+    if ((i + 1) % 5 === 0) await new Promise(r => setTimeout(r, 250));
+  }
+
+  // 4. Cache neu laden + UI updaten
+  window._checksCache = await loadChecksFromAirtable();
+  if (document.getElementById('checksModal').style.display !== 'none') filterChecks();
+
+  // 5. Erfolgsmeldung
+  const summary = `Migration abgeschlossen:\n` +
+    `• ${rDeleted} Rechnung(en) gelöscht${rFail ? ` (${rFail} Fehler)` : ''}\n` +
+    `• ${cUpdated} Vertragscheck(s) zurückgesetzt${cFail ? ` (${cFail} Fehler)` : ''}`;
+  if (bar) {
+    const hasErr = rFail || cFail;
+    bar.className = hasErr ? 'status-bar error' : 'status-bar ok';
+    bar.innerHTML = `<span>${hasErr ? '⚠' : '✓'}</span><span>${summary.replace(/\n/g, ' · ')}</span>`;
+    setTimeout(() => { bar.className = 'status-bar'; bar.innerHTML = ''; }, 8000);
+  }
+  alert(summary);
 }
 
 // Bestehende Checks fortlaufend nummerieren ab C_1200 (sortiert nach savedAt aufsteigend)
