@@ -2309,6 +2309,69 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- Benutzer-Verwaltung (nur für Admins sichtbar) -->
+<div id="usersModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:5050;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(900px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Benutzer-Verwaltung</span>
+          <span id="usersCount" style="background:rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:2px 9px;font-size:11.5px;font-weight:700">0</span>
+        </div>
+        <div style="color:rgba(255,255,255,.7);font-size:11.5px;margin-top:2px">Aktive und inaktive Benutzer · Rollen verwalten</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="openNewUserDialog()" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px">+ Neuer Benutzer</button>
+        <button onclick="document.getElementById('usersModal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+      </div>
+    </div>
+    <div id="usersList" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 22px 18px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
+      <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px">Daten werden geladen …</div>
+    </div>
+  </div>
+</div>
+
+<!-- Benutzer Editor (Anlegen / Bearbeiten) -->
+<div id="userEditorModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5200;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:14px;width:min(520px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <span id="userEditorTitle" style="color:#fff;font-size:15px;font-weight:700">Neuer Benutzer</span>
+      <button onclick="document.getElementById('userEditorModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px">
+      <input type="hidden" id="ue_recordId">
+      <div class="field"><label>Name</label><input type="text" id="ue_name" placeholder="Vorname Nachname"></div>
+      <div class="field"><label>API-Key (Zugangscode)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="ue_api_key" placeholder="z. B. liftaro-xxx-2025" style="flex:1;font-family:'DM Mono',monospace">
+          <button type="button" onclick="generateApiKeyForUser()" style="background:var(--sky);border:1px solid var(--border);color:var(--navy);border-radius:6px;padding:0 12px;cursor:pointer;font-size:11.5px;white-space:nowrap">↻ Generieren</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Mit diesem Key meldet sich der User in der App an. Muss eindeutig sein.</div>
+      </div>
+      <div class="field"><label>Rolle</label>
+        <select id="ue_role" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
+          <option value="user">User (Standard-Berechtigung)</option>
+          <option value="admin">Admin (Vollzugriff inkl. Benutzer-Verwaltung)</option>
+        </select>
+      </div>
+      <div class="field"><label>Status</label>
+        <select id="ue_status" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
+          <option value="aktiv">aktiv</option>
+          <option value="inaktiv">inaktiv (kann sich nicht mehr einloggen)</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <button id="ue_btnDelete" onclick="deleteUserCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button onclick="document.getElementById('userEditorModal').style.display='none'" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">Abbrechen</button>
+        <button onclick="saveUser()" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">💾 Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="overlay">
   <div class="progress-box">
     <div class="spinner"></div>
@@ -2322,7 +2385,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.20';
+const APP_VERSION = 'V8.21';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2593,6 +2656,16 @@ async function ensureFields(tableName, requiredFields) {
 }
 
 async function setupTables() {
+  // User-Tabelle: notwendige Felder sicherstellen (Tabelle existiert bereits, da Login-Basis)
+  try {
+    await ensureFields('User', [
+      { name: 'name',    type: 'singleLineText' },
+      { name: 'api_key', type: 'singleLineText' },
+      { name: 'role',    type: 'singleLineText' },
+      { name: 'status',  type: 'singleLineText' },
+    ]);
+  } catch(e) { console.warn('ensureFields(User):', e.message); }
+
   await Promise.all([
     ensureTable('Checks', [
       { name: 'id', type: 'singleLineText' },
@@ -2776,9 +2849,25 @@ async function showLoginScreen() {
 async function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('appContent').style.display  = '';
-  // Show user greeting
+  // Show user greeting + Rollen-Badge + Admin-Verwaltungsbutton
   const greet = document.getElementById('userGreeting');
-  if (greet && APP_KEYS.user) greet.textContent = '👤 ' + (APP_KEYS.user.name || APP_KEYS.user.api_key);
+  if (greet && APP_KEYS.user) {
+    const name = APP_KEYS.user.name || APP_KEYS.user.api_key || '';
+    const role = (APP_KEYS.user.role || 'user').toString().toLowerCase().trim();
+    const roleLabel = role === 'admin' ? 'Admin' : 'User';
+    const roleColor = role === 'admin'
+      ? 'background:rgba(125,194,66,.22);color:#a8e070;border:1px solid rgba(125,194,66,.4)'
+      : 'background:rgba(255,255,255,.1);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.18)';
+    let html = `<span>👤 ${name}</span>`
+      + `<span title="Rolle" style="margin-left:6px;${roleColor};border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;font-family:'DM Sans',sans-serif">${roleLabel}</span>`;
+    if (role === 'admin') {
+      html += `<button onclick="openUsersModal()" title="Benutzer-Verwaltung" style="margin-left:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.85);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Benutzer
+      </button>`;
+    }
+    greet.innerHTML = html;
+  }
   // Show connection status bar
   const cs = document.getElementById('connStatus');
   if (cs) { cs.style.display = 'flex'; setConnDot('dotAirtable', 'checking'); setConnDot('dotAnthropic', 'checking'); }
@@ -8239,6 +8328,188 @@ async function refreshDueBillingsBadge() {
       badge.style.display = 'none';
     }
   } catch(e) { console.warn('DueBillings-Badge:', e.message); }
+}
+
+// ── Benutzer-Verwaltung (Admin only) ────────────────────────────────
+window._usersCache = [];
+
+async function openUsersModal() {
+  if (!isAdmin()) { showToast('Nur Admins dürfen Benutzer verwalten.', 'error'); return; }
+  document.getElementById('usersModal').style.display = 'flex';
+  await loadUsersList();
+}
+
+async function loadUsersList() {
+  const list = document.getElementById('usersList');
+  list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>';
+  try {
+    const recs = await atRead('User');
+    window._usersCache = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    renderUsersList();
+  } catch(e) {
+    list.innerHTML = `<div style="color:#a8312f;font-size:13px;padding:30px;text-align:center">⚠ Fehler beim Laden: ${e.message}</div>`;
+  }
+}
+
+function renderUsersList() {
+  const list = document.getElementById('usersList');
+  const cnt  = document.getElementById('usersCount');
+  const items = (window._usersCache || []).slice().sort((a, b) => {
+    // Aktive zuerst, dann Admins
+    const aActive = (a.status || '').toLowerCase() === 'aktiv' ? 0 : 1;
+    const bActive = (b.status || '').toLowerCase() === 'aktiv' ? 0 : 1;
+    if (aActive !== bActive) return aActive - bActive;
+    const aAdmin = (a.role || '').toLowerCase() === 'admin' ? 0 : 1;
+    const bAdmin = (b.role || '').toLowerCase() === 'admin' ? 0 : 1;
+    if (aAdmin !== bAdmin) return aAdmin - bAdmin;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  if (cnt) cnt.textContent = String(items.length);
+  if (!items.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:30px;font-style:italic">Noch keine Benutzer angelegt.</div>';
+    return;
+  }
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <thead><tr style="background:#f3f7fb;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px">
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Name</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">API-Key</th>
+        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);width:90px">Rolle</th>
+        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);width:90px">Status</th>
+        <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);width:120px">Aktion</th>
+      </tr></thead>
+      <tbody>
+      ${items.map((u, i) => {
+        const isCurrent = APP_KEYS.user && (APP_KEYS.user.api_key === u.api_key);
+        const role = (u.role || 'user').toLowerCase();
+        const status = (u.status || 'aktiv').toLowerCase();
+        const roleBadge = role === 'admin'
+          ? '<span style="background:#7dc242;color:#fff;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:700">ADMIN</span>'
+          : '<span style="background:#cbd5e1;color:#475569;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:700">USER</span>';
+        const statusBadge = status === 'aktiv'
+          ? '<span style="background:#3d7a14;color:#fff;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:700">AKTIV</span>'
+          : '<span style="background:#94a3b8;color:#fff;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:700">INAKTIV</span>';
+        return `
+          <tr style="font-size:12.5px;border-bottom:1px solid var(--border)${isCurrent ? ';background:#fff8e1' : ''}">
+            <td style="padding:10px;vertical-align:middle">
+              <div style="font-weight:700;color:var(--navy)">${(u.name || '–').replace(/[<>"&]/g,'')}</div>
+              ${isCurrent ? '<div style="font-size:10.5px;color:#a06a00;font-weight:600;margin-top:2px">DU</div>' : ''}
+            </td>
+            <td style="padding:10px;vertical-align:middle;font-family:'DM Mono',monospace;font-size:11.5px;color:var(--muted)">${(u.api_key || '–').replace(/[<>"&]/g,'')}</td>
+            <td style="padding:10px;vertical-align:middle;text-align:center">${roleBadge}</td>
+            <td style="padding:10px;vertical-align:middle;text-align:center">${statusBadge}</td>
+            <td style="padding:10px;vertical-align:middle;text-align:right">
+              <button onclick="openUserEditorByIndex(${i})" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11.5px;cursor:pointer;font-family:'DM Sans',sans-serif">✏ Bearbeiten</button>
+            </td>
+          </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function openUserEditorByIndex(i) {
+  const items = (window._usersCache || []).slice().sort((a, b) => {
+    const aActive = (a.status || '').toLowerCase() === 'aktiv' ? 0 : 1;
+    const bActive = (b.status || '').toLowerCase() === 'aktiv' ? 0 : 1;
+    if (aActive !== bActive) return aActive - bActive;
+    const aAdmin = (a.role || '').toLowerCase() === 'admin' ? 0 : 1;
+    const bAdmin = (b.role || '').toLowerCase() === 'admin' ? 0 : 1;
+    if (aAdmin !== bAdmin) return aAdmin - bAdmin;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  const u = items[i];
+  if (!u) return;
+  openUserEditor(u);
+}
+
+function openUserEditor(user) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : String(v); };
+  set('ue_recordId', user?._recordId || '');
+  set('ue_name',     user?.name || '');
+  set('ue_api_key',  user?.api_key || '');
+  set('ue_role',     (user?.role || 'user').toLowerCase());
+  set('ue_status',   (user?.status || 'aktiv').toLowerCase());
+  document.getElementById('userEditorTitle').textContent = user?._recordId ? `Benutzer bearbeiten: ${user.name || ''}` : 'Neuer Benutzer';
+  // Lösch-Button nur bei bestehenden Benutzern (und nie für sich selbst)
+  const isSelf = user?.api_key && APP_KEYS.user && APP_KEYS.user.api_key === user.api_key;
+  document.getElementById('ue_btnDelete').style.display = (user?._recordId && !isSelf) ? 'inline-flex' : 'none';
+  document.getElementById('userEditorModal').style.display = 'flex';
+}
+
+function openNewUserDialog() {
+  openUserEditor(null);
+  // Default-Key generieren
+  document.getElementById('ue_api_key').value = _generateUniqueApiKey();
+}
+
+function _generateUniqueApiKey() {
+  // Format: liftaro-xxxxxxx-yyyy (z. B. "liftaro-3k4m9zp-2026")
+  const rand = Math.random().toString(36).slice(2, 9);
+  const year = new Date().getFullYear();
+  return `liftaro-${rand}-${year}`;
+}
+
+function generateApiKeyForUser() {
+  document.getElementById('ue_api_key').value = _generateUniqueApiKey();
+}
+
+async function saveUser() {
+  if (!isAdmin()) { showToast('Nur Admins dürfen Benutzer speichern.', 'error'); return; }
+  const g = id => document.getElementById(id)?.value?.trim() || '';
+  const recordId = g('ue_recordId');
+  const name = g('ue_name');
+  const apiKey = g('ue_api_key');
+  const role = g('ue_role') || 'user';
+  const status = g('ue_status') || 'aktiv';
+  if (!name) { showToast('Bitte Name eingeben.', 'error'); return; }
+  if (!apiKey) { showToast('Bitte API-Key eingeben oder generieren.', 'error'); return; }
+
+  // Schutz: API-Key muss eindeutig sein
+  const conflict = (window._usersCache || []).find(u => u.api_key === apiKey && u._recordId !== recordId);
+  if (conflict) { showToast(`API-Key bereits vergeben (${conflict.name}). Anderen wählen.`, 'error'); return; }
+
+  // Selbst-Sperre: aktuelle Admin-Sitzung darf sich nicht selbst auf inaktiv/user setzen
+  const isSelf = APP_KEYS.user && APP_KEYS.user.api_key === apiKey;
+  if (isSelf) {
+    if (status !== 'aktiv') { showToast('Du kannst dich nicht selbst deaktivieren.', 'error'); return; }
+    if (role !== 'admin')   { showToast('Du kannst dir nicht selbst Admin-Rechte entziehen.', 'error'); return; }
+  }
+
+  const fields = { name, api_key: apiKey, role, status };
+  showToast('Benutzer wird gespeichert …', 'ok');
+  try {
+    if (recordId) {
+      await atUpdate('User', recordId, fields);
+    } else {
+      await atWrite('User', fields);
+    }
+    document.getElementById('userEditorModal').style.display = 'none';
+    showToast(recordId ? 'Benutzer aktualisiert.' : 'Benutzer angelegt.', 'ok');
+    await loadUsersList();
+  } catch(e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+async function deleteUserCurrent() {
+  if (!isAdmin()) { showToast('Nur Admins dürfen Benutzer löschen.', 'error'); return; }
+  const recordId = document.getElementById('ue_recordId').value;
+  const name = document.getElementById('ue_name').value;
+  const apiKey = document.getElementById('ue_api_key').value;
+  if (!recordId) return;
+  if (APP_KEYS.user && APP_KEYS.user.api_key === apiKey) {
+    showToast('Du kannst dich nicht selbst löschen.', 'error'); return;
+  }
+  if (!confirm(`Benutzer "${name}" wirklich löschen?\n\nDer Zugang ist danach unwiderruflich entfernt.`)) return;
+  showToast('Benutzer wird gelöscht …', 'ok');
+  try {
+    await atDelete('User', recordId);
+    document.getElementById('userEditorModal').style.display = 'none';
+    showToast('Benutzer gelöscht.', 'ok');
+    await loadUsersList();
+  } catch(e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error');
+  }
 }
 
 // Vom Dashboard aus einen Check öffnen (z.B. Klick auf fällige Vertragsabrechnung)
