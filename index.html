@@ -61,19 +61,90 @@ const pdfWorkerReady = Promise.resolve();</script>
     border-radius: 4px;
   }
   .topbar-right { display: flex; align-items: center; gap: 12px; }
+  /* === Topbar-Buttons: einheitliches, ruhiges Design === */
   .btn-settings {
-    background: rgba(255,255,255,.12);
-    border: 1px solid rgba(255,255,255,.2);
-    color: rgba(255,255,255,.8);
-    border-radius: 7px;
-    padding: 8px 12px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    color: rgba(255,255,255,.82);
+    border-radius: 8px;
+    padding: 7px 13px;
     font-family: 'DM Sans', sans-serif;
     font-size: 12px;
+    font-weight: 500;
     cursor: pointer;
-    display: flex; align-items: center; gap: 6px;
-    transition: background .15s;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background .15s, border-color .15s, color .15s, transform .1s;
+    white-space: nowrap;
+    line-height: 1;
   }
-  .btn-settings:hover { background: rgba(255,255,255,.2); color: #fff; }
+  .btn-settings svg { opacity: 0.85; }
+  .btn-settings:hover {
+    background: rgba(255,255,255,.14);
+    border-color: rgba(255,255,255,.22);
+    color: #fff;
+  }
+  .btn-settings:hover svg { opacity: 1; }
+  .btn-settings:active { transform: scale(0.97); }
+  .btn-settings:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Aktiver Modal-Button (wenn das Modal offen ist) */
+  .btn-settings.active {
+    background: rgba(255,255,255,.18);
+    border-color: rgba(255,255,255,.3);
+    color: #fff;
+  }
+
+  /* Primär-Aktion (Speichern) — grünlicher Akzent */
+  .btn-settings.btn-primary {
+    background: rgba(125,194,66,.18);
+    border-color: rgba(125,194,66,.35);
+    color: rgba(168,224,112,.95);
+  }
+  .btn-settings.btn-primary:hover {
+    background: rgba(125,194,66,.3);
+    border-color: rgba(125,194,66,.5);
+    color: #fff;
+  }
+
+  /* Sekundär-Aktion (Vorschau) — neutrale weiße Akzentuierung */
+  .btn-settings.btn-secondary {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.2);
+  }
+
+  /* Destruktive Aktionen (Reset, Abmelden) — dezent rot, nur auf Hover sichtbar */
+  .btn-settings.btn-danger {
+    color: rgba(255,255,255,.55);
+  }
+  .btn-settings.btn-danger:hover {
+    background: rgba(168,50,47,.2);
+    border-color: rgba(168,50,47,.4);
+    color: #fca5a5;
+  }
+
+  /* Topbar-Separator (vertikale Linie zwischen Button-Gruppen) */
+  .topbar-sep {
+    width: 1px;
+    height: 22px;
+    background: rgba(255,255,255,.1);
+    margin: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* Einheitliches Count-Badge in Topbar-Buttons */
+  .btn-badge {
+    background: #d12c2c;
+    color: #fff;
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 10px;
+    font-weight: 800;
+    font-family: 'DM Mono', monospace;
+    margin-left: 4px;
+    line-height: 1.4;
+    min-width: 16px;
+    text-align: center;
+  }
   .topbar-sub { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 2px; letter-spacing: .5px; }
 
   .btn-generate {
@@ -907,52 +978,48 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div id="userGreeting" style="font-size:11.5px;color:rgba(255,255,255,.7);font-family:'DM Sans',sans-serif"></div>
     </div>
   </div>
-  <!-- Row 2: Actions -->
+  <!-- Row 2: Navigation + Aktionen -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 28px;gap:8px;flex-wrap:wrap">
+    <!-- Navigation: Übersichten / Listen -->
     <div style="display:flex;align-items:center;gap:5px">
-      <button class="btn-settings" onclick="openAllChecks()">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><polyline points="9 12 11 14 15 10"/></svg>
+      <button class="btn-settings" onclick="openAllChecks()" title="Alle Checks">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><polyline points="9 12 11 14 15 10"/></svg>
         Checks
       </button>
-      <button class="btn-settings" onclick="openVertraegeModal()" style="border-color:rgba(45,95,150,.35);color:rgba(155,189,224,.95)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+      <button class="btn-settings" onclick="openVertraegeModal()" title="Rahmenverträge">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
         Verträge
       </button>
-      <button class="btn-settings" onclick="openDashboard()" style="border-color:rgba(125,194,66,.35);color:rgba(168,224,112,.95);position:relative">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Dashboard
-        <span id="dashboardDueBadge" title="Fällige Jahresrechnungen" style="display:none;background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;font-family:'DM Mono',monospace;margin-left:2px">0</span>
-      </button>
-      <button class="btn-settings" onclick="openDueBillingsModal()" style="border-color:rgba(125,194,66,.35);color:rgba(168,224,112,.95);position:relative">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span class="topbar-sep"></span>
+      <button class="btn-settings" onclick="openDueBillingsModal()" title="Fällige Vertragsabrechnungen">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         Fälligkeiten
-        <span id="dueBillingsBadge" title="Fällige Jahresrechnungen" style="display:none;background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;font-family:'DM Mono',monospace;margin-left:2px">0</span>
+        <span id="dueBillingsBadge" class="btn-badge" style="display:none">0</span>
       </button>
-      <button class="btn-settings" onclick="openRechnungenModal()" style="border-color:rgba(245,158,11,.35);color:rgba(252,211,77,.95)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      <button class="btn-settings" onclick="openRechnungenModal()" title="Rechnungen-Übersicht">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
         Rechnungen
       </button>
-      <button class="btn-settings" onclick="openLernprotokoll()" style="border-color:rgba(168,139,250,.35);color:rgba(168,139,250,.85)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      <span class="topbar-sep"></span>
+      <button class="btn-settings" onclick="openDashboard()" title="Dashboard">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Dashboard
+        <span id="dashboardDueBadge" class="btn-badge" style="display:none">0</span>
+      </button>
+      <button class="btn-settings" onclick="openLernprotokoll()" title="KI-Lernprotokoll">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
         KI-Lernen
       </button>
     </div>
+
+    <!-- Aktionen: Speichern / Vorschau / PDF / Reset / Abmelden -->
     <div style="display:flex;align-items:center;gap:5px">
-      <button class="btn-settings" onclick="saveWithVisualization()">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <button class="btn-settings btn-primary" onclick="saveWithVisualization()" title="Check speichern">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         Speichern
       </button>
-      <button class="btn-settings" onclick="resetForm()" style="border-color:rgba(255,100,100,.3);color:rgba(255,150,150,.9)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-        Reset
-      </button>
-      <button class="btn-settings" onclick="doLogout()" style="border-color:rgba(255,100,100,.3);color:rgba(255,150,150,.9)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Abmelden
-      </button>
-      <div style="width:1px;height:18px;background:rgba(255,255,255,.12)"></div>
-      <button class="btn-settings" onclick="previewErgebnis()" style="border-color:rgba(125,194,66,.4);color:rgba(125,194,66,.9)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      <button class="btn-settings btn-secondary" onclick="previewErgebnis()" title="Ergebnis-Vorschau">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         Vorschau
       </button>
       <button class="btn-generate" id="btnGenerate" onclick="generatePDF()">
@@ -962,6 +1029,15 @@ const pdfWorkerReady = Promise.resolve();</script>
       <button class="btn-generate" id="btnDownloadFull" onclick="downloadFullResult()" style="display:none;background:#2d5f96">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Gesamt herunterladen
+      </button>
+      <span class="topbar-sep"></span>
+      <button class="btn-settings btn-danger" onclick="resetForm()" title="Formular zurücksetzen">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+        Reset
+      </button>
+      <button class="btn-settings btn-danger" onclick="doLogout()" title="Abmelden">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Abmelden
       </button>
     </div>
   </div>
@@ -2094,7 +2170,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.6';
+const APP_VERSION = 'V8.7';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
