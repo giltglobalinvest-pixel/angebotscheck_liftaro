@@ -2322,7 +2322,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.19';
+const APP_VERSION = 'V8.20';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7176,15 +7176,17 @@ function applyCheckFreeze() {
   const status = document.getElementById('f_status')?.value || '1';
   const isVertrag = (typeof currentFormCheckType === 'function') && currentFormCheckType() === 'wartung';
   const userIsAdmin = (typeof isAdmin === 'function') ? isAdmin() : false;
-  // GoBD-strikt für Vertragschecks: Status 2 (aktiv) und 3 (gekündigt) sind IMMER eingefroren —
-  // auch für Admins. (Wer den Vertragscheck wirklich nochmal bearbeiten muss, setzt den Status
-  // erst manuell zurück auf 1 "Check gemacht".)
-  // Reparaturchecks: Status 2/3/4 = frozen, Admins können bearbeiten.
+  // GoBD-strikt:
+  //  Vertragscheck:  Status 2 (aktiv) + 3 (gekündigt) → IMMER frozen, auch Admin
+  //  Reparaturcheck: Status 3 (abrechenbar) + 4 (abgerechnet) → IMMER frozen, auch Admin
+  //                  Status 2 (beauftragt) → frozen für Nicht-Admins, Admin-Override möglich
   let frozen;
   if (isVertrag) {
     frozen = (status === '2' || status === '3');
   } else {
-    frozen = (status === '2' || status === '3' || status === '4') && !userIsAdmin;
+    if (status === '3' || status === '4') frozen = true;
+    else if (status === '2')               frozen = !userIsAdmin;
+    else                                   frozen = false;
   }
 
   // Banner einblenden
@@ -7310,7 +7312,6 @@ function applyCheckFreeze() {
       banner.style.display = 'flex';
       const txt = document.getElementById('checkFrozenText');
       if (txt) {
-        // Typ-abhängige Status-Liste
         const list = isVertrag ? CHECK_STATUS_VERTRAG : CHECK_STATUS;
         const meta = list.find(s => s.value === status) || null;
         let intro, hint;
@@ -7320,17 +7321,32 @@ function applyCheckFreeze() {
         } else if (isVertrag && status === '3') {
           intro = `Wartungsvertrag gekündigt — der Check ist final eingefroren.`;
           hint  = `Es sind keine Änderungen mehr möglich.`;
+        } else if (!isVertrag && status === '3') {
+          intro = `Angebotscheck ist abrechenbar — eingefroren.`;
+          hint  = `Keine Änderungen möglich. Status auf "1 · Check gemacht" zurücksetzen, falls Korrekturen nötig sind.`;
+        } else if (!isVertrag && status === '4') {
+          intro = `Angebotscheck ist abgerechnet — final eingefroren.`;
+          hint  = `Es sind keine Änderungen mehr möglich.`;
         } else {
           intro = `Check eingefroren (Status: ${meta?.label || status}).`;
           hint  = userIsAdmin ? '' : 'Nur Admins können Änderungen vornehmen.';
         }
         txt.textContent = `${intro} ${hint}`.trim();
       }
-      banner.style.background = (isVertrag && status === '3')
-        ? 'linear-gradient(135deg,#a8312f,#7a1e1d)'  // Gekündigt = rot
+      // Banner-Farbe je nach Status:
+      //   Vertrag gekündigt / Reparatur abgerechnet → rot (final)
+      //   Vertrag aktiv                              → grün
+      //   Reparatur abrechenbar                      → orange
+      //   sonst                                      → dunkel
+      banner.style.background = (
+        (isVertrag && status === '3') || (!isVertrag && status === '4')
+      )
+        ? 'linear-gradient(135deg,#a8312f,#7a1e1d)'
         : (isVertrag && status === '2')
-          ? 'linear-gradient(135deg,#0e6655,#0a4a3c)' // Aktiv = grün
-          : 'linear-gradient(135deg,#1e293b,#334155)'; // sonst dunkel
+          ? 'linear-gradient(135deg,#0e6655,#0a4a3c)'
+          : (!isVertrag && status === '3')
+            ? 'linear-gradient(135deg,#c08a14,#8a6112)'
+            : 'linear-gradient(135deg,#1e293b,#334155)';
     } else {
       banner.style.display = 'none';
     }
