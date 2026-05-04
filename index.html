@@ -2277,7 +2277,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.13';
+const APP_VERSION = 'V8.14';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3389,6 +3389,14 @@ async function loadCheck(data) {
   if (typeof refreshVertragInvoiceHistory === 'function') {
     refreshVertragInvoiceHistory().catch(e => console.warn('History-refresh:', e.message));
   }
+
+  // ── WICHTIG ────────────────────────────────────────────────────────
+  // Nach switchTab + Wartungs-/Vertragsfeldern erneut prüfen, ob der
+  // "Jahresrechnung erstellen"-Button erscheinen muss. Der erste Aufruf
+  // in Zeile ~3262 lief noch mit der alten Tab-Konfiguration.
+  // ───────────────────────────────────────────────────────────────────
+  if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
+  if (typeof applyStatusFieldLock === 'function') applyStatusFieldLock();
 
   // Falls in Airtable nichts war: alter Local-Folder-Fallback
   if (loadedFromAirtable) return;
@@ -4643,6 +4651,9 @@ function switchTab(type) {
   calcSavings();
   // Status-Dropdown im Hauptform an den Typ anpassen
   if (typeof refreshFormStatusOptions === 'function') refreshFormStatusOptions();
+  // Sichtbarkeit des Rechnungs-Erstell-Buttons + Freeze nach Tab-Wechsel neu prüfen
+  if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
+  if (typeof applyStatusFieldLock === 'function') applyStatusFieldLock();
 }
 
 // Befüllt das Status-Dropdown im Hauptformular je nach Check-Typ
