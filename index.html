@@ -233,6 +233,36 @@ const pdfWorkerReady = Promise.resolve();</script>
   }
   .frozen-form-area .upload-zone { pointer-events: none !important; opacity: 0.5 !important; }
   .frozen-form-area .w-check { pointer-events: none !important; }
+
+  /* === WICHTIG: diese Bereiche müssen weiterhin interaktiv bleiben — auch wenn frozen ===
+     – Jahresrechnung erstellen (#invoiceBtnRow)
+     – Hinweisbanner (#invoiceWaitRow) — nur lesen, aber nicht ausgrauen
+     – Jahresrechnungs-Historie PDF-Buttons (#vertragInvoiceHistory)
+     – Mobile PDF-Viewer (Vollbild-Buttons + Klick auf Canvas)
+  */
+  .frozen-form-area #invoiceBtnRow,
+  .frozen-form-area #invoiceWaitRow,
+  .frozen-form-area #vertragInvoiceHistory,
+  .frozen-form-area #mobileResultViewer,
+  .frozen-form-area #mobileVorliegendViewer,
+  .frozen-form-area #mobileAlternativViewer {
+    opacity: 1 !important;
+  }
+  .frozen-form-area #invoiceBtnRow button,
+  .frozen-form-area #vertragInvoiceHistory button,
+  .frozen-form-area #mobileResultViewer button,
+  .frozen-form-area #mobileVorliegendViewer button,
+  .frozen-form-area #mobileAlternativViewer button {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    cursor: pointer !important;
+  }
+  .frozen-form-area #mobileResultViewer canvas,
+  .frozen-form-area #mobileVorliegendViewer canvas,
+  .frozen-form-area #mobileAlternativViewer canvas {
+    pointer-events: auto !important;
+    cursor: zoom-in !important;
+  }
   /* Hover-Effekte auf gefrorenen Eingabefeldern unterbinden */
   .frozen-form-area input:not(#f_status):focus,
   .frozen-form-area textarea:focus,
@@ -2311,7 +2341,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.15';
+const APP_VERSION = 'V8.16';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
