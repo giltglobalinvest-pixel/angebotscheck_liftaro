@@ -1307,16 +1307,21 @@ const pdfWorkerReady = Promise.resolve();</script>
           </div>
         </div>
 
-        <!-- Rechnung erstellen (nur bei Status 3 = Abrechenbar) -->
+        <!-- Rechnung erstellen (Reparaturcheck: Status 3 / Vertragscheck: ab 14 Tage vor naechste_abrechnung_am) -->
         <div id="invoiceBtnRow" style="display:none;margin-top:14px;padding:14px 18px;background:linear-gradient(135deg,#fff8e1,#fdf3d3);border-left:4px solid #f59e0b;border-radius:6px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
           <div>
-            <div style="font-size:12px;font-weight:600;color:#a06a00;text-transform:uppercase;letter-spacing:.4px">Status: Abrechenbar</div>
-            <div style="font-size:13px;color:var(--text);margin-top:2px">Dieser Check kann jetzt in Rechnung gestellt werden.</div>
+            <div id="invoiceBtnRowTitle" style="font-size:12px;font-weight:600;color:#a06a00;text-transform:uppercase;letter-spacing:.4px">Status: Abrechenbar</div>
+            <div id="invoiceBtnRowSub" style="font-size:13px;color:var(--text);margin-top:2px">Dieser Check kann jetzt in Rechnung gestellt werden.</div>
           </div>
           <button onclick="createInvoiceFromCurrentCheck()" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;padding:10px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            Rechnung erstellen
+            <span id="invoiceBtnLabel">Rechnung erstellen</span>
           </button>
+        </div>
+        <!-- Vertrags-Hinweis: Nächste Jahresrechnung noch nicht fällig -->
+        <div id="invoiceWaitRow" style="display:none;margin-top:14px;padding:12px 18px;background:#f3f7fb;border-left:4px solid #5a7da8;border-radius:6px;align-items:center;gap:10px;font-size:12.5px;color:var(--text)">
+          <span style="font-size:18px">⏳</span>
+          <span id="invoiceWaitText">Nächste Jahresrechnung erstellbar ab –.</span>
         </div>
 
         <div class="legal-block" id="legal-block">
@@ -1804,6 +1809,17 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="field"><label>Zahlungsziel (Tage)</label><input type="text" id="rg_zahlungsziel" value="14"></div>
       </div>
 
+      <!-- Vertragscheck: Abrechnungsperiode (nur bei checkType=wartung sichtbar) -->
+      <div id="rg_periode_section" style="display:none;background:#f0f7e8;border-left:4px solid var(--green);border-radius:6px;padding:12px 16px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#2a5c3a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">📅 Abrechnungsperiode (Jahresrechnung)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <div class="field"><label>Periode von</label><input type="date" id="rg_periode_von"></div>
+          <div class="field"><label>Periode bis</label><input type="date" id="rg_periode_bis"></div>
+          <div class="field"><label>Periode #</label><input type="text" id="rg_periode_index" placeholder="1" style="text-align:center"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4">Die Jahresrechnung deckt den oben angegebenen Zeitraum ab. Bei jährlicher Frequenz: Periode_bis = Periode_von + 1 Jahr − 1 Tag.</div>
+      </div>
+
       <div class="field" style="margin-bottom:14px"><label>Leistungsumfang</label>
         <textarea id="rg_leistungsumfang" rows="6" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:12px;background:var(--sky);outline:none;resize:vertical"></textarea>
       </div>
@@ -2007,7 +2023,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.0.1';
+const APP_VERSION = 'V8.1';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -6507,15 +6523,74 @@ function onMainStatusChange() {
   updateInvoiceButtonVisibility();
 }
 
-// Rechnungs-Button nur sichtbar bei abrechenbarem Status (Reparatur: 3, Vertrag: 2 = aktiv)
+// Rechnungs-Button: typ-abhängige Sichtbarkeit
+//  Reparaturcheck: nur bei Status 3 (Abrechenbar)
+//  Vertragscheck:  bei Status 2 (Aktiv) UND naechste_abrechnung_am ≤ heute + 14 Tage UND nicht bereits voll abgerechnet
 function updateInvoiceButtonVisibility() {
   const status = document.getElementById('f_status')?.value || '1';
   const isVertrag = currentFormCheckType() === 'wartung';
-  const row = document.getElementById('invoiceBtnRow');
+  const row  = document.getElementById('invoiceBtnRow');
+  const wait = document.getElementById('invoiceWaitRow');
   if (!row) return;
-  // Reparatur: nur Status 3 zeigt Rechnungs-Button (wie bisher)
-  // Vertrag: Phase 3 wird in V8.1 erweitert (eigener Bereich); hier einstweilen ausblenden
-  row.style.display = (!isVertrag && status === '3') ? 'flex' : 'none';
+  if (wait) wait.style.display = 'none';
+
+  const titleEl = document.getElementById('invoiceBtnRowTitle');
+  const subEl   = document.getElementById('invoiceBtnRowSub');
+  const lblEl   = document.getElementById('invoiceBtnLabel');
+
+  if (!isVertrag) {
+    // Reparatur (wie bisher)
+    const show = status === '3';
+    row.style.display = show ? 'flex' : 'none';
+    if (show) {
+      if (titleEl) titleEl.textContent = 'Status: Abrechenbar';
+      if (subEl)   subEl.textContent   = 'Dieser Check kann jetzt in Rechnung gestellt werden.';
+      if (lblEl)   lblEl.textContent   = 'Rechnung erstellen';
+    }
+    return;
+  }
+
+  // Vertragscheck-Logik
+  if (status !== '2') {
+    row.style.display = 'none';
+    return;
+  }
+  const naechsteStr = document.getElementById('f_naechste_abrechnung_am')?.value?.trim() || '';
+  if (!naechsteStr) {
+    row.style.display = 'none';
+    return;
+  }
+  // Datum vergleichen
+  const naechste = new Date(naechsteStr + 'T00:00:00');
+  if (isNaN(naechste.getTime())) { row.style.display = 'none'; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diffDays = Math.round((naechste - today) / 86400000);
+  const periodeIndex = parseInt(document.getElementById('f_abrechnungs_anzahl')?.value || '0', 10) + 1;
+  if (diffDays <= 14) {
+    // Fällig (oder überfällig) → Button sichtbar
+    row.style.display = 'flex';
+    const overdue = diffDays < 0;
+    const naechsteDe = new Date(naechsteStr).toLocaleDateString('de-DE');
+    if (titleEl) titleEl.textContent = overdue ? `Überfällig seit ${naechsteDe}` : `Jahresrechnung fällig zum ${naechsteDe}`;
+    if (subEl)   subEl.textContent   = `Periode ${periodeIndex} kann jetzt abgerechnet werden.`;
+    if (lblEl)   lblEl.textContent   = 'Jahresrechnung erstellen';
+    if (overdue) {
+      row.style.background = 'linear-gradient(135deg,#ffe9e6,#fdd5d0)';
+      row.style.borderLeftColor = '#a8312f';
+    } else {
+      row.style.background = 'linear-gradient(135deg,#fff8e1,#fdf3d3)';
+      row.style.borderLeftColor = '#f59e0b';
+    }
+  } else {
+    // Noch nicht fällig → Hinweis-Banner
+    row.style.display = 'none';
+    if (wait) {
+      wait.style.display = 'flex';
+      const txt = document.getElementById('invoiceWaitText');
+      const naechsteDe = new Date(naechsteStr).toLocaleDateString('de-DE');
+      if (txt) txt.textContent = `Periode ${periodeIndex}: Nächste Jahresrechnung erstellbar ab ${new Date(naechste.getTime() - 14*86400000).toLocaleDateString('de-DE')} (Vertragsperiode beginnt ${naechsteDe}).`;
+    }
+  }
 }
 
 // Status-Dropdown im Hauptformular sperren wenn End-Status erreicht (Reparatur: 4, Vertrag: 3)
@@ -7240,6 +7315,10 @@ function getRechnungData() {
     zahlungsziel:      g('rg_zahlungsziel') || '14',
     leistungsumfang:   g('rg_leistungsumfang'),
     netto:             g('rg_netto'),
+    // Vertragscheck-Periode (nur befüllt wenn checkType=wartung)
+    periode_von:   g('rg_periode_von'),
+    periode_bis:   g('rg_periode_bis'),
+    periode_index: g('rg_periode_index'),
   };
 }
 
@@ -7267,7 +7346,8 @@ async function openRechnungEditor(check, existing) {
   // Reset
   ['rg_recordId','rg_nr','rg_datum','rg_check_id','rg_checkType',
    'rg_empfaenger_weg','rg_empfaenger_firma','rg_empfaenger_anschrift','rg_empfaenger_ansprechpartner',
-   'rg_leistungszeitraum','rg_zahlungsziel','rg_leistungsumfang','rg_netto'].forEach(id => set(id, ''));
+   'rg_leistungszeitraum','rg_zahlungsziel','rg_leistungsumfang','rg_netto',
+   'rg_periode_von','rg_periode_bis','rg_periode_index'].forEach(id => set(id, ''));
   document.getElementById('rg_btnDownload').style.display = 'none';
   document.getElementById('rg_btnDelete').style.display   = 'none';
   _rechnungPreviewBlob = null;
@@ -7276,6 +7356,9 @@ async function openRechnungEditor(check, existing) {
   // Subtitle zurücksetzen
   const subtitle = document.getElementById('rechnungEditorSubtitle');
   if (subtitle) { subtitle.textContent = 'Neue Rechnung'; subtitle.style.color = ''; }
+  // Periode-Section per Default verstecken
+  const periodeSection = document.getElementById('rg_periode_section');
+  if (periodeSection) periodeSection.style.display = 'none';
 
   if (existing) {
     set('rg_recordId', existing._recordId);
@@ -7291,6 +7374,13 @@ async function openRechnungEditor(check, existing) {
     set('rg_zahlungsziel',      existing.zahlungsziel_tage || '14');
     set('rg_leistungsumfang',   existing.leistungsumfang);
     set('rg_netto',             existing.netto);
+    // Vertragscheck-Periode (falls vorhanden)
+    if (existing.checkType === 'wartung') {
+      set('rg_periode_von',   existing.abrechnungsperiode_von || '');
+      set('rg_periode_bis',   existing.abrechnungsperiode_bis || '');
+      set('rg_periode_index', existing.periode_index || '');
+      if (periodeSection) periodeSection.style.display = 'block';
+    }
     document.getElementById('rg_btnDownload').style.display = 'inline-flex';
     document.getElementById('rg_btnDelete').style.display   = 'none'; // GoBD: keine Löschung
     // Editor sperren – festgeschriebene Rechnung
@@ -7312,6 +7402,34 @@ async function openRechnungEditor(check, existing) {
     set('rg_leistungsumfang', isWartung ? INVOICE_DEFAULT_LEISTUNG_WARTUNG : INVOICE_DEFAULT_LEISTUNG_REPARATUR);
     set('rg_netto', check.liftaroBet || '');
     document.getElementById('rechnungEditorSubtitle').textContent = `Neue Rechnung · Check ${check.id || check.requestId || ''}`;
+    // Vertragscheck: Periode-Section anzeigen + vorbefüllen
+    if (isWartung) {
+      const von = (check.naechste_abrechnung_am || '').trim();
+      let bis = '';
+      if (von) {
+        // Periode_bis = Periode_von + 1 Jahr - 1 Tag
+        const d = new Date(von + 'T00:00:00');
+        if (!isNaN(d.getTime())) {
+          d.setFullYear(d.getFullYear() + 1);
+          d.setDate(d.getDate() - 1);
+          bis = d.toISOString().split('T')[0];
+        }
+      }
+      const idx = parseInt(check.abrechnungs_anzahl || '0', 10) + 1;
+      set('rg_periode_von',   von);
+      set('rg_periode_bis',   bis);
+      set('rg_periode_index', String(idx));
+      if (periodeSection) periodeSection.style.display = 'block';
+      // Leistungszeitraum visuell auf "von – bis" setzen
+      if (von && bis) {
+        const vonDe = new Date(von).toLocaleDateString('de-DE');
+        const bisDe = new Date(bis).toLocaleDateString('de-DE');
+        set('rg_leistungszeitraum', `${vonDe} – ${bisDe}`);
+      }
+      // Leistungsumfang um Periode-Hinweis ergänzen
+      const periodInfo = `\n\nAbrechnungsperiode: Jahr ${idx}` + (von && bis ? ` (${new Date(von).toLocaleDateString('de-DE')} – ${new Date(bis).toLocaleDateString('de-DE')})` : '');
+      set('rg_leistungsumfang', INVOICE_DEFAULT_LEISTUNG_WARTUNG + periodInfo);
+    }
   }
 
   document.getElementById('rg_nr_display').textContent = document.getElementById('rg_nr').value || '–';
@@ -7591,6 +7709,12 @@ async function saveRechnung() {
     brutto: _fmtEuroDE(netto * (1 + INVOICE_MWST)),
     api_key: APP_KEYS.user?.api_key || 'unknown',
   };
+  // Vertragscheck: Periode-Felder mitschreiben
+  if (d.checkType === 'wartung') {
+    if (d.periode_von)   fields.abrechnungsperiode_von = d.periode_von;
+    if (d.periode_bis)   fields.abrechnungsperiode_bis = d.periode_bis;
+    if (d.periode_index) fields.periode_index          = String(d.periode_index);
+  }
   // GoBD-Schutz: Bestehende Rechnungen können nicht mehr verändert werden
   if (d.recordId) {
     showToast('Bestehende Rechnungen sind festgeschrieben (GoBD) – keine Änderung möglich.', 'error');
@@ -7623,6 +7747,10 @@ async function saveRechnung() {
         { name: 'brutto',               type: 'singleLineText' },
         { name: 'api_key',              type: 'singleLineText' },
         { name: 'rechnung_pdf',         type: 'multipleAttachments' },
+        // Vertragscheck-Jahresabrechnung
+        { name: 'abrechnungsperiode_von', type: 'singleLineText' },
+        { name: 'abrechnungsperiode_bis', type: 'singleLineText' },
+        { name: 'periode_index',          type: 'singleLineText' },
       ]);
     } catch(e) { console.warn('ensureFields(Rechnungen) bei Save:', e.message); }
 
@@ -7662,38 +7790,95 @@ async function saveRechnung() {
     // Bestätigungs-Banner im Editor anzeigen
     showRechnungSavedBanner(d.nr);
 
-    // Zugehörigen Check automatisch auf Status 4 (Abgerechnet) setzen
+    // Zugehörigen Check aktualisieren — Verhalten unterscheidet sich nach Typ:
+    //  Reparatur: Status auf 4 (Abgerechnet) – Endzustand
+    //  Vertrag:   Periode hochzählen, naechste_abrechnung_am verschieben, Status bleibt 2 (aktiv)
     let checkStatusInfo = '';
     if (d.check_id) {
       try {
         const recs = await atRead('Checks', "{id}='" + d.check_id + "'");
         const rec = recs && recs[0];
         if (rec) {
-          // Status auch in formData synchronisieren
-          let formDataStr = null;
-          try {
-            const fd = safeParseJSON(rec.fields.formData, {});
+          const isVertragInvoice = d.checkType === 'wartung';
+          const fd = safeParseJSON(rec.fields.formData, {});
+          let upd = {};
+          if (isVertragInvoice) {
+            // Periode-Index erhöhen, naechste Abrechnung auf Periode_bis + 1 Tag setzen
+            const newCount = (parseInt(fd.abrechnungs_anzahl || rec.fields.abrechnungs_anzahl || '0', 10) || 0) + 1;
+            const today = new Date().toISOString().split('T')[0];
+            let nextDate = '';
+            if (d.periode_bis) {
+              const b = new Date(d.periode_bis + 'T00:00:00');
+              if (!isNaN(b.getTime())) {
+                b.setDate(b.getDate() + 1);
+                nextDate = b.toISOString().split('T')[0];
+              }
+            }
+            fd.letzte_abrechnung_am = today;
+            if (nextDate) fd.naechste_abrechnung_am = nextDate;
+            fd.abrechnungs_anzahl = String(newCount);
+            // Status bleibt '2' — explizit setzen falls noch nicht
+            if (!fd.status) fd.status = '2';
+            upd = {
+              letzte_abrechnung_am: today,
+              abrechnungs_anzahl:   String(newCount),
+              formData:             JSON.stringify(fd),
+            };
+            if (nextDate) upd.naechste_abrechnung_am = nextDate;
+            // Status nicht ändern (bleibt 2)
+            checkStatusInfo = ` · Periode ${newCount} abgerechnet, nächste Periode ab ${nextDate ? new Date(nextDate).toLocaleDateString('de-DE') : '–'}.`;
+          } else {
+            // Reparatur: Endzustand
             fd.status = '4';
-            formDataStr = JSON.stringify(fd);
-          } catch(e) {}
-          const upd = { status: '4' };
-          if (formDataStr) upd.formData = formDataStr;
-          await atUpdate('Checks', rec.id, upd);
-          // Cache aktualisieren falls Übersicht offen war
+            upd = { status: '4', formData: JSON.stringify(fd) };
+            checkStatusInfo = ` · Check ${d.check_id} auf "Abgerechnet" gesetzt.`;
+          }
+          // writeWithFallback gegen unbekannte Felder
+          const tryUpdate = async (payload) => {
+            let attempt = 0;
+            while (true) {
+              try { return await atUpdate('Checks', rec.id, payload); }
+              catch(e) {
+                const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+                if (m && m[1] && payload[m[1]] !== undefined && attempt < 8) {
+                  const reduced = { ...payload }; delete reduced[m[1]];
+                  console.warn('Feld unbekannt, retry ohne:', m[1]);
+                  payload = reduced; attempt++; continue;
+                }
+                throw e;
+              }
+            }
+          };
+          await tryUpdate(upd);
+          // Cache aktualisieren
           if (window._checksCache) {
             const cached = window._checksCache.find(x => x._recordId === rec.id);
-            if (cached) cached.status = '4';
+            if (cached) {
+              if (isVertragInvoice) {
+                cached.letzte_abrechnung_am = upd.letzte_abrechnung_am;
+                if (upd.naechste_abrechnung_am) cached.naechste_abrechnung_am = upd.naechste_abrechnung_am;
+                cached.abrechnungs_anzahl = upd.abrechnungs_anzahl;
+              } else {
+                cached.status = '4';
+              }
+            }
           }
-          // Wenn dieser Check gerade im Hauptformular geladen ist, dort Status auch setzen
-          const formEl = document.getElementById('f_status');
+          // Wenn der Check im Hauptformular geladen ist, dort auch updaten
           const ridEl = document.getElementById('f_requestid');
-          if (formEl && ridEl && ridEl.value === d.check_id) {
-            formEl.value = '4';
-            window._lastConfirmedStatus = '4';
+          if (ridEl && ridEl.value === d.check_id) {
+            if (isVertragInvoice) {
+              const setF = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+              setF('f_letzte_abrechnung_am', upd.letzte_abrechnung_am);
+              if (upd.naechste_abrechnung_am) setF('f_naechste_abrechnung_am', upd.naechste_abrechnung_am);
+              setF('f_abrechnungs_anzahl', upd.abrechnungs_anzahl);
+            } else {
+              const formEl = document.getElementById('f_status');
+              if (formEl) formEl.value = '4';
+              window._lastConfirmedStatus = '4';
+              applyStatusFieldLock();
+            }
             if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
-            applyStatusFieldLock();
           }
-          checkStatusInfo = ` · Check ${d.check_id} auf "Abgerechnet" gesetzt.`;
         }
       } catch(e) { console.warn('Check-Status-Update fehlgeschlagen:', e.message); }
     }
