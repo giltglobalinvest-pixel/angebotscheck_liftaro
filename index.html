@@ -2385,7 +2385,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.21';
+const APP_VERSION = 'V8.22';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2499,12 +2499,16 @@ async function doLogin() {
 }
 
 // ── Airtable CRUD ─────────────────────────────────────────────────
-async function atRead(table, filter) {
+async function atRead(table, filter, opts) {
   const base = APP_KEYS.appBaseId || APP_CONFIG.APP_BASE_ID;
   let url = 'https://api.airtable.com/v0/' + base + '/' + encodeURIComponent(table);
   const params = [];
   if (filter) params.push('filterByFormula=' + encodeURIComponent(filter));
-  params.push('sort%5B0%5D%5Bfield%5D=savedAt&sort%5B0%5D%5Bdirection%5D=desc');
+  // Default-Sort nach savedAt (für Checks/Rechnungen). Tabellen ohne dieses Feld
+  // (z. B. User) müssen { sort: false } übergeben, sonst liefert Airtable einen Fehler.
+  if (!opts || opts.sort !== false) {
+    params.push('sort%5B0%5D%5Bfield%5D=savedAt&sort%5B0%5D%5Bdirection%5D=desc');
+  }
   if (params.length) url += '?' + params.join('&');
   const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + APP_CONFIG.AIRTABLE_READ_KEY } });
   const d = await res.json();
@@ -8343,7 +8347,7 @@ async function loadUsersList() {
   const list = document.getElementById('usersList');
   list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>';
   try {
-    const recs = await atRead('User');
+    const recs = await atRead('User', null, { sort: false });
     window._usersCache = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
     renderUsersList();
   } catch(e) {
