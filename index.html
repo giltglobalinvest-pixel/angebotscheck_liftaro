@@ -614,7 +614,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   #previewModal {
     display: none; position: fixed;
     top: 60px; right: 0; bottom: 0;
-    width: min(460px, 44vw);
+    width: min(640px, 56vw);
     background: #2a2a2a;
     z-index: 7000;
     flex-direction: column;
@@ -628,7 +628,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     transform: translateX(0);
   }
   .page-wrap { transition: margin-right .28s cubic-bezier(.4,0,.2,1); }
-  body.preview-open .page-wrap { margin-right: min(460px, 44vw); }
+  body.preview-open .page-wrap { margin-right: min(640px, 56vw); }
   .preview-box { display: flex; flex-direction: column; height: 100%; }
   .preview-topbar {
     background: var(--navy); padding: 9px 12px;
@@ -2187,51 +2187,41 @@ const pdfWorkerReady = Promise.resolve();</script>
 
 <!-- Verträge: Editor-Modal -->
 <div id="vertragEditorModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(560px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+  <div style="background:#fff;border-radius:16px;width:min(680px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <span id="vertragEditorTitle" style="color:#fff;font-size:15px;font-weight:700">Neuer Beratervertrag</span>
       <button onclick="closeVertragEditor()" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:16px 20px">
+    <div style="flex:1;overflow-y:auto;padding:18px 22px">
       <input type="hidden" id="v_recordId">
       <input type="hidden" id="v_id">
-      <!-- Section: Vertragspartner -->
-      <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Vertragspartner</div>
-      <div class="field-row" style="grid-template-columns:1fr;gap:10px;margin-bottom:10px">
+      <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field"><label>Firma</label><input type="text" id="v_firma" placeholder="Firmenname"></div>
-      </div>
-      <div class="field-row" style="grid-template-columns:1fr;gap:10px;margin-bottom:10px">
         <div class="field"><label>Geschäftsführer / Inhaber</label><input type="text" id="v_gf" placeholder="Vor- und Nachname"></div>
       </div>
-      <!-- Section: Anschrift -->
-      <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Anschrift</div>
-      <div class="field-row" style="grid-template-columns:1fr;gap:10px;margin-bottom:10px">
+      <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field"><label>Straße & Hausnr.</label><input type="text" id="v_strasse" placeholder="Musterstraße 1"></div>
-      </div>
-      <div class="field-row" style="grid-template-columns:110px 1fr;gap:10px;margin-bottom:10px">
         <div class="field"><label>PLZ</label><input type="text" id="v_plz" placeholder="12345"></div>
         <div class="field"><label>Ort</label><input type="text" id="v_ort" placeholder="Berlin"></div>
       </div>
-      <!-- Section: Kontakt -->
-      <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Kontakt</div>
-      <div class="field-row" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field"><label>Telefonnummer</label><input type="tel" id="v_tel" placeholder="+49 …"></div>
         <div class="field"><label>E-Mail Adresse</label><input type="email" id="v_email" placeholder="info@firma.de"></div>
       </div>
-      <!-- Section: Vertrags-Konditionen -->
-      <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Vertrag</div>
-      <div class="field-row" style="grid-template-columns:140px 1fr;gap:10px;margin-bottom:10px">
-        <div class="field"><label>Beginn</label><input type="text" id="v_beginn" placeholder="01.05.2026"></div>
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:6px">
+        <div class="field"><label>Vertragsbeginn (z. B. 01.05.2026)</label><input type="text" id="v_beginn" placeholder="01.05.2026"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-top:12px;margin-bottom:6px">
         <div class="field">
-          <label>Variante (§3 Mitwirkung)</label>
+          <label>Vertragsvariante (§3 Mitwirkung)</label>
           <select id="v_variante" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
-            <option value="standard">Standard (verbindlich)</option>
-            <option value="vara">Variante A – sanft</option>
-            <option value="varb">Variante B – Empfehlung</option>
+            <option value="standard">Standard – verbindliche Mitwirkungspflichten (Original)</option>
+            <option value="vara">Variante A – sanfte Formulierung („nach Möglichkeit", „bittet darum")</option>
+            <option value="varb">Variante B – Empfehlungs-Sprache („es empfiehlt sich")</option>
           </select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Ändert nur den Wortlaut von §3. Inhaltlich bleibt der Vertrag gleich.</div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:-4px;line-height:1.4">Variante ändert nur den Wortlaut von §3 — inhaltlich bleibt der Vertrag gleich.</div>
       <div id="v_uploadSection" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:none">
         <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Unterschriebener Vertrag</div>
         <div id="v_signedInfo" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
@@ -2406,7 +2396,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.26';
+const APP_VERSION = 'V8.27';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
