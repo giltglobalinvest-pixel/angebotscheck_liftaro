@@ -2396,7 +2396,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.23';
+const APP_VERSION = 'V8.24';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7528,117 +7528,263 @@ function _getBeraterTemplateBytes(variante) {
   return b64ToUint8(BERATER_TEMPLATE_B64);
 }
 
-// Erzeugt das Beratervertrag-PDF inkl. Datenschutzanhang
+// ── §3-Texte für die drei Varianten ─────────────────────────────────
+const _BERATER_PARA3 = {
+  standard: [
+    '(1) Der Auftraggeber stellt dem Berater alle für die Leistungserbringung notwendigen Unterlagen spätestens 14 Tage nach Vertragsbeginn zur Verfügung.',
+    '(2) Während der Vertragslaufzeit neu bekannt werdende relevante Informationen sind dem Berater unverzüglich, spätestens innerhalb von 3 Werktagen, mitzuteilen.',
+    '(3) Der Auftraggeber verpflichtet sich, keine neuen Wartungs-, Reparatur-, Modernisierungs- oder Nachrüstaufträge ohne vorherige Beratung durch den Berater zu vergeben.',
+    '     (Personenbefreiungen sind hiervon ausgenommen.)',
+    '(4) Der Auftraggeber bevollmächtigt den Berater auf Wunsch, erforderliche Unterlagen direkt bei Wartungsfirmen oder Dienstleistern anzufordern.',
+  ],
+  vara: [
+    '(1) Der Auftraggeber stellt dem Berater die für die Beratung relevanten Unterlagen nach Möglichkeit zur Verfügung. Eine zeitnahe Bereitstellung — idealerweise innerhalb der ersten Wochen nach Vertragsbeginn — erleichtert die Arbeit beider Seiten.',
+    '(2) Werden während der Vertragslaufzeit neue relevante Informationen bekannt, gibt der Auftraggeber diese zeitnah an den Berater weiter. Eine starre Frist ist nicht vorgesehen.',
+    '(3) Damit der Berater seine Aufgabe wirksam erfüllen kann, bittet er darum, vor Vergabe neuer Wartungs-, Reparatur-, Modernisierungs- oder Nachrüstaufträge kurz Rücksprache zu halten. Personenbefreiungen und sicherheitsrelevante Sofortmaßnahmen sind hiervon selbstverständlich ausgenommen.',
+    '(4) Der Auftraggeber kann den Berater auf Wunsch bevollmächtigen, erforderliche Unterlagen direkt bei Wartungsfirmen oder Dienstleistern anzufordern.',
+  ],
+  varb: [
+    '(1) Für eine reibungslose Beratung ist es hilfreich, wenn der Auftraggeber dem Berater die benötigten Unterlagen möglichst innerhalb von 14 Tagen nach Vertragsbeginn zukommen lässt. Eine spätere Übergabe ist nach Absprache jederzeit möglich.',
+    '(2) Neue, beratungsrelevante Informationen sollten dem Berater bei Gelegenheit zeitnah mitgeteilt werden, damit dieser seine Empfehlungen aktuell halten kann.',
+    '(3) Es empfiehlt sich, vor Vergabe neuer Wartungs-, Reparatur-, Modernisierungs- oder Nachrüstaufträge den Berater einzubinden — so kann er seine fachliche Bewertung einbringen, bevor eine Entscheidung getroffen wird. Personenbefreiungen und akute Notmaßnahmen bleiben hiervon unberührt.',
+    '(4) Auf Wunsch kann der Auftraggeber den Berater bevollmächtigen, erforderliche Unterlagen direkt bei Wartungsfirmen oder Dienstleistern anzufordern.',
+  ],
+};
+
+// Erzeugt das Beratervertrag-PDF nativ mit pdf-lib (kein externes Template) + Datenschutzanhang
 async function buildVertragPDF() {
   const d = getVertragData();
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
-
-  // Beratervertrag laden – je nach gewählter Variante (standard / vara / varb)
-  const beraterBytes = _getBeraterTemplateBytes(d.variante);
-  const baseDoc = await PDFDocument.load(beraterBytes);
-  const helv = await baseDoc.embedFont(StandardFonts.Helvetica);
+  const baseDoc = await PDFDocument.create();
+  const helv     = await baseDoc.embedFont(StandardFonts.Helvetica);
   const helvBold = await baseDoc.embedFont(StandardFonts.HelveticaBold);
-  const draw = (page, text, xPdf, topPx, size = 10, font = helv) => {
-    if (!text) return;
-    const PH = page.getSize().height;
-    page.drawText(String(text), {
-      x: xPdf, y: PH - topPx - size,
-      size, font, color: rgb(0.1,0.1,0.1),
-    });
-  };
+  const helvObl  = await baseDoc.embedFont(StandardFonts.HelveticaOblique);
 
   const today = formatDateDE(new Date());
   const vollAdresse = [d.strasse, [d.plz, d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
 
-  // Seite 1: Auftraggeber-Felder + §7 Vertragsbeginn
-  // Gemeinsame X-Position rechts hinter dem längsten Label "Vertreten durch:"
-  const p1 = baseDoc.getPages()[0];
-  draw(p1, d.firma,       155, 126, 10);
-  draw(p1, vollAdresse,   155, 150, 10);
-  draw(p1, d.gf,          155, 174, 10);
+  // ── Layout-Konstanten (A4) ────────────────────────────────────────
+  const PAGE_W = 595.28, PAGE_H = 841.89;
+  const MARGIN_X = 56, MARGIN_TOP = 60, MARGIN_BOT = 60;
+  const COLOR = rgb(0.05, 0.05, 0.05);
+  const RED   = rgb(0.78, 0.16, 0.16);
 
-  // Seite 3 (§7 Vertragsbeginn) – ersetzt "[Datum einsetzen]"
-  const p3 = baseDoc.getPages()[2];
-  if (d.beginn) {
-    // Roten Platzhalter überdecken (schmales weißes Rechteck) und neuen Text drüber
-    const PH3 = p3.getSize().height;
-    p3.drawRectangle({
-      x: 191, y: PH3 - 511, width: 84, height: 12,
-      color: rgb(1,1,1),
-    });
-    draw(p3, d.beginn, 192, 498, 10);
+  // ── Layout-Helper: Cursor + Word-Wrap + Page-Break ────────────────
+  let page = baseDoc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN_TOP;
+  const newPage = () => { page = baseDoc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN_TOP; };
+  const ensure = (h) => { if (y - h < MARGIN_BOT) newPage(); };
+
+  function wrapText(text, font, size, maxW) {
+    const words = String(text).split(/\s+/);
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const trial = cur ? cur + ' ' + w : w;
+      if (font.widthOfTextAtSize(trial, size) <= maxW) cur = trial;
+      else { if (cur) lines.push(cur); cur = w; }
+    }
+    if (cur) lines.push(cur);
+    return lines;
   }
 
-  // Seite 4: Ort + Datum (exakte Koordinaten aus pdfplumber-Analyse)
-  // Auftraggeber-Zeile ", den" liegt bei top=217.2; Komma bei x=127.5, "den" endet bei x=149.8
-  // Mainz-Zeile "Mainz, den" liegt bei top=360.8; "den" endet bei x=119.8
-  const p4 = baseDoc.getPages()[3];
-  const PH4 = p4.getSize().height;
-  // Vorgedrucktes ", den" auf der Auftraggeber-Zeile mit weißem Rechteck überdecken,
-  // dann komplette Zeile linksbündig (gleiche x-Position wie die Aufzählungspunkte oben) neu setzen
-  p4.drawRectangle({ x: 125, y: PH4 - 230, width: 60, height: 16, color: rgb(1,1,1) });
-  if (d.ort) draw(p4, d.ort + ', den ' + today, 70, 213, 10);
-  else       draw(p4, ', den ' + today,         70, 213, 10);
+  function drawText(text, opts) {
+    const { font = helv, size = 10.5, leading = 14, color = COLOR, indent = 0,
+            bullet = null, bulletFont = helv, after = 4 } = opts || {};
+    const x = MARGIN_X + indent;
+    const maxW = PAGE_W - MARGIN_X - x;
+    const lines = wrapText(text, font, size, maxW - (bullet ? 10 : 0));
+    for (let i = 0; i < lines.length; i++) {
+      ensure(leading);
+      // Bullet nur in der ersten Zeile, danach Indent
+      if (i === 0 && bullet !== null) {
+        page.drawText(bullet, { x: x - 10, y: y - size, size, font: bulletFont, color });
+      }
+      page.drawText(lines[i], { x, y: y - size, size, font, color });
+      y -= leading;
+    }
+    y -= after;
+  }
+  function drawHeading(text, opts) {
+    const { size = 12, leading = 16, before = 14, after = 6 } = opts || {};
+    y -= before;
+    drawText(text, { font: helvBold, size, leading, after });
+  }
+  function drawTitle(text) {
+    drawText(text, { font: helvBold, size: 16, leading: 22, after: 8 });
+  }
+  function drawBullet(text, opts) {
+    drawText(text, { ...(opts||{}), bullet: '•', indent: 14, after: 2 });
+  }
+  function drawSubBullet(text, opts) {
+    drawText(text, { ...(opts||{}), bullet: '○', indent: 28, after: 2, bulletFont: helv });
+  }
+  function spacer(h) { y -= h; }
 
-  // Mainz-Zeile bleibt wie im Template (linksbündig vorgedruckt) – nur Datum dahinter
-  draw(p4, today,                  125, 357, 10);
+  // ═══════════════════════════════════════════════════════════════════
+  // SEITE 1: Header, Auftraggeber/Berater, §1, §2 (Anfang)
+  // ═══════════════════════════════════════════════════════════════════
+  drawTitle('Beratervertrag');
+  drawText('zwischen');
+  drawText('Auftraggeber', { font: helvBold });
+  // Auftraggeber-Felder mit Daten inline
+  drawText('Name / Firma:  ' + (d.firma || ''), { size: 10.5 });
+  drawText('Adresse:  '      + (vollAdresse || ''), { size: 10.5 });
+  drawText('Vertreten durch:  ' + (d.gf || ''), { size: 10.5 });
+  spacer(6);
+  drawText('und');
+  drawText('Berater',     { font: helvBold });
+  drawText('Liftaro GmbH', { font: helvBold });
+  drawText('Gustavburger Weg 6, 55116 Mainz');
+  drawText('HRB: 54013');
+  drawText('Sitz: Amtsgericht Mainz');
+  drawText('Vertreten durch die Geschäftsführung Francesco Ricioppo');
+  drawText('– gemeinsam „Vertragsparteien" genannt –');
+  spacer(2);
+  drawText('wird folgender Beratervertrag geschlossen:');
 
-  // "/ Stempel" hinter Unterschriftslabels weiß überdecken
-  // Auftraggeber: top 289–300, x 185–228
-  p4.drawRectangle({ x: 184, y: PH4 - 300, width: 46, height: 12, color: rgb(1,1,1) });
-  // Liftaro: top 456–466, x 187–230
-  p4.drawRectangle({ x: 186, y: PH4 - 466, width: 46, height: 12, color: rgb(1,1,1) });
-  // Geschäftsführer-Name unter der Liftaro-Unterschrift (Seite 4)
-  draw(p4, 'Francesco Ricioppo', 70, 470, 9);
+  drawHeading('§1 Vertragsgegenstand');
+  drawText('(1) Der Berater unterstützt den Auftraggeber beratend, wirtschaftlich und technisch in allen Fragen rund um den Betrieb, die Instandhaltung und die wirtschaftliche Optimierung von Aufzugsanlagen.');
+  drawText('(2) Schwerpunkt der Beratung ist insbesondere:');
+  drawBullet('die Optimierung bestehender Wartungs-, und Notrufverträgen,');
+  drawBullet('die Prüfung, Bewertung und Verhandlung von Reparatur-, Nachrüst- und Modernisierungsangeboten,');
+  drawBullet('die Beratung zu Betreiberpflichten, gesetzlichen Vorgaben und Anforderungen aus BetrSichV, TRBS, DIN-Normen sowie ZÜS-Prüfungen.');
 
-  // Geschäftsführer-Name auf Seite 1 hinter "Vertreten durch die Geschäftsführung"
-  // Original endet mit "Geschäftsführung" bei x=237.1 (top=328.9)
-  draw(p1, 'Francesco Ricioppo', 240, 327, 10);
+  drawHeading('§2 Leistungen des Beraters');
+  drawText('1. Wartungs-, und Notrufverträge');
+  drawBullet('Analyse bestehender Verträge (Wartung, Notruf, ZÜS)');
+  drawBullet('Bewertung von Leistungsumfang, Kosten und Vertragslaufzeiten');
+  drawBullet('Einholen alternativer Angebote');
+  drawBullet('Wirtschaftliche und technische Bewertung');
+  drawBullet('Unterstützung bei Verhandlungen');
+  drawBullet('Empfehlung zur Vergabeentscheidung');
 
-  // Datenschutz-Anhang anhängen
+  drawText('2.1 Reparaturen und Nachrüstungen', { font: helvBold, before: 4, after: 4 });
+  drawText('Prüfung von Reparatur- und Nachrüstangeboten auf:');
+  drawSubBullet('technische Plausibilität');
+  drawSubBullet('Marktüblichkeit der Preise');
+  drawSubBullet('Notwendigkeit im Sinne der Betreiberpflichten');
+  drawBullet('Vergleich mehrerer Angebote');
+  drawBullet('Verhandlungsempfehlungen');
+  drawBullet('Freigabeempfehlung gegenüber dem AG');
+
+  drawText('2.2 Betreiberpflichten & Begutachtungen', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Beratung zu gesetzlichen Betreiberpflichten');
+  drawBullet('Unterstützung bei:');
+  drawSubBullet('ZÜS-Prüfungen (Haupt- und Zwischenprüfungen)');
+  drawSubBullet('Mängelbewertungen');
+  drawSubBullet('Ableitung technischer und wirtschaftlicher Maßnahmen');
+  drawBullet('Allgemeine fachliche Stellungnahmen zu Betriebssicherheit und Normenkonformität');
+
+  // ═══════════════════════════════════════════════════════════════════
+  // §3 — VARIANTE-SPEZIFISCH
+  // ═══════════════════════════════════════════════════════════════════
+  drawHeading('§3 Mitwirkung des Auftraggebers');
+  const para3 = _BERATER_PARA3[d.variante] || _BERATER_PARA3.standard;
+  para3.forEach(line => drawText(line));
+
+  drawHeading('§4 Vergütung');
+  drawText('1. Grundvergütung (Datenmanagement)');
+  drawText('Der Aufbau, die Pflege und Aktualisierung der Anlagendatenbank ist für den AG grundsätzlich kostenlos.');
+  drawText('2. Erfolgsabhängige Vergütung – Einsparungen');
+  drawText('(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.');
+  drawText('(2) Der Berater erhält:');
+  drawBullet('50 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)');
+  drawBullet('50 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen');
+  drawText('(3) Die Einsparungsberechnung erfolgt transparent und nachvollziehbar und wird dem AG schriftlich dargelegt.');
+
+  drawHeading('§5 Besondere Beratungsleistungen');
+  drawText('Leistungen außerhalb des vereinbarten Umfangs werden nur nach vorheriger schriftlicher Beauftragung vergütet und vorab separat von Liftaro angeboten.');
+
+  drawHeading('§6 Haftung');
+  drawText('(1) Der Berater haftet ausschließlich für Schäden, die auf Vorsatz oder grobe Fahrlässigkeit zurückzuführen sind.');
+  drawText('(2) Die Haftung ist je Schadensfall auf 50.000 € begrenzt.');
+  drawText('(3) Eine Haftung für mittelbare Schäden, entgangenen Gewinn oder Folgeschäden ist ausgeschlossen.');
+
+  drawHeading('§7 Vertragslaufzeit und Kündigung');
+  // §7(1) mit Vertragsbeginn-Datum statt "[Datum einsetzen]"
+  const beginnTxt = d.beginn ? d.beginn : '[Datum einsetzen]';
+  const beginnColor = d.beginn ? COLOR : RED;
+  // Erste Zeile manuell setzen, damit der Beginn farbig sein kann wenn leer
+  ensure(14);
+  page.drawText('(1) Der Vertrag beginnt am ', { x: MARGIN_X, y: y - 10.5, size: 10.5, font: helv, color: COLOR });
+  const offset = helv.widthOfTextAtSize('(1) Der Vertrag beginnt am ', 10.5);
+  page.drawText(beginnTxt, { x: MARGIN_X + offset, y: y - 10.5, size: 10.5, font: helv, color: beginnColor });
+  const offset2 = offset + helv.widthOfTextAtSize(beginnTxt + ' ', 10.5);
+  // Rest der Zeile in einer neuen Zeile, um Platz zu sparen
+  page.drawText('und wird zunächst für 24 Monate', { x: MARGIN_X + offset2, y: y - 10.5, size: 10.5, font: helv, color: COLOR });
+  y -= 14;
+  drawText('fest abgeschlossen.');
+  drawText('(2) Nach Ablauf der Mindestlaufzeit verlängert sich der Vertrag auf unbestimmte Zeit und kann von beiden Parteien mit einer Frist von einem Monat zum Monatsende schriftlich gekündigt werden.');
+
+  drawHeading('§8 Wettbewerbsfreiheit');
+  drawText('Der Berater unterliegt keinem Wettbewerbsverbot.');
+  drawText('Der Auftraggeber erkennt an, dass der Berater vergleichbare Leistungen auch für andere Auftraggeber erbringt.');
+
+  drawHeading('§9 Vertraulichkeit und Datenschutz');
+  drawText('(1) Beide Parteien verpflichten sich zur vertraulichen Behandlung aller bekannt gewordenen Informationen.');
+  drawText('(2) Personenbezogene Daten werden ausschließlich im Rahmen dieses Vertrages verarbeitet und nach Ablauf der gesetzlichen Aufbewahrungsfristen gelöscht.');
+
+  drawHeading('§10 Schlussbestimmungen');
+  drawBullet('Änderungen bedürfen der Schriftform');
+  drawBullet('Es bestehen keine mündlichen Nebenabreden');
+  drawBullet('Salvatorische Klausel');
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Unterschriftenblock — auf neuer Seite, damit er nicht zerrissen wird
+  // ═══════════════════════════════════════════════════════════════════
+  if (y < MARGIN_BOT + 220) newPage();
+  spacer(20);
+  // Auftraggeber: Ort + Datum
+  const ortDatum = (d.ort ? d.ort : '__________') + ', den ' + today;
+  drawText(ortDatum);
+  spacer(28);
+  page.drawLine({ start: { x: MARGIN_X, y: y }, end: { x: MARGIN_X + 280, y: y }, thickness: 0.5, color: COLOR });
+  spacer(4);
+  drawText('Auftraggeber Unterschrift');
+  spacer(28);
+  drawText('Mainz, den ' + today);
+  spacer(28);
+  page.drawLine({ start: { x: MARGIN_X, y: y }, end: { x: MARGIN_X + 280, y: y }, thickness: 0.5, color: COLOR });
+  spacer(4);
+  drawText('Liftaro GmbH Unterschrift');
+  drawText('Francesco Ricioppo', { size: 9, font: helvObl });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Datenschutz-Anhang (bestehende PDF-Vorlage anhängen, mit Auftraggeberdaten)
+  // ═══════════════════════════════════════════════════════════════════
   try {
     const dsBytes = b64ToUint8(DATENSCHUTZ_TEMPLATE_B64);
     const dsDoc = await PDFDocument.load(dsBytes);
-    const dsHelv = helv;
-    const dsHelvBold = helvBold;
-    // Auftraggeber-Felder auf Seite 1 der Datenschutzvereinbarung
-    const dp1 = dsDoc.getPages()[0];
-    const drawDS = (page, text, xPdf, topPx, size = 10, font = dsHelv) => {
+    const drawDS = (page, text, xPdf, topPx, size = 10, font = helv) => {
       if (!text) return;
       const PH = page.getSize().height;
-      page.drawText(String(text), { x: xPdf, y: PH - topPx - size, size, font, color: rgb(0.1,0.1,0.1) });
+      page.drawText(String(text), { x: xPdf, y: PH - topPx - size, size, font, color: COLOR });
     };
-    // Positionen aus pdfplumber-Analyse
+    const dp1 = dsDoc.getPages()[0];
     drawDS(dp1, d.firma,     140, 145, 10);
     drawDS(dp1, vollAdresse, 140, 162, 10);
     drawDS(dp1, d.gf,        140, 179, 10);
 
-    // Seite 4 der Anlage: Unterschriften-Block
     const dpLast = dsDoc.getPages()[dsDoc.getPageCount() - 1];
     const PHL = dpLast.getSize().height;
-    // Auftraggeber-Block: Ort auf Linie x=62.7–187.8 (top=338.8), Datum auf Linie x=210–287.9
     if (d.ort) {
-      const w = dsHelv.widthOfTextAtSize(String(d.ort), 10);
-      // Ort zentriert über der Linie
+      const w = helv.widthOfTextAtSize(String(d.ort), 10);
       drawDS(dpLast, d.ort, 62.7 + (125 - 62.7 - w) / 2, 333, 10);
     }
-    // Datum auf Auftraggeber-Datums-Linie x=210–287.9
     {
-      const w = dsHelv.widthOfTextAtSize(today, 10);
+      const w = helv.widthOfTextAtSize(today, 10);
       drawDS(dpLast, today, 210 + (287.9 - 210 - w) / 2, 333, 10);
     }
-    // Mainz-Datum auf Linie x=342.3–420.2
     {
-      const w = dsHelv.widthOfTextAtSize(today, 10);
+      const w = helv.widthOfTextAtSize(today, 10);
       drawDS(dpLast, today, 342.3 + (420.2 - 342.3 - w) / 2, 333, 10);
     }
-    // "/ Stempel" hinter beiden Unterschriftslabels weiß überdecken (top 376.8)
     dpLast.drawRectangle({ x: 184, y: PHL - 388, width: 46, height: 12, color: rgb(1,1,1) });
     dpLast.drawRectangle({ x: 354, y: PHL - 388, width: 46, height: 12, color: rgb(1,1,1) });
-    // Geschäftsführer-Name unter der Liftaro-Unterschrift (Datenschutz-Anlage letzte Seite)
     drawDS(dpLast, 'Francesco Ricioppo', 249, 391, 9);
 
-    // Anhängen
+    // An den Hauptvertrag anhängen
     const copied = await baseDoc.copyPages(dsDoc, dsDoc.getPageIndices());
     copied.forEach(p => baseDoc.addPage(p));
   } catch(e) { console.warn('Datenschutz-Anhang fehlgeschlagen:', e.message); }
