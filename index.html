@@ -2449,7 +2449,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.28';
+const APP_VERSION = 'V8.29';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7833,43 +7833,147 @@ async function buildVertragPDF() {
   drawText('Francesco Ricioppo', { size: 9, font: helvObl });
 
   // ═══════════════════════════════════════════════════════════════════
-  // Datenschutz-Anhang (bestehende PDF-Vorlage anhängen, mit Auftraggeberdaten)
+  // DATENSCHUTZVEREINBARUNG (nativ generiert, Daten inline)
   // ═══════════════════════════════════════════════════════════════════
-  try {
-    const dsBytes = b64ToUint8(DATENSCHUTZ_TEMPLATE_B64);
-    const dsDoc = await PDFDocument.load(dsBytes);
-    const drawDS = (page, text, xPdf, topPx, size = 10, font = helv) => {
-      if (!text) return;
-      const PH = page.getSize().height;
-      page.drawText(String(text), { x: xPdf, y: PH - topPx - size, size, font, color: COLOR });
-    };
-    const dp1 = dsDoc.getPages()[0];
-    drawDS(dp1, d.firma,     140, 145, 10);
-    drawDS(dp1, vollAdresse, 140, 162, 10);
-    drawDS(dp1, d.gf,        140, 179, 10);
+  newPage();
+  drawTitle('Datenschutzvereinbarung');
+  drawText('gemäß Art. 13/14 DSGVO');
+  drawText('zur Verarbeitung personenbezogener Daten im Rahmen des Beratervertrags');
+  spacer(4);
+  drawText('zwischen');
+  drawText('Auftraggeber (Verantwortlicher):', { font: helvBold });
+  drawText('Name / Firma: ' + (d.firma || ''), { size: 10.5 });
+  drawText('Adresse: '      + (vollAdresse || ''), { size: 10.5 });
+  drawText('Vertreten durch: ' + (d.gf || ''), { size: 10.5 });
+  spacer(4);
+  drawText('und');
+  drawText('Berater (Auftragsverarbeiter):', { font: helvBold });
+  drawText('Liftaro GmbH, Gustavburger Weg 6, 55116 Mainz');
+  drawText('HRB 54013, Amtsgericht Mainz');
+  drawText('– gemeinsam „Vertragsparteien" genannt –');
 
-    const dpLast = dsDoc.getPages()[dsDoc.getPageCount() - 1];
-    const PHL = dpLast.getSize().height;
-    if (d.ort) {
-      const w = helv.widthOfTextAtSize(String(d.ort), 10);
-      drawDS(dpLast, d.ort, 62.7 + (125 - 62.7 - w) / 2, 333, 10);
-    }
-    {
-      const w = helv.widthOfTextAtSize(today, 10);
-      drawDS(dpLast, today, 210 + (287.9 - 210 - w) / 2, 333, 10);
-    }
-    {
-      const w = helv.widthOfTextAtSize(today, 10);
-      drawDS(dpLast, today, 342.3 + (420.2 - 342.3 - w) / 2, 333, 10);
-    }
-    dpLast.drawRectangle({ x: 184, y: PHL - 388, width: 46, height: 12, color: rgb(1,1,1) });
-    dpLast.drawRectangle({ x: 354, y: PHL - 388, width: 46, height: 12, color: rgb(1,1,1) });
-    drawDS(dpLast, 'Francesco Ricioppo', 249, 391, 9);
+  drawHeading('§1 Gegenstand und Zweck der Vereinbarung');
+  drawBullet('Diese Datenschutzvereinbarung regelt die Verarbeitung personenbezogener Daten im Rahmen des zwischen den Vertragsparteien geschlossenen Beratervertrags zur wirtschaftlichen und technischen Optimierung von Aufzugsanlagen.');
+  drawBullet('Der Berater verarbeitet im Auftrag und nach Weisung des Auftraggebers Daten, die für die Erbringung der vereinbarten Beratungsleistungen erforderlich sind.');
+  drawBullet('Die Verarbeitung erfolgt ausschließlich für die in diesem Vertrag definierten Zwecke und in Übereinstimmung mit der EU-Datenschutz-Grundverordnung (DSGVO), dem Bundesdatenschutzgesetz (BDSG) sowie sonstigen anwendbaren Datenschutzvorschriften.');
 
-    // An den Hauptvertrag anhängen
-    const copied = await baseDoc.copyPages(dsDoc, dsDoc.getPageIndices());
-    copied.forEach(p => baseDoc.addPage(p));
-  } catch(e) { console.warn('Datenschutz-Anhang fehlgeschlagen:', e.message); }
+  drawHeading('§2 Art der verarbeiteten Daten');
+  drawText('Im Rahmen der Zusammenarbeit werden folgende Kategorien personenbezogener und vertragsbezogener Daten verarbeitet:');
+  drawText('2.1 Stammdaten des Auftraggebers', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Name und Anschrift der Hausverwaltung bzw. des Auftraggebers');
+  drawBullet('Name und Kontaktdaten der verantwortlichen Ansprechpersonen');
+  drawBullet('Kommunikationsdaten (E-Mail, Telefon)');
+  drawText('2.2 Vertragsdaten', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Bestehende Wartungs-, Notruf- und Serviceverträge (inkl. Konditionen, Laufzeiten, Preise)');
+  drawBullet('Angebote und Auftragsbestätigungen von Aufzugsfirmen');
+  drawBullet('Rechnungs- und Zahlungsinformationen im Zusammenhang mit der Beratungsleistung');
+  drawText('2.3 Anlagenbezogene Daten', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Technische Daten der betreuten Aufzugsanlagen (Standort, Baujahr, Typ, Fabrikat)');
+  drawBullet('Prüf- und Wartungshistorien');
+  drawBullet('ZÜS-Prüfberichte und Mängeldokumentationen');
+  drawText('2.4 Daten Dritter', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Kontaktdaten von Wartungsfirmen und Dienstleistern, sofern für die Leistungserbringung notwendig');
+  drawBullet('Mieterdaten nur in dem Umfang, wie sie in Wartungs- oder Prüfprotokollen enthalten sind');
+  drawText('Besondere Kategorien personenbezogener Daten im Sinne des Art. 9 DSGVO werden nicht verarbeitet.', { before: 6 });
+
+  drawHeading('§3 Rechtsgrundlagen der Verarbeitung');
+  drawText('Die Verarbeitung personenbezogener Daten stützt sich auf folgende Rechtsgrundlagen:');
+  drawBullet('Art. 6 Abs. 1 lit. b DSGVO – Erfüllung des Beratervertrags');
+  drawBullet('Art. 6 Abs. 1 lit. c DSGVO – Erfüllung gesetzlicher Verpflichtungen (z. B. BetrSichV, TRBS)');
+  drawBullet('Art. 6 Abs. 1 lit. f DSGVO – Wahrung berechtigter Interessen (wirtschaftliche Optimierung des Anlagenbetriebs)');
+
+  drawHeading('§4 Pflichten des Beraters als Auftragsverarbeiter');
+  drawBullet('Der Berater verarbeitet personenbezogene Daten ausschließlich auf dokumentierte Weisung des Auftraggebers, es sei denn, er ist nach EU- oder nationalem Recht zur Verarbeitung verpflichtet.');
+  drawBullet('Der Berater gewährleistet, dass die mit der Verarbeitung befassten Personen zur Vertraulichkeit verpflichtet sind.');
+  drawBullet('Der Berater ergreift alle gemäß Art. 32 DSGVO erforderlichen technischen und organisatorischen Maßnahmen zum Schutz der Daten (siehe §6 dieser Vereinbarung).');
+  drawBullet('Der Berater unterstützt den Auftraggeber soweit möglich bei der Erfüllung von Betroffenenrechten (Art. 15–22 DSGVO) sowie bei der Einhaltung der Meldepflichten nach Art. 33 und 34 DSGVO.');
+  drawBullet('Der Berater stellt nach Beendigung des Vertrags alle Daten an den Auftraggeber zurück oder löscht diese, sofern keine gesetzliche Aufbewahrungspflicht entgegensteht.');
+  drawBullet('Der Berater stellt dem Auftraggeber alle zur Nachweisführung der Einhaltung dieser Vereinbarung erforderlichen Informationen zur Verfügung und ermöglicht Überprüfungen.');
+
+  drawHeading('§5 Weiterleitung an Dritte und Unterauftragsverarbeiter');
+  drawBullet('Eine Weitergabe von personenbezogenen Daten an Dritte erfolgt nur, soweit dies zur Erbringung der Beratungsleistung zwingend erforderlich ist (z. B. Einholung von Alternativangeboten bei Aufzugunternehmen) und nur mit vorheriger Information des Auftraggebers.');
+  drawBullet('Der Berater setzt keine Unterauftragsverarbeiter ein, ohne den Auftraggeber vorab schriftlich zu informieren. Der Auftraggeber hat das Recht, berechtigte Einwände gegen den Einsatz eines Unterauftragsverarbeiters zu erheben.');
+  drawBullet('Werden Unterauftragsverarbeiter eingesetzt, sind diese vertraglich mindestens in dem Umfang zu verpflichten, der dieser Vereinbarung entspricht.');
+  drawBullet('Eine Übermittlung in Drittstaaten außerhalb der EU/des EWR findet nicht statt, sofern kein angemessenes Datenschutzniveau nach Art. 45 ff. DSGVO gewährleistet ist.');
+
+  drawHeading('§6 Technische und organisatorische Maßnahmen (TOM)');
+  drawText('Der Berater trifft mindestens folgende technische und organisatorische Schutzmaßnahmen gemäß Art. 32 DSGVO:');
+  drawText('Vertraulichkeit', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Zugriffskontrolle: Zugang zu personenbezogenen Daten nur für befugte Mitarbeiter');
+  drawBullet('Verschlüsselung von Datenübertragungen (TLS/SSL)');
+  drawBullet('Passwortschutz und gesicherte Zugänge zu IT-Systemen');
+  drawText('Integrität', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Regelmäßige Sicherung aller relevanten Daten (Backups)');
+  drawBullet('Protokollierung von Datenzugriffen und -änderungen');
+  drawText('Verfügbarkeit', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Schutz vor unberechtigtem Datenverlust durch redundante Systeme');
+  drawBullet('Wiederherstellungsmaßnahmen bei technischen Ausfällen');
+  drawText('Belastbarkeit', { font: helvBold, before: 4, after: 4 });
+  drawBullet('Regelmäßige Überprüfung und Aktualisierung der Sicherheitsmaßnahmen');
+  drawBullet('Schulung der Mitarbeiter zu Datenschutz und Datensicherheit');
+
+  drawHeading('§7 Speicherdauer und Löschung');
+  drawBullet('Personenbezogene Daten werden nur so lange gespeichert, wie es für die Zwecke der Verarbeitung erforderlich ist.');
+  drawBullet('Nach Beendigung des Beratervertrags werden alle personenbezogenen Daten des Auftraggebers und Dritter gelöscht oder gesperrt, sofern keine gesetzlichen Aufbewahrungspflichten (insbesondere steuerrechtlicher Art gemäß §§ 147 AO, 257 HGB) entgegenstehen.');
+  drawBullet('Vertragsdaten mit steuerlicher Relevanz werden bis zu 10 Jahre aufbewahrt. Technische Anlagendaten werden bis zu 5 Jahre nach Vertragsende gespeichert.');
+
+  drawHeading('§8 Rechte der betroffenen Personen');
+  drawText('Betroffene Personen haben gegenüber dem Verantwortlichen (Auftraggeber) folgende Rechte gemäß DSGVO:');
+  drawBullet('Recht auf Auskunft (Art. 15 DSGVO)');
+  drawBullet('Recht auf Berichtigung (Art. 16 DSGVO)');
+  drawBullet('Recht auf Löschung (Art. 17 DSGVO)');
+  drawBullet('Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO)');
+  drawBullet('Recht auf Datenübertragbarkeit (Art. 20 DSGVO)');
+  drawBullet('Widerspruchsrecht (Art. 21 DSGVO)');
+  drawBullet('Recht auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO)');
+  drawText('Der Berater unterstützt den Auftraggeber auf Anfrage bei der Beantwortung von Betroffenenanfragen, soweit diese Daten betreffen, die im Rahmen des Beratervertrags verarbeitet werden.', { before: 4 });
+
+  drawHeading('§9 Meldepflicht bei Datenschutzverletzungen');
+  drawBullet('Im Falle einer Verletzung des Schutzes personenbezogener Daten (Art. 4 Nr. 12 DSGVO) informiert der Berater den Auftraggeber unverzüglich, spätestens jedoch innerhalb von 24 Stunden nach Bekanntwerden des Vorfalls.');
+  drawBullet('Die Meldung enthält mindestens: Art der Verletzung, betroffene Datenkategorien und -mengen, voraussichtliche Folgen sowie ergriffene oder geplante Gegenmaßnahmen.');
+  drawBullet('Die gesetzliche Meldepflicht gegenüber der zuständigen Aufsichtsbehörde (Art. 33 DSGVO) obliegt dem Auftraggeber als Verantwortlichem.');
+
+  drawHeading('§10 Verantwortlicher und Datenschutzbeauftragter');
+  drawText('Verantwortlicher im Sinne der DSGVO ist der Auftraggeber. Bei Fragen zur Datenverarbeitung durch die Liftaro GmbH wenden Sie sich an:');
+  drawText('Liftaro GmbH', { before: 4 });
+  drawText('Gustavburger Weg 6, 55116 Mainz');
+  drawText('E-Mail: info@liftaro.de');
+  drawText('Telefon: +49 1512 8189826');
+  drawText('Sofern gesetzlich erforderlich, benennt die Liftaro GmbH einen betrieblichen Datenschutzbeauftragten und teilt dessen Kontaktdaten dem Auftraggeber mit.', { before: 4 });
+
+  drawHeading('§11 Laufzeit und Beendigung');
+  drawBullet('Diese Datenschutzvereinbarung gilt ab dem Zeitpunkt der Unterzeichnung des Beratervertrags und endet mit dessen Beendigung.');
+  drawBullet('Regelungen zur Datenlöschung, Aufbewahrung und Vertraulichkeit (§§ 6, 7, 9) gelten auch nach Vertragsende fort.');
+
+  drawHeading('§12 Schlussbestimmungen');
+  drawBullet('Änderungen und Ergänzungen dieser Vereinbarung bedürfen der Schriftform.');
+  drawBullet('Sollte eine Bestimmung dieser Vereinbarung unwirksam sein oder werden, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt (Salvatorische Klausel).');
+  drawBullet('Es gilt das Recht der Bundesrepublik Deutschland. Gerichtsstand ist, soweit zulässig, der Sitz der Liftaro GmbH.');
+  drawBullet('Diese Vereinbarung ist Bestandteil des Beratervertrags zwischen den Parteien und kann nicht separat gekündigt werden.');
+
+  // Unterschriftenblock Datenschutzvereinbarung
+  if (y < MARGIN_BOT + 140) newPage();
+  spacer(16);
+  drawText('Unterschriften der Vertragsparteien', { font: helvBold });
+  spacer(20);
+  // Zwei Spalten Ort+Datum
+  const colW = (PAGE_W - 2*MARGIN_X - 20) / 2;
+  const xL = MARGIN_X;
+  const xR = MARGIN_X + colW + 20;
+  ensure(16);
+  page.drawText((d.ort ? d.ort : '__________') + ', den ' + today, { x: xL, y: y - 10.5, size: 10.5, font: helv, color: COLOR });
+  page.drawText('Mainz, den ' + today, { x: xR, y: y - 10.5, size: 10.5, font: helv, color: COLOR });
+  y -= 32;
+  // Unterschrift-Linien
+  page.drawLine({ start: { x: xL, y: y }, end: { x: xL + colW, y: y }, thickness: 0.5, color: COLOR });
+  page.drawLine({ start: { x: xR, y: y }, end: { x: xR + colW, y: y }, thickness: 0.5, color: COLOR });
+  spacer(4);
+  ensure(14);
+  page.drawText('Auftraggeber – Unterschrift / Stempel', { x: xL, y: y - 9, size: 9, font: helv, color: COLOR });
+  page.drawText('Liftaro GmbH – Unterschrift / Stempel',  { x: xR, y: y - 9, size: 9, font: helv, color: COLOR });
+  y -= 14;
+  page.drawText('Francesco Ricioppo', { x: xR, y: y - 9, size: 9, font: helvObl, color: COLOR });
+  y -= 14;
 
   baseDoc.setTitle('Beratervertrag – ' + (d.firma || 'Liftaro'));
   baseDoc.setAuthor('Liftaro GmbH');
