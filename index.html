@@ -2396,7 +2396,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.24';
+const APP_VERSION = 'V8.25';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7617,7 +7617,8 @@ async function buildVertragPDF() {
     drawText(text, { ...(opts||{}), bullet: '•', indent: 14, after: 2 });
   }
   function drawSubBullet(text, opts) {
-    drawText(text, { ...(opts||{}), bullet: '○', indent: 28, after: 2, bulletFont: helv });
+    // Hyphen statt ○, da Helvetica/WinAnsi den offenen Kreis (U+25CB) nicht codieren kann
+    drawText(text, { ...(opts||{}), bullet: '–', indent: 28, after: 2, bulletFont: helv });
   }
   function spacer(h) { y -= h; }
 
