@@ -2229,13 +2229,66 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
     <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button id="v_btnPreview" onclick="previewVertrag()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">👁 Vorschau</button>
         <button id="v_btnDownload" onclick="downloadVertrag()" style="display:none;background:#fff;border:1.5px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">⬇ Vertrag herunterladen</button>
+        <button id="v_btnKi" onclick="openKiVertragModal()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><circle cx="18" cy="18" r="2"/><circle cx="6" cy="18" r="2"/></svg>
+          KI-Anpassung
+          <span id="v_kiBadge" style="display:none;background:#fff;color:#7c3aed;border-radius:10px;padding:0 6px;font-size:10.5px;font-weight:800;font-family:'DM Mono',monospace">0</span>
+        </button>
       </div>
       <div style="display:flex;gap:8px">
         <button id="v_btnDelete" onclick="deleteVertragCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
         <button onclick="saveVertrag()" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">💾 Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KI-Anpassungs-Modal: Chat zur Vertragsmodifikation per Anthropic API -->
+<div id="kiVertragModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.88);z-index:5300;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:#fff;border-radius:16px;width:min(820px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.5);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
+          <span>KI-Vertragsanpassung</span>
+        </div>
+        <div style="color:rgba(255,255,255,.78);font-size:11.5px;margin-top:2px">Beschreibe in eigenen Worten, was am Vertrag geändert werden soll. Die KI schlägt konkrete Anpassungen vor.</div>
+      </div>
+      <button onclick="document.getElementById('kiVertragModal').style.display='none'" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+    </div>
+
+    <!-- Aktuelle Anpassungen-Liste -->
+    <div id="kiCurrentOverrides" style="flex-shrink:0;padding:10px 22px;background:#f7f4ff;border-bottom:1px solid #e9e0ff;display:none">
+      <div style="font-size:11px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Aktive KI-Anpassungen</div>
+      <div id="kiOverridesList" style="display:flex;flex-direction:column;gap:5px"></div>
+      <div style="margin-top:8px"><button onclick="clearAllKiOverrides()" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:6px;padding:5px 11px;font-size:11.5px;cursor:pointer">↺ Alle Anpassungen verwerfen</button></div>
+    </div>
+
+    <!-- Chat-Konversation -->
+    <div id="kiChatHistory" style="flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:12px;background:#fafafa">
+      <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.5">
+        <div style="font-weight:700;color:#5b21b6;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">💡 Beispiele</div>
+        <ul style="margin:0;padding-left:18px;color:var(--text)">
+          <li>„Mach §3 (3) noch sanfter formuliert"</li>
+          <li>„Erhöhe die Haftungsgrenze auf 100.000 €"</li>
+          <li>„Kürze §6 auf einen einzigen Satz"</li>
+          <li>„Ändere die Mindestlaufzeit von 24 auf 12 Monate"</li>
+          <li>„Schreibe alles geschlechtsneutral um"</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Eingabe -->
+    <div style="flex-shrink:0;padding:12px 22px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      <textarea id="kiUserInput" placeholder="Was soll geändert werden? z. B. „Mach §3 noch sanfter und entferne den Hinweis auf vorherige Beratung"" rows="2" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;resize:vertical;min-height:50px"></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button id="kiSendBtn" onclick="sendKiMessage()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:7px;padding:9px 20px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          KI fragen
+        </button>
       </div>
     </div>
   </div>
@@ -2396,7 +2449,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.27';
+const APP_VERSION = 'V8.28';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2756,6 +2809,7 @@ async function setupTables() {
       { name: 'vertrag_pdf',        type: 'multipleAttachments' },
       { name: 'vertrag_signed_pdf', type: 'multipleAttachments' },
       { name: 'variante',           type: 'singleLineText' },
+      { name: 'anpassungen',        type: 'multilineText' },
     ]);
   } catch(e) { console.warn('Vertraege-Schema konnte nicht angelegt werden:', e.message); }
 
@@ -7495,6 +7549,7 @@ function getVertragData() {
     email:    g('v_email'),
     beginn:   g('v_beginn'),
     variante: g('v_variante') || 'standard',
+    anpassungen: window._currentVertragAnpassungen || {},
   };
 }
 
@@ -7511,6 +7566,17 @@ function setVertragForm(d) {
   set('v_email',    d.email);
   set('v_beginn',   d.beginn);
   set('v_variante', d.variante || 'standard');
+  // KI-Anpassungen aus JSON-String laden
+  try {
+    if (typeof d.anpassungen === 'string' && d.anpassungen.trim()) {
+      window._currentVertragAnpassungen = JSON.parse(d.anpassungen);
+    } else if (d.anpassungen && typeof d.anpassungen === 'object') {
+      window._currentVertragAnpassungen = d.anpassungen;
+    } else {
+      window._currentVertragAnpassungen = {};
+    }
+  } catch(e) { window._currentVertragAnpassungen = {}; }
+  if (typeof refreshKiAnpassungenBadge === 'function') refreshKiAnpassungenBadge();
 }
 
 function clearVertragForm() {
@@ -7518,6 +7584,8 @@ function clearVertragForm() {
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   // Default-Variante zurück auf "standard"
   const va = document.getElementById('v_variante'); if (va) va.value = 'standard';
+  window._currentVertragAnpassungen = {};
+  if (typeof refreshKiAnpassungenBadge === 'function') refreshKiAnpassungenBadge();
   _vertragPreviewBlob = null;
 }
 
@@ -7622,6 +7690,19 @@ async function buildVertragPDF() {
   }
   function spacer(h) { y -= h; }
 
+  // ── KI-Override-System: jeder Paragraph hat eine ID, die per d.anpassungen überschrieben werden kann
+  let _OVERRIDES = {};
+  try {
+    if (d.anpassungen) _OVERRIDES = (typeof d.anpassungen === 'string') ? JSON.parse(d.anpassungen) : (d.anpassungen || {});
+  } catch(e) { _OVERRIDES = {}; }
+  function _resolve(id, defaultText) {
+    return (_OVERRIDES && _OVERRIDES[id] !== undefined && _OVERRIDES[id] !== null) ? _OVERRIDES[id] : defaultText;
+  }
+  function txt(id, defaultText, opts)    { drawText(_resolve(id, defaultText), opts); }
+  function bul(id, defaultText, opts)    { drawBullet(_resolve(id, defaultText), opts); }
+  function subBul(id, defaultText, opts) { drawSubBullet(_resolve(id, defaultText), opts); }
+  function head(id, defaultText, opts)   { drawHeading(_resolve(id, defaultText), opts); }
+
   // ═══════════════════════════════════════════════════════════════════
   // SEITE 1: Header, Auftraggeber/Berater, §1, §2 (Anfang)
   // ═══════════════════════════════════════════════════════════════════
@@ -7644,65 +7725,65 @@ async function buildVertragPDF() {
   spacer(2);
   drawText('wird folgender Beratervertrag geschlossen:');
 
-  drawHeading('§1 Vertragsgegenstand');
-  drawText('(1) Der Berater unterstützt den Auftraggeber beratend, wirtschaftlich und technisch in allen Fragen rund um den Betrieb, die Instandhaltung und die wirtschaftliche Optimierung von Aufzugsanlagen.');
-  drawText('(2) Schwerpunkt der Beratung ist insbesondere:');
-  drawBullet('die Optimierung bestehender Wartungs-, und Notrufverträgen,');
-  drawBullet('die Prüfung, Bewertung und Verhandlung von Reparatur-, Nachrüst- und Modernisierungsangeboten,');
-  drawBullet('die Beratung zu Betreiberpflichten, gesetzlichen Vorgaben und Anforderungen aus BetrSichV, TRBS, DIN-Normen sowie ZÜS-Prüfungen.');
+  head('h1', '§1 Vertragsgegenstand');
+  txt('p1_1', '(1) Der Berater unterstützt den Auftraggeber beratend, wirtschaftlich und technisch in allen Fragen rund um den Betrieb, die Instandhaltung und die wirtschaftliche Optimierung von Aufzugsanlagen.');
+  txt('p1_2', '(2) Schwerpunkt der Beratung ist insbesondere:');
+  bul('p1_b1', 'die Optimierung bestehender Wartungs-, und Notrufverträgen,');
+  bul('p1_b2', 'die Prüfung, Bewertung und Verhandlung von Reparatur-, Nachrüst- und Modernisierungsangeboten,');
+  bul('p1_b3', 'die Beratung zu Betreiberpflichten, gesetzlichen Vorgaben und Anforderungen aus BetrSichV, TRBS, DIN-Normen sowie ZÜS-Prüfungen.');
 
-  drawHeading('§2 Leistungen des Beraters');
-  drawText('1. Wartungs-, und Notrufverträge');
-  drawBullet('Analyse bestehender Verträge (Wartung, Notruf, ZÜS)');
-  drawBullet('Bewertung von Leistungsumfang, Kosten und Vertragslaufzeiten');
-  drawBullet('Einholen alternativer Angebote');
-  drawBullet('Wirtschaftliche und technische Bewertung');
-  drawBullet('Unterstützung bei Verhandlungen');
-  drawBullet('Empfehlung zur Vergabeentscheidung');
+  head('h2', '§2 Leistungen des Beraters');
+  txt('p2_1_h', '1. Wartungs-, und Notrufverträge');
+  bul('p2_b1', 'Analyse bestehender Verträge (Wartung, Notruf, ZÜS)');
+  bul('p2_b2', 'Bewertung von Leistungsumfang, Kosten und Vertragslaufzeiten');
+  bul('p2_b3', 'Einholen alternativer Angebote');
+  bul('p2_b4', 'Wirtschaftliche und technische Bewertung');
+  bul('p2_b5', 'Unterstützung bei Verhandlungen');
+  bul('p2_b6', 'Empfehlung zur Vergabeentscheidung');
 
-  drawText('2.1 Reparaturen und Nachrüstungen', { font: helvBold, before: 4, after: 4 });
-  drawText('Prüfung von Reparatur- und Nachrüstangeboten auf:');
-  drawSubBullet('technische Plausibilität');
-  drawSubBullet('Marktüblichkeit der Preise');
-  drawSubBullet('Notwendigkeit im Sinne der Betreiberpflichten');
-  drawBullet('Vergleich mehrerer Angebote');
-  drawBullet('Verhandlungsempfehlungen');
-  drawBullet('Freigabeempfehlung gegenüber dem AG');
+  txt('p2_1_h2', '2.1 Reparaturen und Nachrüstungen', { font: helvBold, before: 4, after: 4 });
+  txt('p2_1_intro', 'Prüfung von Reparatur- und Nachrüstangeboten auf:');
+  subBul('p2_1_sb1', 'technische Plausibilität');
+  subBul('p2_1_sb2', 'Marktüblichkeit der Preise');
+  subBul('p2_1_sb3', 'Notwendigkeit im Sinne der Betreiberpflichten');
+  bul('p2_1_b1', 'Vergleich mehrerer Angebote');
+  bul('p2_1_b2', 'Verhandlungsempfehlungen');
+  bul('p2_1_b3', 'Freigabeempfehlung gegenüber dem AG');
 
-  drawText('2.2 Betreiberpflichten & Begutachtungen', { font: helvBold, before: 4, after: 4 });
-  drawBullet('Beratung zu gesetzlichen Betreiberpflichten');
-  drawBullet('Unterstützung bei:');
-  drawSubBullet('ZÜS-Prüfungen (Haupt- und Zwischenprüfungen)');
-  drawSubBullet('Mängelbewertungen');
-  drawSubBullet('Ableitung technischer und wirtschaftlicher Maßnahmen');
-  drawBullet('Allgemeine fachliche Stellungnahmen zu Betriebssicherheit und Normenkonformität');
+  txt('p2_2_h', '2.2 Betreiberpflichten & Begutachtungen', { font: helvBold, before: 4, after: 4 });
+  bul('p2_2_b1', 'Beratung zu gesetzlichen Betreiberpflichten');
+  bul('p2_2_b2', 'Unterstützung bei:');
+  subBul('p2_2_sb1', 'ZÜS-Prüfungen (Haupt- und Zwischenprüfungen)');
+  subBul('p2_2_sb2', 'Mängelbewertungen');
+  subBul('p2_2_sb3', 'Ableitung technischer und wirtschaftlicher Maßnahmen');
+  bul('p2_2_b3', 'Allgemeine fachliche Stellungnahmen zu Betriebssicherheit und Normenkonformität');
 
   // ═══════════════════════════════════════════════════════════════════
-  // §3 — VARIANTE-SPEZIFISCH
+  // §3 — VARIANTE-SPEZIFISCH (KI kann zusätzlich p3_1...p3_4 überschreiben)
   // ═══════════════════════════════════════════════════════════════════
-  drawHeading('§3 Mitwirkung des Auftraggebers');
+  head('h3', '§3 Mitwirkung des Auftraggebers');
   const para3 = _BERATER_PARA3[d.variante] || _BERATER_PARA3.standard;
-  para3.forEach(line => drawText(line));
+  para3.forEach((line, idx) => txt('p3_' + (idx+1), line));
 
-  drawHeading('§4 Vergütung');
-  drawText('1. Grundvergütung (Datenmanagement)');
-  drawText('Der Aufbau, die Pflege und Aktualisierung der Anlagendatenbank ist für den AG grundsätzlich kostenlos.');
-  drawText('2. Erfolgsabhängige Vergütung – Einsparungen');
-  drawText('(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.');
-  drawText('(2) Der Berater erhält:');
-  drawBullet('50 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)');
-  drawBullet('50 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen');
-  drawText('(3) Die Einsparungsberechnung erfolgt transparent und nachvollziehbar und wird dem AG schriftlich dargelegt.');
+  head('h4', '§4 Vergütung');
+  txt('p4_1_h', '1. Grundvergütung (Datenmanagement)');
+  txt('p4_1', 'Der Aufbau, die Pflege und Aktualisierung der Anlagendatenbank ist für den AG grundsätzlich kostenlos.');
+  txt('p4_2_h', '2. Erfolgsabhängige Vergütung – Einsparungen');
+  txt('p4_2_1', '(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.');
+  txt('p4_2_2', '(2) Der Berater erhält:');
+  bul('p4_b1', '50 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)');
+  bul('p4_b2', '50 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen');
+  txt('p4_2_3', '(3) Die Einsparungsberechnung erfolgt transparent und nachvollziehbar und wird dem AG schriftlich dargelegt.');
 
-  drawHeading('§5 Besondere Beratungsleistungen');
-  drawText('Leistungen außerhalb des vereinbarten Umfangs werden nur nach vorheriger schriftlicher Beauftragung vergütet und vorab separat von Liftaro angeboten.');
+  head('h5', '§5 Besondere Beratungsleistungen');
+  txt('p5_1', 'Leistungen außerhalb des vereinbarten Umfangs werden nur nach vorheriger schriftlicher Beauftragung vergütet und vorab separat von Liftaro angeboten.');
 
-  drawHeading('§6 Haftung');
-  drawText('(1) Der Berater haftet ausschließlich für Schäden, die auf Vorsatz oder grobe Fahrlässigkeit zurückzuführen sind.');
-  drawText('(2) Die Haftung ist je Schadensfall auf 50.000 € begrenzt.');
-  drawText('(3) Eine Haftung für mittelbare Schäden, entgangenen Gewinn oder Folgeschäden ist ausgeschlossen.');
+  head('h6', '§6 Haftung');
+  txt('p6_1', '(1) Der Berater haftet ausschließlich für Schäden, die auf Vorsatz oder grobe Fahrlässigkeit zurückzuführen sind.');
+  txt('p6_2', '(2) Die Haftung ist je Schadensfall auf 50.000 € begrenzt.');
+  txt('p6_3', '(3) Eine Haftung für mittelbare Schäden, entgangenen Gewinn oder Folgeschäden ist ausgeschlossen.');
 
-  drawHeading('§7 Vertragslaufzeit und Kündigung');
+  head('h7', '§7 Vertragslaufzeit und Kündigung');
   // §7(1) mit Vertragsbeginn-Datum statt "[Datum einsetzen]"
   const beginnTxt = d.beginn ? d.beginn : '[Datum einsetzen]';
   const beginnColor = d.beginn ? COLOR : RED;
@@ -7716,20 +7797,20 @@ async function buildVertragPDF() {
   page.drawText('und wird zunächst für 24 Monate', { x: MARGIN_X + offset2, y: y - 10.5, size: 10.5, font: helv, color: COLOR });
   y -= 14;
   drawText('fest abgeschlossen.');
-  drawText('(2) Nach Ablauf der Mindestlaufzeit verlängert sich der Vertrag auf unbestimmte Zeit und kann von beiden Parteien mit einer Frist von einem Monat zum Monatsende schriftlich gekündigt werden.');
+  txt('p7_2', '(2) Nach Ablauf der Mindestlaufzeit verlängert sich der Vertrag auf unbestimmte Zeit und kann von beiden Parteien mit einer Frist von einem Monat zum Monatsende schriftlich gekündigt werden.');
 
-  drawHeading('§8 Wettbewerbsfreiheit');
-  drawText('Der Berater unterliegt keinem Wettbewerbsverbot.');
-  drawText('Der Auftraggeber erkennt an, dass der Berater vergleichbare Leistungen auch für andere Auftraggeber erbringt.');
+  head('h8', '§8 Wettbewerbsfreiheit');
+  txt('p8_1', 'Der Berater unterliegt keinem Wettbewerbsverbot.');
+  txt('p8_2', 'Der Auftraggeber erkennt an, dass der Berater vergleichbare Leistungen auch für andere Auftraggeber erbringt.');
 
-  drawHeading('§9 Vertraulichkeit und Datenschutz');
-  drawText('(1) Beide Parteien verpflichten sich zur vertraulichen Behandlung aller bekannt gewordenen Informationen.');
-  drawText('(2) Personenbezogene Daten werden ausschließlich im Rahmen dieses Vertrages verarbeitet und nach Ablauf der gesetzlichen Aufbewahrungsfristen gelöscht.');
+  head('h9', '§9 Vertraulichkeit und Datenschutz');
+  txt('p9_1', '(1) Beide Parteien verpflichten sich zur vertraulichen Behandlung aller bekannt gewordenen Informationen.');
+  txt('p9_2', '(2) Personenbezogene Daten werden ausschließlich im Rahmen dieses Vertrages verarbeitet und nach Ablauf der gesetzlichen Aufbewahrungsfristen gelöscht.');
 
-  drawHeading('§10 Schlussbestimmungen');
-  drawBullet('Änderungen bedürfen der Schriftform');
-  drawBullet('Es bestehen keine mündlichen Nebenabreden');
-  drawBullet('Salvatorische Klausel');
+  head('h10', '§10 Schlussbestimmungen');
+  bul('p10_b1', 'Änderungen bedürfen der Schriftform');
+  bul('p10_b2', 'Es bestehen keine mündlichen Nebenabreden');
+  bul('p10_b3', 'Salvatorische Klausel');
 
   // ═══════════════════════════════════════════════════════════════════
   // Unterschriftenblock — auf neuer Seite, damit er nicht zerrissen wird
@@ -7811,6 +7892,364 @@ async function previewVertrag() {
   }
 }
 
+// ── KI-Anpassungs-System ─────────────────────────────────────────────
+// Stammdaten: alle Paragraph-IDs mit Default-Texten (für KI-Kontext)
+const _BERATER_PARA_DEFAULTS = {
+  'h1':  '§1 Vertragsgegenstand',
+  'p1_1':'(1) Der Berater unterstützt den Auftraggeber beratend, wirtschaftlich und technisch in allen Fragen rund um den Betrieb, die Instandhaltung und die wirtschaftliche Optimierung von Aufzugsanlagen.',
+  'p1_2':'(2) Schwerpunkt der Beratung ist insbesondere:',
+  'p1_b1':'die Optimierung bestehender Wartungs-, und Notrufverträgen,',
+  'p1_b2':'die Prüfung, Bewertung und Verhandlung von Reparatur-, Nachrüst- und Modernisierungsangeboten,',
+  'p1_b3':'die Beratung zu Betreiberpflichten, gesetzlichen Vorgaben und Anforderungen aus BetrSichV, TRBS, DIN-Normen sowie ZÜS-Prüfungen.',
+  'h2':  '§2 Leistungen des Beraters',
+  'p2_1_h':'1. Wartungs-, und Notrufverträge',
+  'p2_b1':'Analyse bestehender Verträge (Wartung, Notruf, ZÜS)',
+  'p2_b2':'Bewertung von Leistungsumfang, Kosten und Vertragslaufzeiten',
+  'p2_b3':'Einholen alternativer Angebote',
+  'p2_b4':'Wirtschaftliche und technische Bewertung',
+  'p2_b5':'Unterstützung bei Verhandlungen',
+  'p2_b6':'Empfehlung zur Vergabeentscheidung',
+  'p2_1_h2':'2.1 Reparaturen und Nachrüstungen',
+  'p2_1_intro':'Prüfung von Reparatur- und Nachrüstangeboten auf:',
+  'p2_1_sb1':'technische Plausibilität',
+  'p2_1_sb2':'Marktüblichkeit der Preise',
+  'p2_1_sb3':'Notwendigkeit im Sinne der Betreiberpflichten',
+  'p2_1_b1':'Vergleich mehrerer Angebote',
+  'p2_1_b2':'Verhandlungsempfehlungen',
+  'p2_1_b3':'Freigabeempfehlung gegenüber dem AG',
+  'p2_2_h':'2.2 Betreiberpflichten & Begutachtungen',
+  'p2_2_b1':'Beratung zu gesetzlichen Betreiberpflichten',
+  'p2_2_b2':'Unterstützung bei:',
+  'p2_2_sb1':'ZÜS-Prüfungen (Haupt- und Zwischenprüfungen)',
+  'p2_2_sb2':'Mängelbewertungen',
+  'p2_2_sb3':'Ableitung technischer und wirtschaftlicher Maßnahmen',
+  'p2_2_b3':'Allgemeine fachliche Stellungnahmen zu Betriebssicherheit und Normenkonformität',
+  'h3':  '§3 Mitwirkung des Auftraggebers',
+  // §3 absätze: kommen aus _BERATER_PARA3[variante]
+  'h4':  '§4 Vergütung',
+  'p4_1_h':'1. Grundvergütung (Datenmanagement)',
+  'p4_1':'Der Aufbau, die Pflege und Aktualisierung der Anlagendatenbank ist für den AG grundsätzlich kostenlos.',
+  'p4_2_h':'2. Erfolgsabhängige Vergütung – Einsparungen',
+  'p4_2_1':'(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.',
+  'p4_2_2':'(2) Der Berater erhält:',
+  'p4_b1':'50 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)',
+  'p4_b2':'50 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen',
+  'p4_2_3':'(3) Die Einsparungsberechnung erfolgt transparent und nachvollziehbar und wird dem AG schriftlich dargelegt.',
+  'h5':  '§5 Besondere Beratungsleistungen',
+  'p5_1':'Leistungen außerhalb des vereinbarten Umfangs werden nur nach vorheriger schriftlicher Beauftragung vergütet und vorab separat von Liftaro angeboten.',
+  'h6':  '§6 Haftung',
+  'p6_1':'(1) Der Berater haftet ausschließlich für Schäden, die auf Vorsatz oder grobe Fahrlässigkeit zurückzuführen sind.',
+  'p6_2':'(2) Die Haftung ist je Schadensfall auf 50.000 € begrenzt.',
+  'p6_3':'(3) Eine Haftung für mittelbare Schäden, entgangenen Gewinn oder Folgeschäden ist ausgeschlossen.',
+  'h7':  '§7 Vertragslaufzeit und Kündigung',
+  'p7_2':'(2) Nach Ablauf der Mindestlaufzeit verlängert sich der Vertrag auf unbestimmte Zeit und kann von beiden Parteien mit einer Frist von einem Monat zum Monatsende schriftlich gekündigt werden.',
+  'h8':  '§8 Wettbewerbsfreiheit',
+  'p8_1':'Der Berater unterliegt keinem Wettbewerbsverbot.',
+  'p8_2':'Der Auftraggeber erkennt an, dass der Berater vergleichbare Leistungen auch für andere Auftraggeber erbringt.',
+  'h9':  '§9 Vertraulichkeit und Datenschutz',
+  'p9_1':'(1) Beide Parteien verpflichten sich zur vertraulichen Behandlung aller bekannt gewordenen Informationen.',
+  'p9_2':'(2) Personenbezogene Daten werden ausschließlich im Rahmen dieses Vertrages verarbeitet und nach Ablauf der gesetzlichen Aufbewahrungsfristen gelöscht.',
+  'h10': '§10 Schlussbestimmungen',
+  'p10_b1':'Änderungen bedürfen der Schriftform',
+  'p10_b2':'Es bestehen keine mündlichen Nebenabreden',
+  'p10_b3':'Salvatorische Klausel',
+};
+
+window._currentVertragAnpassungen = window._currentVertragAnpassungen || {};
+window._kiChatHistory = []; // {role, content}
+
+function refreshKiAnpassungenBadge() {
+  const badge = document.getElementById('v_kiBadge');
+  const overrides = window._currentVertragAnpassungen || {};
+  const count = Object.keys(overrides).length;
+  if (badge) {
+    badge.style.display = count > 0 ? 'inline-flex' : 'none';
+    badge.textContent = String(count);
+  }
+}
+
+function _currentParaText(id, variante) {
+  const overrides = window._currentVertragAnpassungen || {};
+  if (overrides[id] !== undefined) return overrides[id];
+  // §3 dynamic
+  const m = id.match(/^p3_(\d+)$/);
+  if (m) {
+    const arr = (typeof _BERATER_PARA3 !== 'undefined' && _BERATER_PARA3[variante || 'standard']) || [];
+    return arr[parseInt(m[1],10) - 1] || '';
+  }
+  return _BERATER_PARA_DEFAULTS[id] || '';
+}
+
+function buildKiContractContext() {
+  const variante = document.getElementById('v_variante')?.value || 'standard';
+  // Alle Paragraph-IDs in Reihenfolge
+  const ids = [
+    'h1','p1_1','p1_2','p1_b1','p1_b2','p1_b3',
+    'h2','p2_1_h','p2_b1','p2_b2','p2_b3','p2_b4','p2_b5','p2_b6',
+    'p2_1_h2','p2_1_intro','p2_1_sb1','p2_1_sb2','p2_1_sb3','p2_1_b1','p2_1_b2','p2_1_b3',
+    'p2_2_h','p2_2_b1','p2_2_b2','p2_2_sb1','p2_2_sb2','p2_2_sb3','p2_2_b3',
+    'h3','p3_1','p3_2','p3_3','p3_4',
+    'h4','p4_1_h','p4_1','p4_2_h','p4_2_1','p4_2_2','p4_b1','p4_b2','p4_2_3',
+    'h5','p5_1',
+    'h6','p6_1','p6_2','p6_3',
+    'h7','p7_2',
+    'h8','p8_1','p8_2',
+    'h9','p9_1','p9_2',
+    'h10','p10_b1','p10_b2','p10_b3',
+  ];
+  return ids.map(id => `[${id}] ${_currentParaText(id, variante)}`).join('\n');
+}
+
+async function openKiVertragModal() {
+  document.getElementById('kiVertragModal').style.display = 'flex';
+  renderKiOverridesList();
+  renderKiChatHistory();
+  setTimeout(() => document.getElementById('kiUserInput')?.focus(), 100);
+}
+
+function renderKiOverridesList() {
+  const wrap = document.getElementById('kiCurrentOverrides');
+  const list = document.getElementById('kiOverridesList');
+  const overrides = window._currentVertragAnpassungen || {};
+  const keys = Object.keys(overrides);
+  if (!keys.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  list.innerHTML = keys.map(id => {
+    const orig = _BERATER_PARA_DEFAULTS[id] || '(§3 Variante)';
+    const current = overrides[id] || '';
+    const idEsc = id.replace(/'/g, "\\'");
+    return `
+      <div style="background:#fff;border:1px solid #d4c5ff;border-radius:8px;padding:8px 12px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#5b21b6;font-family:'DM Mono',monospace;font-size:11.5px">${id}</div>
+            <div style="margin-top:4px;color:#a8312f;text-decoration:line-through;font-size:11.5px;line-height:1.5">${orig.length > 120 ? orig.slice(0,120)+'…' : orig}</div>
+            <div style="margin-top:4px;color:#3d7a14;font-weight:600;font-size:12px;line-height:1.5">${current.length > 200 ? current.slice(0,200)+'…' : current}</div>
+          </div>
+          <button onclick="removeKiOverride('${idEsc}')" title="Anpassung entfernen" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer;flex-shrink:0">↺</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function removeKiOverride(id) {
+  const overrides = window._currentVertragAnpassungen || {};
+  delete overrides[id];
+  window._currentVertragAnpassungen = overrides;
+  refreshKiAnpassungenBadge();
+  renderKiOverridesList();
+}
+
+function clearAllKiOverrides() {
+  if (!confirm('Wirklich alle KI-Anpassungen verwerfen? Der Vertrag fällt auf die Standardvariante zurück.')) return;
+  window._currentVertragAnpassungen = {};
+  refreshKiAnpassungenBadge();
+  renderKiOverridesList();
+}
+
+function renderKiChatHistory() {
+  const histEl = document.getElementById('kiChatHistory');
+  if (!histEl) return;
+  // Rest the chat ist beim Öffnen schon gefüllt mit Beispielen — wir hängen Nachrichten an
+  // Beispielcard nur einmal anzeigen, dann durch History ersetzen
+  if (!window._kiChatHistory.length) return;
+  // Beispiel-Card entfernen
+  const example = histEl.querySelector('div[style*="Beispiele"]');
+  if (example) example.parentElement.remove();
+  // History rendern (bestehende Items überschreiben)
+  histEl.innerHTML = window._kiChatHistory.map((msg, i) => {
+    if (msg.role === 'user') {
+      return `<div style="background:#e9e0ff;border-radius:10px;padding:10px 14px;font-size:13px;align-self:flex-end;max-width:75%;line-height:1.5">${escHtml(msg.content)}</div>`;
+    }
+    if (msg.role === 'assistant') {
+      // Falls Änderungs-Vorschläge enthalten sind, schöner darstellen
+      const data = msg.parsed || null;
+      let html = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.5;max-width:90%">`;
+      if (data?.explanation) {
+        html += `<div style="font-style:italic;color:var(--muted);margin-bottom:8px;font-size:12px">${escHtml(data.explanation)}</div>`;
+      }
+      if (data?.changes && data.changes.length) {
+        html += data.changes.map((ch, j) => {
+          const idEsc = (ch.paraId || '').replace(/'/g,"\\'");
+          const nt = (ch.newText || '').replace(/'/g, "\\'");
+          return `
+            <div style="background:#f7f4ff;border:1px solid #d4c5ff;border-radius:8px;padding:8px 12px;margin:6px 0">
+              <div style="font-weight:700;color:#5b21b6;font-family:'DM Mono',monospace;font-size:11.5px">${escHtml(ch.paraId)} ${ch.label ? '· ' + escHtml(ch.label) : ''}</div>
+              <div style="margin-top:4px;color:#a8312f;text-decoration:line-through;font-size:11.5px;line-height:1.5">${escHtml((_currentParaText(ch.paraId, document.getElementById('v_variante')?.value) || '').slice(0,200))}</div>
+              <div style="margin-top:4px;color:#3d7a14;font-weight:600;font-size:12px;line-height:1.5">${escHtml(ch.newText)}</div>
+              <div style="margin-top:8px;display:flex;gap:6px">
+                <button onclick="applyKiChange(${i},${j})" style="background:#3d7a14;color:#fff;border:none;border-radius:5px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer">✓ Übernehmen</button>
+                <button onclick="rejectKiChange(${i},${j})" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:5px 11px;font-size:11.5px;cursor:pointer">✕ Verwerfen</button>
+              </div>
+            </div>`;
+        }).join('');
+        // "Alle übernehmen" Button
+        if (data.changes.length > 1) {
+          html += `<div style="margin-top:10px;text-align:right"><button onclick="applyAllKiChanges(${i})" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">✓ Alle ${data.changes.length} Änderungen übernehmen</button></div>`;
+        }
+      } else if (!data?.explanation) {
+        html += escHtml(msg.content);
+      }
+      html += `</div>`;
+      return html;
+    }
+    return '';
+  }).join('');
+  // Nach unten scrollen
+  histEl.scrollTop = histEl.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function applyKiChange(msgIdx, changeIdx) {
+  const msg = window._kiChatHistory[msgIdx];
+  if (!msg || !msg.parsed || !msg.parsed.changes) return;
+  const ch = msg.parsed.changes[changeIdx];
+  if (!ch) return;
+  if (!_BERATER_PARA_DEFAULTS[ch.paraId] && !/^p3_\d+$/.test(ch.paraId)) {
+    showToast('Unbekannte Paragraph-ID: ' + ch.paraId, 'error');
+    return;
+  }
+  window._currentVertragAnpassungen = window._currentVertragAnpassungen || {};
+  window._currentVertragAnpassungen[ch.paraId] = ch.newText;
+  // Markiere als übernommen
+  ch._applied = true;
+  refreshKiAnpassungenBadge();
+  renderKiOverridesList();
+  renderKiChatHistory();
+  showToast('Anpassung übernommen: ' + ch.paraId, 'ok');
+}
+
+function rejectKiChange(msgIdx, changeIdx) {
+  const msg = window._kiChatHistory[msgIdx];
+  if (!msg || !msg.parsed || !msg.parsed.changes) return;
+  msg.parsed.changes.splice(changeIdx, 1);
+  renderKiChatHistory();
+}
+
+function applyAllKiChanges(msgIdx) {
+  const msg = window._kiChatHistory[msgIdx];
+  if (!msg || !msg.parsed || !msg.parsed.changes) return;
+  window._currentVertragAnpassungen = window._currentVertragAnpassungen || {};
+  let n = 0;
+  for (const ch of msg.parsed.changes) {
+    if (!_BERATER_PARA_DEFAULTS[ch.paraId] && !/^p3_\d+$/.test(ch.paraId)) continue;
+    window._currentVertragAnpassungen[ch.paraId] = ch.newText;
+    ch._applied = true;
+    n++;
+  }
+  refreshKiAnpassungenBadge();
+  renderKiOverridesList();
+  renderKiChatHistory();
+  showToast(`${n} Anpassungen übernommen.`, 'ok');
+}
+
+async function sendKiMessage() {
+  const input = document.getElementById('kiUserInput');
+  const userMsg = (input?.value || '').trim();
+  if (!userMsg) { showToast('Bitte Anweisung eingeben.', 'error'); return; }
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt.', 'error'); return; }
+
+  const sendBtn = document.getElementById('kiSendBtn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = '⏳ KI denkt …';
+
+  // User-Message anhängen
+  window._kiChatHistory.push({ role: 'user', content: userMsg });
+  input.value = '';
+  renderKiChatHistory();
+
+  try {
+    const variante = document.getElementById('v_variante')?.value || 'standard';
+    const contractText = buildKiContractContext();
+
+    const systemPrompt = `Du bist ein juristischer Assistent, der den Beratervertrag der Liftaro GmbH anpasst. Der Auftraggeber gibt Anweisungen in natürlicher Sprache, du schlägst konkrete Textänderungen vor.
+
+WICHTIG: Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown-Codeblock:
+{
+  "explanation": "Kurze Erklärung deiner Änderungen (max. 2 Sätze)",
+  "changes": [
+    {
+      "paraId": "die-Paragraph-ID-aus-dem-Vertrag",
+      "label": "Kurzbezeichnung wie '§3 Absatz 3' (optional)",
+      "newText": "Der neue Wortlaut für diese Paragraph-ID"
+    }
+  ]
+}
+
+Regeln:
+- Nutze NUR Paragraph-IDs aus dem unten gelisteten Vertrag
+- newText soll den Stil des bestehenden Vertrags beibehalten (juristisch sauber, deutsch, in der dritten Person)
+- Bei Listen/Bullets: einzelne IDs (p1_b1, p1_b2 etc.) — nicht zusammenfassen
+- Bei §-Headlines (h1, h2 etc.): nur ändern wenn explizit gewünscht
+- Wenn keine Änderung möglich oder sinnvoll: leeres "changes"-Array und "explanation" warum
+
+AKTUELLER VERTRAG (Variante: ${variante}):
+${contractText}`;
+
+    const messages = window._kiChatHistory.map(m => ({ role: m.role, content: m.content }));
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('Anthropic API: ' + res.status + ' ' + errText.slice(0, 200));
+    }
+    const data = await res.json();
+    const aiText = (data.content && data.content[0] && data.content[0].text) || '';
+
+    // JSON parsen — ggf. aus Codeblock extrahieren
+    let parsed = null;
+    try {
+      // Versuche direkt
+      parsed = JSON.parse(aiText);
+    } catch(e1) {
+      // Versuche aus ```json ... ```
+      const m = aiText.match(/```json\s*([\s\S]+?)```/) || aiText.match(/(\{[\s\S]+\})/);
+      if (m) try { parsed = JSON.parse(m[1]); } catch(e2) {}
+    }
+
+    window._kiChatHistory.push({
+      role: 'assistant',
+      content: aiText,
+      parsed,
+    });
+    renderKiChatHistory();
+  } catch(e) {
+    console.error(e);
+    showToast('KI-Anfrage fehlgeschlagen: ' + e.message, 'error');
+    window._kiChatHistory.push({
+      role: 'assistant',
+      content: '⚠ Fehler: ' + e.message,
+      parsed: null,
+    });
+    renderKiChatHistory();
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> KI fragen`;
+  }
+}
+
+// Reset Chat-Historie beim Öffnen eines neuen Vertrags
+function resetKiChatHistory() {
+  window._kiChatHistory = [];
+}
+
 async function downloadVertrag() {
   try {
     const { blob, filename } = await buildVertragPDF();
@@ -7853,15 +8292,32 @@ async function saveVertrag() {
     firma: d.firma, gf: d.gf, strasse: d.strasse, plz: d.plz, ort: d.ort,
     tel: d.tel, email: d.email, beginn: d.beginn,
     variante: d.variante || 'standard',
+    anpassungen: JSON.stringify(d.anpassungen || {}),
   };
 
   showToast('Vertrag wird gespeichert …', 'ok');
   try {
+    // writeWithFallback gegen unbekannte Felder (wenn 'anpassungen'/'variante' noch nicht in Schema)
+    const tryWrite = async (action, payload) => {
+      let attempt = 0; let p = payload;
+      while (true) {
+        try { return await action(p); }
+        catch(e) {
+          const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+          if (m && m[1] && p[m[1]] !== undefined && attempt < 5) {
+            p = { ...p }; delete p[m[1]];
+            console.warn('Feld unbekannt, retry ohne:', m[1]);
+            attempt++; continue;
+          }
+          throw e;
+        }
+      }
+    };
     if (recordId) {
-      const res = await atUpdate('Vertraege', recordId, fields);
-      recordId = res.id || recordId;
+      const res = await tryWrite(pl => atUpdate('Vertraege', recordId, pl), fields);
+      recordId = (res && res.id) || recordId;
     } else {
-      const res = await atWrite('Vertraege', fields);
+      const res = await tryWrite(pl => atWrite('Vertraege', pl), fields);
       recordId = res.id;
       document.getElementById('v_recordId').value = recordId;
       document.getElementById('v_id').value = vId;
@@ -7907,6 +8363,7 @@ async function deleteVertragCurrent() {
 
 function openVertragEditor(data) {
   clearVertragForm();
+  if (typeof resetKiChatHistory === 'function') resetKiChatHistory();
   if (data) {
     setVertragForm(data);
     document.getElementById('vertragEditorTitle').textContent = 'Vertrag · ' + (data.firma || data.id || '–');
