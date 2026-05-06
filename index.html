@@ -1589,8 +1589,8 @@ const pdfWorkerReady = Promise.resolve();</script>
               </button>
             </div>
             <div class="section-inner" style="padding:10px 18px">
-              <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5">Notiere deine Einschätzung in Stichpunkten. Die KI hilft dir anschließend bei Korrektur, Formulierung und Reihenfolge.</div>
-              <textarea id="rc_bemerkungen" placeholder="• Stichpunkte zur Prüfung &#10;• Auffälligkeiten / Abweichungen &#10;• Plausibilität der Positionen &#10;• Marktüblichkeit der Preise" style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;resize:vertical"></textarea>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5">Notiere deine Einschätzung kurz und stichpunktartig. Die KI macht daraus einen kompakten Fließtext, der auf eine A4-Seite passt.</div>
+              <textarea id="rc_bemerkungen" placeholder="Stichpunkte zur Prüfung — z. B.: Plausibilität der Positionen, Marktüblichkeit der Preise, Auffälligkeiten, formale Korrektheit. Die KI formuliert daraus einen kurzen Fließtext (max. 4–6 Sätze)." style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;resize:vertical"></textarea>
               <div id="rc_ki_status" style="font-size:11.5px;color:var(--muted);margin-top:6px;min-height:14px"></div>
             </div>
           </div>
@@ -2521,7 +2521,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.32';
+const APP_VERSION = 'V8.33';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7468,7 +7468,7 @@ async function optimizeRechnungscheckText() {
     bezug:   document.getElementById('rc_bezug')?.value || '',
   };
   try {
-    const prompt = `Du bist Berater der Liftaro GmbH und prüfst Rechnungen für Hausverwaltungen. Optimiere die folgenden Stichpunkte des Bearbeiters zu einer professionellen, klaren und sachlichen Bemerkungs-Liste:
+    const prompt = `Du bist Berater der Liftaro GmbH und prüfst Rechnungen für Hausverwaltungen. Formuliere aus den folgenden Stichpunkten des Bearbeiters einen kompakten, professionellen Fließtext für die Rechnungsprüfung.
 
 KONTEXT zur geprüften Rechnung:
 - Rechnungsnummer: ${ctx.rnr}
@@ -7481,17 +7481,25 @@ KONTEXT zur geprüften Rechnung:
 ROHE STICHPUNKTE des Bearbeiters:
 ${txt}
 
-Aufgabe:
-- Korrigiere Tippfehler / Rechtschreibung / Grammatik
-- Formuliere klar, sachlich, nicht umgangssprachlich
-- Behalte die Stichpunkt-Form (jeder Punkt mit "•" am Anfang einer Zeile)
-- Gruppiere thematisch (Plausibilität, Preise, Formalitäten, Auffälligkeiten)
-- Keine Wiederholungen
-- Maximal 8 Stichpunkte
-- Antwort NUR die optimierte Stichpunkt-Liste, ohne Einleitung, ohne Markdown-Sterne, ohne Codeblock`;
+Aufgabe — sehr WICHTIG:
+- Schreibe einen sachlichen, professionellen FLIESSTEXT (keine Stichpunkte, keine Bullets, keine Aufzählung mit "•" oder "-")
+- MAXIMAL 4 bis 6 Sätze, insgesamt höchstens 600 Zeichen — das Ergebnis muss zusammen mit den anderen Abschnitten auf eine DIN A4 Seite passen
+- Korrigiere Tippfehler, Rechtschreibung, Grammatik
+- Klare, sachliche Sprache; keine umgangssprachlichen Wendungen, keine Wiederholungen
+- Decke Plausibilität, Preise, Formalitäten und Auffälligkeiten ab — aber kompakt
+- Schreibe in der dritten Person (z. B. "Die Rechnung ist plausibel ...", nicht "Ich finde die Rechnung ...")
+- Antwort NUR den Fließtext, ohne Einleitung, ohne Überschrift, ohne Markdown, ohne Anführungszeichen drumherum`;
 
     const out = await callClaude([{ role: 'user', content: prompt }]);
-    const cleaned = (out || '').trim().replace(/\*\*/g, '').replace(/^\*\s*/gm, '• ');
+    // Normalize: remove markdown stars, leading bullets/dashes, collapse extra newlines to spaces
+    let cleaned = (out || '').trim()
+      .replace(/\*\*/g, '')
+      .replace(/^\s*[•\-*]\s*/gm, '')
+      .replace(/\n{2,}/g, '\n\n')
+      .replace(/\n/g, ' ')
+      .trim();
+    // Hard cap: 700 chars (extra Sicherheitsmargin)
+    if (cleaned.length > 700) cleaned = cleaned.slice(0, 697).replace(/\s+\S*$/,'') + '…';
     ta.value = cleaned;
     if (status) status.textContent = '✓ Bemerkungen wurden mit KI optimiert.';
   } catch(e) {
@@ -8479,19 +8487,18 @@ async function buildRechnungscheckPDF() {
   drawAmount('Zahlungsziel',       g('rc_zahlungsziel'), 3, false);
   y = boxY - 90;
 
-  // ── PRÜFUNG & BEMERKUNGEN ──────────────────────────────────────
+  // ── PRÜFUNG & BEMERKUNGEN (Fließtext) ──────────────────────────
   drawHeading('Prüfung & Bemerkungen');
   const bemerkungen = g('rc_bemerkungen');
   if (bemerkungen) {
-    // Stichpunkte einzeln rendern
-    const lines = bemerkungen.split('\n').map(s => s.trim()).filter(Boolean);
-    for (const ln of lines) {
-      const cleaned = ln.replace(/^[•\-*]\s*/, '');
-      drawT(cleaned, { indent: 14, font: helv, size: 10.5 });
-      // Bullet davor
-      const lastY = y + 14;
-      page.drawText('•', { x: MARGIN_X + 4, y: lastY - 10.5, size: 10.5, font: helv, color: COLOR });
-    }
+    // Falls Stichpunkt-Marker noch drin sind: entfernen + Zeilen zu Fließtext zusammenfügen
+    const flow = bemerkungen
+      .split('\n')
+      .map(s => s.trim().replace(/^[•\-*]\s*/, ''))
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s{2,}/g, ' ');
+    drawT(flow, { font: helv, size: 10.5, leading: 14 });
   } else {
     drawT('— keine Bemerkungen erfasst —', { font: helvObl, color: MUTED });
   }
