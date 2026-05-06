@@ -2527,7 +2527,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.38';
+const APP_VERSION = 'V8.39';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -8414,10 +8414,16 @@ async function buildRechnungscheckPDF() {
   const ergebnis = g('rc_ergebnis');
 
   const PAGE_W = 595.28, PAGE_H = 841.89;
-  const MARGIN_X = 56, MARGIN_TOP = 56, MARGIN_BOT = 60;
-  const COLOR    = rgb(0.05,0.05,0.05);
-  const NAVY     = rgb(0.10,0.23,0.36);
-  const MUTED    = rgb(0.40,0.45,0.51);
+  const MARGIN_X = 36, MARGIN_TOP = 30, MARGIN_BOT = 50;
+  // Farb-Palette identisch mit dem Form-Layout
+  const NAVY     = rgb(0.10, 0.23, 0.36);   // #1a3a5c
+  const SKY      = rgb(0.953, 0.969, 0.984); // #f3f7fb
+  const SKY2     = rgb(0.91, 0.93, 0.96);   // #e8eef5
+  const GREEN    = rgb(0.49, 0.76, 0.26);   // #7dc242
+  const MUTED    = rgb(0.39, 0.45, 0.55);   // #64748b
+  const BORDER   = rgb(0.89, 0.91, 0.94);   // #e2e8f0
+  const TEXT     = rgb(0.12, 0.16, 0.22);   // #1f2937
+  const COLOR    = TEXT;
 
   let page = baseDoc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN_TOP;
@@ -8454,64 +8460,137 @@ async function buildRechnungscheckPDF() {
     }
     y -= after;
   }
+  // Section-Card-System: zeichnet jeweils Section-Titel (Sky-Bar mit Navy-Text) und
+  // beginnt einen Box-Container, der in finishCard() abgeschlossen wird.
+  let _cardStartY = null;
   function drawHeading(text, opts) {
     const o = opts || {};
-    y -= (o.before || 16);
-    // Navy-Bar wie im Form-Layout (.section-title)
-    ensure(28);
+    finishCard();
+    y -= (o.before !== undefined ? o.before : 14);
+    // Section-Container starten: weißer Hintergrund mit Border
+    ensure(40);
+    _cardStartY = y;
+    // Section-Titel-Bar (sky bg, navy uppercase text, bottom border)
+    const titleH = 26;
     page.drawRectangle({
-      x: MARGIN_X, y: y - 22,
-      width: PAGE_W - 2*MARGIN_X, height: 22,
-      color: NAVY,
+      x: MARGIN_X, y: y - titleH,
+      width: PAGE_W - 2*MARGIN_X, height: titleH,
+      color: SKY,
+    });
+    page.drawLine({
+      start: { x: MARGIN_X, y: y - titleH },
+      end:   { x: PAGE_W - MARGIN_X, y: y - titleH },
+      thickness: 0.7, color: BORDER,
     });
     page.drawText(_safeWinAnsi(text.toUpperCase()), {
-      x: MARGIN_X + 12, y: y - 16, size: 10.5, font: helvBold,
-      color: rgb(1,1,1)
+      x: MARGIN_X + 14, y: y - 17, size: 10.5, font: helvBold,
+      color: NAVY
     });
-    y -= 28;
-    y -= 4;
+    y -= titleH + 12; // Padding inside card
+  }
+  function finishCard() {
+    if (_cardStartY === null) return;
+    // Border um die ganze Card zeichnen (inkl. Title-Bar)
+    const cardH = _cardStartY - (y - 4);
+    page.drawRectangle({
+      x: MARGIN_X, y: y - 4,
+      width: PAGE_W - 2*MARGIN_X, height: cardH,
+      borderColor: BORDER, borderWidth: 0.8,
+      color: undefined,
+    });
+    y -= 12; // Abstand nach Card
+    _cardStartY = null;
   }
   function row2col(label, value) {
     ensure(16);
-    page.drawText(_safeWinAnsi(label), { x: MARGIN_X, y: y - 10, size: 9.5, font: helv, color: MUTED });
+    const innerL = MARGIN_X + 14;
+    const labelW = 165;
+    page.drawText(_safeWinAnsi(label.toUpperCase()), {
+      x: innerL, y: y - 10, size: 8.5, font: helvBold, color: MUTED,
+    });
     const val = _safeWinAnsi(String(value || '–'));
-    const lines = wrap(val, helv, 10.5, PAGE_W - MARGIN_X - 220);
+    const valX = innerL + labelW;
+    const valMaxW = PAGE_W - MARGIN_X - 14 - valX;
+    const lines = wrap(val, helv, 10.5, valMaxW);
     if (lines.length === 0) lines.push('–');
-    page.drawText(lines[0], { x: MARGIN_X + 200, y: y - 10, size: 10.5, font: helvBold, color: COLOR });
-    y -= 16;
+    page.drawText(lines[0], { x: valX, y: y - 10, size: 10.5, font: helv, color: TEXT });
+    y -= 17;
     for (let i = 1; i < lines.length; i++) {
-      ensure(14);
-      page.drawText(lines[i], { x: MARGIN_X + 200, y: y - 10, size: 10.5, font: helv, color: COLOR });
-      y -= 14;
+      ensure(15);
+      page.drawText(lines[i], { x: valX, y: y - 10, size: 10.5, font: helv, color: TEXT });
+      y -= 15;
     }
   }
   function spacer(h) { y -= h; }
 
-  // ── HEADER (an Form-Layout angelehnt) ──────────────────────────
-  page.drawRectangle({ x: 0, y: PAGE_H - 90, width: PAGE_W, height: 90, color: NAVY });
-  // Titel + Untertitel links
-  page.drawText(_safeWinAnsi('Rechnungsprüfung'), { x: MARGIN_X, y: PAGE_H - 42, size: 22, font: helvBold, color: rgb(1,1,1) });
-  page.drawText(_safeWinAnsi('Liftaro GmbH · Plausibilitätsprüfung Aufzugsrechnungen'), { x: MARGIN_X, y: PAGE_H - 64, size: 10, font: helv, color: rgb(0.85,0.92,1) });
-  // Liftaro-Wordmark rechts oben (analog zum Form-Header)
-  const wmX = PAGE_W - MARGIN_X;
-  const wm = 'liftaro';
-  const wmW = helvBold.widthOfTextAtSize(wm, 24);
-  page.drawText(wm, { x: wmX - wmW, y: PAGE_H - 40, size: 24, font: helvBold, color: rgb(1,1,1) });
-  // Grüner Akzent-Strich rechts unter dem Wordmark
-  const greenY = PAGE_H - 50;
-  page.drawRectangle({ x: wmX - wmW, y: greenY, width: wmW, height: 2, color: rgb(0.49, 0.76, 0.26) });
-  // Check-Meta rechts darunter
-  const metaX = PAGE_W - MARGIN_X - 150;
-  const metaY = PAGE_H - 70;
-  page.drawText(_safeWinAnsi('Prüfdatum: '), { x: metaX, y: metaY, size: 8.5, font: helv, color: rgb(0.85,0.92,1) });
-  page.drawText(_safeWinAnsi(today),         { x: metaX + 55, y: metaY, size: 9, font: helvBold, color: rgb(1,1,1) });
-  page.drawText(_safeWinAnsi('Check-Nr.: '), { x: metaX, y: metaY - 13, size: 8.5, font: helv, color: rgb(0.85,0.92,1) });
-  page.drawText(_safeWinAnsi(checkId),        { x: metaX + 55, y: metaY - 13, size: 9, font: helvBold, color: rgb(1,1,1) });
-  if (anfrageNr) {
-    page.drawText(_safeWinAnsi('Anfrage: '),  { x: metaX, y: metaY - 26, size: 8.5, font: helv, color: rgb(0.85,0.92,1) });
-    page.drawText(_safeWinAnsi(anfrageNr),    { x: metaX + 55, y: metaY - 26, size: 9, font: helvBold, color: rgb(1,1,1) });
+  // ── HEADER (Form-Header Style: WEISS mit navy Titel, Liftaro-Wordmark rechts) ─────
+  // Weißer Header-Block mit dezentem grün-navy Gradient rechts (wie ::after im CSS)
+  const HEADER_H = 100;
+  page.drawRectangle({ x: 0, y: PAGE_H - HEADER_H, width: PAGE_W, height: HEADER_H, color: rgb(1,1,1) });
+  // Bottom-Border wie im Form: 1px hellblau
+  page.drawLine({ start: { x: 0, y: PAGE_H - HEADER_H }, end: { x: PAGE_W, y: PAGE_H - HEADER_H }, thickness: 1, color: rgb(0.93, 0.95, 0.98) });
+  // Dezenter diagonaler Akzent rechts (Approximation des CSS-Gradients über mehrere abnehmende Rechtecke)
+  for (let i = 0; i < 18; i++) {
+    const w = 220 - i * 8;
+    if (w <= 0) break;
+    const opacity = 0.06 + i * 0.003;
+    page.drawRectangle({
+      x: PAGE_W - w, y: PAGE_H - HEADER_H + i*4,
+      width: w, height: 4,
+      color: rgb(0.49, 0.76, 0.26),  // Green
+      opacity: Math.max(0, 0.05 - i*0.002),
+    });
   }
-  y = PAGE_H - 116;
+  // Diagonaler Streifen ganz rechts (Navy-Akzent)
+  for (let i = 0; i < 14; i++) {
+    const w = 80 - i * 5;
+    if (w <= 0) break;
+    page.drawRectangle({
+      x: PAGE_W - w, y: PAGE_H - HEADER_H + i*6,
+      width: w, height: 6,
+      color: NAVY,
+      opacity: Math.max(0, 0.04 - i*0.0015),
+    });
+  }
+
+  // Titel links — Navy
+  page.drawText(_safeWinAnsi('Prüfung Rechnung'), {
+    x: MARGIN_X, y: PAGE_H - 50, size: 24, font: helvBold, color: NAVY
+  });
+  // Untertitel: "Ihre Rechnung im Detail – Transparent. Effizient. Optimiert."
+  // wobei "Transparent. Effizient. Optimiert." in grün
+  const sub1 = 'Ihre Rechnung im Detail – ';
+  const sub2 = 'Transparent. Effizient. Optimiert.';
+  page.drawText(_safeWinAnsi(sub1), {
+    x: MARGIN_X, y: PAGE_H - 68, size: 11, font: helv, color: MUTED
+  });
+  const sub1W = helv.widthOfTextAtSize(_safeWinAnsi(sub1), 11);
+  page.drawText(_safeWinAnsi(sub2), {
+    x: MARGIN_X + sub1W, y: PAGE_H - 68, size: 11, font: helvBold, color: GREEN
+  });
+
+  // Liftaro-Wordmark rechts — in Navy
+  const wm = 'liftaro';
+  const wmSize = 30;
+  const wmW = helvBold.widthOfTextAtSize(wm, wmSize);
+  const wmX = PAGE_W - MARGIN_X - wmW;
+  page.drawText(wm, { x: wmX, y: PAGE_H - 50, size: wmSize, font: helvBold, color: NAVY });
+  // Grüner Akzent-Punkt nach "liftaro" wie im Logo
+  page.drawRectangle({ x: wmX + wmW - 4, y: PAGE_H - 50, width: 6, height: 6, color: GREEN });
+
+  y = PAGE_H - HEADER_H - 14;
+
+  // Check-Meta-Zeile (kompakt unter dem Header, links Prüfdatum/Check-Nr., rechts Anfrage)
+  ensure(20);
+  page.drawText(_safeWinAnsi('Prüfdatum:'), { x: MARGIN_X, y: y - 10, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi(today), { x: MARGIN_X + 60, y: y - 10, size: 9.5, font: helvBold, color: TEXT });
+  page.drawText(_safeWinAnsi('Check-Nr.:'), { x: MARGIN_X + 180, y: y - 10, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi(checkId), { x: MARGIN_X + 240, y: y - 10, size: 9.5, font: helvBold, color: TEXT });
+  if (anfrageNr) {
+    page.drawText(_safeWinAnsi('Anfrage-Nr.:'), { x: MARGIN_X + 360, y: y - 10, size: 9, font: helv, color: MUTED });
+    page.drawText(_safeWinAnsi(anfrageNr), { x: MARGIN_X + 425, y: y - 10, size: 9.5, font: helvBold, color: TEXT });
+  }
+  y -= 24;
 
   // ── ERGEBNIS-BANNER (oben prominent) ───────────────────────────
   const ergMap = {
@@ -8542,24 +8621,35 @@ async function buildRechnungscheckPDF() {
   const leistung = g('rc_leistung');
   if (leistung) {
     spacer(4);
-    drawT('Leistungsbeschreibung:', { font: helvBold, size: 10, color: MUTED, after: 2 });
-    drawT(leistung, { size: 10.5 });
+    drawT('LEISTUNGSBESCHREIBUNG', { font: helvBold, size: 8.5, color: MUTED, after: 2, indent: 14 });
+    drawT(leistung, { size: 10.5, indent: 14 });
   }
 
-  // ── BETRÄGE (Box) ──────────────────────────────────────────────
+  // ── BETRÄGE (4 Spalten innerhalb der Card) ──────────────────────
   drawHeading('Beträge');
-  ensure(80);
-  const boxY = y;
-  page.drawRectangle({ x: MARGIN_X, y: boxY - 78, width: PAGE_W - 2*MARGIN_X, height: 78, borderColor: rgb(0.85,0.88,0.92), borderWidth: 1, color: rgb(0.97,0.98,1) });
-  const drawAmount = (label, val, ix, isBold) => {
-    page.drawText(_safeWinAnsi(label), { x: MARGIN_X + 16 + ix*120, y: boxY - 26, size: 9.5, font: helv, color: MUTED });
-    page.drawText(_safeWinAnsi(String(val || '–')), { x: MARGIN_X + 16 + ix*120, y: boxY - 44, size: isBold?13:11.5, font: isBold?helvBold:helv, color: COLOR });
-  };
-  drawAmount('Netto',              g('rc_netto'),   0, false);
-  drawAmount('MwSt (' + (g('rc_mwst_satz') || '19') + ' %)', g('rc_mwst'), 1, false);
-  drawAmount('Brutto (Gesamt)',    g('rc_brutto'),  2, true);
-  drawAmount('Zahlungsziel',       _shortenZahlungsziel(g('rc_zahlungsziel')), 3, false);
-  y = boxY - 90;
+  ensure(56);
+  // Innerer Padding-Bereich: 14px links, ca. 4 Spalten gleichmäßig verteilt
+  const innerLeft = MARGIN_X + 14;
+  const innerRight = PAGE_W - MARGIN_X - 14;
+  const colWidth = (innerRight - innerLeft) / 4;
+  const cells = [
+    ['Netto',                                          g('rc_netto'),   false],
+    ['MwSt (' + (g('rc_mwst_satz') || '19') + ' %)',   g('rc_mwst'),    false],
+    ['Brutto (Gesamt)',                                g('rc_brutto'),  true],
+    ['Zahlungsziel',                                   _shortenZahlungsziel(g('rc_zahlungsziel')) || '–', false],
+  ];
+  cells.forEach(([label, val, isBold], ix) => {
+    const cx = innerLeft + ix * colWidth;
+    // Label oben (uppercase muted)
+    page.drawText(_safeWinAnsi(label.toUpperCase()), {
+      x: cx, y: y - 9, size: 8.5, font: helvBold, color: MUTED,
+    });
+    // Wert darunter (groß, navy)
+    page.drawText(_safeWinAnsi(String(val || '–')), {
+      x: cx, y: y - 28, size: isBold ? 14 : 12, font: isBold ? helvBold : helvBold, color: isBold ? GREEN : NAVY,
+    });
+  });
+  y -= 46;
 
   // ── PRÜFUNG & BEMERKUNGEN (Fließtext) ──────────────────────────
   drawHeading('Prüfung & Bemerkungen');
@@ -8572,16 +8662,16 @@ async function buildRechnungscheckPDF() {
       .filter(Boolean)
       .join(' ')
       .replace(/\s{2,}/g, ' ');
-    drawT(flow, { font: helv, size: 10.5, leading: 14 });
+    drawT(flow, { font: helv, size: 10.5, leading: 14, indent: 14 });
   } else {
-    drawT('— keine Bemerkungen erfasst —', { font: helvObl, color: MUTED });
+    drawT('— keine Bemerkungen erfasst —', { font: helvObl, color: MUTED, indent: 14 });
   }
 
   // ── EMPFEHLUNG ─────────────────────────────────────────────────
   const empfehlung = g('rc_empfehlung');
   if (empfehlung) {
     drawHeading('Empfehlung an den Auftraggeber');
-    drawT(empfehlung);
+    drawT(empfehlung, { indent: 14 });
   }
 
   // ── AUFTRAGGEBER ───────────────────────────────────────────────
@@ -8591,18 +8681,20 @@ async function buildRechnungscheckPDF() {
   row2col('Fabriknummer', g('f_fabrik'));
   row2col('Ansprechperson', g('f_ap'));
 
+  // letzte Card schließen
+  finishCard();
+
   // ── FOOTER ─────────────────────────────────────────────────────
   if (y < MARGIN_BOT + 80) newPage();
-  spacer(20);
-  page.drawLine({ start: { x: MARGIN_X, y: y }, end: { x: PAGE_W - MARGIN_X, y: y }, thickness: 0.4, color: MUTED });
-  spacer(6);
+  spacer(8);
+  page.drawLine({ start: { x: MARGIN_X, y: y }, end: { x: PAGE_W - MARGIN_X, y: y }, thickness: 0.4, color: BORDER });
+  spacer(8);
   drawT('Diese Rechnungsprüfung ist eine fachliche Einschätzung der Liftaro GmbH und ersetzt keine rechtliche oder steuerliche Beratung. Die Freigabeentscheidung obliegt dem Auftraggeber.', { font: helvObl, size: 8.5, color: MUTED, leading: 11 });
 
   // Stempel/Bearbeiter
-  spacer(10);
-  drawT('Liftaro GmbH', { font: helvBold, size: 10 });
-  drawT('Gustavburger Weg 6, 55116 Mainz', { size: 9.5, color: MUTED });
-  drawT('check@liftaro.de · 015888634515', { size: 9.5, color: MUTED });
+  spacer(8);
+  drawT('Liftaro GmbH', { font: helvBold, size: 9.5, color: NAVY });
+  drawT('Gustavburger Weg 6, 55116 Mainz · check@liftaro.de · 015888634515', { size: 8.5, color: MUTED });
 
   baseDoc.setTitle('Rechnungsprüfung — ' + (g('f_firma') || checkId));
   baseDoc.setAuthor('Liftaro GmbH');
