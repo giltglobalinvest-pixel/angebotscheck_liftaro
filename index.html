@@ -1348,7 +1348,7 @@ const pdfWorkerReady = Promise.resolve();</script>
               <div class="field"><label>Firmenname</label><input type="text" id="f_firma" placeholder="Betreiber GmbH"></div>
               <div class="field"><label>Name (Betreiber)</label><input type="text" id="f_name" placeholder="Vor- und Nachname"></div>
               <div class="field"><label>Tel. (Betreiber)</label><input type="tel" id="f_tel" placeholder="+49 …"></div>
-              <div class="field"><label style="white-space:nowrap">Ansprechperson</label><input type="text" id="f_ap" placeholder="Name Liftaro"></div>
+              <div class="field"><label style="white-space:nowrap">Ansprechperson Liftaro</label><input type="text" id="f_ap" placeholder="Vor- und Nachname (Liftaro)"></div>
               <div class="field"><label>Tel. Liftaro</label><input type="tel" id="f_tl" placeholder="+49 …"></div>
               <!-- Hidden: Status-Übergangs-Daten (werden im Modal abgefragt) -->
               <input type="hidden" id="f_beauftragt_von">
@@ -2527,7 +2527,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.39';
+const APP_VERSION = 'V8.40';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -8408,6 +8408,25 @@ async function buildRechnungscheckPDF() {
   const helvBold = await baseDoc.embedFont(StandardFonts.HelveticaBold);
   const helvObl  = await baseDoc.embedFont(StandardFonts.HelveticaOblique);
 
+  // Liftaro-Logo aus dem Form-Header laden (gleiches PNG wie in der UI)
+  let liftaroLogo = null;
+  try {
+    const img = document.querySelector('.fh-logo img');
+    if (img && img.src) {
+      let bytes;
+      if (img.src.startsWith('data:image/png;base64,')) {
+        const b64 = img.src.substring('data:image/png;base64,'.length);
+        const bin = atob(b64);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } else {
+        const r = await fetch(img.src);
+        bytes = new Uint8Array(await r.arrayBuffer());
+      }
+      liftaroLogo = await baseDoc.embedPng(bytes);
+    }
+  } catch(e) { console.warn('Logo embed failed:', e); }
+
   const today = formatDateDE(new Date());
   const checkId = g('f_requestid') || '–';
   const anfrageNr = g('f_anfrageNr');
@@ -8523,62 +8542,88 @@ async function buildRechnungscheckPDF() {
   }
   function spacer(h) { y -= h; }
 
-  // ── HEADER (Form-Header Style: WEISS mit navy Titel, Liftaro-Wordmark rechts) ─────
-  // Weißer Header-Block mit dezentem grün-navy Gradient rechts (wie ::after im CSS)
-  const HEADER_H = 100;
-  page.drawRectangle({ x: 0, y: PAGE_H - HEADER_H, width: PAGE_W, height: HEADER_H, color: rgb(1,1,1) });
-  // Bottom-Border wie im Form: 1px hellblau
-  page.drawLine({ start: { x: 0, y: PAGE_H - HEADER_H }, end: { x: PAGE_W, y: PAGE_H - HEADER_H }, thickness: 1, color: rgb(0.93, 0.95, 0.98) });
-  // Dezenter diagonaler Akzent rechts (Approximation des CSS-Gradients über mehrere abnehmende Rechtecke)
-  for (let i = 0; i < 18; i++) {
-    const w = 220 - i * 8;
-    if (w <= 0) break;
-    const opacity = 0.06 + i * 0.003;
+  // ── HEADER (1:1 Form-Header Style: WEISS, navy Titel, grün-navy Diagonal-Gradient rechts, PNG-Logo) ─────
+  // Maße basierend auf CSS: padding 28px 36px 22px, ::after width 220px, clip-path polygon(35% 0, 100% 0, 100% 100%, 0% 100%)
+  const HEADER_H = 96;
+  const HEADER_TOP = PAGE_H;
+  const HEADER_BOTTOM = PAGE_H - HEADER_H;
+  // Weißer Hintergrund
+  page.drawRectangle({ x: 0, y: HEADER_BOTTOM, width: PAGE_W, height: HEADER_H, color: rgb(1,1,1) });
+
+  // Diagonaler Gradient-Akzent rechts (CSS ::after Nachbau)
+  // Original: 220px breit, polygon(35% 0, 100% 0, 100% 100%, 0% 100%) = parallelogramm mit
+  //   Top-Edge: bei 35% (= 77px von links der ::after-Box) bis 100%
+  //   Bottom-Edge: bei 0% bis 100%
+  // Gradient: linear-gradient(135deg, green 0%, navy 60%) bei opacity 0.15
+  // Wir simulieren das mit horizontalen Streifen die von oben (mehr nach rechts versetzt) nach unten breiter werden.
+  const acW = 220;       // ::after width
+  const acClipPct = 0.35; // 35% top-left
+  const acRight = PAGE_W;
+  const acLeft = PAGE_W - acW;
+  const stripes = 28;     // Anzahl horizontaler Streifen für Gradient-Approx
+  for (let i = 0; i < stripes; i++) {
+    const tNorm = i / (stripes - 1);     // 0..1 (oben→unten)
+    // Linke Kante des Streifens: oben bei acClipPct*acW, unten bei 0
+    const stripeLeft = acLeft + (1 - tNorm) * acClipPct * acW;
+    const stripeWidth = acRight - stripeLeft;
+    const stripeY = HEADER_TOP - (i + 1) * (HEADER_H / stripes);
+    const stripeH = HEADER_H / stripes + 0.6; // leichte Überlappung
+    // 135deg-Gradient: links/oben grün → rechts/unten navy. Mischung anhand x-y Position
+    // Mittelpunkt bei tNorm * 0.6 Übergang
+    const mix = Math.min(1, tNorm * 1.6); // 0=grün, 1=navy
+    const r = 0.49 * (1 - mix) + 0.10 * mix;
+    const gC = 0.76 * (1 - mix) + 0.23 * mix;
+    const b = 0.26 * (1 - mix) + 0.36 * mix;
     page.drawRectangle({
-      x: PAGE_W - w, y: PAGE_H - HEADER_H + i*4,
-      width: w, height: 4,
-      color: rgb(0.49, 0.76, 0.26),  // Green
-      opacity: Math.max(0, 0.05 - i*0.002),
-    });
-  }
-  // Diagonaler Streifen ganz rechts (Navy-Akzent)
-  for (let i = 0; i < 14; i++) {
-    const w = 80 - i * 5;
-    if (w <= 0) break;
-    page.drawRectangle({
-      x: PAGE_W - w, y: PAGE_H - HEADER_H + i*6,
-      width: w, height: 6,
-      color: NAVY,
-      opacity: Math.max(0, 0.04 - i*0.0015),
+      x: stripeLeft, y: stripeY,
+      width: stripeWidth, height: stripeH,
+      color: rgb(r, gC, b),
+      opacity: 0.15,
     });
   }
 
-  // Titel links — Navy
-  page.drawText(_safeWinAnsi('Prüfung Rechnung'), {
-    x: MARGIN_X, y: PAGE_H - 50, size: 24, font: helvBold, color: NAVY
+  // Bottom-Border wie im Form: 1px hellblau (#edf3fa)
+  page.drawLine({
+    start: { x: 0, y: HEADER_BOTTOM },
+    end:   { x: PAGE_W, y: HEADER_BOTTOM },
+    thickness: 1, color: rgb(0.93, 0.95, 0.98)
   });
-  // Untertitel: "Ihre Rechnung im Detail – Transparent. Effizient. Optimiert."
-  // wobei "Transparent. Effizient. Optimiert." in grün
+
+  // Titel links — Navy (CSS: 26px, weight 700, line-height 1.1)
+  // Padding-Top 28px → Title-Baseline bei HEADER_TOP - 28 - 22 (~size)
+  page.drawText(_safeWinAnsi('Prüfung Rechnung'), {
+    x: MARGIN_X, y: HEADER_TOP - 50, size: 24, font: helvBold, color: NAVY
+  });
+  // Untertitel: muted + green span (CSS: 13px, margin-top 5px)
   const sub1 = 'Ihre Rechnung im Detail – ';
   const sub2 = 'Transparent. Effizient. Optimiert.';
   page.drawText(_safeWinAnsi(sub1), {
-    x: MARGIN_X, y: PAGE_H - 68, size: 11, font: helv, color: MUTED
+    x: MARGIN_X, y: HEADER_TOP - 70, size: 11, font: helv, color: MUTED
   });
   const sub1W = helv.widthOfTextAtSize(_safeWinAnsi(sub1), 11);
   page.drawText(_safeWinAnsi(sub2), {
-    x: MARGIN_X + sub1W, y: PAGE_H - 68, size: 11, font: helvBold, color: GREEN
+    x: MARGIN_X + sub1W, y: HEADER_TOP - 70, size: 11, font: helvBold, color: GREEN
   });
 
-  // Liftaro-Wordmark rechts — in Navy
-  const wm = 'liftaro';
-  const wmSize = 30;
-  const wmW = helvBold.widthOfTextAtSize(wm, wmSize);
-  const wmX = PAGE_W - MARGIN_X - wmW;
-  page.drawText(wm, { x: wmX, y: PAGE_H - 50, size: wmSize, font: helvBold, color: NAVY });
-  // Grüner Akzent-Punkt nach "liftaro" wie im Logo
-  page.drawRectangle({ x: wmX + wmW - 4, y: PAGE_H - 50, width: 6, height: 6, color: GREEN });
+  // Liftaro-Logo rechts (echtes PNG aus dem Form, height 56px → in PDF skaliert)
+  if (liftaroLogo) {
+    const logoH = 50;  // vergleichbar mit CSS height: 56px
+    const ratio = liftaroLogo.width / liftaroLogo.height;
+    const logoW = logoH * ratio;
+    const logoX = PAGE_W - MARGIN_X - logoW;
+    const logoY = HEADER_TOP - 28 - logoH; // top-padding 28
+    page.drawImage(liftaroLogo, { x: logoX, y: logoY, width: logoW, height: logoH });
+  } else {
+    // Fallback: liftaro-Wordmark
+    const wm = 'liftaro';
+    const wmSize = 28;
+    const wmW = helvBold.widthOfTextAtSize(wm, wmSize);
+    const wmX = PAGE_W - MARGIN_X - wmW;
+    page.drawText(wm, { x: wmX, y: HEADER_TOP - 56, size: wmSize, font: helvBold, color: NAVY });
+    page.drawRectangle({ x: wmX + wmW - 4, y: HEADER_TOP - 56, width: 6, height: 6, color: GREEN });
+  }
 
-  y = PAGE_H - HEADER_H - 14;
+  y = HEADER_BOTTOM - 14;
 
   // Check-Meta-Zeile (kompakt unter dem Header, links Prüfdatum/Check-Nr., rechts Anfrage)
   ensure(20);
@@ -8676,10 +8721,16 @@ async function buildRechnungscheckPDF() {
 
   // ── AUFTRAGGEBER ───────────────────────────────────────────────
   drawHeading('Auftraggeber');
-  row2col('Firma',       g('f_firma'));
-  row2col('Standort',    g('f_standort'));
-  row2col('Fabriknummer', g('f_fabrik'));
+  row2col('Firma',           g('f_firma'));
+  row2col('Name (Betreiber)', g('f_name'));
+  row2col('Tel. (Betreiber)', g('f_tel'));
+  row2col('Standort',        g('f_standort'));
+  row2col('Fabriknummer',    g('f_fabrik'));
+
+  // ── ANSPRECHPARTNER LIFTARO ────────────────────────────────────
+  drawHeading('Ihr Ansprechpartner bei Liftaro');
   row2col('Ansprechperson', g('f_ap'));
+  row2col('Telefon',        g('f_tl'));
 
   // letzte Card schließen
   finishCard();
