@@ -2521,7 +2521,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.33';
+const APP_VERSION = 'V8.34';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -8019,12 +8019,14 @@ async function buildVertragPDF() {
             bullet = null, bulletFont = helv, after = 4 } = opts || {};
     const x = MARGIN_X + indent;
     const maxW = PAGE_W - MARGIN_X - x;
-    const lines = wrapText(text, font, size, maxW - (bullet ? 10 : 0));
+    const safeText = _safeWinAnsi(text);
+    const safeBullet = bullet === null ? null : _safeWinAnsi(bullet);
+    const lines = wrapText(safeText, font, size, maxW - (bullet ? 10 : 0));
     for (let i = 0; i < lines.length; i++) {
       ensure(leading);
       // Bullet nur in der ersten Zeile, danach Indent
-      if (i === 0 && bullet !== null) {
-        page.drawText(bullet, { x: x - 10, y: y - size, size, font: bulletFont, color });
+      if (i === 0 && safeBullet !== null) {
+        page.drawText(safeBullet, { x: x - 10, y: y - size, size, font: bulletFont, color });
       }
       page.drawText(lines[i], { x, y: y - size, size, font, color });
       y -= leading;
@@ -8343,6 +8345,35 @@ async function buildVertragPDF() {
   return { blob, filename: fname };
 }
 
+// ── Sanitizer: entfernt Unicode-Zeichen außerhalb WinAnsi (CP1252) ────
+// Helvetica (StandardFont) kann nur WinAnsi codieren — Unicode-Zeichen wie
+// 茶, Emoji, ✓, → etc. crashen die PDF-Generierung. Häufige Ersatzzeichen
+// werden gemappt, alles andere wird stillschweigend entfernt.
+function _safeWinAnsi(s) {
+  if (s === null || s === undefined) return '';
+  const winAnsiExt = new Set('€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’‚“”„•–—˜™š›œžŸ');
+  const repl = {
+    '→':'->', '←':'<-', '↑':'^', '↓':'v', '↔':'<->',
+    '✓':'OK', '✔':'OK', '✗':'X', '✘':'X', '✕':'X',
+    '○':'o',  '●':'•',  '◦':'-', '▪':'-', '▫':'-', '■':'-', '□':'-',
+    '★':'*',  '☆':'*',  '☑':'OK','☒':'X',
+    '⇒':'=>','⇐':'<=','≥':'>=','≤':'<=','≠':'!=',
+    '∞':'inf','π':'pi',
+    ' ':' ',
+  };
+  let out = '';
+  for (const c of String(s)) {
+    const cp = c.codePointAt(0);
+    if (cp <= 0xFF || winAnsiExt.has(c)) {
+      out += c;
+    } else if (repl[c] !== undefined) {
+      out += repl[c];
+    }
+    // else: silently drop
+  }
+  return out;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // RECHNUNGSCHECK — Ergebnis-PDF (nativ mit pdf-lib)
 // ═══════════════════════════════════════════════════════════════════
@@ -8391,7 +8422,8 @@ async function buildRechnungscheckPDF() {
     const after = o.after || 4;
     const x = MARGIN_X + indent;
     const maxW = PAGE_W - MARGIN_X - x;
-    const lines = wrap(text, font, size, maxW);
+    const safeText = _safeWinAnsi(text);
+    const lines = wrap(safeText, font, size, maxW);
     for (const ln of lines) {
       ensure(leading);
       page.drawText(ln, { x, y: y - size, size, font, color });
@@ -8409,8 +8441,8 @@ async function buildRechnungscheckPDF() {
   }
   function row2col(label, value) {
     ensure(16);
-    page.drawText(label, { x: MARGIN_X, y: y - 10, size: 9.5, font: helv, color: MUTED });
-    const val = String(value || '–');
+    page.drawText(_safeWinAnsi(label), { x: MARGIN_X, y: y - 10, size: 9.5, font: helv, color: MUTED });
+    const val = _safeWinAnsi(String(value || '–'));
     const lines = wrap(val, helv, 10.5, PAGE_W - MARGIN_X - 220);
     if (lines.length === 0) lines.push('–');
     page.drawText(lines[0], { x: MARGIN_X + 200, y: y - 10, size: 10.5, font: helvBold, color: COLOR });
@@ -8425,33 +8457,33 @@ async function buildRechnungscheckPDF() {
 
   // ── HEADER ─────────────────────────────────────────────────────
   page.drawRectangle({ x: 0, y: PAGE_H - 80, width: PAGE_W, height: 80, color: NAVY });
-  page.drawText('🧾 Rechnungsprüfung', { x: MARGIN_X, y: PAGE_H - 40, size: 22, font: helvBold, color: rgb(1,1,1) });
-  page.drawText('Liftaro GmbH · Plausibilitätsprüfung Aufzugsrechnungen', { x: MARGIN_X, y: PAGE_H - 62, size: 10, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(_safeWinAnsi('Rechnungsprüfung'), { x: MARGIN_X, y: PAGE_H - 40, size: 22, font: helvBold, color: rgb(1,1,1) });
+  page.drawText(_safeWinAnsi('Liftaro GmbH · Plausibilitätsprüfung Aufzugsrechnungen'), { x: MARGIN_X, y: PAGE_H - 62, size: 10, font: helv, color: rgb(0.85,0.92,1) });
   // Check-Info rechts
   const rightX = PAGE_W - MARGIN_X - 180;
-  page.drawText('Prüfdatum:', { x: rightX, y: PAGE_H - 32, size: 9, font: helv, color: rgb(0.85,0.92,1) });
-  page.drawText(today,        { x: rightX + 65, y: PAGE_H - 32, size: 9.5, font: helvBold, color: rgb(1,1,1) });
-  page.drawText('Check-Nr.:', { x: rightX, y: PAGE_H - 48, size: 9, font: helv, color: rgb(0.85,0.92,1) });
-  page.drawText(checkId,      { x: rightX + 65, y: PAGE_H - 48, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+  page.drawText(_safeWinAnsi('Prüfdatum:'), { x: rightX, y: PAGE_H - 32, size: 9, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(_safeWinAnsi(today),        { x: rightX + 65, y: PAGE_H - 32, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+  page.drawText(_safeWinAnsi('Check-Nr.:'), { x: rightX, y: PAGE_H - 48, size: 9, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(_safeWinAnsi(checkId),      { x: rightX + 65, y: PAGE_H - 48, size: 9.5, font: helvBold, color: rgb(1,1,1) });
   if (anfrageNr) {
-    page.drawText('Anfrage:',  { x: rightX, y: PAGE_H - 64, size: 9, font: helv, color: rgb(0.85,0.92,1) });
-    page.drawText(anfrageNr,   { x: rightX + 65, y: PAGE_H - 64, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+    page.drawText(_safeWinAnsi('Anfrage:'),  { x: rightX, y: PAGE_H - 64, size: 9, font: helv, color: rgb(0.85,0.92,1) });
+    page.drawText(_safeWinAnsi(anfrageNr),   { x: rightX + 65, y: PAGE_H - 64, size: 9.5, font: helvBold, color: rgb(1,1,1) });
   }
   y = PAGE_H - 110;
 
   // ── ERGEBNIS-BANNER (oben prominent) ───────────────────────────
   const ergMap = {
-    ok:          { label: '✓ RECHNUNG IN ORDNUNG',        color: rgb(0.24,0.48,0.08), text: 'keine Beanstandungen' },
-    hinweise:    { label: '! MIT HINWEISEN',               color: rgb(0.96,0.62,0.04), text: 'geringfügige Anmerkungen' },
-    beanstandet: { label: 'X BEANSTANDET',                 color: rgb(0.66,0.19,0.19), text: 'Korrektur erforderlich' },
-    abgelehnt:   { label: 'X ABGELEHNT — NICHT ZAHLBAR',   color: rgb(0.50,0.10,0.10), text: 'Zahlung nicht freigegeben' },
+    ok:          { label: 'RECHNUNG IN ORDNUNG',          color: rgb(0.24,0.48,0.08), text: 'keine Beanstandungen' },
+    hinweise:    { label: 'MIT HINWEISEN',                 color: rgb(0.96,0.62,0.04), text: 'geringfügige Anmerkungen' },
+    beanstandet: { label: 'BEANSTANDET',                   color: rgb(0.66,0.19,0.19), text: 'Korrektur erforderlich' },
+    abgelehnt:   { label: 'ABGELEHNT — NICHT ZAHLBAR',     color: rgb(0.50,0.10,0.10), text: 'Zahlung nicht freigegeben' },
   };
   const ergMeta = ergMap[ergebnis];
   if (ergMeta) {
     ensure(50);
     page.drawRectangle({ x: MARGIN_X, y: y - 44, width: PAGE_W - 2*MARGIN_X, height: 44, color: ergMeta.color });
-    page.drawText(ergMeta.label, { x: MARGIN_X + 16, y: y - 22, size: 14, font: helvBold, color: rgb(1,1,1) });
-    page.drawText(ergMeta.text,  { x: MARGIN_X + 16, y: y - 38, size: 10, font: helv, color: rgb(0.95,0.97,1) });
+    page.drawText(_safeWinAnsi(ergMeta.label), { x: MARGIN_X + 16, y: y - 22, size: 14, font: helvBold, color: rgb(1,1,1) });
+    page.drawText(_safeWinAnsi(ergMeta.text),  { x: MARGIN_X + 16, y: y - 38, size: 10, font: helv, color: rgb(0.95,0.97,1) });
     y -= 52;
   } else {
     spacer(8);
@@ -8478,8 +8510,8 @@ async function buildRechnungscheckPDF() {
   const boxY = y;
   page.drawRectangle({ x: MARGIN_X, y: boxY - 78, width: PAGE_W - 2*MARGIN_X, height: 78, borderColor: rgb(0.85,0.88,0.92), borderWidth: 1, color: rgb(0.97,0.98,1) });
   const drawAmount = (label, val, ix, isBold) => {
-    page.drawText(label, { x: MARGIN_X + 16 + ix*120, y: boxY - 26, size: 9.5, font: helv, color: MUTED });
-    page.drawText(String(val || '–'), { x: MARGIN_X + 16 + ix*120, y: boxY - 44, size: isBold?13:11.5, font: isBold?helvBold:helv, color: COLOR });
+    page.drawText(_safeWinAnsi(label), { x: MARGIN_X + 16 + ix*120, y: boxY - 26, size: 9.5, font: helv, color: MUTED });
+    page.drawText(_safeWinAnsi(String(val || '–')), { x: MARGIN_X + 16 + ix*120, y: boxY - 44, size: isBold?13:11.5, font: isBold?helvBold:helv, color: COLOR });
   };
   drawAmount('Netto',              g('rc_netto'),   0, false);
   drawAmount('MwSt (' + (g('rc_mwst_satz') || '19') + ' %)', g('rc_mwst'), 1, false);
