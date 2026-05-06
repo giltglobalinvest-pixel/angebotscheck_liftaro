@@ -706,6 +706,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   .check-tab:hover { color: var(--navy); }
   .check-tab.active { color: var(--navy); border-bottom-color: var(--navy); }
   .check-tab.active.wartung { color: #0e6655; border-bottom-color: #0e6655; }
+  .check-tab.active.rechnung { color: #6366f1; border-bottom-color: #6366f1; }
 
   /* checkbox style for Wartung table */
   .w-check {
@@ -1300,6 +1301,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   <div class="check-tabs">
     <button class="check-tab active" id="tab-reparatur" onclick="switchTab('reparatur')">🔧 Reparaturangebot</button>
     <button class="check-tab wartung" id="tab-wartung" onclick="switchTab('wartung')">🔄 Wartungsvertrag</button>
+    <button class="check-tab rechnung" id="tab-rechnung" onclick="switchTab('rechnung')">🧾 Rechnungscheck</button>
   </div>
 
   <!-- Left: the form -->
@@ -1544,6 +1546,76 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <input type="hidden" id="f_leistung">
+
+        <!-- ════════════════════════════════════════════════════
+             RECHNUNGSCHECK SECTION
+             ════════════════════════════════════════════════════ -->
+        <div id="section-rechnung" style="display:none">
+          <div class="section" style="margin-top:20px">
+            <div class="section-title">Rechnungsdaten</div>
+            <div class="section-inner">
+              <div class="field-row r4">
+                <div class="field"><label>Rechnungsnummer</label><input type="text" id="rc_rechnungsnr" placeholder="z. B. 2026-04-1234"></div>
+                <div class="field"><label>Rechnungsdatum</label><input type="text" id="rc_rechnungsdatum" placeholder="z. B. 28.04.2026"></div>
+              </div>
+              <div class="field-row r4">
+                <div class="field"><label>Rechnungssteller (Firma)</label><input type="text" id="rc_ersteller" placeholder="z. B. Schindler Aufzüge GmbH"></div>
+                <div class="field"><label>Anschrift Rechnungssteller</label><input type="text" id="rc_ersteller_adresse" placeholder="Straße, PLZ, Ort"></div>
+              </div>
+              <div class="field-row r4">
+                <div class="field"><label>Leistungszeitraum</label><input type="text" id="rc_leistungszeitraum" placeholder="z. B. 01.01. – 31.03.2026"></div>
+                <div class="field"><label>Bezug (Auftrag/Angebot)</label><input type="text" id="rc_bezug" placeholder="z. B. Auftrag Nr. AB-1234"></div>
+              </div>
+              <div class="field-row" style="grid-template-columns:1fr">
+                <div class="field"><label>Leistungsbeschreibung</label><textarea id="rc_leistung" placeholder="Zusammenfassung der berechneten Leistungen …" style="min-height:60px"></textarea></div>
+              </div>
+              <div class="field-row r5">
+                <div class="field"><label>Netto (€)</label><input type="text" id="rc_netto" placeholder="z. B. 1.250,00 €"></div>
+                <div class="field"><label>MwSt-Satz (%)</label><input type="text" id="rc_mwst_satz" placeholder="19" value="19"></div>
+                <div class="field"><label>MwSt (€)</label><input type="text" id="rc_mwst" placeholder="z. B. 237,50 €"></div>
+                <div class="field"><label>Brutto (€)</label><input type="text" id="rc_brutto" placeholder="z. B. 1.487,50 €" style="border:1.5px solid var(--green);font-weight:600"></div>
+                <div class="field"><label>Zahlungsziel</label><input type="text" id="rc_zahlungsziel" placeholder="z. B. 14 Tage"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prüfung / Bemerkungen -->
+          <div class="section" style="margin-top:20px">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+              Prüfung &amp; Bemerkungen
+              <button id="rc_btnKi" onclick="requireApiKey(optimizeRechnungscheckText)" title="Bemerkungen mit KI optimieren"
+                style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:5px;padding:3px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+                ✨ KI-Optimierung
+              </button>
+            </div>
+            <div class="section-inner" style="padding:10px 18px">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5">Notiere deine Einschätzung in Stichpunkten. Die KI hilft dir anschließend bei Korrektur, Formulierung und Reihenfolge.</div>
+              <textarea id="rc_bemerkungen" placeholder="• Stichpunkte zur Prüfung &#10;• Auffälligkeiten / Abweichungen &#10;• Plausibilität der Positionen &#10;• Marktüblichkeit der Preise" style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;resize:vertical"></textarea>
+              <div id="rc_ki_status" style="font-size:11.5px;color:var(--muted);margin-top:6px;min-height:14px"></div>
+            </div>
+          </div>
+
+          <!-- Ergebnisbewertung -->
+          <div class="section" style="margin-top:20px">
+            <div class="section-title">Ergebnisbewertung</div>
+            <div class="section-inner" style="padding:14px 18px">
+              <div class="field" style="margin-bottom:12px">
+                <label>Bewertung der Rechnungsprüfung</label>
+                <select id="rc_ergebnis" style="border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--sky);outline:none;width:100%;font-weight:600">
+                  <option value="">– bitte wählen –</option>
+                  <option value="ok">✅ Rechnung in Ordnung — keine Beanstandungen</option>
+                  <option value="hinweise">⚠️ Mit Hinweisen — geringfügige Anmerkungen</option>
+                  <option value="beanstandet">❌ Beanstandet — Korrektur erforderlich</option>
+                  <option value="abgelehnt">⛔ Abgelehnt — nicht zahlbar</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Empfehlung an den Auftraggeber</label>
+                <textarea id="rc_empfehlung" placeholder="z. B. Rechnung kann freigegeben werden / Rückfrage zu Position X / Korrekturrechnung anfordern …" style="width:100%;min-height:70px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;resize:vertical"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Ergebnis Liftaro -->
         <div class="section hide-on-mobile" id="section-ergebnis" style="margin-top:20px">
@@ -2449,7 +2521,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.29';
+const APP_VERSION = 'V8.30';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2789,6 +2861,15 @@ async function setupTables() {
     // Vertragscheck Status 3 = Gekündigt
     { name: 'gekuendigt_am',  type: 'singleLineText' },
     { name: 'gekuendigt_grund', type: 'singleLineText' },
+    // Rechnungscheck-Felder (alle Top-Level für einfaches Filtern)
+    { name: 'rc_rechnungsnr',       type: 'singleLineText' },
+    { name: 'rc_rechnungsdatum',    type: 'singleLineText' },
+    { name: 'rc_ersteller',         type: 'singleLineText' },
+    { name: 'rc_brutto',            type: 'singleLineText' },
+    { name: 'rc_netto',             type: 'singleLineText' },
+    { name: 'rc_ergebnis',          type: 'singleLineText' },
+    { name: 'rc_bemerkungen',       type: 'multilineText' },
+    { name: 'rc_empfehlung',        type: 'multilineText' },
   ]);
   // Verträge-Tabelle
   try {
@@ -2991,13 +3072,20 @@ const CHECK_STATUS = [
   { value: '4', label: '4 · Abgerechnet',              short: 'abgerechnet', color: '#3d7a14' },
 ];
 // Status-Modell für Vertragschecks (Wartung) — 3 Stufen, dauerhafter Aktiv-Zustand
+// Status-Modell für Rechnungschecks (2 Stufen: einfacher Workflow)
+const CHECK_STATUS_RECHNUNG = [
+  { value: '1', label: '1 · Eingegangen',  short: 'eingegangen', color: '#94a3b8' },
+  { value: '2', label: '2 · Geprüft',       short: 'geprüft',     color: '#3d7a14' },
+];
 const CHECK_STATUS_VERTRAG = [
   { value: '1', label: '1 · Check gemacht',  short: 'gemacht',   color: '#94a3b8' },
   { value: '2', label: '2 · Vertrag aktiv',  short: 'aktiv',     color: '#3d7a14' },
   { value: '3', label: '3 · Gekündigt',      short: 'gekündigt', color: '#a8312f' },
 ];
 function getCheckStatusList(c) {
-  return (c && c.checkType === 'wartung') ? CHECK_STATUS_VERTRAG : CHECK_STATUS;
+  if (c && c.checkType === 'wartung')  return CHECK_STATUS_VERTRAG;
+  if (c && c.checkType === 'rechnung') return CHECK_STATUS_RECHNUNG;
+  return CHECK_STATUS;
 }
 function getCheckStatus(c) {
   const list = getCheckStatusList(c);
@@ -3010,10 +3098,17 @@ function getCheckStatusMeta(c) {
 }
 // Aktueller Check-Type aus dem geladenen Formular (für die Hauptform-Status-Logik)
 function currentFormCheckType() {
-  return (typeof checkType !== 'undefined' && checkType === 'wartung') ? 'wartung' : 'reparatur';
+  if (typeof checkType !== 'undefined') {
+    if (checkType === 'wartung')  return 'wartung';
+    if (checkType === 'rechnung') return 'rechnung';
+  }
+  return 'reparatur';
 }
 function currentFormStatusList() {
-  return currentFormCheckType() === 'wartung' ? CHECK_STATUS_VERTRAG : CHECK_STATUS;
+  const t = currentFormCheckType();
+  if (t === 'wartung')  return CHECK_STATUS_VERTRAG;
+  if (t === 'rechnung') return CHECK_STATUS_RECHNUNG;
+  return CHECK_STATUS;
 }
 
 const uploadedFiles = { 1: null, 2: null };
@@ -3174,6 +3269,22 @@ function collectFormData() {
     wt_systemwartung: document.getElementById('wt_systemwartung')?.checked || false,
     wt_vollwartung:   document.getElementById('wt_vollwartung')?.checked || false,
     wt_notruf_cb:     document.getElementById('wt_notruf')?.checked || false,
+    // Rechnungscheck-Felder
+    rc_rechnungsnr:        g('rc_rechnungsnr'),
+    rc_rechnungsdatum:     g('rc_rechnungsdatum'),
+    rc_ersteller:          g('rc_ersteller'),
+    rc_ersteller_adresse:  g('rc_ersteller_adresse'),
+    rc_leistungszeitraum:  g('rc_leistungszeitraum'),
+    rc_bezug:              g('rc_bezug'),
+    rc_leistung:           g('rc_leistung'),
+    rc_netto:              g('rc_netto'),
+    rc_mwst_satz:          g('rc_mwst_satz'),
+    rc_mwst:               g('rc_mwst'),
+    rc_brutto:             g('rc_brutto'),
+    rc_zahlungsziel:       g('rc_zahlungsziel'),
+    rc_bemerkungen:        g('rc_bemerkungen'),
+    rc_ergebnis:           g('rc_ergebnis'),
+    rc_empfehlung:         g('rc_empfehlung'),
   };
 }
 
@@ -3533,6 +3644,23 @@ async function loadCheck(data) {
   scb2('wt_vollwartung',   data.wt_vollwartung !== undefined ? data.wt_vollwartung : true);
   scb2('wt_notruf',        data.wt_notruf_cb   !== undefined ? data.wt_notruf_cb   : true);
 
+  // Rechnungscheck-Felder
+  sw('rc_rechnungsnr',       data.rc_rechnungsnr);
+  sw('rc_rechnungsdatum',    data.rc_rechnungsdatum);
+  sw('rc_ersteller',         data.rc_ersteller);
+  sw('rc_ersteller_adresse', data.rc_ersteller_adresse);
+  sw('rc_leistungszeitraum', data.rc_leistungszeitraum);
+  sw('rc_bezug',             data.rc_bezug);
+  sw('rc_leistung',          data.rc_leistung);
+  sw('rc_netto',             data.rc_netto);
+  sw('rc_mwst_satz',         data.rc_mwst_satz || '19');
+  sw('rc_mwst',              data.rc_mwst);
+  sw('rc_brutto',            data.rc_brutto);
+  sw('rc_zahlungsziel',      data.rc_zahlungsziel);
+  sw('rc_bemerkungen',       data.rc_bemerkungen);
+  sw('rc_ergebnis',          data.rc_ergebnis);
+  sw('rc_empfehlung',        data.rc_empfehlung);
+
   calcSavings();
   updateEmail();
   if (typeof validateAhwLengths === 'function') validateAhwLengths();
@@ -3745,10 +3873,13 @@ window._checksTypeFilter = window._checksTypeFilter || new Set();
 const CHECK_TYPES = [
   { value: 'reparatur', label: '🔧 Reparaturcheck', color: 'var(--navy)' },
   { value: 'wartung',   label: '🔄 Vertragscheck',  color: '#0e6655' },
+  { value: 'rechnung',  label: '🧾 Rechnungscheck', color: '#6366f1' },
 ];
 
 function getCheckType(c) {
-  return c?.checkType === 'wartung' ? 'wartung' : 'reparatur';
+  if (c?.checkType === 'wartung')  return 'wartung';
+  if (c?.checkType === 'rechnung') return 'rechnung';
+  return 'reparatur';
 }
 
 function renderChecksTypeChips() {
@@ -3904,7 +4035,9 @@ function renderChecksList(checks, query) {
       : '<span style="background:#ddd;color:#888;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">AHW leer</span>';
     const typeBadge = c.checkType === 'wartung'
       ? '<span style="background:#0e6655;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🔄 Wartung</span>'
-      : '<span style="background:var(--navy);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🔧 Reparatur</span>';
+      : (c.checkType === 'rechnung'
+        ? '<span style="background:#6366f1;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🧾 Rechnung</span>'
+        : '<span style="background:var(--navy);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🔧 Reparatur</span>');
 
     // Download-Chips für vorhandene Anhänge
     const fileChip = (att, icon, label, color) => {
@@ -4814,24 +4947,47 @@ let checkType = 'reparatur';
 
 function switchTab(type) {
   checkType = type;
-  const isWartung = type === 'wartung';
+  const isWartung  = type === 'wartung';
+  const isRechnung = type === 'rechnung';
+  const isReparatur = !isWartung && !isRechnung;
 
-  document.getElementById('tab-reparatur').classList.toggle('active', !isWartung);
+  // Tabs aktiv setzen
+  document.getElementById('tab-reparatur').classList.toggle('active', isReparatur);
   document.getElementById('tab-wartung').classList.toggle('active', isWartung);
+  const tabRech = document.getElementById('tab-rechnung');
+  if (tabRech) tabRech.classList.toggle('active', isRechnung);
 
-  document.getElementById('section-reparatur').style.display = isWartung ? 'none' : '';
-  document.getElementById('section-wartung').style.display   = isWartung ? '' : 'none';
-  document.getElementById('kuendigung-row').style.display    = isWartung ? '' : 'none';
+  // Sections umschalten
+  document.getElementById('section-reparatur').style.display = isReparatur ? '' : 'none';
+  document.getElementById('section-wartung').style.display   = isWartung   ? '' : 'none';
+  const secR = document.getElementById('section-rechnung');
+  if (secR) secR.style.display = isRechnung ? '' : 'none';
+
+  // Ergebnis Liftaro + Email-Vorlage bei Rechnungscheck ausblenden
+  const secErg = document.getElementById('section-ergebnis');
+  if (secErg) secErg.style.display = isRechnung ? 'none' : '';
+
+  document.getElementById('kuendigung-row').style.display = isWartung ? '' : 'none';
 
   // Banner-Label dynamisch je nach Modus
   const lbl = document.getElementById('f_requestid_label');
-  if (lbl) lbl.textContent = isWartung ? 'Vertragscheck-Nummer' : 'Reparaturcheck-Nummer';
+  if (lbl) lbl.textContent = isWartung ? 'Vertragscheck-Nummer'
+    : isRechnung ? 'Rechnungscheck-Nummer' : 'Reparaturcheck-Nummer';
 
-  // Toggle AHW sidebar card
-  document.getElementById('ahw-reparatur-body').style.display = isWartung ? 'none' : 'flex';
+  // Sidebar AHW-Card umschalten — bei Rechnungscheck ausblenden
+  const ahwCard = document.getElementById('ahwCardHeader')?.parentElement;
+  if (ahwCard) ahwCard.style.display = isRechnung ? 'none' : '';
+  document.getElementById('ahw-reparatur-body').style.display = (isWartung || isRechnung) ? 'none' : 'flex';
   document.getElementById('ahw-wartung-body').style.display   = isWartung ? 'flex' : 'none';
-  document.getElementById('ahw-card-title').textContent = isWartung
-    ? 'Aufzugshandwerk Wartungsvertrag' : 'Aufzugshandwerk Angebot';
+  if (!isRechnung) {
+    document.getElementById('ahw-card-title').textContent = isWartung
+      ? 'Aufzugshandwerk Wartungsvertrag' : 'Aufzugshandwerk Angebot';
+  }
+
+  // Alternativangebot Sidebar bei Rechnungscheck ausblenden (es gibt nur eine vorliegende Rechnung)
+  const sideCards = document.querySelectorAll('.sidebar .side-card');
+  // Index 1 ist Alternativangebot
+  if (sideCards[1]) sideCards[1].style.display = isRechnung ? 'none' : '';
 
   // Pre-fill wartung fields from form if switching to wartung
   if (isWartung) {
@@ -4847,16 +5003,36 @@ function switchTab(type) {
       if (anzahl) document.getElementById('wt_wartungen_pro_jahr').value = anzahl;
     }
   }
+  // Pre-fill rechnungs-Firma aus Hauptformular
+  if (isRechnung) {
+    const g = id => document.getElementById(id)?.value || '';
+    const re = id => document.getElementById(id);
+    if (re('rc_ersteller') && !re('rc_ersteller').value) re('rc_ersteller').value = g('f_firma');
+    if (re('rc_rechnungsdatum') && !re('rc_rechnungsdatum').value) {
+      const dt = g('f_datum');
+      if (dt) {
+        // YYYY-MM-DD → DD.MM.YYYY
+        const m = dt.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        re('rc_rechnungsdatum').value = m ? `${m[3]}.${m[2]}.${m[1]}` : dt;
+      }
+    }
+  }
 
   document.getElementById('form-title').textContent = isWartung
-    ? 'Wartungsvertrags-Analyse' : 'Prüfung Reparaturangebot';
+    ? 'Wartungsvertrags-Analyse'
+    : isRechnung ? 'Rechnungsprüfung'
+    : 'Prüfung Reparaturangebot';
   document.getElementById('form-sub').innerHTML = isWartung
     ? 'Ihr Vertrag im Detail – <span>Transparent. Effizient. Optimiert.</span>'
-    : 'Ihr Angebot im Detail – <span>Transparent. Effizient. Optimiert.</span>';
+    : isRechnung
+      ? 'Plausibilitätsprüfung Ihrer Rechnung – <span>Transparent. Effizient. Klar bewertet.</span>'
+      : 'Ihr Angebot im Detail – <span>Transparent. Effizient. Optimiert.</span>';
 
   document.getElementById('legal-block').textContent = isWartung
     ? 'Die Vergütung von Liftaro beträgt jährlich 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht den Wartungsvertrag.'
-    : 'Die Vergütung von Liftaro beträgt 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.';
+    : isRechnung
+      ? 'Diese Rechnungsprüfung ist eine fachliche Einschätzung von Liftaro. Sie ersetzt keine rechtliche oder steuerliche Beratung. Die Freigabeentscheidung obliegt dem Auftraggeber.'
+      : 'Die Vergütung von Liftaro beträgt 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.';
 
   calcSavings();
   // Status-Dropdown im Hauptform an den Typ anpassen
@@ -7150,6 +7326,63 @@ Empfehle das Alternativangebot wenn günstiger. Sachlich, ohne Anrede, ohne Mark
 
   btn.disabled = false;
   btn.textContent = '✨ Empfehlung generieren';
+}
+
+// ── Rechnungscheck: Bemerkungen mit KI optimieren ─────────────────
+async function optimizeRechnungscheckText() {
+  const ta = document.getElementById('rc_bemerkungen');
+  const status = document.getElementById('rc_ki_status');
+  const btn = document.getElementById('rc_btnKi');
+  if (!ta) return;
+  const txt = (ta.value || '').trim();
+  if (!txt) { showToast('Erst Stichpunkte eintragen.', 'error'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ KI arbeitet …'; }
+  if (status) status.textContent = 'KI optimiert deine Bemerkungen …';
+
+  // Kontext sammeln
+  const ctx = {
+    rnr:     document.getElementById('rc_rechnungsnr')?.value || '',
+    rdatum:  document.getElementById('rc_rechnungsdatum')?.value || '',
+    erst:    document.getElementById('rc_ersteller')?.value || '',
+    leistung:document.getElementById('rc_leistung')?.value || '',
+    netto:   document.getElementById('rc_netto')?.value || '',
+    brutto:  document.getElementById('rc_brutto')?.value || '',
+    bezug:   document.getElementById('rc_bezug')?.value || '',
+  };
+  try {
+    const prompt = `Du bist Berater der Liftaro GmbH und prüfst Rechnungen für Hausverwaltungen. Optimiere die folgenden Stichpunkte des Bearbeiters zu einer professionellen, klaren und sachlichen Bemerkungs-Liste:
+
+KONTEXT zur geprüften Rechnung:
+- Rechnungsnummer: ${ctx.rnr}
+- Datum: ${ctx.rdatum}
+- Aussteller: ${ctx.erst}
+- Bezug: ${ctx.bezug}
+- Leistung: ${ctx.leistung}
+- Netto: ${ctx.netto} · Brutto: ${ctx.brutto}
+
+ROHE STICHPUNKTE des Bearbeiters:
+${txt}
+
+Aufgabe:
+- Korrigiere Tippfehler / Rechtschreibung / Grammatik
+- Formuliere klar, sachlich, nicht umgangssprachlich
+- Behalte die Stichpunkt-Form (jeder Punkt mit "•" am Anfang einer Zeile)
+- Gruppiere thematisch (Plausibilität, Preise, Formalitäten, Auffälligkeiten)
+- Keine Wiederholungen
+- Maximal 8 Stichpunkte
+- Antwort NUR die optimierte Stichpunkt-Liste, ohne Einleitung, ohne Markdown-Sterne, ohne Codeblock`;
+
+    const out = await callClaude([{ role: 'user', content: prompt }]);
+    const cleaned = (out || '').trim().replace(/\*\*/g, '').replace(/^\*\s*/gm, '• ');
+    ta.value = cleaned;
+    if (status) status.textContent = '✓ Bemerkungen wurden mit KI optimiert.';
+  } catch(e) {
+    if (status) status.textContent = '⚠ KI-Optimierung fehlgeschlagen: ' + e.message;
+    showToast('KI-Optimierung fehlgeschlagen: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ KI-Optimierung'; }
+  }
 }
 
 [1, 2].forEach(num => {
