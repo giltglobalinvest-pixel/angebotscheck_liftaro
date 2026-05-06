@@ -1550,7 +1550,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <!-- ════════════════════════════════════════════════════
              RECHNUNGSCHECK SECTION
              ════════════════════════════════════════════════════ -->
-        <div id="section-rechnung" style="display:none">
+        <div id="section-rechnung" class="hide-on-mobile" style="display:none">
           <div class="section" style="margin-top:20px">
             <div class="section-title">Rechnungsdaten</div>
             <div class="section-inner">
@@ -2521,7 +2521,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.31';
+const APP_VERSION = 'V8.32';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -5764,6 +5764,19 @@ function calcSavings() {
 
 // ── Ergebnis-Vorschau ─────────────────────────────────────────────
 async function previewErgebnis() {
+  // Rechnungscheck: native PDF-Vorschau
+  if (checkType === 'rechnung') {
+    try {
+      const { blob, filename } = await buildRechnungscheckPDF();
+      _pendingErgebnisPdfBlob = blob;
+      _pendingErgebnisPdfName = filename;
+      await openPreviewBlob(blob, '🧾 Rechnungsprüfung — Vorschau');
+    } catch(e) {
+      console.error(e);
+      showToast('Vorschau fehlgeschlagen: ' + e.message, 'error');
+    }
+    return;
+  }
   // Use the existing preview modal
   document.getElementById('previewModal').classList.add('show');
   document.body.classList.add('preview-open');
@@ -6403,7 +6416,38 @@ function isMobileScreen() {
   return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
 }
 
+// Rechnungscheck-Ergebnis: native pdf-lib Generierung + Download + Airtable-Upload
+async function generateRechnungscheckPDF() {
+  const btn = document.getElementById('btnGenerate');
+  if (btn) { btn.disabled = true; }
+  document.getElementById('overlay').classList.add('show');
+  setProgress('Rechnungsprüfungs-PDF wird erstellt …');
+  try {
+    const { blob, filename } = await buildRechnungscheckPDF();
+    // Download anbieten
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // Pending markieren — wird beim nächsten Speichern als ergebnis_pdf hochgeladen
+    _pendingErgebnisPdfBlob = blob;
+    _pendingErgebnisPdfName = filename;
+    showToast('Rechnungsprüfungs-PDF erstellt — beim nächsten Speichern wird sie ans Airtable angehängt.', 'ok');
+  } catch(e) {
+    console.error(e);
+    showToast('PDF-Erstellung fehlgeschlagen: ' + e.message, 'error');
+  } finally {
+    document.getElementById('overlay').classList.remove('show');
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function generatePDF() {
+  // Rechnungscheck: nutze native pdf-lib Generierung statt html2canvas
+  if (checkType === 'rechnung') {
+    return generateRechnungscheckPDF();
+  }
   // Mobile-Hinweis: PDF-Erstellung kann langsam sein / Memory-Probleme
   if (isMobileScreen()) {
     const ok = confirm('Hinweis: Die PDF-Erstellung ist für den Desktop optimiert.\n\nAuf dem Smartphone kann sie langsam sein oder fehlschlagen. Wir empfehlen, das fertige PDF am Desktop zu erstellen.\n\nTrotzdem jetzt versuchen?');
@@ -8288,6 +8332,205 @@ async function buildVertragPDF() {
   const out = await baseDoc.save();
   const blob = new Blob([out], { type: 'application/pdf' });
   const fname = `Beratervertrag_${(d.firma || 'Vertrag').replace(/\s+/g,'_')}.pdf`;
+  return { blob, filename: fname };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RECHNUNGSCHECK — Ergebnis-PDF (nativ mit pdf-lib)
+// ═══════════════════════════════════════════════════════════════════
+async function buildRechnungscheckPDF() {
+  const g  = id => document.getElementById(id)?.value?.trim() || '';
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const baseDoc  = await PDFDocument.create();
+  const helv     = await baseDoc.embedFont(StandardFonts.Helvetica);
+  const helvBold = await baseDoc.embedFont(StandardFonts.HelveticaBold);
+  const helvObl  = await baseDoc.embedFont(StandardFonts.HelveticaOblique);
+
+  const today = formatDateDE(new Date());
+  const checkId = g('f_requestid') || '–';
+  const anfrageNr = g('f_anfrageNr');
+  const ergebnis = g('rc_ergebnis');
+
+  const PAGE_W = 595.28, PAGE_H = 841.89;
+  const MARGIN_X = 56, MARGIN_TOP = 56, MARGIN_BOT = 60;
+  const COLOR    = rgb(0.05,0.05,0.05);
+  const NAVY     = rgb(0.10,0.23,0.36);
+  const MUTED    = rgb(0.40,0.45,0.51);
+
+  let page = baseDoc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN_TOP;
+  const newPage = () => { page = baseDoc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN_TOP; };
+  const ensure = (h) => { if (y - h < MARGIN_BOT) newPage(); };
+
+  function wrap(text, font, size, maxW) {
+    const words = String(text || '').split(/\s+/);
+    const lines = []; let cur = '';
+    for (const w of words) {
+      const trial = cur ? cur + ' ' + w : w;
+      if (font.widthOfTextAtSize(trial, size) <= maxW) cur = trial;
+      else { if (cur) lines.push(cur); cur = w; }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+  function drawT(text, opts) {
+    const o = opts || {};
+    const font = o.font || helv;
+    const size = o.size || 10.5;
+    const leading = o.leading || 14;
+    const indent = o.indent || 0;
+    const color = o.color || COLOR;
+    const after = o.after || 4;
+    const x = MARGIN_X + indent;
+    const maxW = PAGE_W - MARGIN_X - x;
+    const lines = wrap(text, font, size, maxW);
+    for (const ln of lines) {
+      ensure(leading);
+      page.drawText(ln, { x, y: y - size, size, font, color });
+      y -= leading;
+    }
+    y -= after;
+  }
+  function drawHeading(text, opts) {
+    const o = opts || {};
+    y -= (o.before || 14);
+    drawT(text, { font: helvBold, size: 13, leading: 17, after: 6 });
+    // Unterstreichung
+    page.drawLine({ start: { x: MARGIN_X, y: y + 4 }, end: { x: PAGE_W - MARGIN_X, y: y + 4 }, thickness: 0.5, color: MUTED });
+    y -= 4;
+  }
+  function row2col(label, value) {
+    ensure(16);
+    page.drawText(label, { x: MARGIN_X, y: y - 10, size: 9.5, font: helv, color: MUTED });
+    const val = String(value || '–');
+    const lines = wrap(val, helv, 10.5, PAGE_W - MARGIN_X - 220);
+    if (lines.length === 0) lines.push('–');
+    page.drawText(lines[0], { x: MARGIN_X + 200, y: y - 10, size: 10.5, font: helvBold, color: COLOR });
+    y -= 16;
+    for (let i = 1; i < lines.length; i++) {
+      ensure(14);
+      page.drawText(lines[i], { x: MARGIN_X + 200, y: y - 10, size: 10.5, font: helv, color: COLOR });
+      y -= 14;
+    }
+  }
+  function spacer(h) { y -= h; }
+
+  // ── HEADER ─────────────────────────────────────────────────────
+  page.drawRectangle({ x: 0, y: PAGE_H - 80, width: PAGE_W, height: 80, color: NAVY });
+  page.drawText('🧾 Rechnungsprüfung', { x: MARGIN_X, y: PAGE_H - 40, size: 22, font: helvBold, color: rgb(1,1,1) });
+  page.drawText('Liftaro GmbH · Plausibilitätsprüfung Aufzugsrechnungen', { x: MARGIN_X, y: PAGE_H - 62, size: 10, font: helv, color: rgb(0.85,0.92,1) });
+  // Check-Info rechts
+  const rightX = PAGE_W - MARGIN_X - 180;
+  page.drawText('Prüfdatum:', { x: rightX, y: PAGE_H - 32, size: 9, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(today,        { x: rightX + 65, y: PAGE_H - 32, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+  page.drawText('Check-Nr.:', { x: rightX, y: PAGE_H - 48, size: 9, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(checkId,      { x: rightX + 65, y: PAGE_H - 48, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+  if (anfrageNr) {
+    page.drawText('Anfrage:',  { x: rightX, y: PAGE_H - 64, size: 9, font: helv, color: rgb(0.85,0.92,1) });
+    page.drawText(anfrageNr,   { x: rightX + 65, y: PAGE_H - 64, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+  }
+  y = PAGE_H - 110;
+
+  // ── ERGEBNIS-BANNER (oben prominent) ───────────────────────────
+  const ergMap = {
+    ok:          { label: '✓ RECHNUNG IN ORDNUNG',        color: rgb(0.24,0.48,0.08), text: 'keine Beanstandungen' },
+    hinweise:    { label: '! MIT HINWEISEN',               color: rgb(0.96,0.62,0.04), text: 'geringfügige Anmerkungen' },
+    beanstandet: { label: 'X BEANSTANDET',                 color: rgb(0.66,0.19,0.19), text: 'Korrektur erforderlich' },
+    abgelehnt:   { label: 'X ABGELEHNT — NICHT ZAHLBAR',   color: rgb(0.50,0.10,0.10), text: 'Zahlung nicht freigegeben' },
+  };
+  const ergMeta = ergMap[ergebnis];
+  if (ergMeta) {
+    ensure(50);
+    page.drawRectangle({ x: MARGIN_X, y: y - 44, width: PAGE_W - 2*MARGIN_X, height: 44, color: ergMeta.color });
+    page.drawText(ergMeta.label, { x: MARGIN_X + 16, y: y - 22, size: 14, font: helvBold, color: rgb(1,1,1) });
+    page.drawText(ergMeta.text,  { x: MARGIN_X + 16, y: y - 38, size: 10, font: helv, color: rgb(0.95,0.97,1) });
+    y -= 52;
+  } else {
+    spacer(8);
+  }
+
+  // ── GEPRÜFTE RECHNUNG ──────────────────────────────────────────
+  drawHeading('Geprüfte Rechnung');
+  row2col('Rechnungsnummer',     g('rc_rechnungsnr'));
+  row2col('Rechnungsdatum',      g('rc_rechnungsdatum'));
+  row2col('Rechnungssteller',    g('rc_ersteller'));
+  row2col('Anschrift',           g('rc_ersteller_adresse'));
+  row2col('Leistungszeitraum',   g('rc_leistungszeitraum'));
+  row2col('Bezug',               g('rc_bezug'));
+  const leistung = g('rc_leistung');
+  if (leistung) {
+    spacer(4);
+    drawT('Leistungsbeschreibung:', { font: helvBold, size: 10, color: MUTED, after: 2 });
+    drawT(leistung, { size: 10.5 });
+  }
+
+  // ── BETRÄGE (Box) ──────────────────────────────────────────────
+  drawHeading('Beträge');
+  ensure(80);
+  const boxY = y;
+  page.drawRectangle({ x: MARGIN_X, y: boxY - 78, width: PAGE_W - 2*MARGIN_X, height: 78, borderColor: rgb(0.85,0.88,0.92), borderWidth: 1, color: rgb(0.97,0.98,1) });
+  const drawAmount = (label, val, ix, isBold) => {
+    page.drawText(label, { x: MARGIN_X + 16 + ix*120, y: boxY - 26, size: 9.5, font: helv, color: MUTED });
+    page.drawText(String(val || '–'), { x: MARGIN_X + 16 + ix*120, y: boxY - 44, size: isBold?13:11.5, font: isBold?helvBold:helv, color: COLOR });
+  };
+  drawAmount('Netto',              g('rc_netto'),   0, false);
+  drawAmount('MwSt (' + (g('rc_mwst_satz') || '19') + ' %)', g('rc_mwst'), 1, false);
+  drawAmount('Brutto (Gesamt)',    g('rc_brutto'),  2, true);
+  drawAmount('Zahlungsziel',       g('rc_zahlungsziel'), 3, false);
+  y = boxY - 90;
+
+  // ── PRÜFUNG & BEMERKUNGEN ──────────────────────────────────────
+  drawHeading('Prüfung & Bemerkungen');
+  const bemerkungen = g('rc_bemerkungen');
+  if (bemerkungen) {
+    // Stichpunkte einzeln rendern
+    const lines = bemerkungen.split('\n').map(s => s.trim()).filter(Boolean);
+    for (const ln of lines) {
+      const cleaned = ln.replace(/^[•\-*]\s*/, '');
+      drawT(cleaned, { indent: 14, font: helv, size: 10.5 });
+      // Bullet davor
+      const lastY = y + 14;
+      page.drawText('•', { x: MARGIN_X + 4, y: lastY - 10.5, size: 10.5, font: helv, color: COLOR });
+    }
+  } else {
+    drawT('— keine Bemerkungen erfasst —', { font: helvObl, color: MUTED });
+  }
+
+  // ── EMPFEHLUNG ─────────────────────────────────────────────────
+  const empfehlung = g('rc_empfehlung');
+  if (empfehlung) {
+    drawHeading('Empfehlung an den Auftraggeber');
+    drawT(empfehlung);
+  }
+
+  // ── AUFTRAGGEBER ───────────────────────────────────────────────
+  drawHeading('Auftraggeber');
+  row2col('Firma',       g('f_firma'));
+  row2col('Standort',    g('f_standort'));
+  row2col('Fabriknummer', g('f_fabrik'));
+  row2col('Ansprechperson', g('f_ap'));
+
+  // ── FOOTER ─────────────────────────────────────────────────────
+  if (y < MARGIN_BOT + 80) newPage();
+  spacer(20);
+  page.drawLine({ start: { x: MARGIN_X, y: y }, end: { x: PAGE_W - MARGIN_X, y: y }, thickness: 0.4, color: MUTED });
+  spacer(6);
+  drawT('Diese Rechnungsprüfung ist eine fachliche Einschätzung der Liftaro GmbH und ersetzt keine rechtliche oder steuerliche Beratung. Die Freigabeentscheidung obliegt dem Auftraggeber.', { font: helvObl, size: 8.5, color: MUTED, leading: 11 });
+
+  // Stempel/Bearbeiter
+  spacer(10);
+  drawT('Liftaro GmbH', { font: helvBold, size: 10 });
+  drawT('Gustavburger Weg 6, 55116 Mainz', { size: 9.5, color: MUTED });
+  drawT('check@liftaro.de · 015888634515', { size: 9.5, color: MUTED });
+
+  baseDoc.setTitle('Rechnungsprüfung — ' + (g('f_firma') || checkId));
+  baseDoc.setAuthor('Liftaro GmbH');
+  baseDoc.setSubject('Rechnungsprüfung');
+  baseDoc.setCreationDate(new Date());
+
+  const out = await baseDoc.save();
+  const blob = new Blob([out], { type: 'application/pdf' });
+  const fname = `Liftaro_Rechnungscheck_${(checkId || 'check').replace(/[\s/\\]+/g,'_')}.pdf`;
   return { blob, filename: fname };
 }
 
