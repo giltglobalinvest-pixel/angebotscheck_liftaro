@@ -2527,7 +2527,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.37';
+const APP_VERSION = 'V8.38';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -5315,7 +5315,7 @@ Wichtige Hinweise:
   "mwst_satz": "MwSt-Satz als Zahl ohne %, z.B. '19'",
   "mwst": "MwSt-Betrag, Format '1.234,56 €'",
   "brutto": "Brutto-Gesamtbetrag, Format '1.234,56 €'",
-  "zahlungsziel": "Zahlungsziel z.B. '14 Tage' oder konkretes Datum",
+  "zahlungsziel": "Zahlungsziel als kurze Angabe NUR Zahl + Einheit, z.B. '14 Tage' oder '30 Tage'. KEIN Datum, KEINE Klammer-Erklärung.",
   "fabriknummer": "Fabriknummer/Anlagennummer falls genannt",
   "standort": "Standort der Aufzugsanlage falls genannt",
   "firmenname": "Name des Kunden/Empfängers (Auftraggeber)",
@@ -8380,6 +8380,23 @@ function _safeWinAnsi(s) {
   return out;
 }
 
+// Extrahiert "X Tage/Wochen/Monate" aus längerem Zahlungsziel-String
+function _shortenZahlungsziel(s) {
+  if (!s) return '';
+  const t = String(s).trim();
+  // "14 Tage", "30 Tage", "1 Monat" etc. direkt extrahieren
+  const m = t.match(/(\d{1,3})\s*(Tag(e)?|Woche(n)?|Monat(e)?)/i);
+  if (m) return `${m[1]} ${m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase()}`;
+  // "sofort", "netto", "Vorkasse"
+  const lower = t.toLowerCase();
+  if (lower.includes('sofort')) return 'sofort';
+  if (lower.includes('vorkasse')) return 'Vorkasse';
+  // Wenn nur ein Datum → '–'
+  if (/\d{2}\.\d{2}\.\d{4}/.test(t) && !/Tag|Woche|Monat/i.test(t)) return '–';
+  // Sonst auf 14 Zeichen kürzen
+  return t.length > 14 ? t.slice(0, 12) + '…' : t;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // RECHNUNGSCHECK — Ergebnis-PDF (nativ mit pdf-lib)
 // ═══════════════════════════════════════════════════════════════════
@@ -8439,10 +8456,19 @@ async function buildRechnungscheckPDF() {
   }
   function drawHeading(text, opts) {
     const o = opts || {};
-    y -= (o.before || 14);
-    drawT(text, { font: helvBold, size: 13, leading: 17, after: 6 });
-    // Unterstreichung
-    page.drawLine({ start: { x: MARGIN_X, y: y + 4 }, end: { x: PAGE_W - MARGIN_X, y: y + 4 }, thickness: 0.5, color: MUTED });
+    y -= (o.before || 16);
+    // Navy-Bar wie im Form-Layout (.section-title)
+    ensure(28);
+    page.drawRectangle({
+      x: MARGIN_X, y: y - 22,
+      width: PAGE_W - 2*MARGIN_X, height: 22,
+      color: NAVY,
+    });
+    page.drawText(_safeWinAnsi(text.toUpperCase()), {
+      x: MARGIN_X + 12, y: y - 16, size: 10.5, font: helvBold,
+      color: rgb(1,1,1)
+    });
+    y -= 28;
     y -= 4;
   }
   function row2col(label, value) {
@@ -8461,21 +8487,31 @@ async function buildRechnungscheckPDF() {
   }
   function spacer(h) { y -= h; }
 
-  // ── HEADER ─────────────────────────────────────────────────────
-  page.drawRectangle({ x: 0, y: PAGE_H - 80, width: PAGE_W, height: 80, color: NAVY });
-  page.drawText(_safeWinAnsi('Rechnungsprüfung'), { x: MARGIN_X, y: PAGE_H - 40, size: 22, font: helvBold, color: rgb(1,1,1) });
-  page.drawText(_safeWinAnsi('Liftaro GmbH · Plausibilitätsprüfung Aufzugsrechnungen'), { x: MARGIN_X, y: PAGE_H - 62, size: 10, font: helv, color: rgb(0.85,0.92,1) });
-  // Check-Info rechts
-  const rightX = PAGE_W - MARGIN_X - 180;
-  page.drawText(_safeWinAnsi('Prüfdatum:'), { x: rightX, y: PAGE_H - 32, size: 9, font: helv, color: rgb(0.85,0.92,1) });
-  page.drawText(_safeWinAnsi(today),        { x: rightX + 65, y: PAGE_H - 32, size: 9.5, font: helvBold, color: rgb(1,1,1) });
-  page.drawText(_safeWinAnsi('Check-Nr.:'), { x: rightX, y: PAGE_H - 48, size: 9, font: helv, color: rgb(0.85,0.92,1) });
-  page.drawText(_safeWinAnsi(checkId),      { x: rightX + 65, y: PAGE_H - 48, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+  // ── HEADER (an Form-Layout angelehnt) ──────────────────────────
+  page.drawRectangle({ x: 0, y: PAGE_H - 90, width: PAGE_W, height: 90, color: NAVY });
+  // Titel + Untertitel links
+  page.drawText(_safeWinAnsi('Rechnungsprüfung'), { x: MARGIN_X, y: PAGE_H - 42, size: 22, font: helvBold, color: rgb(1,1,1) });
+  page.drawText(_safeWinAnsi('Liftaro GmbH · Plausibilitätsprüfung Aufzugsrechnungen'), { x: MARGIN_X, y: PAGE_H - 64, size: 10, font: helv, color: rgb(0.85,0.92,1) });
+  // Liftaro-Wordmark rechts oben (analog zum Form-Header)
+  const wmX = PAGE_W - MARGIN_X;
+  const wm = 'liftaro';
+  const wmW = helvBold.widthOfTextAtSize(wm, 24);
+  page.drawText(wm, { x: wmX - wmW, y: PAGE_H - 40, size: 24, font: helvBold, color: rgb(1,1,1) });
+  // Grüner Akzent-Strich rechts unter dem Wordmark
+  const greenY = PAGE_H - 50;
+  page.drawRectangle({ x: wmX - wmW, y: greenY, width: wmW, height: 2, color: rgb(0.49, 0.76, 0.26) });
+  // Check-Meta rechts darunter
+  const metaX = PAGE_W - MARGIN_X - 150;
+  const metaY = PAGE_H - 70;
+  page.drawText(_safeWinAnsi('Prüfdatum: '), { x: metaX, y: metaY, size: 8.5, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(_safeWinAnsi(today),         { x: metaX + 55, y: metaY, size: 9, font: helvBold, color: rgb(1,1,1) });
+  page.drawText(_safeWinAnsi('Check-Nr.: '), { x: metaX, y: metaY - 13, size: 8.5, font: helv, color: rgb(0.85,0.92,1) });
+  page.drawText(_safeWinAnsi(checkId),        { x: metaX + 55, y: metaY - 13, size: 9, font: helvBold, color: rgb(1,1,1) });
   if (anfrageNr) {
-    page.drawText(_safeWinAnsi('Anfrage:'),  { x: rightX, y: PAGE_H - 64, size: 9, font: helv, color: rgb(0.85,0.92,1) });
-    page.drawText(_safeWinAnsi(anfrageNr),   { x: rightX + 65, y: PAGE_H - 64, size: 9.5, font: helvBold, color: rgb(1,1,1) });
+    page.drawText(_safeWinAnsi('Anfrage: '),  { x: metaX, y: metaY - 26, size: 8.5, font: helv, color: rgb(0.85,0.92,1) });
+    page.drawText(_safeWinAnsi(anfrageNr),    { x: metaX + 55, y: metaY - 26, size: 9, font: helvBold, color: rgb(1,1,1) });
   }
-  y = PAGE_H - 110;
+  y = PAGE_H - 116;
 
   // ── ERGEBNIS-BANNER (oben prominent) ───────────────────────────
   const ergMap = {
@@ -8522,7 +8558,7 @@ async function buildRechnungscheckPDF() {
   drawAmount('Netto',              g('rc_netto'),   0, false);
   drawAmount('MwSt (' + (g('rc_mwst_satz') || '19') + ' %)', g('rc_mwst'), 1, false);
   drawAmount('Brutto (Gesamt)',    g('rc_brutto'),  2, true);
-  drawAmount('Zahlungsziel',       g('rc_zahlungsziel'), 3, false);
+  drawAmount('Zahlungsziel',       _shortenZahlungsziel(g('rc_zahlungsziel')), 3, false);
   y = boxY - 90;
 
   // ── PRÜFUNG & BEMERKUNGEN (Fließtext) ──────────────────────────
