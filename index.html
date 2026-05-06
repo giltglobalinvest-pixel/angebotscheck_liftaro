@@ -1323,7 +1323,13 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div class="form-body">
         <!-- Allgemeine Daten (shared) -->
         <div class="section" id="section-allgemein">
-          <div class="section-title">Allgemeine Daten</div>
+          <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <span>Allgemeine Daten</span>
+            <button type="button" data-frozen-allow onclick="saveCurrentBetreiberAsKunde()" title="Firma + Name + Tel. + Standort als Kunden-Datensatz speichern, damit die KI ihn beim nächsten Mal automatisch erkennt" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0" onmouseover="this.style.background='#6cb036'" onmouseout="this.style.background='var(--green)'">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Kunde speichern
+            </button>
+          </div>
           <div class="section-inner">
             <!-- Große Checknummer-Anzeige oben -->
             <div id="checkNrBanner" style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:linear-gradient(135deg,var(--navy),#1f4d80);color:#fff;padding:14px 20px;border-radius:10px;margin-bottom:14px;flex-wrap:wrap">
@@ -2549,7 +2555,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.44';
+const APP_VERSION = 'V8.45';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2862,6 +2868,15 @@ async function setupTables() {
       { name: 'userValue', type: 'singleLineText' },
       { name: 'checkType', type: 'singleLineText' },
       { name: 'anbieter', type: 'singleLineText' },
+      { name: 'savedAt', type: 'singleLineText' },
+    ]),
+    ensureTable('Kunden', [
+      { name: 'id', type: 'singleLineText' },
+      { name: 'firma', type: 'singleLineText' },
+      { name: 'name', type: 'singleLineText' },
+      { name: 'tel', type: 'singleLineText' },
+      { name: 'standort', type: 'singleLineText' },
+      { name: 'fabriknummer', type: 'singleLineText' },
       { name: 'savedAt', type: 'singleLineText' },
     ]),
   ]);
@@ -5317,13 +5332,14 @@ async function extractFromPDF(num, file) {
       textForAI = textStart + '\n\n[...]\n\n' + textEnd;
     }
 
-    // Lern-Hint EINMAL async laden (nicht im Template-Literal — sonst stringified zu "[object Promise]")
+    // Lern-Hint + Kunden-Hint EINMAL async laden (nicht im Template-Literal — sonst stringified zu "[object Promise]")
     const _correctionHint = await buildCorrectionHint(checkType);
+    const _kundenHint     = await buildKundenHint();
     const systemPrompt = checkType === 'wartung'
-      ? `Du bist ein Assistent der Liftaro GmbH, der Aufzugs-Wartungsverträge analysiert. Antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}`
+      ? `Du bist ein Assistent der Liftaro GmbH, der Aufzugs-Wartungsverträge analysiert. Antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}${_kundenHint}`
       : checkType === 'rechnung'
-        ? `Du bist ein Assistent der Liftaro GmbH, der Rechnungen von Aufzugsfirmen prüft. Extrahiere die relevanten Rechnungsfelder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}`
-        : `Du bist ein Assistent der Liftaro GmbH, der Reparaturangebote für Aufzüge analysiert. Extrahiere die relevanten Felder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}`;
+        ? `Du bist ein Assistent der Liftaro GmbH, der Rechnungen von Aufzugsfirmen prüft. Extrahiere die relevanten Rechnungsfelder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}${_kundenHint}`
+        : `Du bist ein Assistent der Liftaro GmbH, der Reparaturangebote für Aufzüge analysiert. Extrahiere die relevanten Felder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}${_kundenHint}`;
 
     statusEl.innerHTML = '<span class="ai-spin"></span> KI analysiert …';
 
@@ -5549,6 +5565,12 @@ ${textForAI}`;
 
     if (typeof calcSavings === 'function') calcSavings();
 
+    // Kunden-Autofill: falls Firmenname zu einem gespeicherten Kunden passt,
+    // ergänze (falls leer) f_name und f_tel aus dem gespeicherten Datensatz
+    if (isFirst && typeof applyKundenAutofill === 'function') {
+      try { await applyKundenAutofill(data.firmenname); } catch(e) { console.warn('Kunden-Autofill:', e); }
+    }
+
     statusEl.className = 'ai-status done';
     statusEl.innerHTML = '✓ Felder automatisch ausgefüllt';
     if (typeof updateEmail === 'function') updateEmail();
@@ -5583,40 +5605,59 @@ function watchFieldForCorrections() {
   const watchIds = [
     'cv_angebotnr','cv_anbieter','cv_lieferzeit','cv_gwl','cv_preis',
     'ca_angebotnr','ca_anbieter','ca_lieferzeit','ca_gwl','ca_preis',
-    'f_fabrik','f_standort','f_firma','f_name',
+    'f_fabrik','f_standort','f_firma','f_name','f_tel',
     'wv_laufzeit','wa_laufzeit','wv_kuendigung','wa_kuendigung',
     'wv_kosten','wa_kosten','wv_anzahl','wa_anzahl','wv_typ','wa_typ',
+    // Rechnungscheck-Felder
+    'rc_rechnungsnr','rc_rechnungsdatum','rc_ersteller','rc_ersteller_adresse',
+    'rc_leistungszeitraum','rc_bezug','rc_leistung',
+    'rc_netto','rc_mwst_satz','rc_mwst','rc_brutto','rc_zahlungsziel',
   ];
   watchIds.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
+    if (el._lftCorrWatch) return; // schon angehängt
+    el._lftCorrWatch = true;
     el.addEventListener('blur', () => {
       const aiVal = _aiExtracted[id];
-      const userVal = el.value.trim();
-      if (aiVal !== undefined && userVal && userVal !== aiVal) {
+      const userVal = (el.value || '').trim();
+      if (aiVal !== undefined && userVal && String(userVal) !== String(aiVal)) {
+        console.log('[KI-Lernen] Korrektur erkannt:', id, '| KI:', aiVal, '→ User:', userVal);
         saveCorrection(id, aiVal, userVal);
       }
     });
   });
+  console.log('[KI-Lernen] Watch aktiv für', watchIds.length, 'Felder');
 }
 
 async function saveCorrection(fieldId, aiValue, userValue) {
-  if (!APP_KEYS.airtableWriteKey) return;
+  if (!APP_KEYS.airtableWriteKey) {
+    console.warn('[KI-Lernen] saveCorrection abgebrochen: kein airtableWriteKey');
+    return;
+  }
   const apiKey = APP_KEYS.user?.api_key || '';
   try {
     // Geteilter Datenpool: Duplikat-Prüfung user-übergreifend für dasselbe Feld
     const existing = await atRead('Korrekturen', "{fieldId}='" + fieldId + "'");
     // Check exact duplicate
-    if (existing.some(r => r.fields.aiValue === String(aiValue) && r.fields.userValue === String(userValue))) return;
-    await atWrite('Korrekturen', {
+    if (existing.some(r => r.fields.aiValue === String(aiValue) && r.fields.userValue === String(userValue))) {
+      console.log('[KI-Lernen] Korrektur bereits vorhanden, überspringe:', fieldId);
+      return;
+    }
+    const rec = await atWrite('Korrekturen', {
       id: 'K' + Date.now(), api_key: apiKey,
       fieldId, fieldLabel: getFieldLabel(fieldId),
       aiValue: String(aiValue), userValue: String(userValue),
       checkType, anbieter: document.getElementById('cv_anbieter')?.value || '',
       savedAt: new Date().toISOString(),
     });
+    console.log('[KI-Lernen] ✓ Korrektur gespeichert:', fieldId, '→ Airtable Record:', rec?.id || '?');
     _correctionsCache = null; // invalidate
-  } catch(e) { console.warn('saveCorrection error:', e.message); }
+    if (typeof showToast === 'function') showToast('🧠 KI hat eine neue Korrektur gelernt', 'ok');
+  } catch(e) {
+    console.error('[KI-Lernen] saveCorrection Fehler:', e.message);
+    if (typeof showToast === 'function') showToast('Lernen fehlgeschlagen: ' + e.message, 'error');
+  }
 }
 
 let _correctionsCache = null;
@@ -7402,6 +7443,103 @@ async function generateAHWAngebot() {
 // Die hier zuvor stehenden localStorage-Versionen haben durch JS-Funktions-Hoisting die Airtable-Versionen
 // überschrieben — dadurch wurden Korrekturen NIE in der Airtable-Tabelle "Korrekturen" gespeichert.
 // Jetzt nur noch die Airtable-basierten Funktionen aktiv.
+
+// ── Kunden-Datensatz (Betreiber-Stammdaten) ──────────────────────
+// Speichert {firma, name, tel, standort, fabriknummer} in Airtable-Tabelle "Kunden".
+// Beim KI-Extraktions-Lauf wird die Liste in den System-Prompt aufgenommen, sodass
+// die KI bekannte Betreiber wiedererkennt und die Felder direkt korrekt füllt.
+let _kundenCache = null;
+async function getKundenCache() {
+  if (_kundenCache) return _kundenCache;
+  if (!APP_KEYS.user) return [];
+  try {
+    const recs = await atRead('Kunden', null, { sort: false });
+    _kundenCache = recs.map(r => ({ ...r.fields, _recordId: r.id }));
+    return _kundenCache;
+  } catch (e) {
+    console.warn('[Kunden] Read fehlgeschlagen:', e.message);
+    return [];
+  }
+}
+
+async function saveCurrentBetreiberAsKunde() {
+  const firma = (document.getElementById('f_firma')?.value || '').trim();
+  const name  = (document.getElementById('f_name')?.value  || '').trim();
+  const tel   = (document.getElementById('f_tel')?.value   || '').trim();
+  const stand = (document.getElementById('f_standort')?.value || '').trim();
+  const fabr  = (document.getElementById('f_fabrik')?.value || '').trim();
+  if (!firma) {
+    if (typeof showToast === 'function') showToast('Bitte zuerst Firmenname eintragen', 'error');
+    return;
+  }
+  if (!APP_KEYS.airtableWriteKey) {
+    if (typeof showToast === 'function') showToast('Nicht eingeloggt', 'error');
+    return;
+  }
+  try {
+    // Update wenn Firma exakt schon existiert, sonst neu anlegen
+    const list = await getKundenCache();
+    const lc = firma.toLowerCase();
+    const existing = list.find(k => (k.firma || '').toLowerCase() === lc);
+    const payload = {
+      firma, name, tel, standort: stand, fabriknummer: fabr,
+      savedAt: new Date().toISOString(),
+    };
+    if (existing && existing._recordId) {
+      await atUpdate('Kunden', existing._recordId, payload);
+      console.log('[Kunden] aktualisiert:', firma);
+      if (typeof showToast === 'function') showToast('✓ Kunde "' + firma + '" aktualisiert', 'ok');
+    } else {
+      payload.id = 'C' + Date.now();
+      await atWrite('Kunden', payload);
+      console.log('[Kunden] neu angelegt:', firma);
+      if (typeof showToast === 'function') showToast('✓ Kunde "' + firma + '" gespeichert', 'ok');
+    }
+    _kundenCache = null; // invalidate
+  } catch (e) {
+    console.error('[Kunden] Save Fehler:', e);
+    if (typeof showToast === 'function') showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+// Hint für KI-System-Prompt: Liste der bekannten Kunden mit Firma+Name+Tel.
+async function buildKundenHint() {
+  const list = await getKundenCache();
+  if (!list.length) return '';
+  const recent = list.slice(-30); // max. 30 zur Promptgrößen-Kontrolle
+  const lines = recent.map(k =>
+    `- "${k.firma}" → Ansprechpartner: "${k.name || ''}", Tel.: "${k.tel || ''}"${k.standort ? `, Standort: "${k.standort}"` : ''}`
+  ).join('\n');
+  return `\n\nBekannte Betreiber/Kunden (wenn der Firmenname im Dokument einem dieser Einträge entspricht oder sehr ähnlich ist, übernimm Name (Betreiber) und Telefon EXAKT aus dem passenden Eintrag, statt sie aus dem Dokument zu raten):\n${lines}`;
+}
+
+// Post-Process nach KI-Extraktion: falls firmenname zu einem gespeicherten Kunden passt
+// und f_name / f_tel noch leer sind oder die KI andere Werte vorgeschlagen hat,
+// werden diese aus dem Datensatz gefüllt.
+async function applyKundenAutofill(firmenname) {
+  if (!firmenname) return null;
+  const list = await getKundenCache();
+  if (!list.length) return null;
+  const lc = String(firmenname).toLowerCase().trim();
+  // Reihenfolge: exact → contains → first 8 chars match
+  let m = list.find(k => (k.firma || '').toLowerCase() === lc);
+  if (!m) m = list.find(k => {
+    const a = (k.firma || '').toLowerCase();
+    return a && (a.includes(lc) || lc.includes(a));
+  });
+  if (!m && lc.length >= 8) {
+    const head = lc.slice(0, 8);
+    m = list.find(k => (k.firma || '').toLowerCase().startsWith(head));
+  }
+  if (!m) return null;
+  console.log('[Kunden] Match für "' + firmenname + '" →', m.firma);
+  const fName = document.getElementById('f_name');
+  const fTel  = document.getElementById('f_tel');
+  if (fName && m.name && (!fName.value || fName.value.trim() === '')) fName.value = m.name;
+  if (fTel  && m.tel  && (!fTel.value  || fTel.value.trim()  === '')) fTel.value  = m.tel;
+  if (typeof showToast === 'function') showToast('💡 Bekannter Kunde: ' + m.firma, 'ok');
+  return m;
+}
 
 // ── Liftaro-Kontakt-Defaults (Ansprechperson/Tel.) ─────────────────
 // Werden aus localStorage geladen und beim Klick auf das Speicher-Icon
