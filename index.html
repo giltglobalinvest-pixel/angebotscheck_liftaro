@@ -1633,6 +1633,14 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <label>Empfehlung an den Auftraggeber</label>
                 <textarea id="rc_empfehlung" placeholder="z. B. Rechnung kann freigegeben werden / Rückfrage zu Position X / Korrekturrechnung anfordern …" style="width:100%;min-height:70px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;resize:vertical"></textarea>
               </div>
+              <!-- PDF-Optionen -->
+              <div class="field" style="margin-top:12px">
+                <label>PDF-Optionen</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:normal;cursor:pointer;background:var(--sky);border:1.5px solid var(--border);border-radius:7px;padding:9px 12px">
+                  <input type="checkbox" id="rc_show_ansprechpartner" checked style="width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0">
+                  <span><strong>Ansprechpartner Liftaro</strong> im PDF anzeigen <span style="color:var(--muted);font-size:12px">(Block „Ihr Ansprechpartner bei Liftaro")</span></span>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -2541,7 +2549,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.41';
+const APP_VERSION = 'V8.42';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2890,6 +2898,7 @@ async function setupTables() {
     { name: 'rc_ergebnis',          type: 'singleLineText' },
     { name: 'rc_bemerkungen',       type: 'multilineText' },
     { name: 'rc_empfehlung',        type: 'multilineText' },
+    { name: 'rc_show_ansprechpartner', type: 'singleLineText' },
   ]);
   // Verträge-Tabelle
   try {
@@ -3305,6 +3314,7 @@ function collectFormData() {
     rc_bemerkungen:        g('rc_bemerkungen'),
     rc_ergebnis:           g('rc_ergebnis'),
     rc_empfehlung:         g('rc_empfehlung'),
+    rc_show_ansprechpartner: document.getElementById('rc_show_ansprechpartner')?.checked ? 'true' : 'false',
   };
 }
 
@@ -3680,6 +3690,9 @@ async function loadCheck(data) {
   sw('rc_bemerkungen',       data.rc_bemerkungen);
   sw('rc_ergebnis',          data.rc_ergebnis);
   sw('rc_empfehlung',        data.rc_empfehlung);
+  // Checkbox-Wert wiederherstellen (Default: true wenn Feld leer/abwesend)
+  const cbAnsp = document.getElementById('rc_show_ansprechpartner');
+  if (cbAnsp) cbAnsp.checked = (data.rc_show_ansprechpartner === undefined || data.rc_show_ansprechpartner === '' || data.rc_show_ansprechpartner === 'true' || data.rc_show_ansprechpartner === true);
 
   calcSavings();
   updateEmail();
@@ -8725,10 +8738,13 @@ async function buildRechnungscheckPDF() {
   row2col('Standort',        g('f_standort'));
   row2col('Fabriknummer',    g('f_fabrik'));
 
-  // ── ANSPRECHPARTNER LIFTARO ────────────────────────────────────
-  drawHeading('Ihr Ansprechpartner bei Liftaro');
-  row2col('Ansprechperson', g('f_ap'));
-  row2col('Telefon',        g('f_tl'));
+  // ── ANSPRECHPARTNER LIFTARO (optional via Checkbox rc_show_ansprechpartner) ──
+  const _showAnsp = document.getElementById('rc_show_ansprechpartner')?.checked !== false;
+  if (_showAnsp) {
+    drawHeading('Ihr Ansprechpartner bei Liftaro');
+    row2col('Ansprechperson', g('f_ap'));
+    row2col('Telefon',        g('f_tl'));
+  }
 
   // letzte Card schließen
   finishCard();
