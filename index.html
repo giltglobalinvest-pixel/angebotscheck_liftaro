@@ -1169,6 +1169,11 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
         KI-Lernen
       </button>
+      <button class="nav-pill" data-nav="kunden" onclick="openKundenModal()" title="Kundenübersicht">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Kunden
+        <span id="kundenCountBadge" class="btn-badge" style="display:none">0</span>
+      </button>
     </div>
 
     <!-- ◉ Aktionen: klare Hierarchie — Primary → Secondary → CTA → Ghost -->
@@ -1239,6 +1244,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openLernprotokoll()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
       KI-Lernen
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openKundenModal()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Kunden
     </button>
 
     <div style="height:1px;background:rgba(255,255,255,.1);margin:10px 8px"></div>
@@ -1995,6 +2004,28 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- Kunden-Übersicht-Modal -->
+<div id="kundenModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(820px,94vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px">
+      <div>
+        <span style="color:#fff;font-size:15px;font-weight:700">👥 Kundenübersicht</span>
+        <span style="color:rgba(255,255,255,.5);font-size:11px;margin-left:10px">Gespeicherte Betreiber — werden bei der KI-Analyse automatisch erkannt</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="search" id="kundenSearch" placeholder="🔍 Suchen …" oninput="renderKundenList()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 10px;font-size:12.5px;outline:none;width:160px">
+        <button onclick="document.getElementById('kundenModal').style.display='none'"
+          style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+      </div>
+    </div>
+    <div id="kundenList" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:8px"></div>
+    <div style="padding:10px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)">
+      <span id="kundenStats">– Kunden gespeichert</span>
+      <span style="font-size:11px;color:var(--muted)">Tipp: Im Check „Kunde speichern" klicken, um neue Kunden anzulegen.</span>
+    </div>
+  </div>
+</div>
+
 <!-- Dashboard-Modal -->
 <!-- Status-Übergang-Modal (Status 2 = Beauftragt, Status 3 = Abrechenbar) -->
 <div id="statusTransitionModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5200;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
@@ -2555,7 +2586,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.45';
+const APP_VERSION = 'V8.46';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3161,8 +3192,9 @@ const extraFiles = [];  // array of File objects
 let pendingAfterKey = null;
 
 // ── Reset ─────────────────────────────────────────────────────────
+// Wichtig: KEIN confirm() — Reset soll instant ausführen, damit man sofort
+// einen neuen Check beginnen kann, ohne den aktiven Tab zu verlassen.
 function resetForm() {
-  if (!confirm('Formular wirklich zurücksetzen? Alle eingegebenen Daten werden gelöscht.')) return;
 
   // Clear all inputs
   const ids = ['f_requestid','f_anfrageNr','f_datum','f_fabrik','f_standort','f_firma','f_name','f_tel',
@@ -3208,8 +3240,8 @@ function resetForm() {
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
   });
 
-  // Reset check type to Reparatur
-  if (checkType !== 'reparatur') switchTab('reparatur');
+  // Aktuellen Check-Tab beibehalten — kein automatisches Umschalten auf "reparatur",
+  // damit der User direkt im aktiven Tab einen neuen Check starten kann.
 
   // Reset Wartung fields
   ['wv_laufzeit','wa_laufzeit','wv_kuendigung','wa_kuendigung',
@@ -6714,6 +6746,7 @@ function appInit() {
   watchEmailFields();
   restoreSaveFolder();
   watchFieldForCorrections();
+  if (typeof refreshKundenBadge === 'function') refreshKundenBadge();
   applyAhwProviderColors();
   updateAhwNextNumberDisplay();
   validateAhwLengths();
@@ -7496,10 +7529,111 @@ async function saveCurrentBetreiberAsKunde() {
       if (typeof showToast === 'function') showToast('✓ Kunde "' + firma + '" gespeichert', 'ok');
     }
     _kundenCache = null; // invalidate
+    if (typeof refreshKundenBadge === 'function') refreshKundenBadge();
   } catch (e) {
     console.error('[Kunden] Save Fehler:', e);
     if (typeof showToast === 'function') showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
   }
+}
+
+// Kunden-Modal öffnen + Liste rendern
+async function openKundenModal() {
+  const m = document.getElementById('kundenModal');
+  if (m) m.style.display = 'flex';
+  _kundenCache = null; // immer frisch laden
+  await renderKundenList();
+}
+
+async function renderKundenList() {
+  const list = document.getElementById('kundenList');
+  const stats = document.getElementById('kundenStats');
+  const badge = document.getElementById('kundenCountBadge');
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Lade Kunden …</div>';
+  const kunden = await getKundenCache();
+  // Update Badge im Nav
+  if (badge) {
+    if (kunden.length > 0) { badge.textContent = String(kunden.length); badge.style.display = 'inline-block'; }
+    else badge.style.display = 'none';
+  }
+  if (stats) stats.textContent = kunden.length + ' Kunde' + (kunden.length === 1 ? '' : 'n') + ' gespeichert';
+  if (!kunden.length) {
+    list.innerHTML = '<div style="text-align:center;padding:36px 20px;color:var(--muted);font-size:13px;line-height:1.5">Noch keine Kunden gespeichert.<br><span style="font-size:12px">Im Check unter <strong>Allgemeine Daten</strong> auf den grünen Button <strong>„Kunde speichern"</strong> klicken.</span></div>';
+    return;
+  }
+  // Filter
+  const q = (document.getElementById('kundenSearch')?.value || '').toLowerCase().trim();
+  const filtered = q
+    ? kunden.filter(k =>
+        (k.firma || '').toLowerCase().includes(q) ||
+        (k.name  || '').toLowerCase().includes(q) ||
+        (k.tel   || '').toLowerCase().includes(q) ||
+        (k.standort || '').toLowerCase().includes(q))
+    : kunden;
+  // Sortieren nach Firma
+  filtered.sort((a, b) => (a.firma || '').localeCompare(b.firma || ''));
+  list.innerHTML = filtered.map(k => {
+    const fId = (k._recordId || '').replace(/'/g, '');
+    return `<div style="background:var(--sky);border:1px solid var(--border);border-radius:9px;padding:12px 14px;display:flex;gap:14px;align-items:flex-start">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${(k.firma||'?').charAt(0).toUpperCase()}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:var(--text);word-break:break-word">${escapeHtml(k.firma || '–')}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5">
+          ${k.name ? `<div>👤 ${escapeHtml(k.name)}</div>` : ''}
+          ${k.tel  ? `<div>📞 ${escapeHtml(k.tel)}</div>` : ''}
+          ${k.standort ? `<div>📍 ${escapeHtml(k.standort)}</div>` : ''}
+          ${k.fabriknummer ? `<div>🔢 Fabriknummer: ${escapeHtml(k.fabriknummer)}</div>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button onclick="loadKundeIntoForm('${fId}')" title="Werte in das aktuelle Formular übernehmen" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">↪ Übernehmen</button>
+        <button onclick="deleteKunde('${fId}')" title="Kunde löschen" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">🗑 Löschen</button>
+      </div>
+    </div>`;
+  }).join('') || '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Kein Treffer für die Suche.</div>';
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+async function deleteKunde(recordId) {
+  if (!recordId) return;
+  if (!confirm('Diesen Kunden wirklich löschen?')) return;
+  try {
+    await atDelete('Kunden', recordId);
+    _kundenCache = null;
+    if (typeof showToast === 'function') showToast('Kunde gelöscht', 'ok');
+    await renderKundenList();
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Löschen fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+async function loadKundeIntoForm(recordId) {
+  if (!recordId) return;
+  const list = await getKundenCache();
+  const k = list.find(x => x._recordId === recordId);
+  if (!k) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+  set('f_firma', k.firma);
+  set('f_name',  k.name);
+  set('f_tel',   k.tel);
+  set('f_standort', k.standort);
+  set('f_fabrik', k.fabriknummer);
+  document.getElementById('kundenModal').style.display = 'none';
+  if (typeof showToast === 'function') showToast('✓ Kunde "' + k.firma + '" übernommen', 'ok');
+}
+
+// Badge-Init beim App-Start (asynchron)
+function refreshKundenBadge() {
+  if (!APP_KEYS?.user) return;
+  getKundenCache().then(k => {
+    const badge = document.getElementById('kundenCountBadge');
+    if (!badge) return;
+    if (k.length > 0) { badge.textContent = String(k.length); badge.style.display = 'inline-block'; }
+    else badge.style.display = 'none';
+  }).catch(()=>{});
 }
 
 // Hint für KI-System-Prompt: Liste der bekannten Kunden mit Firma+Name+Tel.
