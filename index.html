@@ -2549,7 +2549,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.43';
+const APP_VERSION = 'V8.44';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3154,8 +3154,16 @@ function resetForm() {
     'cv_angebotnr','cv_anbieter','cv_lieferzeit','cv_gwl','cv_preis',
     'ca_angebotnr','ca_anbieter','ca_lieferzeit','ca_gwl','ca_preis',
     'ahw_firma','ahw_anschrift','ahw_standort','ahw_leistung','ahw_erlaeuterung','ahw_preis','ahw_termin',
-    'f_leistung'];
+    'f_leistung',
+    // Rechnungscheck-Felder
+    'rc_rechnungsnr','rc_rechnungsdatum','rc_ersteller','rc_ersteller_adresse',
+    'rc_leistungszeitraum','rc_bezug','rc_leistung',
+    'rc_netto','rc_mwst_satz','rc_mwst','rc_brutto','rc_zahlungsziel',
+    'rc_bemerkungen','rc_ergebnis','rc_empfehlung'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // Rechnungscheck: MwSt-Satz auf Default 19, Checkbox Ansprechpartner zurück auf an
+  const _mwst = document.getElementById('rc_mwst_satz'); if (_mwst) _mwst.value = '19';
+  const _cbAnsp = document.getElementById('rc_show_ansprechpartner'); if (_cbAnsp) _cbAnsp.checked = true;
 
   // Clear contenteditable empfehlung
   const emp = document.getElementById('f_empfehlung');
