@@ -1334,7 +1334,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="section" id="section-allgemein">
           <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
             <span>Allgemeine Daten</span>
-            <button type="button" data-frozen-allow onclick="saveCurrentBetreiberAsKunde()" title="Firma + Name + Tel. + Standort als Kunden-Datensatz speichern, damit die KI ihn beim nächsten Mal automatisch erkennt" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0" onmouseover="this.style.background='#6cb036'" onmouseout="this.style.background='var(--green)'">
+            <button type="button" data-frozen-allow onclick="saveCurrentBetreiberAsKunde()" title="Firma + Name (Betreiber) + Tel. (Betreiber) als Kunden-Datensatz speichern, damit die KI ihn beim nächsten Mal automatisch erkennt" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0" onmouseover="this.style.background='#6cb036'" onmouseout="this.style.background='var(--green)'">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               Kunde speichern
             </button>
@@ -2586,7 +2586,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.46';
+const APP_VERSION = 'V8.47';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -2906,8 +2906,6 @@ async function setupTables() {
       { name: 'firma', type: 'singleLineText' },
       { name: 'name', type: 'singleLineText' },
       { name: 'tel', type: 'singleLineText' },
-      { name: 'standort', type: 'singleLineText' },
-      { name: 'fabriknummer', type: 'singleLineText' },
       { name: 'savedAt', type: 'singleLineText' },
     ]),
   ]);
@@ -7499,8 +7497,6 @@ async function saveCurrentBetreiberAsKunde() {
   const firma = (document.getElementById('f_firma')?.value || '').trim();
   const name  = (document.getElementById('f_name')?.value  || '').trim();
   const tel   = (document.getElementById('f_tel')?.value   || '').trim();
-  const stand = (document.getElementById('f_standort')?.value || '').trim();
-  const fabr  = (document.getElementById('f_fabrik')?.value || '').trim();
   if (!firma) {
     if (typeof showToast === 'function') showToast('Bitte zuerst Firmenname eintragen', 'error');
     return;
@@ -7515,7 +7511,7 @@ async function saveCurrentBetreiberAsKunde() {
     const lc = firma.toLowerCase();
     const existing = list.find(k => (k.firma || '').toLowerCase() === lc);
     const payload = {
-      firma, name, tel, standort: stand, fabriknummer: fabr,
+      firma, name, tel,
       savedAt: new Date().toISOString(),
     };
     if (existing && existing._recordId) {
@@ -7567,8 +7563,7 @@ async function renderKundenList() {
     ? kunden.filter(k =>
         (k.firma || '').toLowerCase().includes(q) ||
         (k.name  || '').toLowerCase().includes(q) ||
-        (k.tel   || '').toLowerCase().includes(q) ||
-        (k.standort || '').toLowerCase().includes(q))
+        (k.tel   || '').toLowerCase().includes(q))
     : kunden;
   // Sortieren nach Firma
   filtered.sort((a, b) => (a.firma || '').localeCompare(b.firma || ''));
@@ -7581,8 +7576,6 @@ async function renderKundenList() {
         <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5">
           ${k.name ? `<div>👤 ${escapeHtml(k.name)}</div>` : ''}
           ${k.tel  ? `<div>📞 ${escapeHtml(k.tel)}</div>` : ''}
-          ${k.standort ? `<div>📍 ${escapeHtml(k.standort)}</div>` : ''}
-          ${k.fabriknummer ? `<div>🔢 Fabriknummer: ${escapeHtml(k.fabriknummer)}</div>` : ''}
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -7619,8 +7612,6 @@ async function loadKundeIntoForm(recordId) {
   set('f_firma', k.firma);
   set('f_name',  k.name);
   set('f_tel',   k.tel);
-  set('f_standort', k.standort);
-  set('f_fabrik', k.fabriknummer);
   document.getElementById('kundenModal').style.display = 'none';
   if (typeof showToast === 'function') showToast('✓ Kunde "' + k.firma + '" übernommen', 'ok');
 }
@@ -7642,7 +7633,7 @@ async function buildKundenHint() {
   if (!list.length) return '';
   const recent = list.slice(-30); // max. 30 zur Promptgrößen-Kontrolle
   const lines = recent.map(k =>
-    `- "${k.firma}" → Ansprechpartner: "${k.name || ''}", Tel.: "${k.tel || ''}"${k.standort ? `, Standort: "${k.standort}"` : ''}`
+    `- "${k.firma}" → Ansprechpartner: "${k.name || ''}", Tel.: "${k.tel || ''}"`
   ).join('\n');
   return `\n\nBekannte Betreiber/Kunden (wenn der Firmenname im Dokument einem dieser Einträge entspricht oder sehr ähnlich ist, übernimm Name (Betreiber) und Telefon EXAKT aus dem passenden Eintrag, statt sie aus dem Dokument zu raten):\n${lines}`;
 }
