@@ -1348,8 +1348,22 @@ const pdfWorkerReady = Promise.resolve();</script>
               <div class="field"><label>Firmenname</label><input type="text" id="f_firma" placeholder="Betreiber GmbH"></div>
               <div class="field"><label>Name (Betreiber)</label><input type="text" id="f_name" placeholder="Vor- und Nachname"></div>
               <div class="field"><label>Tel. (Betreiber)</label><input type="tel" id="f_tel" placeholder="+49 …"></div>
-              <div class="field"><label style="white-space:nowrap">Ansprechperson Liftaro</label><input type="text" id="f_ap" placeholder="Vor- und Nachname (Liftaro)"></div>
-              <div class="field"><label>Tel. Liftaro</label><input type="tel" id="f_tl" placeholder="+49 …"></div>
+              <div class="field"><label style="white-space:nowrap">Ansprechperson Liftaro</label>
+                <div style="position:relative">
+                  <input type="text" id="f_ap" placeholder="Vor- und Nachname (Liftaro)" style="padding-right:34px;width:100%">
+                  <button type="button" data-frozen-allow onclick="saveLiftaroContactAsDefault('f_ap')" title="Als Standard für künftige Checks speichern" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);display:flex;align-items:center;justify-content:center;border-radius:4px" onmouseover="this.style.background='var(--sky)';this.style.color='var(--green)'" onmouseout="this.style.background='none';this.style.color='var(--muted)'">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="field"><label>Tel. Liftaro</label>
+                <div style="position:relative">
+                  <input type="tel" id="f_tl" placeholder="+49 …" style="padding-right:34px;width:100%">
+                  <button type="button" data-frozen-allow onclick="saveLiftaroContactAsDefault('f_tl')" title="Als Standard für künftige Checks speichern" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);display:flex;align-items:center;justify-content:center;border-radius:4px" onmouseover="this.style.background='var(--sky)';this.style.color='var(--green)'" onmouseout="this.style.background='none';this.style.color='var(--muted)'">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  </button>
+                </div>
+              </div>
               <!-- Hidden: Status-Übergangs-Daten (werden im Modal abgefragt) -->
               <input type="hidden" id="f_beauftragt_von">
               <input type="hidden" id="f_beauftragt_am">
@@ -2527,7 +2541,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.40';
+const APP_VERSION = 'V8.41';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3139,9 +3153,9 @@ function resetForm() {
   emp.textContent = emp.dataset.placeholder;
   emp.style.color = 'var(--muted)';
 
-  // Re-apply static defaults
-  document.getElementById('f_ap').value = 'Samet Battal';
-  document.getElementById('f_tl').value = '015888634515';
+  // Re-apply Liftaro-Defaults (aus localStorage, sonst statischer Fallback)
+  document.getElementById('f_ap').value = getLiftaroDefault('f_ap', 'Samet Battal');
+  document.getElementById('f_tl').value = getLiftaroDefault('f_tl', '015888634515');
   document.getElementById('f_datum').value = new Date().toISOString().split('T')[0];
   document.getElementById('ahw_email').value = 'check@liftaro.de';
   document.getElementById('ahw_tel').value = '015888634515';
@@ -5282,11 +5296,13 @@ async function extractFromPDF(num, file) {
       textForAI = textStart + '\n\n[...]\n\n' + textEnd;
     }
 
+    // Lern-Hint EINMAL async laden (nicht im Template-Literal — sonst stringified zu "[object Promise]")
+    const _correctionHint = await buildCorrectionHint(checkType);
     const systemPrompt = checkType === 'wartung'
-      ? `Du bist ein Assistent der Liftaro GmbH, der Aufzugs-Wartungsverträge analysiert. Antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`
+      ? `Du bist ein Assistent der Liftaro GmbH, der Aufzugs-Wartungsverträge analysiert. Antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}`
       : checkType === 'rechnung'
-        ? `Du bist ein Assistent der Liftaro GmbH, der Rechnungen von Aufzugsfirmen prüft. Extrahiere die relevanten Rechnungsfelder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`
-        : `Du bist ein Assistent der Liftaro GmbH, der Reparaturangebote für Aufzüge analysiert. Extrahiere die relevanten Felder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`;
+        ? `Du bist ein Assistent der Liftaro GmbH, der Rechnungen von Aufzugsfirmen prüft. Extrahiere die relevanten Rechnungsfelder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}`
+        : `Du bist ein Assistent der Liftaro GmbH, der Reparaturangebote für Aufzüge analysiert. Extrahiere die relevanten Felder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${_correctionHint}`;
 
     statusEl.innerHTML = '<span class="ai-spin"></span> KI analysiert …';
 
@@ -6624,8 +6640,8 @@ async function generatePDF() {
 function appInit() {
   const tv = document.getElementById('appVersionBadge');
   if (tv) tv.textContent = APP_VERSION;
-  document.getElementById('f_ap').value = 'Samet Battal';
-  document.getElementById('f_tl').value = '015888634515';
+  document.getElementById('f_ap').value = getLiftaroDefault('f_ap', 'Samet Battal');
+  document.getElementById('f_tl').value = getLiftaroDefault('f_tl', '015888634515');
   document.getElementById('f_datum').value = new Date().toISOString().split('T')[0];
   document.getElementById('ahw_email').value = 'check@liftaro.de';
   document.getElementById('ahw_tel').value = '015888634515';
@@ -7361,56 +7377,38 @@ async function generateAHWAngebot() {
   }
 }
 
-// ── Lernfunktion: Manuelle Korrekturen merken ─────────────────────
-const AI_FILLED = {};  // field id → value that AI set
+// ── (Lernfunktion: Duplikate entfernt — siehe ~Z.5536: rememberAIValue / watchFieldForCorrections / saveCorrection / buildCorrectionHint)
+// Die hier zuvor stehenden localStorage-Versionen haben durch JS-Funktions-Hoisting die Airtable-Versionen
+// überschrieben — dadurch wurden Korrekturen NIE in der Airtable-Tabelle "Korrekturen" gespeichert.
+// Jetzt nur noch die Airtable-basierten Funktionen aktiv.
 
-function rememberAIValue(id, val) {
-  if (val) AI_FILLED[id] = val;
+// ── Liftaro-Kontakt-Defaults (Ansprechperson/Tel.) ─────────────────
+// Werden aus localStorage geladen und beim Klick auf das Speicher-Icon
+// neben dem jeweiligen Feld gespeichert. Greift bei appInit() und resetForm().
+function getLiftaroDefault(key, fallback) {
+  try {
+    const v = localStorage.getItem('liftaro_default_' + key);
+    return (v !== null && v !== '') ? v : fallback;
+  } catch { return fallback; }
 }
-
-function watchCorrections() {
-  const watchIds = [
-    'f_fabrik','f_standort','f_firma','f_name','f_tel',
-    'cv_angebotnr','cv_anbieter','cv_lieferzeit','cv_gwl','cv_preis',
-    'ca_angebotnr','ca_anbieter','ca_lieferzeit','ca_gwl','ca_preis'
-  ];
-  watchIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('change', () => {
-      const aiVal = AI_FILLED[id];
-      const userVal = el.value.trim();
-      if (aiVal && userVal && aiVal !== userVal) {
-        saveCorrection(id, aiVal, userVal);
-      }
-    });
-  });
+function setLiftaroDefault(key, val) {
+  try { localStorage.setItem('liftaro_default_' + key, val || ''); } catch {}
 }
-
-function saveCorrection(fieldId, aiVal, userVal) {
-  const corrections = safeParseJSON(localStorage.getItem('liftaro_corrections'), '[]');
-  // Avoid duplicates for same field+aiVal
-  const existing = corrections.findIndex(c => c.field === fieldId && c.ai === aiVal);
-  if (existing >= 0) {
-    corrections[existing].user = userVal;
-  } else {
-    corrections.push({ field: fieldId, ai: aiVal, user: userVal, ts: Date.now() });
+function saveLiftaroContactAsDefault(fieldId) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  const val = (el.value || '').trim();
+  if (!val) {
+    if (typeof showToast === 'function') showToast('Feld ist leer — nichts zu speichern.', 'error');
+    else alert('Feld ist leer — nichts zu speichern.');
+    return;
   }
-  // Keep last 30 corrections
-  if (corrections.length > 30) corrections.splice(0, corrections.length - 30);
-  localStorage.setItem('liftaro_corrections', JSON.stringify(corrections));
+  setLiftaroDefault(fieldId, val);
+  const labelMap = { f_ap: 'Ansprechperson Liftaro', f_tl: 'Tel. Liftaro' };
+  const label = labelMap[fieldId] || fieldId;
+  if (typeof showToast === 'function') showToast(`✓ "${val}" als Standard für ${label} gespeichert`, 'success');
+  else alert(`Als Standard gespeichert: ${val}`);
 }
-
-function getCorrectionsHint() {
-  const corrections = safeParseJSON(localStorage.getItem('liftaro_corrections'), '[]');
-  if (corrections.length === 0) return '';
-  const examples = corrections.slice(-10).map(c =>
-    `- Feld "${c.field}": KI extrahierte "${c.ai}" → Nutzer korrigierte zu "${c.user}"`
-  ).join('\n');
-  return `\n\nGelernte Korrekturen aus früheren Durchläufen (bitte berücksichtigen):\n${examples}`;
-}
-
-watchCorrections();
 
 // ── Auto-Empfehlung generieren ────────────────────────────────────
 async function generateEmpfehlung() {
