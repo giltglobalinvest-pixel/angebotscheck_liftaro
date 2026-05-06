@@ -1719,7 +1719,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     <div class="side-card hide-on-mobile">
       <div class="side-card-header">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Vorliegendes Angebot
+        <span id="zone1Title">Vorliegendes Angebot</span>
       </div>
       <div class="side-card-body">
         <div class="upload-zone" id="zone1" onclick="document.getElementById('file1').click()">
@@ -2521,7 +2521,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.30';
+const APP_VERSION = 'V8.31';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4989,6 +4989,10 @@ function switchTab(type) {
   // Index 1 ist Alternativangebot
   if (sideCards[1]) sideCards[1].style.display = isRechnung ? 'none' : '';
 
+  // Sidebar-Title für Upload-Zone 1 anpassen
+  const z1title = document.getElementById('zone1Title');
+  if (z1title) z1title.textContent = isRechnung ? 'Vorliegende Rechnung' : 'Vorliegendes Angebot';
+
   // Pre-fill wartung fields from form if switching to wartung
   if (isWartung) {
     const g = id => document.getElementById(id)?.value || '';
@@ -5213,7 +5217,10 @@ async function extractFromPDF(num, file) {
   const statusEl = document.getElementById('aiStatus' + num);
   statusEl.style.display = 'flex';
   statusEl.className = 'ai-status loading';
-  statusEl.innerHTML = '<span class="ai-spin"></span> KI liest Angebot aus …';
+  const initText = (checkType === 'rechnung') ? 'KI liest Rechnung aus …'
+    : (checkType === 'wartung') ? 'KI liest Wartungsvertrag aus …'
+    : 'KI liest Angebot aus …';
+  statusEl.innerHTML = '<span class="ai-spin"></span> ' + initText;
 
   const col = num === 1 ? 'V' : 'A';
   const isFirst = (num === 1);
@@ -5245,6 +5252,10 @@ async function extractFromPDF(num, file) {
         // Page 2 has the contract details (parties, price, duration)
         pagesToRender.push(Math.min(2, pdfLib2.numPages));
         if (pdfLib2.numPages >= 3) pagesToRender.push(Math.min(3, pdfLib2.numPages));
+      } else if (checkType === 'rechnung') {
+        // Rechnungen: meist Seite 1 mit allen relevanten Daten
+        pagesToRender.push(1);
+        if (pdfLib2.numPages >= 2) pagesToRender.push(2);
       } else {
         pagesToRender.push(1);
         if (pdfLib2.numPages >= 2) pagesToRender.push(2);
@@ -5267,12 +5278,48 @@ async function extractFromPDF(num, file) {
 
     const systemPrompt = checkType === 'wartung'
       ? `Du bist ein Assistent der Liftaro GmbH, der Aufzugs-Wartungsverträge analysiert. Antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`
-      : `Du bist ein Assistent der Liftaro GmbH, der Reparaturangebote für Aufzüge analysiert. Extrahiere die relevanten Felder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`;
+      : checkType === 'rechnung'
+        ? `Du bist ein Assistent der Liftaro GmbH, der Rechnungen von Aufzugsfirmen prüft. Extrahiere die relevanten Rechnungsfelder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`
+        : `Du bist ein Assistent der Liftaro GmbH, der Reparaturangebote für Aufzüge analysiert. Extrahiere die relevanten Felder aus dem Text und antworte NUR mit einem JSON-Objekt, ohne Markdown-Backticks.${buildCorrectionHint(checkType)}`;
 
     statusEl.innerHTML = '<span class="ai-spin"></span> KI analysiert …';
 
     let userPrompt;
-    if (checkType === 'wartung') {
+    if (checkType === 'rechnung') {
+      userPrompt = `Analysiere diese Rechnung einer Aufzugsfirma und extrahiere folgende Felder als JSON.
+
+Wichtige Hinweise:
+- "rechnungsnummer": Suche "Rechnungsnummer", "Rechnung-Nr.", "Re-Nr." oder ähnlich.
+- "rechnungsdatum": Format 'TT.MM.JJJJ' (z.B. '28.04.2026').
+- "leistungszeitraum": Wenn Zeitraum genannt (z.B. "01.01.-31.03.2026"), übernehmen.
+- "netto" / "mwst" / "brutto": NUR die Beträge im Format '1.234,56 €'. MwSt-Satz separat.
+- "bezug": Auftragsnummer / Angebotsnummer / Auftragsbestätigung-Nr., wenn auf Rechnung referenziert.
+- "leistung": Kurze Zusammenfassung der berechneten Leistungen (1-2 Sätze).
+- "fabriknummer" / "standort": wenn Anlage referenziert.
+
+{
+  "rechnungsnummer": "Rechnungsnummer",
+  "rechnungsdatum": "Rechnungsdatum im Format TT.MM.JJJJ",
+  "ersteller": "Name der Firma die die Rechnung stellt (Auftragnehmer)",
+  "ersteller_adresse": "Anschrift des Rechnungsstellers (Straße, PLZ, Ort)",
+  "leistungszeitraum": "Leistungszeitraum",
+  "bezug": "Bezug auf Auftrag/Angebot",
+  "leistung": "Beschreibung der berechneten Leistungen",
+  "netto": "Netto-Gesamtbetrag, Format '1.234,56 €'",
+  "mwst_satz": "MwSt-Satz als Zahl ohne %, z.B. '19'",
+  "mwst": "MwSt-Betrag, Format '1.234,56 €'",
+  "brutto": "Brutto-Gesamtbetrag, Format '1.234,56 €'",
+  "zahlungsziel": "Zahlungsziel z.B. '14 Tage' oder konkretes Datum",
+  "fabriknummer": "Fabriknummer/Anlagennummer falls genannt",
+  "standort": "Standort der Aufzugsanlage falls genannt",
+  "firmenname": "Name des Kunden/Empfängers (Auftraggeber)",
+  "firma_anschrift": "Rechnungsadresse des Kunden"
+}
+Wenn ein Feld nicht gefunden wird, setze den Wert auf "".
+
+Rechnungstext:
+${textForAI}`;
+    } else if (checkType === 'wartung') {
       userPrompt = `Analysiere diesen Wartungsvertrag und extrahiere folgende Felder als JSON.
 
 {
@@ -5373,7 +5420,27 @@ ${textForAI}`;
       if (el) el.checked = !!val;
     };
 
-    if (checkType === 'wartung') {
+    if (checkType === 'rechnung') {
+      // Rechnungsfelder befüllen
+      setField('rc_rechnungsnr',       data.rechnungsnummer);
+      setField('rc_rechnungsdatum',    data.rechnungsdatum);
+      setField('rc_ersteller',         data.ersteller);
+      setField('rc_ersteller_adresse', data.ersteller_adresse);
+      setField('rc_leistungszeitraum', data.leistungszeitraum);
+      setField('rc_bezug',             data.bezug);
+      setField('rc_leistung',          data.leistung);
+      setField('rc_netto',             data.netto);
+      setField('rc_mwst_satz',         data.mwst_satz);
+      setField('rc_mwst',              data.mwst);
+      setField('rc_brutto',            data.brutto);
+      setField('rc_zahlungsziel',      data.zahlungsziel);
+      // Auch Hauptdaten (falls leer)
+      if (isFirst) {
+        setField('f_fabrik',   data.fabriknummer);
+        setField('f_standort', data.standort);
+        setField('f_firma',    data.firmenname);
+      }
+    } else if (checkType === 'wartung') {
       const p = col === 'V' ? 'wv' : 'wa';
       setField(`${p}_laufzeit`,        data.laufzeit);
       setField(`${p}_vertragsbeginn`,  data.vertragsbeginn);
@@ -5443,7 +5510,13 @@ ${textForAI}`;
     statusEl.innerHTML = '✓ Felder automatisch ausgefüllt';
     if (typeof updateEmail === 'function') updateEmail();
     if (typeof addChatMsg === 'function') {
-      addChatMsg('ai', `Angebot ${num === 1 ? '(Vorliegend)' : '(Alternativ)'} ausgelesen: ${data.anbieter || 'Anbieter unbekannt'}${data.preis ? ', ' + data.preis : ''}.`);
+      let chatMsg;
+      if (checkType === 'rechnung') {
+        chatMsg = `Rechnung ausgelesen: ${data.ersteller || 'Aussteller unbekannt'}${data.brutto ? ', Brutto ' + data.brutto : ''}.`;
+      } else {
+        chatMsg = `Angebot ${num === 1 ? '(Vorliegend)' : '(Alternativ)'} ausgelesen: ${data.anbieter || 'Anbieter unbekannt'}${data.preis ? ', ' + data.preis : ''}.`;
+      }
+      addChatMsg('ai', chatMsg);
     }
 
   } catch(e) {
