@@ -2549,7 +2549,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.42';
+const APP_VERSION = 'V8.43';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -8760,6 +8760,44 @@ async function buildRechnungscheckPDF() {
   spacer(8);
   drawT('Liftaro GmbH', { font: helvBold, size: 9.5, color: NAVY });
   drawT('Gustavburger Weg 6, 55116 Mainz · check@liftaro.de · 015888634515', { size: 8.5, color: MUTED });
+
+  // ── ANHANG: Vorliegende Rechnung (Original-PDF) anhängen ──────────
+  // Quelle: uploadedFiles[1] (vorliegendes_pdf-Slot). Hat loadCheck() bereits
+  // das Airtable-Attachment in uploadedFiles[1] gefüllt.
+  try {
+    const invFile = (typeof uploadedFiles !== 'undefined') ? uploadedFiles[1] : null;
+    if (invFile && /pdf$/i.test(invFile.type || invFile.name || '')) {
+      const invBytes = new Uint8Array(await invFile.arrayBuffer());
+      const invDoc = await PDFDocument.load(invBytes, { ignoreEncryption: true });
+      // Trennseite mit Hinweis voranstellen
+      const sep = baseDoc.addPage([PAGE_W, PAGE_H]);
+      sep.drawRectangle({ x: 0, y: PAGE_H - 60, width: PAGE_W, height: 60, color: SKY });
+      sep.drawLine({
+        start: { x: 0, y: PAGE_H - 60 }, end: { x: PAGE_W, y: PAGE_H - 60 },
+        thickness: 1, color: BORDER,
+      });
+      sep.drawText(_safeWinAnsi('ANHANG'), {
+        x: MARGIN_X, y: PAGE_H - 28, size: 11, font: helvBold, color: MUTED,
+      });
+      sep.drawText(_safeWinAnsi('Vorliegende Rechnung'), {
+        x: MARGIN_X, y: PAGE_H - 48, size: 18, font: helvBold, color: NAVY,
+      });
+      sep.drawText(_safeWinAnsi('Original-Dokument der geprüften Rechnung — siehe folgende Seite(n).'), {
+        x: MARGIN_X, y: PAGE_H - 90, size: 10.5, font: helv, color: TEXT,
+      });
+      if (invFile.name) {
+        sep.drawText(_safeWinAnsi('Datei: ' + invFile.name), {
+          x: MARGIN_X, y: PAGE_H - 110, size: 9.5, font: helv, color: MUTED,
+        });
+      }
+      // Alle Seiten der Original-Rechnung kopieren und anhängen
+      const pageIdx = invDoc.getPageIndices();
+      const copied = await baseDoc.copyPages(invDoc, pageIdx);
+      copied.forEach(p => baseDoc.addPage(p));
+    }
+  } catch (e) {
+    console.warn('Konnte vorliegende Rechnung nicht anhängen:', e);
+  }
 
   baseDoc.setTitle('Rechnungsprüfung — ' + (g('f_firma') || checkId));
   baseDoc.setAuthor('Liftaro GmbH');
