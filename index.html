@@ -2578,7 +2578,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.48';
+const APP_VERSION = 'V8.49';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -5778,11 +5778,16 @@ function syncFromVorliegend() {
       document.getElementById('wt_wartungen_pro_jahr').value = g('wa_anzahl'); copied++;
     }
   } else {
-    // Reparatur: copy vorliegend → alternativ
-    [['cv_lieferzeit','ca_lieferzeit'],['cv_gwl','ca_gwl'],['cv_preis','ca_preis']].forEach(([src,dst]) => {
+    // Reparatur: copy vorliegend → alternativ (immer überschreiben, der Button heißt "Aus Angebot 1")
+    [['cv_angebotnr','ca_angebotnr'],
+     ['cv_anbieter','ca_anbieter'],
+     ['cv_lieferzeit','ca_lieferzeit'],
+     ['cv_gwl','ca_gwl'],
+     ['cv_preis','ca_preis']].forEach(([src,dst]) => {
       const val = g(src); const el = document.getElementById(dst);
-      if (val && el && !el.value.trim()) { el.value = val; copied++; }
+      if (val && el && el.value !== val) { el.value = val; copied++; }
     });
+    // AHW-Panel: nur wenn leer ergänzen (sonst überschreiben wir Hand-Edits dort)
     [['f_standort','ahw_standort'],['f_firma','ahw_firma'],['f_standort','ahw_anschrift']].forEach(([src,dst]) => {
       const val = g(src); const el = document.getElementById(dst);
       if (val && el && !el.value.trim()) { el.value = val; copied++; }
