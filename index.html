@@ -1822,9 +1822,9 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div id="ahwCardHeader" class="side-card-header" style="background:#2a5c3a;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span id="ahw-card-title" style="flex-shrink:0;white-space:nowrap">Alternativangebot</span>
-        <select id="ahwProviderSelect" onchange="onAhwProviderChange()" style="flex:1;min-width:0;background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:4px 8px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;outline:none" title="Anbieter f\u00fcr das Alternativangebot ausw\u00e4hlen">
-          <option value="ahw" style="color:#000">Aufzugshandwerk GmbH</option>
-          <option value="aszendio" style="color:#000">Aszendio Aufzugservice GmbH</option>
+        <select id="ahwProviderSelect" onchange="onAhwProviderChange()" style="flex:1;min-width:0;background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:4px 28px 4px 8px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;outline:none;-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:url(&quot;data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'&gt;&lt;path fill='%23ffffff' d='M0 0l5 6 5-6z'/&gt;&lt;/svg&gt;);background-repeat:no-repeat;background-position:right 8px center;background-size:9px 6px;background-color:rgba(255,255,255,.18)" title="Anbieter f&uuml;r das Alternativangebot ausw&auml;hlen">
+          <option value="ahw" style="color:#000;background:#fff">Aufzugshandwerk GmbH</option>
+          <option value="aszendio" style="color:#000;background:#fff">Aszendio Aufzugservice GmbH</option>
         </select>
       </div>
       <!-- Reparatur fields (default) -->
@@ -2578,7 +2578,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.49';
+const APP_VERSION = 'V8.50';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
