@@ -2578,7 +2578,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.51';
+const APP_VERSION = 'V8.52';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -10386,8 +10386,13 @@ function renderDashboard() {
   let matched = 0;
   let totalErsparnis = 0;
   let totalLiftaroBet = 0;
-  let ersparnisRep = 0, liftaroBetRep = 0;
-  let ersparnisWar = 0, liftaroBetWar = 0;
+  // Aufteilung nach Status:
+  //   "moeglich" = Check gemacht (Status 1) — noch nicht beauftragt/aktiv
+  //   "real"     = Status >= 2 (beauftragt / Vertrag aktiv / abgerechnet / gekündigt)
+  let ersparnisRepMoeglich = 0, ersparnisRepReal = 0;
+  let liftaroBetRepMoeglich = 0, liftaroBetRepReal = 0;
+  let ersparnisWarMoeglich = 0, ersparnisWarReal = 0;
+  let liftaroBetWarMoeglich = 0, liftaroBetWarReal = 0;
   let signedCount = 0;
   let openCount = 0;
 
@@ -10398,14 +10403,21 @@ function renderDashboard() {
     const lib = _parseEuro(c.liftaroBet);
     totalErsparnis  += ers;
     totalLiftaroBet += lib;
+    const st = getCheckStatus(c);
+    const isReal = st !== '1'; // Status 1 = nur Check gemacht → noch möglich
     if (c.checkType === 'wartung') {
-      ersparnisWar  += ers;
-      liftaroBetWar += lib;
+      if (isReal) { ersparnisWarReal += ers; liftaroBetWarReal += lib; }
+      else        { ersparnisWarMoeglich += ers; liftaroBetWarMoeglich += lib; }
     } else {
-      ersparnisRep  += ers;
-      liftaroBetRep += lib;
+      if (isReal) { ersparnisRepReal += ers; liftaroBetRepReal += lib; }
+      else        { ersparnisRepMoeglich += ers; liftaroBetRepMoeglich += lib; }
     }
   }
+  // Aggregierte Summen für Backwards-Kompatibilität
+  const ersparnisRep  = ersparnisRepMoeglich + ersparnisRepReal;
+  const liftaroBetRep = liftaroBetRepMoeglich + liftaroBetRepReal;
+  const ersparnisWar  = ersparnisWarMoeglich + ersparnisWarReal;
+  const liftaroBetWar = liftaroBetWarMoeglich + liftaroBetWarReal;
   for (const v of vertraege) {
     if (v._attSigned && v._attSigned.length) signedCount++;
     else openCount++;
@@ -10525,32 +10537,50 @@ function renderDashboard() {
     ${billingBlock}
 
     <div style="margin-top:6px">
-      <div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="background:var(--navy);color:#fff;border-radius:4px;padding:2px 8px;font-size:10px">🔧 Reparaturcheck</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">${checksReparatur} Checks</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">${checksReparatur} Checks · Status 1 = möglich, Status ≥ 2 = tatsächlich</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        ${kachel('Ersparnis (Reparatur)',    _fmtEuro(ersparnisRep),  '#3d7a14', 'einmalig')}
-        ${kachel('Liftaro-Beteiligung (Reparatur)', _fmtEuro(liftaroBetRep), '#2a5c3a', '50 % einmalig')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:8px">
+        <div style="grid-column:1 / -1;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Mögliche Ersparnis (Status 1 · Check gemacht)</div>
+        ${kachel('Mögliche Ersparnis',    _fmtEuro(ersparnisRepMoeglich),  '#94a3b8', 'noch nicht beauftragt')}
+        ${kachel('Mögliche Liftaro-Beteiligung', _fmtEuro(liftaroBetRepMoeglich), '#94a3b8', '50 % einmalig (potenziell)')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+        <div style="grid-column:1 / -1;font-size:10.5px;font-weight:700;color:#3d7a14;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Tatsächliche Ersparnis (Status ≥ 2)</div>
+        ${kachel('Tatsächliche Ersparnis',    _fmtEuro(ersparnisRepReal),  '#3d7a14', 'beauftragt / abgerechnet')}
+        ${kachel('Tatsächliche Liftaro-Beteiligung', _fmtEuro(liftaroBetRepReal), '#2a5c3a', '50 % einmalig (realisiert)')}
       </div>
     </div>
 
     <div style="margin-top:6px">
-      <div style="font-size:12px;font-weight:700;color:#0e6655;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+      <div style="font-size:12px;font-weight:700;color:#0e6655;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="background:#0e6655;color:#fff;border-radius:4px;padding:2px 8px;font-size:10px">🔄 Vertragscheck (Wartung)</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">${checksWartung} Checks</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">${checksWartung} Checks · Status 1 = möglich, Status ≥ 2 = tatsächlich</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        ${kachel('Ersparnis (Vertrag)',    _fmtEuro(ersparnisWar),  '#0e6655', 'laufzeitbezogen')}
-        ${kachel('Liftaro-Beteiligung (Vertrag)', _fmtEuro(liftaroBetWar), '#0a4a3c', '50 % über Laufzeit')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:8px">
+        <div style="grid-column:1 / -1;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Mögliche Ersparnis (Status 1 · Check gemacht)</div>
+        ${kachel('Mögliche Ersparnis',    _fmtEuro(ersparnisWarMoeglich),  '#94a3b8', 'Vertrag noch nicht aktiv')}
+        ${kachel('Mögliche Liftaro-Beteiligung', _fmtEuro(liftaroBetWarMoeglich), '#94a3b8', '50 % über Laufzeit (potenziell)')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+        <div style="grid-column:1 / -1;font-size:10.5px;font-weight:700;color:#0e6655;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Tatsächliche Ersparnis (Status ≥ 2 · Vertrag aktiv / gekündigt)</div>
+        ${kachel('Tatsächliche Ersparnis',    _fmtEuro(ersparnisWarReal),  '#0e6655', 'Vertrag wurde umgesetzt')}
+        ${kachel('Tatsächliche Liftaro-Beteiligung', _fmtEuro(liftaroBetWarReal), '#0a4a3c', '50 % über Laufzeit (realisiert)')}
       </div>
     </div>
 
     <div style="margin-top:6px;padding-top:14px;border-top:2px solid var(--border)">
-      <div style="font-size:12px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">∑ Gesamt</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        ${kachel('Gesamt-Ersparnis',     _fmtEuro(totalErsparnis),  '#3d7a14', 'Summe aller Checks')}
-        ${kachel('Liftaro-Beteiligung',  _fmtEuro(totalLiftaroBet), '#2a5c3a', 'Aus Feld liftaroBet')}
+      <div style="font-size:12px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">∑ Gesamt — Reparatur + Wartung</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:8px">
+        <div style="grid-column:1 / -1;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Möglich (Status 1)</div>
+        ${kachel('Mögliche Ersparnis Gesamt',     _fmtEuro(ersparnisRepMoeglich + ersparnisWarMoeglich),  '#94a3b8', 'noch nicht umgesetzt')}
+        ${kachel('Mögliche Liftaro-Beteiligung Gesamt',  _fmtEuro(liftaroBetRepMoeglich + liftaroBetWarMoeglich), '#94a3b8', 'potenziell')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+        <div style="grid-column:1 / -1;font-size:10.5px;font-weight:700;color:#3d7a14;text-transform:uppercase;letter-spacing:.4px">Tatsächlich (Status ≥ 2)</div>
+        ${kachel('Tatsächliche Ersparnis Gesamt',     _fmtEuro(ersparnisRepReal + ersparnisWarReal),  '#3d7a14', 'realisiert')}
+        ${kachel('Tatsächliche Liftaro-Beteiligung Gesamt',  _fmtEuro(liftaroBetRepReal + liftaroBetWarReal), '#2a5c3a', 'realisiert')}
       </div>
     </div>
 
