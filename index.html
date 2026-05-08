@@ -2578,7 +2578,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.50';
+const APP_VERSION = 'V8.51';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3303,8 +3303,15 @@ function collectFormData() {
     ca_angebotnr: g('ca_angebotnr'), ca_anbieter: g('ca_anbieter'),
     ca_lieferzeit: g('ca_lieferzeit'), ca_gwl: g('ca_gwl'), ca_preis: g('ca_preis'),
     empfehlung:  g('f_empfehlung'),
-    ersparnis:   document.getElementById('savings-display')?.textContent || document.getElementById('savings-display-w')?.textContent || '',
-    liftaroBet:  document.getElementById('savings-liftaro')?.textContent || document.getElementById('savings-liftaro-w')?.textContent || '',
+    // Ersparnis/Liftaro-Beteiligung pro Check-Type aus dem richtigen Display lesen.
+    // Bug-Fix: vorher hat das ||-Fallback IMMER den Reparatur-Wert gewonnen (Default "– €" ist truthy),
+    // wodurch Wartungs-Ersparnisse nie ins Dashboard gelangt sind.
+    ersparnis:   (checkType === 'wartung'
+                  ? document.getElementById('savings-display-w')?.textContent
+                  : document.getElementById('savings-display')?.textContent) || '',
+    liftaroBet:  (checkType === 'wartung'
+                  ? document.getElementById('savings-liftaro-w')?.textContent
+                  : document.getElementById('savings-liftaro')?.textContent) || '',
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
