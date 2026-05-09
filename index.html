@@ -49,14 +49,14 @@ const pdfWorkerReady = Promise.resolve();</script>
 
   /* ════════════════════════════════════════════════════════════════
    *  THEME: HERO (ERP-Hero-Style)
-   *  Tieferes Navy, Bright-Blue-Akzent statt Grün, dickere Border-Radien,
-   *  Pill-Buttons, weichere Schatten — inspiriert vom ERP-Hero-Design.
-   *  Aktiviert via <body data-theme="hero">, gesetzt durch Admin-Toggle.
+   *  Bright-Blue-Gradient-Topbar, Pill-Buttons, weiches Off-White-BG,
+   *  starke !important-Overrides damit auch hartkodierte inline-styles
+   *  in der UI sichtbar das Design wechseln.
    * ════════════════════════════════════════════════════════════════ */
   body[data-theme="hero"] {
     --navy:   #0c1e4a;
     --navy2:  #081534;
-    --green:  #3676ff;     /* Bright Blue als CTA-Farbe (statt Grün) */
+    --green:  #3676ff;
     --green2: #2860e2;
     --blue-mid: #3676ff;
     --sky:    #f1f3f8;
@@ -64,48 +64,74 @@ const pdfWorkerReady = Promise.resolve();</script>
     --border: #dde3ee;
     --text:   #0c1e4a;
     --muted:  #6c7a90;
-    --bg:     #fafbfd;
+    --bg:     #fafbfd !important;
     --radius-card:   18px;
     --radius-pill:   100px;
     --radius-button: 12px;
     --shadow-card:   0 4px 24px rgba(12,30,74,0.07);
-    font-family: 'DM Sans', sans-serif;
+    background: #fafbfd !important;
     letter-spacing: -.1px;
   }
-  /* Topbar: stärkerer Schatten, abgerundeter unten */
+  /* TOPBAR — markanter Blue-Gradient (Override des var-basierten Navy) */
   body[data-theme="hero"] .topbar {
-    box-shadow: 0 8px 28px rgba(12,30,74,0.22);
+    background: linear-gradient(135deg, #0c1e4a 0%, #1f3573 55%, #2860e2 100%) !important;
+    box-shadow: 0 8px 28px rgba(12,30,74,0.32) !important;
   }
   body[data-theme="hero"] .topbar-title {
-    font-weight: 800; letter-spacing: -.4px;
+    font-weight: 800 !important; letter-spacing: -.4px !important; color: #fff !important;
   }
-  /* Cards & Sections: rundere Ecken, weiche Schatten */
+  /* Versions-Badge & Burger Button heller */
+  body[data-theme="hero"] #appVersionBadge {
+    background: rgba(255,255,255,.18) !important;
+    border-color: rgba(255,255,255,.32) !important;
+  }
+  /* Generate / Primary CTA — Bright Blue Pill */
+  body[data-theme="hero"] .btn-generate {
+    background: linear-gradient(135deg, #3676ff, #2860e2) !important;
+    border-radius: 100px !important;
+    font-weight: 700 !important;
+    padding: 10px 22px !important;
+    box-shadow: 0 4px 16px rgba(54,118,255,0.38) !important;
+  }
+  body[data-theme="hero"] .btn-generate:hover {
+    box-shadow: 0 6px 22px rgba(54,118,255,0.5) !important;
+    transform: translateY(-1px);
+  }
+  /* Primary-Button (Speichern) auch blau-Pill */
+  body[data-theme="hero"] .btn-settings.btn-primary,
+  body[data-theme="hero"] .nav-pill.btn-primary {
+    background: linear-gradient(135deg, #3676ff, #2860e2) !important;
+    border-color: #2860e2 !important;
+    box-shadow: 0 2px 8px rgba(54,118,255,0.3) !important;
+    border-radius: 100px !important;
+  }
+  /* Buttons & Pills: Pill-Form */
+  body[data-theme="hero"] .btn-settings,
+  body[data-theme="hero"] .nav-pill,
+  body[data-theme="hero"] .check-tab,
+  body[data-theme="hero"] .mobile-menu-item {
+    border-radius: 100px !important;
+  }
+  /* Active Nav-Pill auf Topbar */
+  body[data-theme="hero"] .nav-pill.active {
+    background: #fff !important;
+    color: #0c1e4a !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  /* Check-Tabs: aktiver Tab in Bright-Blue */
+  body[data-theme="hero"] .check-tab.active {
+    color: #3676ff !important;
+    border-bottom-color: #3676ff !important;
+  }
+  /* Cards & Form-Card: rundere Ecken + weicherer Schatten */
   body[data-theme="hero"] .form-card,
   body[data-theme="hero"] .side-card,
   body[data-theme="hero"] .form-header {
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
+    border-radius: 18px !important;
+    box-shadow: 0 4px 24px rgba(12,30,74,0.07) !important;
   }
   body[data-theme="hero"] .form-card { overflow: hidden; }
-  body[data-theme="hero"] .section { border-radius: 14px; }
-  body[data-theme="hero"] .section-title { letter-spacing: .4px; }
-  /* Buttons: Pill-Form */
-  body[data-theme="hero"] .btn-generate,
-  body[data-theme="hero"] .nav-pill,
-  body[data-theme="hero"] .btn-settings,
-  body[data-theme="hero"] .check-tab {
-    border-radius: var(--radius-pill);
-  }
-  body[data-theme="hero"] .nav-pill,
-  body[data-theme="hero"] .btn-settings { font-weight: 600; }
-  body[data-theme="hero"] .btn-generate {
-    font-weight: 700;
-    box-shadow: 0 4px 16px rgba(54,118,255,0.32);
-    padding: 9px 22px;
-  }
-  body[data-theme="hero"] .btn-generate:hover {
-    box-shadow: 0 6px 20px rgba(54,118,255,0.42);
-  }
+  body[data-theme="hero"] .section { border-radius: 14px !important; }
   /* Eingabefelder: rundere Ecken */
   body[data-theme="hero"] .field input,
   body[data-theme="hero"] .field textarea,
@@ -115,9 +141,10 @@ const pdfWorkerReady = Promise.resolve();</script>
   body[data-theme="hero"] input[type="email"],
   body[data-theme="hero"] input[type="date"],
   body[data-theme="hero"] input[type="search"],
+  body[data-theme="hero"] input[type="number"],
   body[data-theme="hero"] textarea,
   body[data-theme="hero"] select {
-    border-radius: var(--radius-button);
+    border-radius: 12px !important;
   }
   /* Modals: rundere Ecken + weicherer Schatten */
   body[data-theme="hero"] #checksModal > div,
@@ -133,16 +160,51 @@ const pdfWorkerReady = Promise.resolve();</script>
     border-radius: 22px !important;
     box-shadow: 0 32px 80px rgba(12,30,74,0.4) !important;
   }
-  /* Dashboard-Header-Icon: blau statt navy */
-  body[data-theme="hero"] #dashboardView h1 { font-weight: 800; letter-spacing: -.4px; }
-  /* Floating Reset: rundere Optik */
-  body[data-theme="hero"] #floatingResetBtn {
-    border-radius: var(--radius-pill);
-    box-shadow: 0 6px 18px rgba(12,30,74,0.12);
+  /* Dashboard: bunter, größerer Heading */
+  body[data-theme="hero"] #dashboardView h1 {
+    font-weight: 800 !important; letter-spacing: -.4px !important; font-size: 26px !important;
+    color: #0c1e4a !important;
   }
-  /* Login-Screen: zentrale Card */
-  body[data-theme="hero"] #loginScreen .login-card {
-    border-radius: 22px;
+  /* Dashboard Header-Icon-Kreis blau-Gradient */
+  body[data-theme="hero"] #dashboardView > div:first-child > div:first-child > div:first-child[style*="background"] {
+    background: linear-gradient(135deg, #3676ff, #2860e2) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 6px 18px rgba(54,118,255,0.32);
+  }
+  /* "Neuen Check starten" CTA Pill blau */
+  body[data-theme="hero"] #dashboardView button[onclick="showCheckView()"] {
+    background: linear-gradient(135deg, #3676ff, #2860e2) !important;
+    border-radius: 100px !important;
+    box-shadow: 0 4px 14px rgba(54,118,255,0.35) !important;
+    padding: 10px 18px !important;
+  }
+  /* Filter-Chips im Dashboard rund */
+  body[data-theme="hero"] [onclick*="toggleDashStatus"] {
+    border-radius: 100px !important;
+  }
+  /* Dashboard-Kacheln: rundere Ecken */
+  body[data-theme="hero"] [style*="border-left:4px"][style*="border-radius"] {
+    border-radius: 14px !important;
+  }
+  /* Floating Reset rund */
+  body[data-theme="hero"] #floatingResetBtn {
+    border-radius: 100px !important;
+    box-shadow: 0 6px 18px rgba(12,30,74,0.18) !important;
+    background: #fff !important;
+  }
+  /* Login-Screen */
+  body[data-theme="hero"] #loginScreen .login-card { border-radius: 22px; }
+  /* Body-Hintergrund Off-White */
+  body[data-theme="hero"] {
+    background: #fafbfd !important;
+  }
+  /* Mobile-Drawer beibehalten dunkel, aber Akzent ändern */
+  body[data-theme="hero"] #mobileMenuDrawer {
+    background: linear-gradient(180deg, #0c1e4a 0%, #081534 100%) !important;
+  }
+  /* Bottom-Tab/Form-Tab-Container Bright-Blue Akzent */
+  body[data-theme="hero"] .check-tabs {
+    border-bottom: 2px solid rgba(54,118,255,.15);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2721,7 +2783,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.56';
+const APP_VERSION = 'V8.57';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7858,7 +7920,9 @@ function toggleTheme() {
   const cur = getActiveTheme();
   const idx = THEME_LIST.findIndex(t => t.id === cur);
   const next = THEME_LIST[(idx + 1) % THEME_LIST.length];
+  console.log('[Theme] toggleTheme:', cur, '→', next.id);
   applyTheme(next.id);
+  console.log('[Theme] body data-theme jetzt:', document.body.getAttribute('data-theme') || '(default)');
   if (typeof showToast === 'function') showToast('Design gewechselt: ' + next.label, 'ok');
 }
 function setupThemeToggle() {
