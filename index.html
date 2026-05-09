@@ -240,7 +240,78 @@ const pdfWorkerReady = Promise.resolve();</script>
     background: #fff !important;
   }
   /* Login-Screen */
-  body[data-theme="hero"] #loginScreen .login-card { border-radius: 22px; }
+  /* ════════════════════════════════════════════════════════════
+   *  LOGIN-SCREEN (Hero): Hellblau-Pastell statt dunkler Navy
+   * ════════════════════════════════════════════════════════════ */
+  body[data-theme="hero"] #loginScreen {
+    background: linear-gradient(135deg, #eaf2ff 0%, #dbeafe 50%, #bfdbfe 100%) !important;
+  }
+  /* Logo-Title (liftaro) auf hellem BG → Deep-Blue */
+  body[data-theme="hero"] #loginScreen > div:first-child > div:first-child {
+    color: #1e40af !important;
+  }
+  body[data-theme="hero"] #loginScreen > div:first-child > div:nth-child(2) {
+    color: #475569 !important;
+  }
+  /* Connection-Check-Row */
+  body[data-theme="hero"] #connAirtable {
+    background: rgba(255,255,255,0.7) !important;
+    border: 2px solid #93c5fd !important;
+    color: #1e40af !important;
+  }
+  /* Login-Card: weiß mit kräftigem Hellblau-Border + Hellblau-Schatten */
+  body[data-theme="hero"] #loginScreen > div[style*="background:#fff"] {
+    border: 2px solid #93c5fd !important;
+    border-radius: 20px !important;
+    box-shadow: 0 24px 60px rgba(30,64,175,0.18), 0 4px 16px rgba(30,64,175,0.08) !important;
+  }
+  /* Login-Heading + Lead */
+  body[data-theme="hero"] #loginScreen h2 { color: #1e40af !important; }
+  body[data-theme="hero"] #loginScreen p { color: #64748b !important; }
+  /* Login-Input: 2px Hellblau-Border, Pill-ähnlich gerundet */
+  body[data-theme="hero"] #loginKeyInput {
+    border: 2px solid #bfdbfe !important;
+    border-radius: 12px !important;
+    background: #f0f7ff !important;
+    color: #1e40af !important;
+    font-weight: 600 !important;
+    padding: 13px 16px !important;
+  }
+  body[data-theme="hero"] #loginKeyInput::placeholder { color: #94a3b8 !important; }
+  body[data-theme="hero"] #loginKeyInput:focus {
+    border-color: #1e40af !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 4px rgba(30,64,175,0.12) !important;
+    outline: none !important;
+  }
+  /* Login-Button: Pill in Deep-Blue */
+  body[data-theme="hero"] #loginScreen button[onclick="doLogin()"] {
+    background: #1e40af !important;
+    border-radius: 100px !important;
+    padding: 13px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 6px 16px rgba(30,64,175,0.28) !important;
+    border: 2px solid #1e40af !important;
+  }
+  body[data-theme="hero"] #loginScreen button[onclick="doLogin()"]:hover {
+    background: #1e3a8a !important;
+    box-shadow: 0 8px 24px rgba(30,64,175,0.4) !important;
+  }
+  /* Footer-Versionsnummer auf hellem Grund */
+  body[data-theme="hero"] #loginScreen > div:last-child {
+    color: #1e40af !important;
+    opacity: 0.6;
+    font-weight: 600;
+  }
+  /* Login-Error in rotem Pill */
+  body[data-theme="hero"] #loginError {
+    background: #fee2e2 !important;
+    border: 1.5px solid #fca5a5 !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    color: #991b1b !important;
+    font-weight: 600 !important;
+  }
   /* Body-Hintergrund Off-White */
   body[data-theme="hero"] {
     background: #fafbfd !important;
@@ -3220,7 +3291,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.61';
+const APP_VERSION = 'V8.62';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
