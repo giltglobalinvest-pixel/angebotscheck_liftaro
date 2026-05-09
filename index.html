@@ -54,30 +54,76 @@ const pdfWorkerReady = Promise.resolve();</script>
    *  in der UI sichtbar das Design wechseln.
    * ════════════════════════════════════════════════════════════════ */
   body[data-theme="hero"] {
-    --navy:   #2a5cab;       /* lighter, friendlicher Blau-Header */
-    --navy2:  #234e9b;
-    --green:  #3b82f6;       /* helleres Bright-Blue als CTA */
+    --navy:   #1e40af;        /* Primary Deep Blue */
+    --navy2:  #1e3a8a;
+    --green:  #3b82f6;        /* CTA Bright Blue */
     --green2: #2563eb;
-    --blue-mid: #3b82f6;
-    --sky:    #eff5ff;
-    --sky2:   #e0ecfd;
-    --border: #c7d8ee;       /* etwas kräftigere Linie */
-    --text:   #1e3a5f;       /* weniger schwarz, freundlicher Blau-Ton */
-    --muted:  #6c7a90;
-    --bg:     #f5f8fc !important;
-    --radius-card:   18px;
+    --blue-mid: #60a5fa;
+    --sky:    #dbeafe;        /* Hellblau – DEUTLICH sichtbar */
+    --sky2:   #bfdbfe;
+    --border: #93c5fd;        /* Hellblauer Border – kräftig */
+    --text:   #0f172a;
+    --muted:  #64748b;
+    --bg:     #eaf2ff !important;   /* Body in Hellblau-Pastell */
+    --radius-card:   16px;
     --radius-pill:   100px;
-    --radius-button: 12px;
-    --shadow-card:   0 2px 12px rgba(42,92,171,0.08);
-    background: #f5f8fc !important;
+    --radius-button: 10px;
+    --shadow-card:   0 1px 3px rgba(30,64,175,0.06);
+    background: #eaf2ff !important;
     letter-spacing: -.1px;
   }
-  /* TOPBAR — helleres Blau, klare durchgehende Linie */
+  /* TOPBAR — weiß mit kräftigem Hellblau-Underline (Linear/Notion-Style) */
   body[data-theme="hero"] .topbar {
-    background: #2a5cab !important;
-    box-shadow: 0 2px 0 rgba(255,255,255,0) !important;
-    border-bottom: 2px solid rgba(255,255,255,.08) !important;
+    background: #fff !important;
+    border-bottom: 3px solid #60a5fa !important;
+    box-shadow: 0 1px 0 #dbeafe, 0 6px 20px rgba(30,64,175,0.06) !important;
   }
+  body[data-theme="hero"] .topbar-title { color: #1e40af !important; }
+  body[data-theme="hero"] .topbar-sub { color: #64748b !important; }
+  body[data-theme="hero"] #appVersionBadge {
+    background: #dbeafe !important;
+    border: 1.5px solid #93c5fd !important;
+    color: #1e40af !important;
+  }
+  body[data-theme="hero"] #mobileMenuBtn {
+    background: #dbeafe !important;
+    border: 1.5px solid #93c5fd !important;
+    color: #1e40af !important;
+  }
+  /* Nav-Pills im hellen Topbar: Navy-Text statt Weiß */
+  body[data-theme="hero"] .nav-pill {
+    color: #475569 !important;
+  }
+  body[data-theme="hero"] .nav-pill:hover {
+    background: #dbeafe !important;
+    color: #1e40af !important;
+  }
+  body[data-theme="hero"] .nav-pill.active {
+    background: #1e40af !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(30,64,175,0.25);
+  }
+  /* Nav-Shelf-Container im hellen Topbar */
+  body[data-theme="hero"] .nav-shelf {
+    background: #f0f7ff !important;
+    border: 1.5px solid #dbeafe !important;
+  }
+  body[data-theme="hero"] .nav-shelf-divider { background: #93c5fd !important; opacity: 0.4; }
+  /* Reset/Logout-Buttons im hellen Topbar */
+  body[data-theme="hero"] .btn-settings { color: #475569 !important; }
+  body[data-theme="hero"] .btn-settings:hover { background: #dbeafe !important; color: #1e40af !important; }
+  body[data-theme="hero"] .btn-settings.btn-danger { color: #be123c !important; }
+  body[data-theme="hero"] .btn-settings.btn-danger:hover { background: #ffe4e6 !important; color: #9f1239 !important; }
+  /* Theme-Toggle im hellen Topbar */
+  body[data-theme="hero"] #themeToggleBtn {
+    background: #dbeafe !important;
+    border-color: #93c5fd !important;
+    color: #1e40af !important;
+  }
+  /* User-Greeting muss im hellen Topbar dunkel sein */
+  body[data-theme="hero"] #userGreeting { color: #1e40af !important; }
+  body[data-theme="hero"] #connStatus { color: #475569 !important; }
+  body[data-theme="hero"] #connStatus div { color: #64748b !important; }
   body[data-theme="hero"] .topbar-title {
     font-weight: 800 !important; letter-spacing: -.4px !important; color: #fff !important;
   }
@@ -209,32 +255,30 @@ const pdfWorkerReady = Promise.resolve();</script>
   }
 
   /* ── Hero-Refinements: cleanere Linie, weniger Farb-Leaks ─────── */
-  /* Dashboard Cards: kräftiger 2px-Rand, einheitlich, kein bunter Left-Border. */
+  /* Dashboard Cards: weiß mit kräftigem Hellblau-Border 2px */
   body[data-theme="hero"] #dashboardContent [style*="border-left:4px"] {
-    border-left: 2px solid #c7d8ee !important;
-    border-right: 2px solid #c7d8ee !important;
-    border-top: 2px solid #c7d8ee !important;
-    border-bottom: 2px solid #c7d8ee !important;
-    border-radius: 16px !important;
+    background: #fff !important;
+    border: 2px solid #bfdbfe !important;
+    border-radius: 14px !important;
     padding: 18px 20px !important;
-    box-shadow: 0 1px 3px rgba(42,92,171,0.05);
+    box-shadow: 0 1px 0 rgba(30,64,175,0.04);
     transition: border-color .15s, box-shadow .15s, transform .15s;
   }
   body[data-theme="hero"] #dashboardContent [style*="border-left:4px"]:hover {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 4px 16px rgba(59,130,246,0.12);
+    border-color: #1e40af !important;
+    box-shadow: 0 6px 20px rgba(30,64,175,0.12);
     transform: translateY(-1px);
   }
-  /* Section-Title-Pills (REPARATURCHECK / VERTRAGSCHECK / GESAMT) — helleres Blau */
+  /* Section-Title-Pills (REPARATURCHECK / VERTRAGSCHECK / GESAMT) — Hellblau-Pill mit dunkelblauem Text */
   body[data-theme="hero"] #dashboardContent [style*="background:var(--navy)"][style*="color:#fff"][style*="border-radius:4px"],
   body[data-theme="hero"] #dashboardContent [style*="background:#0e6655"][style*="color:#fff"][style*="border-radius:4px"] {
-    background: #2a5cab !important;
-    color: #fff !important;
+    background: #dbeafe !important;
+    color: #1e40af !important;
     border-radius: 100px !important;
     padding: 5px 14px !important;
     font-weight: 700 !important;
     letter-spacing: .6px !important;
-    border: 2px solid #2a5cab !important;
+    border: 1.5px solid #93c5fd !important;
   }
   /* Sub-Labels (möglich/tatsächlich) — feiner */
   body[data-theme="hero"] #dashboardContent [style*="color:#94a3b8"][style*="text-transform:uppercase"],
@@ -245,32 +289,36 @@ const pdfWorkerReady = Promise.resolve();</script>
     letter-spacing: .8px !important;
     font-size: 10px !important;
   }
-  /* Status-Filter-Chips: kräftigere 2px-Outline; aktiv = solid Blau */
+  /* Status-Filter-Chips: hellblauer Tint, aktiv = solid Deep-Blue */
   body[data-theme="hero"] [onclick*="toggleDashStatus"] {
     border-radius: 100px !important;
-    border: 2px solid #c7d8ee !important;
+    border: 2px solid #bfdbfe !important;
     background: #fff !important;
-    color: #4a6280 !important;
+    color: #1e40af !important;
     font-weight: 600 !important;
     padding: 7px 16px !important;
   }
+  body[data-theme="hero"] [onclick*="toggleDashStatus"]:hover {
+    background: #dbeafe !important;
+    border-color: #60a5fa !important;
+  }
   body[data-theme="hero"] [onclick*="toggleDashStatus"][style*="color:#fff"] {
-    background: #2a5cab !important;
+    background: #1e40af !important;
     color: #fff !important;
-    border-color: #2a5cab !important;
+    border-color: #1e40af !important;
   }
   /* "Filter zurücksetzen"-Button */
   body[data-theme="hero"] [onclick*="_dashStatusFilter.clear"] {
     border-radius: 100px !important;
-    border: 2px dashed #c7d8ee !important;
-    color: #6c7a90 !important;
+    border: 2px dashed #93c5fd !important;
+    color: #1e40af !important;
   }
   /* Werte-Größe & Typografie auf Cards angleichen */
   body[data-theme="hero"] #dashboardContent [style*="font-size:22px"][style*="font-weight:700"] {
-    font-size: 30px !important;
+    font-size: 32px !important;
     font-weight: 800 !important;
     letter-spacing: -.5px !important;
-    color: #1e3a5f !important;
+    color: #1e40af !important;
   }
   /* Sub-Labels in Cards (z.B. "0 unterschrieben · 6 offen", "3 Reparatur · 2 Vertrag") */
   body[data-theme="hero"] #dashboardContent [style*="font-size:11px"][style*="color:var(--muted)"],
@@ -286,44 +334,46 @@ const pdfWorkerReady = Promise.resolve();</script>
     font-size: 10.5px !important;
     font-weight: 600 !important;
   }
-  /* Trennlinien kräftiger */
+  /* Trennlinien kräftig in Hellblau */
   body[data-theme="hero"] #dashboardContent [style*="border-top:2px solid"] {
-    border-top: 2px solid #c7d8ee !important;
+    border-top: 2px solid #93c5fd !important;
     padding-top: 24px !important;
   }
   /* Filter-Bereich: 2px Border-Bottom in Hellblau */
   body[data-theme="hero"] #dashboardContent > div:first-child[style*="border-bottom"] {
-    border-bottom: 2px solid #c7d8ee !important;
+    border-bottom: 2px solid #93c5fd !important;
     padding: 4px 0 18px !important;
   }
   /* Dashboard Top-Bereich: mehr Whitespace */
   body[data-theme="hero"] #dashboardView { padding: 32px 24px 60px !important; }
   body[data-theme="hero"] #dashboardContent { gap: 30px !important; }
-  /* Dashboard-Heading-Icon — Hellblau-Tile mit Bright-Blue Icon */
+  /* Dashboard-Heading-Icon — kräftiges Hellblau mit Deep-Blue Icon */
   body[data-theme="hero"] #dashboardView > div:first-child > div:first-child > div:first-child[style*="background"] {
-    background: #eff5ff !important;
-    color: #2a5cab !important;
+    background: #dbeafe !important;
+    color: #1e40af !important;
     border-radius: 14px !important;
-    border: 2px solid #c7d8ee !important;
+    border: 2px solid #93c5fd !important;
     box-shadow: none !important;
+    width: 44px !important;
+    height: 44px !important;
   }
   body[data-theme="hero"] #dashboardView > div:first-child > div:first-child > div:first-child[style*="background"] svg {
-    color: #2a5cab !important;
-    stroke: #2a5cab !important;
+    color: #1e40af !important;
+    stroke: #1e40af !important;
   }
-  /* "Neuen Check starten" Button: solid mid-blue Pill */
+  /* "Neuen Check starten" Button: solid Deep-Blue Pill */
   body[data-theme="hero"] #dashboardView button[onclick="showCheckView()"] {
-    background: #2a5cab !important;
-    box-shadow: 0 4px 14px rgba(42,92,171,0.22) !important;
+    background: #1e40af !important;
+    box-shadow: 0 4px 14px rgba(30,64,175,0.25) !important;
     padding: 12px 22px !important;
     font-weight: 700 !important;
     border-radius: 100px !important;
-    border: 2px solid #2a5cab !important;
+    border: 2px solid #1e40af !important;
   }
   body[data-theme="hero"] #dashboardView button[onclick="showCheckView()"]:hover {
-    background: #234e9b !important;
-    border-color: #234e9b !important;
-    box-shadow: 0 6px 20px rgba(42,92,171,0.32) !important;
+    background: #1e3a8a !important;
+    border-color: #1e3a8a !important;
+    box-shadow: 0 6px 20px rgba(30,64,175,0.35) !important;
   }
   /* Topbar-Title kompakter, weniger sub-text bei Mobile */
   body[data-theme="hero"] .topbar-sub { color: rgba(255,255,255,.65) !important; }
@@ -345,17 +395,17 @@ const pdfWorkerReady = Promise.resolve();</script>
     letter-spacing: .8px !important;
     margin-bottom: 14px !important;
   }
-  /* Tabellen-Zeilen in Dashboard "Fällige Vertragsabrechnungen" — kräftigere Borders */
+  /* Tabellen-Zeilen in Dashboard "Fällige Vertragsabrechnungen" */
   body[data-theme="hero"] [onclick*="openCheckFromDashboard"] {
     background: #fff !important;
-    border: 2px solid #c7d8ee !important;
+    border: 2px solid #bfdbfe !important;
     border-radius: 12px !important;
   }
   body[data-theme="hero"] [onclick*="openCheckFromDashboard"]:hover {
-    background: #eff5ff !important;
-    border-color: #2a5cab !important;
+    background: #dbeafe !important;
+    border-color: #1e40af !important;
   }
-  /* Inputs / Selects / Textareas: kräftigere 2px-Border in Hero */
+  /* Inputs / Selects / Textareas: 2px Hellblau-Border */
   body[data-theme="hero"] .field input,
   body[data-theme="hero"] .field textarea,
   body[data-theme="hero"] .field select,
@@ -367,7 +417,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   body[data-theme="hero"] input[type="number"],
   body[data-theme="hero"] textarea,
   body[data-theme="hero"] select {
-    border: 2px solid #c7d8ee !important;
+    border: 2px solid #bfdbfe !important;
     background: #fff !important;
   }
   body[data-theme="hero"] .field input:focus,
@@ -375,13 +425,40 @@ const pdfWorkerReady = Promise.resolve();</script>
   body[data-theme="hero"] input:focus,
   body[data-theme="hero"] textarea:focus,
   body[data-theme="hero"] select:focus {
-    border-color: #2a5cab !important;
-    box-shadow: 0 0 0 3px rgba(42,92,171,0.12) !important;
+    border-color: #1e40af !important;
+    box-shadow: 0 0 0 3px rgba(30,64,175,0.15) !important;
   }
-  /* Form-Card und Side-Card: kräftigere Border */
+  /* Form-Card und Side-Card: 2px Hellblau-Border */
   body[data-theme="hero"] .form-card,
   body[data-theme="hero"] .side-card {
-    border: 2px solid #c7d8ee !important;
+    border: 2px solid #bfdbfe !important;
+  }
+  /* Floating Reset im Hero: Hellblau-Tint */
+  body[data-theme="hero"] #floatingResetBtn {
+    background: #fff !important;
+    border: 2px solid #bfdbfe !important;
+    color: #1e40af !important;
+    box-shadow: 0 6px 18px rgba(30,64,175,0.12) !important;
+  }
+  body[data-theme="hero"] #floatingResetBtn:hover {
+    background: #dbeafe !important;
+    border-color: #1e40af !important;
+    color: #1e40af !important;
+  }
+  /* "Alle X Checks"-Counter rechts vom Filter dezent in Hellblau */
+  body[data-theme="hero"] #dashboardContent > div:first-child > span[style*="margin-left:auto"] {
+    color: #1e40af !important;
+    font-weight: 600 !important;
+  }
+  /* Section-Header-Pills bekommen 2px-Border auch in der Hellblau-Variante  */
+  body[data-theme="hero"] #dashboardContent [style*="font-size:12px"][style*="font-weight:700"][style*="text-transform:uppercase"] {
+    color: #1e40af !important;
+  }
+  /* "Stand: …"-Footer dezent */
+  body[data-theme="hero"] #dashboardContent > div:last-child[style*="border-top"] {
+    border-top: 2px solid #93c5fd !important;
+    color: #64748b !important;
+    padding-top: 14px !important;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2960,7 +3037,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.59';
+const APP_VERSION = 'V8.60';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
