@@ -1479,14 +1479,18 @@ const pdfWorkerReady = Promise.resolve();</script>
 
     /* === Topbar (Reihe 1): Brand + Versions-Badge === */
     .topbar > div:nth-child(1) {
-      padding: 8px 14px !important;
+      padding: 8px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left)) !important;
       flex-wrap: nowrap !important;
+      gap: 8px;
     }
     .topbar > div:nth-child(1) > div:first-child { gap: 8px !important; flex-shrink: 1; min-width: 0; }
-    .topbar-title { font-size: 18px; }
-    .topbar-sub { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
+    /* Auf Mobile: Logo-PNG ausreichend, Wordmark + Subtitle ausblenden um Platz zu sparen */
+    #topbarLogoImg { height: 32px !important; padding: 3px 7px !important; flex-shrink: 0; }
+    body:has(#topbarLogoImg[src]) .topbar-title { display: none !important; }
+    body:has(#topbarLogoImg[src]) .topbar-sub { display: none !important; }
     #connStatus { display: none !important; }
     #appVersionBadge { font-size: 10px; padding: 2px 6px; flex-shrink: 0; }
+    #mobileMenuBtn { width: 34px !important; height: 34px !important; flex-shrink: 0; }
 
     /* === Topbar (Reihe 2): Action-Buttons === */
     .topbar > div:nth-child(2) {
@@ -3317,7 +3321,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.63';
+const APP_VERSION = 'V8.64';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
