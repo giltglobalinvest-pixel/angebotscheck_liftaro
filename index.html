@@ -461,6 +461,189 @@ const pdfWorkerReady = Promise.resolve();</script>
     padding-top: 14px !important;
   }
 
+  /* ════════════════════════════════════════════════════════════
+   *  MOBILE-DRAWER (Hero): weiß mit Hellblau-Akzenten
+   * ════════════════════════════════════════════════════════════ */
+  body[data-theme="hero"] #mobileMenuDrawer {
+    background: #fff !important;
+    border-right: 3px solid #60a5fa !important;
+    box-shadow: 12px 0 40px rgba(30,64,175,0.18) !important;
+  }
+  /* Drawer-Header */
+  body[data-theme="hero"] #mobileMenuDrawer > div:first-child {
+    border-bottom: 2px solid #dbeafe !important;
+    background: #f0f7ff !important;
+  }
+  body[data-theme="hero"] #mobileMenuDrawer > div:first-child > div:first-child > div:first-child {
+    color: #1e40af !important;
+  }
+  body[data-theme="hero"] #mobileMenuDrawer > div:first-child > div:first-child > div:nth-child(2) {
+    color: #64748b !important;
+  }
+  body[data-theme="hero"] #mobileMenuDrawer > div:first-child > button {
+    background: #dbeafe !important;
+    color: #1e40af !important;
+  }
+  /* Drawer-Items */
+  body[data-theme="hero"] .mobile-menu-item {
+    background: #fff !important;
+    border: 2px solid #dbeafe !important;
+    color: #1e40af !important;
+  }
+  body[data-theme="hero"] .mobile-menu-item:hover {
+    background: #dbeafe !important;
+    border-color: #60a5fa !important;
+  }
+  body[data-theme="hero"] .mobile-menu-item[style*="color:#fca5a5"],
+  body[data-theme="hero"] .mobile-menu-item[style*="#fca5a5"] {
+    color: #be123c !important;
+    background: #fff !important;
+    border-color: #fecdd3 !important;
+  }
+  body[data-theme="hero"] .mobile-menu-item[style*="color:#fca5a5"]:hover {
+    background: #ffe4e6 !important;
+  }
+  /* Trenner im Drawer */
+  body[data-theme="hero"] #mobileMenuDrawer [style*="background:rgba(255,255,255,.1)"] {
+    background: #dbeafe !important;
+  }
+  /* Footer im Drawer (Versionsnummer) */
+  body[data-theme="hero"] #mobileMenuDrawer > div:last-child {
+    border-top: 2px solid #dbeafe !important;
+    color: #64748b !important;
+    background: #f0f7ff !important;
+  }
+
+  /* ════════════════════════════════════════════════════════════
+   *  MODALS (Hero): Hellblau-Header statt Navy
+   * ════════════════════════════════════════════════════════════ */
+  /* Modal-Header generell: hellblauer Tint statt solid Navy */
+  body[data-theme="hero"] #checksModal > div > div:first-child,
+  body[data-theme="hero"] #vertraegeModal > div > div:first-child,
+  body[data-theme="hero"] #rechnungenModal > div > div:first-child,
+  body[data-theme="hero"] #kundenModal > div > div:first-child,
+  body[data-theme="hero"] #lernModal > div > div:first-child,
+  body[data-theme="hero"] #checksDetailsModal > div > div:first-child,
+  body[data-theme="hero"] #vertragEditorModal > div > div:first-child,
+  body[data-theme="hero"] #rechnungEditorModal > div > div:first-child,
+  body[data-theme="hero"] #statusTransitionModal > div > div:first-child,
+  body[data-theme="hero"] #saveVisualModal > div > div:first-child,
+  body[data-theme="hero"] #usersModal > div > div:first-child,
+  body[data-theme="hero"] #userEditorModal > div > div:first-child {
+    background: #f0f7ff !important;
+    border-bottom: 2px solid #93c5fd !important;
+    color: #1e40af !important;
+  }
+  /* Modal-Header-Title-Text */
+  body[data-theme="hero"] #checksModal > div > div:first-child span,
+  body[data-theme="hero"] #vertraegeModal > div > div:first-child span,
+  body[data-theme="hero"] #rechnungenModal > div > div:first-child span,
+  body[data-theme="hero"] #kundenModal > div > div:first-child span,
+  body[data-theme="hero"] #lernModal > div > div:first-child span,
+  body[data-theme="hero"] #checksDetailsModal > div > div:first-child span,
+  body[data-theme="hero"] #vertragEditorModal > div > div:first-child span,
+  body[data-theme="hero"] #rechnungEditorModal > div > div:first-child span,
+  body[data-theme="hero"] #statusTransitionModal > div > div:first-child span,
+  body[data-theme="hero"] #saveVisualModal > div > div:first-child span,
+  body[data-theme="hero"] #usersModal > div > div:first-child span,
+  body[data-theme="hero"] #userEditorModal > div > div:first-child span {
+    color: #1e40af !important;
+  }
+  /* Sekundärer Modal-Header-Text (Subtitles) */
+  body[data-theme="hero"] [style*="color:rgba(255,255,255,.5)"],
+  body[data-theme="hero"] [style*="color:rgba(255,255,255,.55)"],
+  body[data-theme="hero"] [style*="color:rgba(255,255,255,.6)"] {
+    color: #64748b !important;
+  }
+  /* Modal-Close-Buttons (✕ Schließen) */
+  body[data-theme="hero"] #checksModal button[onclick*="display"],
+  body[data-theme="hero"] #vertraegeModal button[onclick*="display"],
+  body[data-theme="hero"] #rechnungenModal button[onclick*="display"],
+  body[data-theme="hero"] #kundenModal button[onclick*="display"],
+  body[data-theme="hero"] #lernModal button[onclick*="display"],
+  body[data-theme="hero"] #checksDetailsModal button[onclick*="display"],
+  body[data-theme="hero"] #saveVisualModal button[onclick*="display"] {
+    background: #dbeafe !important;
+    color: #1e40af !important;
+    border: 1.5px solid #93c5fd !important;
+  }
+  /* Modal-Body-Background — Hellblau-Tint */
+  body[data-theme="hero"] #checksModal > div,
+  body[data-theme="hero"] #vertraegeModal > div,
+  body[data-theme="hero"] #rechnungenModal > div,
+  body[data-theme="hero"] #kundenModal > div,
+  body[data-theme="hero"] #lernModal > div,
+  body[data-theme="hero"] #checksDetailsModal > div,
+  body[data-theme="hero"] #vertragEditorModal > div,
+  body[data-theme="hero"] #rechnungEditorModal > div,
+  body[data-theme="hero"] #statusTransitionModal > div,
+  body[data-theme="hero"] #saveVisualModal > div,
+  body[data-theme="hero"] #usersModal > div,
+  body[data-theme="hero"] #userEditorModal > div,
+  body[data-theme="hero"] #dueBillingsModal > div {
+    border-radius: 18px !important;
+    border: 2px solid #bfdbfe !important;
+    box-shadow: 0 32px 80px rgba(30,64,175,0.32) !important;
+  }
+  /* Modal Backdrops aufgehellt */
+  body[data-theme="hero"] #checksModal,
+  body[data-theme="hero"] #vertraegeModal,
+  body[data-theme="hero"] #rechnungenModal,
+  body[data-theme="hero"] #kundenModal,
+  body[data-theme="hero"] #lernModal,
+  body[data-theme="hero"] #checksDetailsModal,
+  body[data-theme="hero"] #vertragEditorModal,
+  body[data-theme="hero"] #rechnungEditorModal,
+  body[data-theme="hero"] #statusTransitionModal,
+  body[data-theme="hero"] #saveVisualModal,
+  body[data-theme="hero"] #usersModal,
+  body[data-theme="hero"] #userEditorModal,
+  body[data-theme="hero"] #dueBillingsModal {
+    background: rgba(30,64,175,0.35) !important;
+    backdrop-filter: blur(8px);
+  }
+  /* Listen-Items in Modals (z.B. Kunden, Korrekturen) */
+  body[data-theme="hero"] #kundenList > div[style*="background:var(--sky)"],
+  body[data-theme="hero"] #lernList > div[style*="background:var(--sky)"],
+  body[data-theme="hero"] [style*="background:var(--sky)"][style*="border:1px solid var(--border)"] {
+    background: #f0f7ff !important;
+    border: 2px solid #bfdbfe !important;
+  }
+  /* Generic items inside modals using sky bg */
+  body[data-theme="hero"] [style*="background:#e8f2fb"],
+  body[data-theme="hero"] [style*="background: #e8f2fb"] {
+    background: #f0f7ff !important;
+  }
+  /* Buttons "Übernehmen" innerhalb Modals (Kunden) */
+  body[data-theme="hero"] #kundenList button[onclick*="loadKundeIntoForm"] {
+    background: #1e40af !important;
+    border-radius: 100px !important;
+  }
+  /* Modal-Footer Border */
+  body[data-theme="hero"] #lernModal > div > div:last-child,
+  body[data-theme="hero"] #kundenModal > div > div:last-child {
+    border-top: 2px solid #dbeafe !important;
+    background: #f0f7ff !important;
+  }
+  /* Searchbox in Modals (kundenSearch) */
+  body[data-theme="hero"] #kundenSearch,
+  body[data-theme="hero"] [type="search"][placeholder*="Suchen"],
+  body[data-theme="hero"] [type="search"][placeholder*="suchen"] {
+    background: #fff !important;
+    border: 2px solid #93c5fd !important;
+    color: #1e40af !important;
+  }
+  body[data-theme="hero"] #kundenSearch::placeholder { color: #64748b !important; }
+  /* Modal-Action-Buttons (Speichern, Anlegen, etc.) */
+  body[data-theme="hero"] [style*="background:var(--green)"]:not(.btn-generate):not(.btn-primary) {
+    background: #1e40af !important;
+  }
+  /* Status-Übergangsmodal: Buttons */
+  body[data-theme="hero"] #statusTransitionModal button[onclick*="confirmStatusTransition"] {
+    background: #1e40af !important;
+    border-radius: 100px !important;
+  }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
@@ -3037,7 +3220,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.60';
+const APP_VERSION = 'V8.61';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
