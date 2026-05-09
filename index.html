@@ -2716,7 +2716,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.54';
+const APP_VERSION = 'V8.55';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -6902,6 +6902,7 @@ function appInit() {
   restoreSaveFolder();
   watchFieldForCorrections();
   if (typeof refreshKundenBadge === 'function') refreshKundenBadge();
+  if (typeof setupThemeToggle === 'function') setupThemeToggle();
   applyAhwProviderColors();
   updateAhwNextNumberDisplay();
   validateAhwLengths();
@@ -7859,8 +7860,16 @@ function setupThemeToggle() {
   const btn = document.getElementById('themeToggleBtn');
   if (!btn) return;
   // Toggle nur für Admins sichtbar
-  const role = (APP_KEYS.user?.role || 'user').toString().toLowerCase().trim();
-  btn.style.display = role === 'admin' ? 'inline-flex' : 'none';
+  const role = (APP_KEYS?.user?.role || 'user').toString().toLowerCase().trim();
+  const isAdminRole = role === 'admin';
+  // setProperty mit !important damit der inline display:none des Buttons sicher überschrieben wird
+  if (isAdminRole) {
+    btn.style.setProperty('display', 'inline-flex', 'important');
+    btn.removeAttribute('hidden');
+  } else {
+    btn.style.setProperty('display', 'none', 'important');
+  }
+  console.log('[Theme] setupThemeToggle: role=' + role + ', visible=' + isAdminRole);
   applyTheme(getActiveTheme());
 }
 
