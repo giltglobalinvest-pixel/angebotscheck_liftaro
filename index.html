@@ -85,6 +85,17 @@ const pdfWorkerReady = Promise.resolve();</script>
     border: 1.5px solid #93c5fd !important;
     color: #1e40af !important;
   }
+  /* Topbar-Logo im Hero: hellblauer Pill-Hintergrund passend zum weißen Topbar */
+  body[data-theme="hero"] #topbarLogoImg {
+    background: #f0f7ff !important;
+    border: 1.5px solid #93c5fd !important;
+  }
+  /* Login-Logo im Hero: weiße Card-Optik passend zum hellen Login-Screen */
+  body[data-theme="hero"] #loginLogoImg {
+    background: #fff !important;
+    border: 2px solid #93c5fd !important;
+    box-shadow: 0 4px 14px rgba(30,64,175,0.12);
+  }
   body[data-theme="hero"] #mobileMenuBtn {
     background: #dbeafe !important;
     border: 1.5px solid #93c5fd !important;
@@ -1786,6 +1797,17 @@ const pdfWorkerReady = Promise.resolve();</script>
       if (t && t !== 'default') document.body.setAttribute('data-theme', t);
     } catch(e) {}
   })();
+  // Liftaro-Logo aus dem Form-Header (.fh-logo img) in Topbar & Login-Screen klonen
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      var srcImg = document.querySelector('.fh-logo img');
+      if (!srcImg || !srcImg.src) return;
+      ['topbarLogoImg', 'loginLogoImg'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) { el.src = srcImg.src; el.style.display = 'block'; }
+      });
+    } catch(e) { console.warn('Logo-Clone fehlgeschlagen:', e); }
+  });
 </script>
 
 <!-- Top bar -->
@@ -1793,6 +1815,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   <!-- Row 1: Brand + Status + User -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 28px;border-bottom:1px solid rgba(255,255,255,.07)">
     <div style="display:flex;align-items:center;gap:12px">
+      <img id="topbarLogoImg" alt="Liftaro" style="height:36px;width:auto;border-radius:6px;flex-shrink:0;display:none;background:rgba(255,255,255,.95);padding:4px 9px;border:1px solid rgba(255,255,255,.2)">
       <div>
         <div class="topbar-title">liftaro</div>
         <div class="topbar-sub">Angebotscheck &middot; Transparent. Effizient. Optimiert.</div>
@@ -1958,9 +1981,12 @@ const pdfWorkerReady = Promise.resolve();</script>
 
 <!-- Login Screen -->
 <div id="loginScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#1a3a5c 0%,#0e2440 100%);z-index:9999;align-items:center;justify-content:center;flex-direction:column">
-  <div style="text-align:center;margin-bottom:32px">
-    <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:-0.5px">liftaro</div>
-    <div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:4px">Angebotscheck · Wir schaffen Transparenz</div>
+  <div style="text-align:center;margin-bottom:32px;display:flex;flex-direction:column;align-items:center;gap:14px">
+    <img id="loginLogoImg" alt="Liftaro" style="height:64px;width:auto;border-radius:10px;display:none;background:rgba(255,255,255,.08);padding:6px 14px;border:1px solid rgba(255,255,255,.12)">
+    <div>
+      <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:-0.5px">liftaro</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:4px">Angebotscheck · Wir schaffen Transparenz</div>
+    </div>
   </div>
 
   <!-- Connection check row -->
@@ -3291,7 +3317,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.62';
+const APP_VERSION = 'V8.63';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
