@@ -402,6 +402,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   .nav-pill.active .btn-badge {
     box-shadow: 0 0 0 1.5px #fff;
   }
+  .topbar-title { font-size: 22px; font-weight: 800; color: #fff; line-height: 1.1; letter-spacing: -.3px; }
   .topbar-sub { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 2px; letter-spacing: .5px; }
 
   .btn-generate {
@@ -1368,6 +1369,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button class="mobile-menu-item hide-on-mobile" onclick="closeMobileMenu();resetForm()" style="color:#fca5a5">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
       Reset
+    </button>
+    <button id="mobileThemeToggleBtn" class="mobile-menu-item" onclick="toggleTheme();closeMobileMenu()" style="display:none">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20"/><path d="M12 2a14.5 14.5 0 0 1 0 20"/></svg>
+      <span id="mobileThemeToggleLabel">Design: Standard</span>
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();doLogout()" style="color:#fca5a5">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -2716,7 +2721,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.55';
+const APP_VERSION = 'V8.56';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7842,12 +7847,12 @@ function applyTheme(theme) {
     document.body.setAttribute('data-theme', theme);
   }
   try { localStorage.setItem('liftaro_theme', theme || 'default'); } catch {}
-  // Toggle-Label aktualisieren
+  // Toggle-Label (Desktop + Mobile) aktualisieren
+  const meta = THEME_LIST.find(t => t.id === (theme || 'default')) || THEME_LIST[0];
   const lbl = document.getElementById('themeToggleLabel');
-  if (lbl) {
-    const meta = THEME_LIST.find(t => t.id === (theme || 'default')) || THEME_LIST[0];
-    lbl.textContent = 'Design: ' + meta.label;
-  }
+  if (lbl) lbl.textContent = 'Design: ' + meta.label;
+  const lblM = document.getElementById('mobileThemeToggleLabel');
+  if (lblM) lblM.textContent = 'Design: ' + meta.label;
 }
 function toggleTheme() {
   const cur = getActiveTheme();
@@ -7858,16 +7863,16 @@ function toggleTheme() {
 }
 function setupThemeToggle() {
   const btn = document.getElementById('themeToggleBtn');
-  if (!btn) return;
+  const btnM = document.getElementById('mobileThemeToggleBtn');
   // Toggle nur für Admins sichtbar
   const role = (APP_KEYS?.user?.role || 'user').toString().toLowerCase().trim();
   const isAdminRole = role === 'admin';
-  // setProperty mit !important damit der inline display:none des Buttons sicher überschrieben wird
-  if (isAdminRole) {
-    btn.style.setProperty('display', 'inline-flex', 'important');
-    btn.removeAttribute('hidden');
-  } else {
-    btn.style.setProperty('display', 'none', 'important');
+  if (btn) {
+    if (isAdminRole) btn.style.setProperty('display', 'inline-flex', 'important');
+    else             btn.style.setProperty('display', 'none', 'important');
+  }
+  if (btnM) {
+    btnM.style.display = isAdminRole ? 'flex' : 'none';
   }
   console.log('[Theme] setupThemeToggle: role=' + role + ', visible=' + isAdminRole);
   applyTheme(getActiveTheme());
