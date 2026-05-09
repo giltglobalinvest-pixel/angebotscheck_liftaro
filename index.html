@@ -72,10 +72,11 @@ const pdfWorkerReady = Promise.resolve();</script>
     background: #fafbfd !important;
     letter-spacing: -.1px;
   }
-  /* TOPBAR — markanter Blue-Gradient (Override des var-basierten Navy) */
+  /* TOPBAR — Solid Navy (kein Gradient, klare Linie) */
   body[data-theme="hero"] .topbar {
-    background: linear-gradient(135deg, #0c1e4a 0%, #1f3573 55%, #2860e2 100%) !important;
-    box-shadow: 0 8px 28px rgba(12,30,74,0.32) !important;
+    background: #0c1e4a !important;
+    box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 6px 24px rgba(12,30,74,0.18) !important;
+    border-bottom: 1px solid rgba(255,255,255,.05);
   }
   body[data-theme="hero"] .topbar-title {
     font-weight: 800 !important; letter-spacing: -.4px !important; color: #fff !important;
@@ -205,6 +206,149 @@ const pdfWorkerReady = Promise.resolve();</script>
   /* Bottom-Tab/Form-Tab-Container Bright-Blue Akzent */
   body[data-theme="hero"] .check-tabs {
     border-bottom: 2px solid rgba(54,118,255,.15);
+  }
+
+  /* ── Hero-Refinements: cleanere Linie, weniger Farb-Leaks ─────── */
+  /* Dashboard Cards: KEIN bunter Left-Border, sondern dezenter 1px Rand
+     + farbiger Icon-Kreis innen (analog zum ERP-Hero-Mockup). */
+  body[data-theme="hero"] #dashboardContent [style*="border-left:4px"] {
+    border-left: 1px solid #e3e8f1 !important;
+    border-right: 1px solid #e3e8f1 !important;
+    border-top: 1px solid #e3e8f1 !important;
+    border-bottom: 1px solid #e3e8f1 !important;
+    border-radius: 16px !important;
+    padding: 16px 18px !important;
+    box-shadow: 0 1px 2px rgba(12,30,74,0.04);
+    transition: box-shadow .15s, transform .15s;
+  }
+  body[data-theme="hero"] #dashboardContent [style*="border-left:4px"]:hover {
+    box-shadow: 0 4px 16px rgba(12,30,74,0.08);
+    transform: translateY(-1px);
+  }
+  /* Section-Title-Pills im Dashboard ("REPARATURCHECK", "VERTRAGSCHECK", "∑ GESAMT")
+     in einheitlich blau statt navy/teal/etc. */
+  body[data-theme="hero"] #dashboardContent [style*="background:var(--navy)"][style*="color:#fff"][style*="border-radius:4px"],
+  body[data-theme="hero"] #dashboardContent [style*="background:#0e6655"][style*="color:#fff"][style*="border-radius:4px"] {
+    background: #0c1e4a !important;
+    color: #fff !important;
+    border-radius: 100px !important;
+    padding: 4px 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: .5px !important;
+  }
+  /* Sub-Labels (möglich/tatsächlich) — feiner */
+  body[data-theme="hero"] #dashboardContent [style*="color:#94a3b8"][style*="text-transform:uppercase"],
+  body[data-theme="hero"] #dashboardContent [style*="color:#3d7a14"][style*="text-transform:uppercase"],
+  body[data-theme="hero"] #dashboardContent [style*="color:#0e6655"][style*="text-transform:uppercase"][style*="font-weight:700"] {
+    color: #6c7a90 !important;
+    font-weight: 600 !important;
+    letter-spacing: .8px !important;
+    font-size: 10px !important;
+  }
+  /* Status-Filter-Chips: einheitliches Outline-Style; aktiver Chip = Bright-Blue Pill */
+  body[data-theme="hero"] [onclick*="toggleDashStatus"] {
+    border-radius: 100px !important;
+    border: 1.5px solid #dde3ee !important;
+    background: #fff !important;
+    color: #6c7a90 !important;
+    font-weight: 600 !important;
+    padding: 6px 14px !important;
+  }
+  body[data-theme="hero"] [onclick*="toggleDashStatus"][style*="color:#fff"] {
+    background: #3676ff !important;
+    color: #fff !important;
+    border-color: #3676ff !important;
+  }
+  /* "Filter zurücksetzen"-Button */
+  body[data-theme="hero"] [onclick*="_dashStatusFilter.clear"] {
+    border-radius: 100px !important;
+    border-style: dashed !important;
+    color: #6c7a90 !important;
+  }
+  /* Werte-Größe & Typografie auf Cards angleichen */
+  body[data-theme="hero"] #dashboardContent [style*="font-size:22px"][style*="font-weight:700"] {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    letter-spacing: -.4px !important;
+    color: #0c1e4a !important;
+  }
+  /* Sub-Labels in Cards (z.B. "0 unterschrieben · 6 offen", "3 Reparatur · 2 Vertrag") */
+  body[data-theme="hero"] #dashboardContent [style*="font-size:11px"][style*="color:var(--muted)"],
+  body[data-theme="hero"] #dashboardContent [style*="font-size:11px"][style*="margin-top:2px"] {
+    color: #6c7a90 !important;
+    font-size: 12px !important;
+    margin-top: 4px !important;
+  }
+  /* Card-Labels (z.B. "VERTRÄGE GESAMT") */
+  body[data-theme="hero"] #dashboardContent [style*="text-transform:uppercase"][style*="font-size:11px"] {
+    color: #6c7a90 !important;
+    letter-spacing: .8px !important;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+  }
+  /* Trennlinien feiner */
+  body[data-theme="hero"] #dashboardContent [style*="border-top:2px solid"] {
+    border-top: 1px solid #e3e8f1 !important;
+    padding-top: 22px !important;
+  }
+  /* Filter-Bereich: dezenter Border-Bottom, weniger Cluttered */
+  body[data-theme="hero"] #dashboardContent > div:first-child[style*="border-bottom"] {
+    border-bottom: 1px solid #e3e8f1 !important;
+    padding: 4px 0 16px !important;
+  }
+  /* Dashboard Top-Bereich: mehr Whitespace */
+  body[data-theme="hero"] #dashboardView { padding: 32px 24px 60px !important; }
+  body[data-theme="hero"] #dashboardContent { gap: 28px !important; }
+  /* Dashboard-Heading-Icon — quadratisch mit Soft-Blue, nicht gradient */
+  body[data-theme="hero"] #dashboardView > div:first-child > div:first-child > div:first-child[style*="background"] {
+    background: #eef3ff !important;
+    color: #3676ff !important;
+    border-radius: 14px !important;
+    box-shadow: none !important;
+  }
+  body[data-theme="hero"] #dashboardView > div:first-child > div:first-child > div:first-child[style*="background"] svg {
+    color: #3676ff !important;
+    stroke: #3676ff !important;
+  }
+  /* "Neuen Check starten" Button: solid blue pill (kein gradient) */
+  body[data-theme="hero"] #dashboardView button[onclick="showCheckView()"] {
+    background: #3676ff !important;
+    box-shadow: 0 6px 16px rgba(54,118,255,0.25) !important;
+    padding: 11px 20px !important;
+    font-weight: 600 !important;
+    border-radius: 100px !important;
+  }
+  body[data-theme="hero"] #dashboardView button[onclick="showCheckView()"]:hover {
+    background: #2860e2 !important;
+    box-shadow: 0 8px 22px rgba(54,118,255,0.35) !important;
+  }
+  /* Topbar-Title kompakter, weniger sub-text bei Mobile */
+  body[data-theme="hero"] .topbar-sub { color: rgba(255,255,255,.55) !important; }
+  /* Generate-Button auch solid (ohne gradient) für klare Linie */
+  body[data-theme="hero"] .btn-generate {
+    background: #3676ff !important;
+    box-shadow: 0 6px 16px rgba(54,118,255,0.28) !important;
+  }
+  body[data-theme="hero"] .btn-settings.btn-primary,
+  body[data-theme="hero"] .nav-pill.btn-primary {
+    background: #3676ff !important;
+    box-shadow: 0 4px 12px rgba(54,118,255,0.28) !important;
+  }
+  /* Section-Header-Icon im Dashboard: einheitliche Pille (REPARATURCHECK / VERTRAGSCHECK / GESAMT) */
+  body[data-theme="hero"] #dashboardContent [style*="font-size:12px"][style*="font-weight:700"][style*="text-transform:uppercase"] {
+    font-size: 11.5px !important;
+    letter-spacing: .8px !important;
+    margin-bottom: 14px !important;
+  }
+  /* Tabellen-Zeilen in Dashboard "Fällige Vertragsabrechnungen" — auch cleaner */
+  body[data-theme="hero"] [onclick*="openCheckFromDashboard"] {
+    background: #fafbfd !important;
+    border: 1px solid #e3e8f1 !important;
+    border-radius: 12px !important;
+  }
+  body[data-theme="hero"] [onclick*="openCheckFromDashboard"]:hover {
+    background: #eef3ff !important;
+    border-color: #3676ff !important;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2783,7 +2927,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.57';
+const APP_VERSION = 'V8.58';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
