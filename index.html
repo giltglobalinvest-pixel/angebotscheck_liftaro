@@ -40,6 +40,109 @@ const pdfWorkerReady = Promise.resolve();</script>
     --muted:  #6b839a;
     --white:  #ffffff;
     --bg:     #f0f5fa;
+    /* Theme-Modifier: Default-Werte für Hero-Theme */
+    --radius-card:   12px;
+    --radius-pill:   8px;
+    --radius-button: 7px;
+    --shadow-card:   0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+   *  THEME: HERO (ERP-Hero-Style)
+   *  Tieferes Navy, Bright-Blue-Akzent statt Grün, dickere Border-Radien,
+   *  Pill-Buttons, weichere Schatten — inspiriert vom ERP-Hero-Design.
+   *  Aktiviert via <body data-theme="hero">, gesetzt durch Admin-Toggle.
+   * ════════════════════════════════════════════════════════════════ */
+  body[data-theme="hero"] {
+    --navy:   #0c1e4a;
+    --navy2:  #081534;
+    --green:  #3676ff;     /* Bright Blue als CTA-Farbe (statt Grün) */
+    --green2: #2860e2;
+    --blue-mid: #3676ff;
+    --sky:    #f1f3f8;
+    --sky2:   #e3e8f1;
+    --border: #dde3ee;
+    --text:   #0c1e4a;
+    --muted:  #6c7a90;
+    --bg:     #fafbfd;
+    --radius-card:   18px;
+    --radius-pill:   100px;
+    --radius-button: 12px;
+    --shadow-card:   0 4px 24px rgba(12,30,74,0.07);
+    font-family: 'DM Sans', sans-serif;
+    letter-spacing: -.1px;
+  }
+  /* Topbar: stärkerer Schatten, abgerundeter unten */
+  body[data-theme="hero"] .topbar {
+    box-shadow: 0 8px 28px rgba(12,30,74,0.22);
+  }
+  body[data-theme="hero"] .topbar-title {
+    font-weight: 800; letter-spacing: -.4px;
+  }
+  /* Cards & Sections: rundere Ecken, weiche Schatten */
+  body[data-theme="hero"] .form-card,
+  body[data-theme="hero"] .side-card,
+  body[data-theme="hero"] .form-header {
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  body[data-theme="hero"] .form-card { overflow: hidden; }
+  body[data-theme="hero"] .section { border-radius: 14px; }
+  body[data-theme="hero"] .section-title { letter-spacing: .4px; }
+  /* Buttons: Pill-Form */
+  body[data-theme="hero"] .btn-generate,
+  body[data-theme="hero"] .nav-pill,
+  body[data-theme="hero"] .btn-settings,
+  body[data-theme="hero"] .check-tab {
+    border-radius: var(--radius-pill);
+  }
+  body[data-theme="hero"] .nav-pill,
+  body[data-theme="hero"] .btn-settings { font-weight: 600; }
+  body[data-theme="hero"] .btn-generate {
+    font-weight: 700;
+    box-shadow: 0 4px 16px rgba(54,118,255,0.32);
+    padding: 9px 22px;
+  }
+  body[data-theme="hero"] .btn-generate:hover {
+    box-shadow: 0 6px 20px rgba(54,118,255,0.42);
+  }
+  /* Eingabefelder: rundere Ecken */
+  body[data-theme="hero"] .field input,
+  body[data-theme="hero"] .field textarea,
+  body[data-theme="hero"] .field select,
+  body[data-theme="hero"] input[type="text"],
+  body[data-theme="hero"] input[type="tel"],
+  body[data-theme="hero"] input[type="email"],
+  body[data-theme="hero"] input[type="date"],
+  body[data-theme="hero"] input[type="search"],
+  body[data-theme="hero"] textarea,
+  body[data-theme="hero"] select {
+    border-radius: var(--radius-button);
+  }
+  /* Modals: rundere Ecken + weicherer Schatten */
+  body[data-theme="hero"] #checksModal > div,
+  body[data-theme="hero"] #vertraegeModal > div,
+  body[data-theme="hero"] #rechnungenModal > div,
+  body[data-theme="hero"] #lernModal > div,
+  body[data-theme="hero"] #kundenModal > div,
+  body[data-theme="hero"] #saveVisualModal > div,
+  body[data-theme="hero"] #checksDetailsModal > div,
+  body[data-theme="hero"] #vertragEditorModal > div,
+  body[data-theme="hero"] #rechnungEditorModal > div,
+  body[data-theme="hero"] #statusTransitionModal > div {
+    border-radius: 22px !important;
+    box-shadow: 0 32px 80px rgba(12,30,74,0.4) !important;
+  }
+  /* Dashboard-Header-Icon: blau statt navy */
+  body[data-theme="hero"] #dashboardView h1 { font-weight: 800; letter-spacing: -.4px; }
+  /* Floating Reset: rundere Optik */
+  body[data-theme="hero"] #floatingResetBtn {
+    border-radius: var(--radius-pill);
+    box-shadow: 0 6px 18px rgba(12,30,74,0.12);
+  }
+  /* Login-Screen: zentrale Card */
+  body[data-theme="hero"] #loginScreen .login-card {
+    border-radius: 22px;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1103,6 +1206,16 @@ const pdfWorkerReady = Promise.resolve();</script>
 </style>
 </head>
 <body>
+<script>
+  // Theme so früh wie möglich anwenden, damit es kein "Aufblitzen" der
+  // Default-Optik gibt. Liest direkt aus localStorage.
+  (function() {
+    try {
+      var t = localStorage.getItem('liftaro_theme');
+      if (t && t !== 'default') document.body.setAttribute('data-theme', t);
+    } catch(e) {}
+  })();
+</script>
 
 <!-- Top bar -->
 <div class="topbar" style="flex-direction:column;padding:0;gap:0">
@@ -1132,6 +1245,12 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div style="width:1px;height:18px;background:rgba(255,255,255,.12)"></div>
       <div id="userGreeting" style="font-size:11.5px;color:rgba(255,255,255,.7);font-family:'DM Sans',sans-serif"></div>
+      <!-- Admin-only Theme-Toggle -->
+      <button id="themeToggleBtn" type="button" onclick="toggleTheme()" title="Design wechseln (nur Admin)" style="display:none;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.85);border-radius:14px;padding:3px 10px;font-size:11px;cursor:pointer;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;font-weight:600;letter-spacing:.2px"
+        onmouseover="this.style.background='rgba(255,255,255,.18)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+        <span id="themeToggleLabel">Design: Standard</span>
+      </button>
     </div>
   </div>
   <!-- Row 2: Navigation + Aktionen — klare Trennung über zwei Container -->
@@ -2597,7 +2716,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V8.53';
+const APP_VERSION = 'V8.54';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3108,6 +3227,9 @@ async function showApp() {
   if (cs) { cs.style.display = 'flex'; setConnDot('dotAirtable', 'checking'); setConnDot('dotAnthropic', 'checking'); }
   // Setup tables in background
   setupTables().catch(console.warn);
+
+  // Theme-Toggle für Admins aktivieren (und gespeichertes Theme anwenden)
+  if (typeof setupThemeToggle === 'function') setupThemeToggle();
 
   // Floating-Reset einblenden (in Check-View)
   const fab = document.getElementById('floatingActions');
@@ -7699,6 +7821,47 @@ async function applyKundenAutofill(firmenname) {
   if (fTel  && m.tel  && (!fTel.value  || fTel.value.trim()  === '')) fTel.value  = m.tel;
   if (typeof showToast === 'function') showToast('💡 Bekannter Kunde: ' + m.firma, 'ok');
   return m;
+}
+
+// ── Theme-System (Default vs. Hero) ──────────────────────────────
+// Persistiert in localStorage. Admins sehen Toggle in der Topbar; alle
+// anderen User bekommen das gespeicherte Theme automatisch angewendet.
+const THEME_LIST = [
+  { id: 'default', label: 'Liftaro Standard' },
+  { id: 'hero',    label: 'ERP Hero' },
+];
+function getActiveTheme() {
+  try { return localStorage.getItem('liftaro_theme') || 'default'; }
+  catch { return 'default'; }
+}
+function applyTheme(theme) {
+  if (!theme || theme === 'default') {
+    document.body.removeAttribute('data-theme');
+  } else {
+    document.body.setAttribute('data-theme', theme);
+  }
+  try { localStorage.setItem('liftaro_theme', theme || 'default'); } catch {}
+  // Toggle-Label aktualisieren
+  const lbl = document.getElementById('themeToggleLabel');
+  if (lbl) {
+    const meta = THEME_LIST.find(t => t.id === (theme || 'default')) || THEME_LIST[0];
+    lbl.textContent = 'Design: ' + meta.label;
+  }
+}
+function toggleTheme() {
+  const cur = getActiveTheme();
+  const idx = THEME_LIST.findIndex(t => t.id === cur);
+  const next = THEME_LIST[(idx + 1) % THEME_LIST.length];
+  applyTheme(next.id);
+  if (typeof showToast === 'function') showToast('Design gewechselt: ' + next.label, 'ok');
+}
+function setupThemeToggle() {
+  const btn = document.getElementById('themeToggleBtn');
+  if (!btn) return;
+  // Toggle nur für Admins sichtbar
+  const role = (APP_KEYS.user?.role || 'user').toString().toLowerCase().trim();
+  btn.style.display = role === 'admin' ? 'inline-flex' : 'none';
+  applyTheme(getActiveTheme());
 }
 
 // ── Liftaro-Kontakt-Defaults (Ansprechperson/Tel.) ─────────────────
