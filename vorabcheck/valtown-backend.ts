@@ -26,9 +26,44 @@ const COST_PER_M_OUTPUT_TOKENS = 15.0; // $ pro 1M Output-Tokens
 const USD_TO_EUR = 0.92;
 
 // ───────────────────────────────────────────────────────────────
-// System-Prompts pro Check-Typ
+// Prompt-Loader — liest Custom-Prompts aus Airtable mit 5-Min-Cache.
+// Fallback auf die hardcoded DEFAULT_SYSTEM_PROMPTS weiter unten.
 // ───────────────────────────────────────────────────────────────
-const SYSTEM_PROMPTS = {
+let _promptCache: Record<string, string> | null = null;
+let _promptCacheTs = 0;
+const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function loadCustomPrompts(): Promise<Record<string, string>> {
+  if (_promptCache && Date.now() - _promptCacheTs < PROMPT_CACHE_TTL_MS) return _promptCache;
+  const key = Deno.env.get("AIRTABLE_KEY");
+  const base = Deno.env.get("AIRTABLE_BASE_ID");
+  if (!key || !base) { _promptCache = {}; _promptCacheTs = Date.now(); return _promptCache; }
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${base}/Vorabcheck-Prompts`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const map: Record<string, string> = {};
+    (data.records || []).forEach((r: any) => {
+      const t = r.fields?.check_type;
+      const p = r.fields?.system_prompt;
+      if (t && p && p.trim().length > 50) map[t] = p;
+    });
+    _promptCache = map;
+    _promptCacheTs = Date.now();
+    return map;
+  } catch (e) {
+    console.warn("loadCustomPrompts:", e);
+    return _promptCache || {};
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// DEFAULT-System-Prompts pro Check-Typ (Fallback, wenn nichts in
+// Airtable hinterlegt ist)
+// ───────────────────────────────────────────────────────────────
+const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
   nebenkosten: `Du bist Aufzug-Experte und Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
 
 PRÜFE FOLGENDE PUNKTE:
@@ -166,8 +201,9 @@ export default async function (req: Request): Promise<Response> {
     // 2. Consent prüfen
     if (!consent_given) return jsonResp({ error: "Einwilligung fehlt" }, 400, corsHeaders);
 
-    // 3. Check-Type validieren
-    const systemPrompt = SYSTEM_PROMPTS[check_type];
+    // 3. Check-Type validieren (Custom-Prompt aus Airtable > Default)
+    const custom = await loadCustomPrompts();
+    const systemPrompt = custom[check_type] || DEFAULT_SYSTEM_PROMPTS[check_type];
     if (!systemPrompt) return jsonResp({ error: "Unbekannter Check-Typ" }, 400, corsHeaders);
 
     // 4. Anthropic-Call
