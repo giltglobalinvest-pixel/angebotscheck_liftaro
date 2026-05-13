@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liftaro – Aufzugskosten in der Nebenkostenabrechnung prüfen lassen | kostenlos online</title>
+<meta name="description" content="Aufzug-Position Ihrer Nebenkostenabrechnung mit KI prüfen lassen. Kostenlose Vorschau in 3-4 Minuten. Bis zu 40% Einsparpotenzial bei Wartungs- und Servicekosten.">
+<meta name="theme-color" content="#ffffff">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Cloudflare Turnstile (kostenlos, DSGVO-friendly) -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f9f7;
+  --bg-tint: #f0f7f2;
+  --surface: #ffffff;
+  --ink: #0b1a14;
+  --ink-2: #2e3a34;
+  --ink-3: #6b7773;
+  --muted: #9aa39e;
+  --line: #e6ebe7;
+  --line-2: #d6ddd8;
+  --brand: #16a34a;
+  --brand-dark: #15803d;
+  --brand-deep: #14532d;
+  --brand-tint: #dcfce7;
+  --brand-tint-2: #ecfdf5;
+  --warn: #dc2626;
+  --warn-tint: #fee2e2;
+  --amber: #f59e0b;
+  --amber-tint: #fef3c7;
+  --blue: #0ea5e9;
+  --blue-tint: #e0f2fe;
+  --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --r-sm: 6px; --r: 10px; --r-lg: 14px; --r-xl: 18px;
+  --max: 1180px;
+  --shadow-sm: 0 1px 2px rgba(11, 26, 20, 0.04);
+  --shadow: 0 4px 16px -4px rgba(11, 26, 20, 0.08), 0 2px 4px rgba(11, 26, 20, 0.04);
+  --shadow-lg: 0 24px 48px -12px rgba(11, 26, 20, 0.18), 0 8px 16px rgba(11, 26, 20, 0.06);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--font); background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input { font-family: inherit; font-size: inherit; }
+img, svg { display: block; }
+
+/* TOPBAR */
+.topbar { background: var(--ink); color: rgba(255,255,255,0.85); font-size: 12px; padding: 8px 0; font-weight: 500; }
+.topbar-inner { max-width: var(--max); margin: 0 auto; padding: 0 24px; display: flex; justify-content: center; align-items: center; gap: 32px; flex-wrap: wrap; }
+.topbar-item { display: inline-flex; align-items: center; gap: 6px; }
+.topbar-item svg { color: var(--brand); width: 12px; height: 12px; }
+.topbar-divider { width: 1px; height: 12px; background: rgba(255,255,255,0.15); }
+@media (max-width: 720px) { .topbar-divider { display: none; } .topbar-inner { gap: 14px; font-size: 11px; } }
+
+/* NAV */
+.nav { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.nav-inner { max-width: var(--max); margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 19px; letter-spacing: -0.02em; color: var(--ink); }
+.logo-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.25); }
+.logo-mark svg { width: 18px; height: 18px; }
+.nav-links { display: flex; gap: 28px; font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.nav-links a { transition: color 0.15s ease; display: inline-flex; align-items: center; gap: 6px; }
+.nav-links a:hover { color: var(--brand); }
+.nav-links .pill { background: var(--brand-tint); color: var(--brand-dark); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 20px; background: var(--brand); color: #fff; border-radius: var(--r); font-size: 14px; font-weight: 600; letter-spacing: -0.005em; transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease; border: 1px solid var(--brand); box-shadow: 0 2px 6px rgba(22, 163, 74, 0.2); }
+.btn:hover { background: var(--brand-dark); border-color: var(--brand-dark); box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-large { padding: 14px 26px; font-size: 15px; border-radius: 12px; }
+.btn-xl { padding: 18px 32px; font-size: 16px; border-radius: 14px; }
+.btn-ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); box-shadow: var(--shadow-sm); }
+.btn-ghost:hover { background: var(--bg-soft); border-color: var(--ink-3); box-shadow: var(--shadow); }
+@media (max-width: 880px) { .nav-links { display: none; } }
+
+/* HERO */
+.hero { padding: 64px 24px 80px; max-width: var(--max); margin: 0 auto; position: relative; }
+.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 64px; align-items: center; }
+.hero-eyebrow { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; background: var(--brand-tint); color: var(--brand-deep); border-radius: 100px; font-size: 12px; font-weight: 600; margin-bottom: 20px; }
+.hero-eyebrow svg { width: 12px; height: 12px; color: var(--brand-dark); }
+.hero h1 { font-size: clamp(34px, 4.5vw, 52px); line-height: 1.06; font-weight: 800; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 18px; }
+.hero h1 .grad { background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.hero-sub { font-size: 17px; color: var(--ink-3); margin-bottom: 28px; max-width: 540px; line-height: 1.6; }
+.hero-cta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.hero-trust { margin-top: 28px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); }
+.hero-trust svg { color: var(--brand); width: 14px; height: 14px; }
+.hero-trust span { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 960px) { .hero-grid { grid-template-columns: 1fr; gap: 40px; } .hero { padding: 40px 20px 60px; } }
+
+/* UPLOAD WIDGET */
+.upload-section { padding: 88px 0; background: radial-gradient(ellipse at top, var(--brand-tint-2) 0%, transparent 60%), var(--bg); position: relative; }
+.upload-inner { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+.upload-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 40px; box-shadow: var(--shadow-lg); }
+.section-head { text-align: center; margin-bottom: 56px; }
+.section-eyebrow { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: var(--brand-tint); color: var(--brand-deep); border-radius: 100px; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
+.section h2 { font-size: clamp(28px, 3.5vw, 40px); line-height: 1.1; font-weight: 800; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 14px; }
+.section h2 .grad { background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.section-lead { font-size: 17px; color: var(--ink-3); max-width: 640px; margin: 0 auto; line-height: 1.55; }
+
+.step-indicator { display: flex; align-items: center; gap: 8px; margin-bottom: 32px; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.step-pip { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--line-2); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: var(--ink-3); background: var(--surface); flex-shrink: 0; transition: all 0.3s ease; }
+.step-pip.active { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: 0 0 0 4px var(--brand-tint); }
+.step-pip.done { background: var(--brand); color: #fff; border-color: var(--brand); }
+.step-pip-label { font-weight: 500; white-space: nowrap; }
+.step-pip-label.active { color: var(--ink); font-weight: 600; }
+.step-line { flex: 1; height: 1.5px; background: var(--line-2); min-width: 16px; }
+.step-line.done { background: var(--brand); }
+
+.step-pane { display: none; }
+.step-pane.active { display: block; animation: slideUp 0.35s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.upload-card h3 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+.upload-card .sub { font-size: 15px; color: var(--ink-3); margin-bottom: 28px; max-width: 560px; line-height: 1.55; }
+
+.check-type-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+.check-type-card { background: var(--surface); border: 2px solid var(--line); border-radius: 12px; padding: 16px 14px; cursor: pointer; transition: all 0.15s ease; text-align: left; }
+.check-type-card:hover { border-color: var(--brand); }
+.check-type-card.active { border-color: var(--brand); background: var(--brand-tint-2); }
+.check-type-card .ico { width: 28px; height: 28px; border-radius: 7px; background: var(--brand-tint); color: var(--brand-dark); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.check-type-card .ico svg { width: 14px; height: 14px; }
+.check-type-card .name { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.check-type-card .desc { font-size: 11.5px; color: var(--ink-3); line-height: 1.4; }
+@media (max-width: 600px) { .check-type-selector { grid-template-columns: 1fr; } }
+
+.dropzone { border: 2px dashed var(--line-2); border-radius: 14px; padding: 56px 28px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: var(--bg-soft); }
+.dropzone:hover, .dropzone.drag-over { border-color: var(--brand); background: var(--brand-tint-2); }
+.dropzone-icon { width: 56px; height: 56px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; color: var(--brand-dark); box-shadow: var(--shadow-sm); }
+.dropzone-icon svg { width: 24px; height: 24px; }
+.dropzone .primary { font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.dropzone .browse { color: var(--brand-dark); text-decoration: underline; text-underline-offset: 2px; }
+.dropzone .secondary { font-size: 13px; color: var(--ink-3); }
+
+.file-preview { display: none; align-items: center; gap: 12px; padding: 16px; background: var(--brand-tint-2); border: 1px solid var(--brand-tint); border-radius: 10px; margin-top: 14px; }
+.file-preview.show { display: flex; }
+.file-preview-icon { width: 36px; height: 36px; background: var(--brand); color: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.file-preview-info { flex: 1; min-width: 0; }
+.file-preview-name { font-weight: 600; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-preview-meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.file-remove { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--ink-3); transition: all 0.15s ease; }
+.file-remove:hover { background: var(--warn-tint); color: var(--warn); }
+.privacy-note { margin-top: 16px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+.privacy-note svg { color: var(--brand); flex-shrink: 0; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.form-grid .full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.field label .req { color: var(--warn); margin-left: 2px; }
+.field input { padding: 12px 14px; background: var(--surface); border: 1.5px solid var(--line-2); border-radius: 10px; font-size: 15px; color: var(--ink); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.field input::placeholder { color: var(--muted); }
+.field input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint); }
+.field .hint { font-size: 12px; color: var(--muted); }
+.field input.error { border-color: var(--warn); }
+
+.consent { display: flex; align-items: flex-start; gap: 10px; padding: 14px; background: var(--bg-soft); border-radius: 10px; border: 1px solid var(--line); margin-bottom: 24px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.consent input[type=checkbox] { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--brand); flex-shrink: 0; cursor: pointer; }
+.consent label { cursor: pointer; }
+.consent a { color: var(--brand-dark); text-decoration: underline; }
+
+.turnstile-wrap { display: flex; justify-content: center; margin: 16px 0 24px; }
+
+.step-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.step-actions.right { justify-content: flex-end; }
+.step-back { color: var(--ink-3); font-size: 14px; font-weight: 500; padding: 8px 0; display: inline-flex; align-items: center; gap: 6px; }
+.step-back:hover { color: var(--ink); }
+
+.loading-state { text-align: center; padding: 24px 0; }
+.loader { width: 64px; height: 64px; margin: 0 auto 24px; position: relative; }
+.loader-ring { width: 100%; height: 100%; border: 4px solid var(--brand-tint); border-top-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-steps { margin: 28px auto 0; max-width: 380px; display: flex; flex-direction: column; gap: 8px; }
+.loading-step { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; background: var(--bg-soft); border: 1px solid var(--line); font-size: 13.5px; color: var(--ink-3); text-align: left; opacity: 0.5; transition: all 0.3s ease; }
+.loading-step.active { opacity: 1; background: var(--surface); border-color: var(--brand); color: var(--ink); }
+.loading-step.done { opacity: 1; background: var(--brand-tint-2); border-color: var(--brand-tint); color: var(--ink); }
+.loading-step .icon { width: 22px; height: 22px; border-radius: 50%; background: var(--line); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--ink-3); }
+.loading-step.active .icon { background: var(--brand); color: #fff; }
+.loading-step.done .icon { background: var(--brand); color: #fff; }
+
+.result-stamp { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; background: var(--brand-tint); color: var(--brand-deep); border-radius: 100px; font-size: 12px; font-weight: 700; margin-bottom: 18px; }
+.result-stamp.warn { background: var(--warn-tint); color: var(--warn); }
+.result-stamp.amber { background: var(--amber-tint); color: #b45309; }
+.savings-card { background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 50%, var(--brand-deep) 100%); color: #fff; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 24px; position: relative; overflow: hidden; }
+.savings-card::before { content: ""; position: absolute; top: -40%; right: -10%; width: 240px; height: 240px; background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 60%); pointer-events: none; }
+.savings-label { font-size: 12px; font-weight: 600; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+.savings-amount { font-size: clamp(40px, 7vw, 60px); font-weight: 800; letter-spacing: -0.03em; line-height: 1; margin-bottom: 8px; }
+.savings-amount sup { font-size: 0.4em; vertical-align: 0.6em; font-weight: 700; opacity: 0.85; }
+.savings-amount small { font-size: 0.32em; opacity: 0.8; font-weight: 600; }
+.savings-sub { font-size: 14px; opacity: 0.9; }
+.check-nr-badge { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.32); display: inline-block; margin-top: 12px; padding: 6px 12px; border-radius: 100px; font-size: 12px; font-weight: 600; letter-spacing: .04em; font-family: "SF Mono", Menlo, monospace; }
+
+.findings-list { margin-bottom: 24px; }
+.findings-list h4 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--ink); }
+.finding-detail { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.finding-detail:last-child { border-bottom: none; }
+.finding-detail-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.finding-detail-icon.warn { background: var(--warn-tint); color: var(--warn); }
+.finding-detail-icon.amber { background: var(--amber-tint); color: var(--amber); }
+.finding-detail-icon.blue { background: var(--blue-tint); color: var(--blue); }
+.finding-detail-title { font-size: 14.5px; font-weight: 600; margin-bottom: 4px; }
+.finding-detail-desc { font-size: 13.5px; color: var(--ink-3); line-height: 1.5; }
+.finding-tag { display: inline-block; margin-top: 6px; font-size: 11px; padding: 2px 8px; background: var(--bg-soft); border-radius: 4px; color: var(--ink-3); font-family: "SF Mono", Menlo, monospace; }
+
+.error-state { background: var(--warn-tint); border: 1.5px solid var(--warn); border-radius: 12px; padding: 16px; margin: 16px 0; color: var(--warn); font-size: 14px; }
+.error-state strong { display: block; margin-bottom: 4px; font-weight: 700; }
+
+@media (max-width: 680px) { .upload-card { padding: 24px; } .form-grid { grid-template-columns: 1fr; } .step-indicator { font-size: 11px; gap: 6px; } .step-pip-label { display: none; } }
+
+#file-input { display: none; }
+</style>
+</head>
+
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="topbar-item">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z"/></svg>
+      Made in Germany
+    </span>
+    <span class="topbar-divider"></span>
+    <span class="topbar-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      DSGVO-konform
+    </span>
+    <span class="topbar-divider"></span>
+    <span class="topbar-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Kostenlos & unverbindlich
+    </span>
+  </div>
+</div>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="nav-inner">
+    <a href="#" class="logo">
+      <span class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
+        </svg>
+      </span>
+      Liftaro
+    </a>
+    <nav class="nav-links">
+      <a href="#pruefen">Prüfen lassen <span class="pill">Kostenlos</span></a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a href="#pruefen" class="btn">Kostenlos prüfen →</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid">
+    <div>
+      <span class="hero-eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        KI-Prüfung speziell für Aufzugskosten
+      </span>
+      <h1>Aufzugskosten in Ihrer Nebenkostenabrechnung <span class="grad">prüfen lassen</span></h1>
+      <p class="hero-sub">Der Aufzug ist meist der teuerste Einzelposten in der Nebenkostenabrechnung — und der intransparenteste. Unsere KI prüft Ihre Abrechnung kostenlos auf überhöhte Wartungskosten, fehlerhafte Verteilung und Sparpotenzial.</p>
+      <div class="hero-cta">
+        <a href="#pruefen" class="btn btn-xl">
+          Kostenlose Vorschau starten
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+      <div class="hero-trust">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Kostenlos</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ergebnis in 30 Sek</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> DSGVO-konform</span>
+      </div>
+    </div>
+    <div></div>
+  </div>
+</section>
+
+<!-- UPLOAD WIDGET -->
+<section class="upload-section" id="pruefen">
+  <div class="upload-inner">
+    <div class="section-head">
+      <span class="section-eyebrow">Jetzt starten</span>
+      <h2>Dokument <span class="grad">kostenlos prüfen</span></h2>
+      <p class="section-lead">Wählen Sie den Check-Typ, laden Sie Ihr Dokument hoch und erhalten Sie sofort eine Indikation mit Check-Nummer.</p>
+    </div>
+
+    <div class="upload-card">
+      <!-- STEP INDICATOR -->
+      <div class="step-indicator">
+        <div class="step-pip active" id="pip-1">1</div>
+        <span class="step-pip-label active" id="lbl-1">Upload</span>
+        <div class="step-line" id="line-1"></div>
+        <div class="step-pip" id="pip-2">2</div>
+        <span class="step-pip-label" id="lbl-2">Kontakt</span>
+        <div class="step-line" id="line-2"></div>
+        <div class="step-pip" id="pip-3">3</div>
+        <span class="step-pip-label" id="lbl-3">Analyse</span>
+        <div class="step-line" id="line-3"></div>
+        <div class="step-pip" id="pip-4">4</div>
+        <span class="step-pip-label" id="lbl-4">Ergebnis</span>
+      </div>
+
+      <!-- STEP 1: TYPE + UPLOAD -->
+      <div class="step-pane active" id="step-1">
+        <h3>Welches Dokument möchten Sie prüfen?</h3>
+        <p class="sub">Wählen Sie den Check-Typ — unsere KI passt die Analyse entsprechend an.</p>
+
+        <div class="check-type-selector">
+          <button type="button" class="check-type-card active" data-type="nebenkosten">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg></div>
+            <div class="name">Nebenkostenabrechnung</div>
+            <div class="desc">Aufzug-Posten prüfen</div>
+          </button>
+          <button type="button" class="check-type-card" data-type="angebot">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="name">Angebot</div>
+            <div class="desc">Reparatur / Wartung</div>
+          </button>
+          <button type="button" class="check-type-card" data-type="vertrag">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
+            <div class="name">Wartungsvertrag</div>
+            <div class="desc">Konditionen prüfen</div>
+          </button>
+        </div>
+
+        <h3 style="margin-top:8px">Dokument hochladen</h3>
+        <p class="sub">PDF oder Bild. Bei mehrseitigen Dokumenten reicht die relevante Seite.</p>
+
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="primary">Dokument hier ablegen</div>
+          <div class="secondary">oder <span class="browse">zum Auswählen klicken</span> · PDF, JPG, PNG · max. 20 MB</div>
+        </div>
+        <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png">
+
+        <div class="file-preview" id="file-preview">
+          <div class="file-preview-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="file-preview-info">
+            <div class="file-preview-name" id="file-name">Datei.pdf</div>
+            <div class="file-preview-meta" id="file-meta">— KB</div>
+          </div>
+          <button class="file-remove" id="file-remove" aria-label="Datei entfernen">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="privacy-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Ende-zu-Ende verschlüsselt · Datei wird nach 30 Tagen automatisch gelöscht
+        </div>
+
+        <div class="step-actions right" style="margin-top:24px;">
+          <button class="btn btn-large" id="to-step-2">
+            Weiter
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: CONTACT FORM -->
+      <div class="step-pane" id="step-2">
+        <h3>Wohin schicken wir die Check-Nummer?</h3>
+        <p class="sub">Sie erhalten direkt nach der Analyse eine Check-Nummer angezeigt. Für Rückfragen oder eine ausführliche Beratung speichern wir Ihre Kontaktdaten verschlüsselt.</p>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="vorname">Vorname<span class="req">*</span></label>
+            <input type="text" id="vorname" placeholder="Max" autocomplete="given-name">
+          </div>
+          <div class="field">
+            <label for="nachname">Nachname<span class="req">*</span></label>
+            <input type="text" id="nachname" placeholder="Mustermann" autocomplete="family-name">
+          </div>
+          <div class="field full">
+            <label for="email">E-Mail<span class="req">*</span></label>
+            <input type="email" id="email" placeholder="max.mustermann@email.de" autocomplete="email">
+            <span class="hint">Für Rückfragen und Auswertungs-Versand.</span>
+          </div>
+          <div class="field full">
+            <label for="telefon">Telefon</label>
+            <input type="tel" id="telefon" placeholder="+49 711 123 456" autocomplete="tel">
+            <span class="hint">Optional — nur für Rückfragen.</span>
+          </div>
+          <div class="field full">
+            <label for="adresse">Adresse der Immobilie<span class="req">*</span></label>
+            <input type="text" id="adresse" placeholder="Beispielstraße 12, 70173 Stuttgart" autocomplete="street-address">
+            <span class="hint">Für regionale Vergleichswerte.</span>
+          </div>
+        </div>
+
+        <div class="consent">
+          <input type="checkbox" id="consent" checked>
+          <label for="consent">Ich habe die <a href="#">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Erstellung der kostenlosen Auswertung zu. Widerruf jederzeit möglich.</label>
+        </div>
+
+        <!-- Cloudflare Turnstile Widget -->
+        <div class="turnstile-wrap">
+          <div class="cf-turnstile" id="turnstile-widget" data-sitekey="REPLACE_WITH_TURNSTILE_SITE_KEY" data-callback="onTurnstileSuccess"></div>
+        </div>
+
+        <div class="step-actions">
+          <button class="step-back" id="to-step-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+            Zurück
+          </button>
+          <button class="btn btn-large" id="to-step-3">
+            Kostenlose Analyse starten
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 3: LOADING -->
+      <div class="step-pane" id="step-3">
+        <div class="loading-state">
+          <div class="loader"><div class="loader-ring"></div></div>
+          <h3>Wir prüfen Ihr Dokument</h3>
+          <p class="sub" style="text-align:center;margin:8px auto 0;">Das dauert etwa 30 Sekunden. Bleiben Sie auf der Seite.</p>
+          <div class="loading-steps">
+            <div class="loading-step" id="ls-1">
+              <div class="icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span>Dokument wird gelesen</span>
+            </div>
+            <div class="loading-step" id="ls-2">
+              <div class="icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span>Felder werden extrahiert</span>
+            </div>
+            <div class="loading-step" id="ls-3">
+              <div class="icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span>Plausibilitätsprüfung läuft</span>
+            </div>
+            <div class="loading-step" id="ls-4">
+              <div class="icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span>Indikation wird erstellt</span>
+            </div>
+          </div>
+          <div id="loading-error"></div>
+        </div>
+      </div>
+
+      <!-- STEP 4: RESULT -->
+      <div class="step-pane" id="step-4">
+        <div class="result-stamp" id="result-stamp">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span id="result-stamp-text">Analyse abgeschlossen</span>
+        </div>
+        <h3 id="result-title">Ihre Auswertung ist fertig</h3>
+        <p class="sub" id="result-summary">Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.</p>
+
+        <div class="savings-card" id="savings-card" style="display:none">
+          <div class="savings-label">Geschätztes Einsparpotenzial</div>
+          <div class="savings-amount" id="savings-amount"><sup>€</sup>0<small> / Jahr</small></div>
+          <div class="savings-sub" id="savings-sub"></div>
+          <div class="check-nr-badge" id="check-nr-badge">CHECK-NR: VC-—</div>
+        </div>
+
+        <div class="findings-list">
+          <h4>Was wir gefunden haben</h4>
+          <div id="findings-container"></div>
+        </div>
+
+        <div class="step-actions" style="margin-top:28px;border-top:1px solid var(--line);padding-top:20px;">
+          <button class="step-back" id="restart">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Neues Dokument prüfen
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// LIFTARO VORABCHECK — Frontend Logic
+// Setze diese beiden Werte nach Setup:
+//   - LIFTARO_API_URL: deine val.town Endpoint-URL
+//   - TURNSTILE_SITE_KEY: dein Cloudflare Turnstile Site Key
+// ═══════════════════════════════════════════════════════════════
+const LIFTARO_API_URL = window.LIFTARO_API_URL || 'https://YOURUSERNAME-liftaroVorabcheck.web.val.run';
+const TURNSTILE_SITE_KEY = window.TURNSTILE_SITE_KEY || '0x4AAAAAAA_REPLACE_ME';
+
+// Falls TURNSTILE im DOM noch Placeholder hat: ersetzen
+document.addEventListener('DOMContentLoaded', () => {
+  const tw = document.getElementById('turnstile-widget');
+  if (tw && TURNSTILE_SITE_KEY && !TURNSTILE_SITE_KEY.includes('REPLACE')) {
+    tw.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
+  }
+});
+
+let _currentCheckType = 'nebenkosten';
+let _currentFile = null;
+let _turnstileToken = null;
+
+window.onTurnstileSuccess = function(token) { _turnstileToken = token; };
+
+// Step-Indicator
+const panes = document.querySelectorAll('.step-pane');
+const pips = [document.getElementById('pip-1'), document.getElementById('pip-2'), document.getElementById('pip-3'), document.getElementById('pip-4')];
+const lbls = [document.getElementById('lbl-1'), document.getElementById('lbl-2'), document.getElementById('lbl-3'), document.getElementById('lbl-4')];
+const lines = [document.getElementById('line-1'), document.getElementById('line-2'), document.getElementById('line-3')];
+
+function goToStep(n) {
+  panes.forEach((p, i) => p.classList.toggle('active', i === n - 1));
+  pips.forEach((pip, i) => {
+    pip.classList.remove('active', 'done');
+    if (i + 1 < n) {
+      pip.classList.add('done');
+      pip.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (i + 1 === n) {
+      pip.classList.add('active'); pip.textContent = String(i + 1);
+    } else { pip.textContent = String(i + 1); }
+  });
+  lbls.forEach((lbl, i) => lbl.classList.toggle('active', i + 1 === n));
+  lines.forEach((line, i) => line.classList.toggle('done', i + 1 < n));
+  document.querySelector('.upload-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Check-Type Selector
+document.querySelectorAll('.check-type-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.check-type-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    _currentCheckType = card.dataset.type;
+  });
+});
+
+// File Upload
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+const filePreview = document.getElementById('file-preview');
+const fileName = document.getElementById('file-name');
+const fileMeta = document.getElementById('file-meta');
+const fileRemove = document.getElementById('file-remove');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  if (file.size > 20 * 1024 * 1024) { alert('Datei ist zu groß (max. 20 MB).'); return; }
+  _currentFile = file;
+  fileName.textContent = file.name;
+  const sizeKB = (file.size / 1024).toFixed(0);
+  const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+  fileMeta.textContent = file.size > 1024 * 1024 ? sizeMB + ' MB' : sizeKB + ' KB';
+  filePreview.classList.add('show');
+  dropzone.style.display = 'none';
+}
+fileRemove.addEventListener('click', () => {
+  _currentFile = null;
+  fileInput.value = '';
+  filePreview.classList.remove('show');
+  dropzone.style.display = 'block';
+});
+
+// Navigation
+document.getElementById('to-step-2').addEventListener('click', () => {
+  if (!_currentFile) { alert('Bitte zuerst ein Dokument hochladen.'); return; }
+  goToStep(2);
+});
+document.getElementById('to-step-1').addEventListener('click', () => goToStep(1));
+
+document.getElementById('to-step-3').addEventListener('click', async () => {
+  const required = ['vorname', 'nachname', 'email', 'adresse'];
+  let allFilled = true;
+  required.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el.value.trim()) { el.classList.add('error'); allFilled = false; } else { el.classList.remove('error'); }
+  });
+  if (!allFilled) return;
+  if (!document.getElementById('consent').checked) { alert('Bitte stimmen Sie der Datenverarbeitung zu.'); return; }
+  if (TURNSTILE_SITE_KEY && !TURNSTILE_SITE_KEY.includes('REPLACE') && !_turnstileToken) {
+    alert('Bitte den Captcha bestätigen.'); return;
+  }
+  goToStep(3);
+  await runAnalysis();
+});
+
+document.getElementById('restart').addEventListener('click', () => {
+  goToStep(1);
+  _currentFile = null;
+  fileInput.value = '';
+  filePreview.classList.remove('show');
+  dropzone.style.display = 'block';
+  document.querySelectorAll('.loading-step').forEach(el => el.classList.remove('active', 'done'));
+  document.getElementById('loading-error').innerHTML = '';
+});
+
+// Loading-Step-Animation während des API-Calls
+function animateLoadingSteps() {
+  const steps = ['ls-1', 'ls-2', 'ls-3', 'ls-4'];
+  steps.forEach(s => document.getElementById(s).classList.remove('active', 'done'));
+  let i = 0;
+  document.getElementById(steps[0]).classList.add('active');
+  return setInterval(() => {
+    if (i >= steps.length) return;
+    document.getElementById(steps[i]).classList.remove('active');
+    document.getElementById(steps[i]).classList.add('done');
+    i++;
+    if (i < steps.length) document.getElementById(steps[i]).classList.add('active');
+  }, 2500);
+}
+
+// File → Base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Echte Analyse
+async function runAnalysis() {
+  const errorEl = document.getElementById('loading-error');
+  errorEl.innerHTML = '';
+  const stepInterval = animateLoadingSteps();
+  try {
+    const pdfBase64 = await fileToBase64(_currentFile);
+    const payload = {
+      check_type: _currentCheckType,
+      file: { name: _currentFile.name, mime: _currentFile.type, base64: pdfBase64 },
+      lead: {
+        vorname: document.getElementById('vorname').value.trim(),
+        nachname: document.getElementById('nachname').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        telefon: document.getElementById('telefon').value.trim(),
+        adresse: document.getElementById('adresse').value.trim(),
+      },
+      turnstile_token: _turnstileToken,
+      consent_given: true,
+      consent_at: new Date().toISOString(),
+    };
+    const res = await fetch(LIFTARO_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Server antwortete mit ${res.status}: ${text.slice(0, 200)}`);
+    }
+    const result = await res.json();
+    clearInterval(stepInterval);
+    ['ls-1', 'ls-2', 'ls-3', 'ls-4'].forEach(s => {
+      const el = document.getElementById(s);
+      el.classList.remove('active');
+      el.classList.add('done');
+    });
+    setTimeout(() => renderResult(result), 400);
+  } catch (e) {
+    clearInterval(stepInterval);
+    console.error(e);
+    errorEl.innerHTML = '<div class="error-state"><strong>Analyse fehlgeschlagen</strong>' +
+      (e.message || 'Unbekannter Fehler. Bitte später erneut versuchen.') +
+      '</div>';
+  }
+}
+
+// Result-Rendering
+function renderResult(r) {
+  goToStep(4);
+
+  // Stamp & Title basierend auf Ampel
+  const stamp = document.getElementById('result-stamp');
+  const stampText = document.getElementById('result-stamp-text');
+  const title = document.getElementById('result-title');
+  const summary = document.getElementById('result-summary');
+  stamp.classList.remove('warn', 'amber');
+  if (r.ampel === 'rot') {
+    stamp.classList.add('warn');
+    stampText.textContent = 'Beanstandungen gefunden';
+    title.textContent = 'Achtung: Auffälligkeiten in Ihrem Dokument';
+  } else if (r.ampel === 'gelb') {
+    stamp.classList.add('amber');
+    stampText.textContent = 'Mit Hinweisen';
+    title.textContent = 'Hinweise zu Ihrem Dokument';
+  } else {
+    stampText.textContent = 'Analyse abgeschlossen';
+    title.textContent = 'Ihr Dokument ist plausibel';
+  }
+  summary.textContent = r.summary || 'Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.';
+
+  // Sparpotenzial
+  if (r.savings_estimate_eur && r.savings_estimate_eur > 0) {
+    document.getElementById('savings-card').style.display = 'block';
+    document.getElementById('savings-amount').innerHTML =
+      '<sup>€</sup>' + Number(r.savings_estimate_eur).toLocaleString('de-DE', { maximumFractionDigits: 0 }) +
+      '<small> / Jahr</small>';
+    document.getElementById('savings-sub').textContent = r.savings_text || '';
+    document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
+  } else {
+    document.getElementById('savings-card').style.display = 'block';
+    document.getElementById('savings-amount').innerHTML = '—';
+    document.getElementById('savings-sub').textContent = '';
+    document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
+  }
+
+  // Findings
+  const container = document.getElementById('findings-container');
+  container.innerHTML = '';
+  (r.findings || []).forEach(f => {
+    const sev = f.severity || 'blue';
+    const icoMap = {
+      warn: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/></svg>',
+      amber: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/></svg>',
+      blue: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    };
+    const row = document.createElement('div');
+    row.className = 'finding-detail';
+    row.innerHTML =
+      '<div class="finding-detail-icon ' + sev + '">' + (icoMap[sev] || icoMap.blue) + '</div>' +
+      '<div>' +
+        '<div class="finding-detail-title">' + escapeHtml(f.title || '') + '</div>' +
+        '<div class="finding-detail-desc">' + escapeHtml(f.description || '') + '</div>' +
+        (f.tag ? '<span class="finding-tag">' + escapeHtml(f.tag) + '</span>' : '') +
+      '</div>';
+    container.appendChild(row);
+  });
+  if (!(r.findings || []).length) {
+    container.innerHTML = '<p style="font-size:14px;color:var(--ink-3)">Keine spezifischen Auffälligkeiten — Ihr Dokument liegt im erwartbaren Rahmen.</p>';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+</script>
+
+</body>
+</html>
