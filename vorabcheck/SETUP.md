@@ -1,5 +1,14 @@
 # Liftaro Vorabcheck — Setup
 
+> **🎉 Auto-Setup verfügbar.** Statt manuell val.town einzurichten kannst du in der internen App
+> als Admin oben in der Topbar auf **„Proxy"** klicken → val.town-Token einfügen → fertig.
+> Die App erstellt/aktualisiert den Val automatisch, setzt alle Env-Vars und schreibt die
+> Endpoint-URL in die Master-Base. Die Public-Landing nutzt sie ab dem nächsten Page-Load.
+>
+> Diese Anleitung beschreibt zusätzlich noch den manuellen Pfad.
+
+
+
 Public Landing-Page für KI-gestützten Vorabcheck von Nebenkosten­abrechnungen, Angeboten und Wartungsverträgen.
 
 ## Architektur
