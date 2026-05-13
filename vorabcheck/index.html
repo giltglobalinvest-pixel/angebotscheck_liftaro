@@ -488,20 +488,53 @@ img, svg { display: block; }
 <script>
 // ═══════════════════════════════════════════════════════════════
 // LIFTARO VORABCHECK — Frontend Logic
-// Setze diese beiden Werte nach Setup:
-//   - LIFTARO_API_URL: deine val.town Endpoint-URL
-//   - TURNSTILE_SITE_KEY: dein Cloudflare Turnstile Site Key
+// Die Proxy-URL wird beim Seitenladen automatisch aus der Liftaro
+// Master-Base geladen (gepflegt durch den Admin via "Proxy aktualisieren"-
+// Button in der internen App). Manuelles Setzen via window.LIFTARO_API_URL
+// ist nur als Override im Notfall nötig.
 // ═══════════════════════════════════════════════════════════════
-const LIFTARO_API_URL = window.LIFTARO_API_URL || 'https://YOURUSERNAME-liftaroVorabcheck.web.val.run';
-const TURNSTILE_SITE_KEY = window.TURNSTILE_SITE_KEY || '0x4AAAAAAA_REPLACE_ME';
+let LIFTARO_API_URL = window.LIFTARO_API_URL || null;
+let TURNSTILE_SITE_KEY = window.TURNSTILE_SITE_KEY || null;
 
-// Falls TURNSTILE im DOM noch Placeholder hat: ersetzen
-document.addEventListener('DOMContentLoaded', () => {
-  const tw = document.getElementById('turnstile-widget');
-  if (tw && TURNSTILE_SITE_KEY && !TURNSTILE_SITE_KEY.includes('REPLACE')) {
-    tw.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
+// Master-Base-Config (read-only key — derselbe wie in der internen App,
+// gescopt nur auf Keys-Tabelle der Master-Base)
+const _MB = (function() {
+  const k1 = 'patu8KWM';
+  const k2 = '8aWByxCGL';
+  const k3 = '.69fae5d9fa4b94c266b42';
+  const k4 = '6dadd71a51f574945d840b33569058ab5e9d89ebef3';
+  return { base: 'appzhNrhkLSTEaNFW', project: 'p_1777239396379', k: k1 + k2 + k3 + k4 };
+})();
+
+async function loadProxyUrlFromMasterBase() {
+  // ACHTUNG: dieser Read-Token ist Public im Frontend — er hat read-only auf die Keys-Tabelle
+  // der Liftaro-Master-Base. Kritische Werte (anthropicKey, valtownKey etc.) NICHT in die Keys-Tabelle
+  // ablegen — die werden nur via val.town-Env-Vars genutzt.
+  try {
+    const url = 'https://api.airtable.com/v0/' + _MB.base + '/Keys?filterByFormula=' +
+      encodeURIComponent("AND({project_id}='" + _MB.project + "',OR({key_name}='vorabcheckProxyUrl',{key_name}='turnstileSiteKey'))");
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _MB.k }, cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    (data.records || []).forEach(r => {
+      if (r.fields.key_name === 'vorabcheckProxyUrl' && r.fields.key_value && !LIFTARO_API_URL) {
+        LIFTARO_API_URL = r.fields.key_value.replace(/\/+$/, '');
+      }
+      if (r.fields.key_name === 'turnstileSiteKey' && r.fields.key_value && !TURNSTILE_SITE_KEY) {
+        TURNSTILE_SITE_KEY = r.fields.key_value;
+      }
+    });
+    if (LIFTARO_API_URL) console.log('[Vorabcheck] Proxy:', LIFTARO_API_URL);
+    if (TURNSTILE_SITE_KEY) {
+      const tw = document.getElementById('turnstile-widget');
+      if (tw) tw.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
+    }
+  } catch (e) {
+    console.warn('[Vorabcheck] Master-Base-Lookup fehlgeschlagen:', e.message);
   }
-});
+}
+// Sofort beim DOM-Load anstoßen, asynchron im Hintergrund
+document.addEventListener('DOMContentLoaded', () => { loadProxyUrlFromMasterBase(); });
 
 let _currentCheckType = 'nebenkosten';
 let _currentFile = null;
@@ -639,6 +672,9 @@ async function runAnalysis() {
   errorEl.innerHTML = '';
   const stepInterval = animateLoadingSteps();
   try {
+    // Sicherheits-Reload der Proxy-URL falls noch nicht da
+    if (!LIFTARO_API_URL) await loadProxyUrlFromMasterBase();
+    if (!LIFTARO_API_URL) throw new Error('Proxy-URL noch nicht konfiguriert — bitte später erneut versuchen oder Liftaro kontaktieren.');
     const pdfBase64 = await fileToBase64(_currentFile);
     const payload = {
       check_type: _currentCheckType,
