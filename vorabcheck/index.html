@@ -214,6 +214,42 @@ img, svg { display: block; }
 @media (max-width: 680px) { .upload-card { padding: 24px; } .form-grid { grid-template-columns: 1fr; } .step-indicator { font-size: 11px; gap: 6px; } .step-pip-label { display: none; } }
 
 #file-input { display: none; }
+
+/* ── Section-Komponenten für Steps / Stats / Cards / FAQ / Footer ── */
+.grad { background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.check-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; transition: all .2s ease; }
+.check-card:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: var(--shadow); }
+.check-ico { width: 36px; height: 36px; border-radius: 10px; background: var(--brand-tint); color: var(--brand-dark); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.check-ico svg { width: 18px; height: 18px; }
+.check-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 4px; letter-spacing: -.01em; }
+.check-card p { font-size: 13.5px; color: var(--ink-3); line-height: 1.5; }
+.audience-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 26px; transition: all .2s ease; }
+.audience-card.featured { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint); position: relative; }
+.audience-card.featured::before { content: "Empfohlen"; position: absolute; top: -10px; left: 24px; background: var(--brand); color: #fff; font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 100px; letter-spacing: .05em; text-transform: uppercase; }
+.audience-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+.audience-ico { width: 44px; height: 44px; border-radius: 12px; background: var(--brand-tint); color: var(--brand-dark); display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+.audience-ico svg { width: 22px; height: 22px; }
+.audience-card h3 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin-bottom: 8px; }
+.audience-card p { font-size: 14.5px; color: var(--ink-3); line-height: 1.55; }
+.trust-item { display: flex; flex-direction: column; gap: 8px; }
+.trust-ico { width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); display: flex; align-items: center; justify-content: center; color: #4ade80; margin-bottom: 4px; }
+.trust-ico svg { width: 18px; height: 18px; }
+.trust-item h4 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: -.01em; }
+.trust-item p { font-size: 13px; color: rgba(255,255,255,.6); line-height: 1.5; }
+.faq-item { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; background: var(--surface); overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+.faq-item.open { border-color: var(--brand); box-shadow: var(--shadow-sm); }
+.faq-q { width: 100%; text-align: left; padding: 18px 22px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; display: flex; align-items: center; justify-content: space-between; gap: 20px; color: var(--ink); background: none; border: none; cursor: pointer; font-family: inherit; }
+.faq-ico { width: 26px; height: 26px; border-radius: 50%; background: var(--bg-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .25s ease; font-size: 16px; font-weight: 600; }
+.faq-item.open .faq-ico { background: var(--brand); color: #fff; transform: rotate(45deg); }
+.faq-a { max-height: 0; overflow: hidden; transition: max-height .3s ease; }
+.faq-item.open .faq-a { max-height: 400px; }
+.faq-a-inner { padding: 0 22px 20px; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
+.logo-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 8px rgba(22,163,74,.25); }
+.logo-mark svg { width: 18px; height: 18px; }
+.logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; text-decoration: none; }
+@media (max-width: 720px) {
+  footer > div:first-child { grid-template-columns: 1fr !important; gap: 24px !important; }
+}
 </style>
 </head>
 
@@ -484,6 +520,158 @@ img, svg { display: block; }
     </div>
   </div>
 </section>
+
+<!-- ═══════════ 9 CHECKS ═══════════ -->
+<section style="padding:88px 0">
+  <div style="max-width:var(--max);margin:0 auto;padding:0 24px">
+    <div class="section-head">
+      <span class="section-eyebrow">Was wir prüfen</span>
+      <h2 style="font-size:clamp(28px,3.5vw,40px);line-height:1.1;font-weight:800;letter-spacing:-0.025em;color:var(--ink);margin-bottom:14px">9 automatische <span class="grad">Prüfungen</span></h2>
+      <p class="section-lead">Regelbasiert auf TRBS 2181, BetrSichV, §2 Nr. 7 BetrKV und Marktdaten aus tausenden Wartungsverträgen.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:48px">
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><h4>Wartungspauschale</h4><p>Abgleich mit regionalem Median für Ihre Anlagengröße.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><h4>Anzahl Wartungen p.a.</h4><p>Prüfung gegen TRBS-Vorgaben für Ihren Aufzugstyp.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 18 18"/><path d="M10.5 6h7.5a2 2 0 0 1 2 2v7.5"/></svg></div><h4>Versteckte Reparaturen</h4><p>Erkennt Instandhaltung, die als Wartung umgelegt wird.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 4 5-5"/></svg></div><h4>Servicestunden-Satz</h4><p>Vergleich der €/h-Sätze mit regionalen Marktpreisen.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><h4>Verteilungsschlüssel</h4><p>Prüfung auf korrekte Umlage (qm, Wohneinheit, Person).</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12h6"/><path d="M12 9v6"/></svg></div><h4>Vertragsklauseln</h4><p>Identifikation ungünstiger Lock-in- und Preisanpassungsklauseln.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg></div><h4>Vertragslaufzeit</h4><p>Optimale Kündigungs- und Verhandlungsfenster.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z"/></svg></div><h4>Notrufdienstkosten</h4><p>Plausibilität der 24/7-Bereitstellung gegen Markt.</p></div>
+      <div class="check-card"><div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9"/><path d="M12 7v5l3 3"/></svg></div><h4>Widerspruchsfrist</h4><p>Berechnung der 12-monatigen Einwendungsfrist (§556 BGB).</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FÜR WEN ═══════════ -->
+<section style="background:var(--bg-soft);padding:88px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div style="max-width:var(--max);margin:0 auto;padding:0 24px">
+    <div class="section-head">
+      <span class="section-eyebrow">Für wen wir arbeiten</span>
+      <h2 style="font-size:clamp(28px,3.5vw,40px);line-height:1.1;font-weight:800;letter-spacing:-0.025em;color:var(--ink);margin-bottom:14px">Liftaro funktioniert für <span class="grad">alle Seiten</span></h2>
+      <p class="section-lead">Egal ob Sie zahlen, abrechnen oder verwalten — die Auswertung gibt Ihnen Klarheit und Verhandlungsgrundlage.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:48px">
+      <div class="audience-card">
+        <div class="audience-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+        <h3>Für Mieter</h3>
+        <p>Sie zahlen Nebenkosten und ahnen, dass der Aufzug-Posten zu hoch ist? Liftaro liefert Ihnen den Beleg.</p>
+      </div>
+      <div class="audience-card featured">
+        <div class="audience-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></div>
+        <h3>Für Wohneigentümer</h3>
+        <p>Als WEG-Mitglied tragen Sie Aufzugskosten direkt. Holen Sie Argumente für die nächste Eigentümerversammlung.</p>
+      </div>
+      <div class="audience-card">
+        <div class="audience-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22h20"/><path d="M6 18h12"/><path d="M3 14a9 9 0 0 1 18 0"/><circle cx="12" cy="6" r="3"/></svg></div>
+        <h3>Für Hausverwalter</h3>
+        <p>Ihre Eigentümer fragen nach Optimierung? Liftaro liefert Ihnen die professionelle Analyse als Service.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ TRUST BAND ═══════════ -->
+<section style="background:var(--ink);color:rgba(255,255,255,.85);padding:56px 0">
+  <div style="max-width:var(--max);margin:0 auto;padding:0 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:32px">
+    <div class="trust-item"><div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><h4>Verschlüsselt</h4><p>Ende-zu-Ende-Übertragung. Dokumente werden nach 30 Tagen gelöscht.</p></div>
+    <div class="trust-item"><div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h4>DSGVO-konform</h4><p>Server in der EU. Keine Weitergabe an Dritte oder Wartungsfirmen.</p></div>
+    <div class="trust-item"><div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div><h4>Branchen-Daten</h4><p>Marktvergleich aus tausenden Wartungsverträgen in Deutschland.</p></div>
+    <div class="trust-item"><div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div><h4>Herstellerneutral</h4><p>Wir arbeiten weder für KONE, Schindler, TKE noch andere Wartungsfirmen.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════ FAQ ═══════════ -->
+<section style="padding:88px 0" id="faq">
+  <div style="max-width:var(--max);margin:0 auto;padding:0 24px">
+    <div class="section-head">
+      <span class="section-eyebrow">Häufige Fragen</span>
+      <h2 style="font-size:clamp(28px,3.5vw,40px);line-height:1.1;font-weight:800;letter-spacing:-0.025em;color:var(--ink);margin-bottom:14px">Alles, was Sie <span class="grad">wissen sollten</span></h2>
+    </div>
+    <div style="max-width:820px;margin:48px auto 0">
+      <div class="faq-item">
+        <button class="faq-q">Ist die Prüfung wirklich kostenlos?<span class="faq-ico">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Ja. Die Erst-Prüfung ist 100 % kostenlos und unverbindlich. Sie erhalten sofort eine Indikation mit Check-Nummer.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Wie verdient Liftaro dann Geld?<span class="faq-ico">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Auf Erfolgsbasis: Wenn Sie mit unserer Unterstützung den Wartungsvertrag optimieren, erhalten wir einen Anteil der tatsächlich realisierten Ersparnis.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Was passiert mit meinem Dokument?<span class="faq-ico">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Es wird verschlüsselt verarbeitet und 30 Tage nach Erstellung der Auswertung automatisch gelöscht. Keine Weitergabe an Dritte.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Funktioniert das auch als Mieter?<span class="faq-ico">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Ja. Mit unserem Auswertungsbericht können Sie konstruktiv auf Ihren Vermieter oder die Hausverwaltung zugehen.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Wie genau ist die KI-Analyse?<span class="faq-ico">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Eine erste Indikation, keine Garantie. Für rechtssichere Aussagen gibt es im Anschluss die kostenpflichtige Detailprüfung durch Liftaro.</div></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Ersetzt Liftaro einen Anwalt?<span class="faq-ico">+</span></button>
+        <div class="faq-a"><div class="faq-a-inner">Nein. Liftaro liefert eine technisch-wirtschaftliche Auswertung und ist keine Rechtsberatung im Sinne des RDG.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FINAL CTA ═══════════ -->
+<section style="background:linear-gradient(135deg,var(--brand-deep) 0%,var(--brand-dark) 60%,var(--brand) 100%);color:#fff;padding:80px 0;text-align:center;position:relative;overflow:hidden">
+  <div style="max-width:760px;margin:0 auto;padding:0 24px;position:relative;z-index:1">
+    <h2 style="font-size:clamp(30px,4vw,44px);font-weight:800;letter-spacing:-.025em;line-height:1.1;margin-bottom:14px;color:#fff">Wenige Minuten Aufwand. Hunderte Euro Ersparnis.</h2>
+    <p style="font-size:17px;color:rgba(255,255,255,.85);margin-bottom:28px">Sie haben nichts zu verlieren — nur den Posten in Ihrer nächsten Nebenkostenabrechnung.</p>
+    <a href="#pruefen" class="btn btn-xl" style="background:#fff;color:var(--brand-deep);border-color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.15)">
+      Jetzt kostenlos prüfen lassen
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer style="background:var(--ink);color:rgba(255,255,255,.85);padding:48px 0 24px">
+  <div style="max-width:var(--max);margin:0 auto;padding:0 24px;display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:32px;margin-bottom:32px">
+    <div>
+      <a href="#" class="logo" style="color:#fff;margin-bottom:14px"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></span>Liftaro</a>
+      <p style="font-size:14px;color:rgba(255,255,255,.55);max-width:280px;line-height:1.55;margin-top:14px">Transparenz für Aufzugskosten. Für Mieter, Eigentümer und Hausverwaltungen in ganz Deutschland.</p>
+    </div>
+    <div>
+      <h5 style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5);margin-bottom:14px;font-weight:600">Produkt</h5>
+      <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:8px;font-size:14px">
+        <li><a href="#pruefen" style="color:rgba(255,255,255,.8)">Dokument prüfen</a></li>
+        <li><a href="#faq" style="color:rgba(255,255,255,.8)">FAQ</a></li>
+      </ul>
+    </div>
+    <div>
+      <h5 style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5);margin-bottom:14px;font-weight:600">Rechtliches</h5>
+      <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:8px;font-size:14px">
+        <li><a href="#" style="color:rgba(255,255,255,.8)">Impressum</a></li>
+        <li><a href="#" style="color:rgba(255,255,255,.8)">Datenschutz</a></li>
+        <li><a href="#" style="color:rgba(255,255,255,.8)">AGB</a></li>
+      </ul>
+    </div>
+  </div>
+  <div style="max-width:var(--max);margin:0 auto;padding:18px 24px 0;border-top:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;font-size:13px;color:rgba(255,255,255,.5)">
+    <div>© 2026 Liftaro GmbH · Alle Rechte vorbehalten.</div>
+    <div>Made in Germany 🇩🇪</div>
+  </div>
+  <div style="max-width:var(--max);margin:0 auto;padding:14px 24px 0;font-size:12px;color:rgba(255,255,255,.4);text-align:center">
+    Liftaro bietet automatisierte Hinweise zu Aufzugskosten und ersetzt keine Rechtsberatung im Sinne des RDG.
+  </div>
+</footer>
+
+<script>
+// FAQ-Toggle
+document.querySelectorAll('.faq-q').forEach(q => {
+  q.addEventListener('click', () => {
+    const item = q.parentElement;
+    const wasOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+    if (!wasOpen) item.classList.add('open');
+  });
+});
+</script>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
