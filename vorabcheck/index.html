@@ -248,39 +248,128 @@ img, svg { display: block; }
 .logo-mark svg { width: 18px; height: 18px; }
 .logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; text-decoration: none; }
 
-/* ── MOBILE-OPTIMIERUNG (für beide Themes) ── */
+/* ── MOBILE-OPTIMIERUNG (für beide Themes) ──
+   Wichtig: lange deutsche Wörter ("Nebenkostenabrechnung",
+   "Wartungsvertrag") brauchen overflow-wrap + hyphens,
+   sonst laufen sie auf schmalen Geräten über den Rand. */
+h1, h2, h3, h4, p { overflow-wrap: break-word; word-wrap: break-word; }
+.hero h1, .section h2, section h2, .upload-card h3, .audience-card h3, .check-card h4 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
 @media (max-width: 720px) {
   footer > div:first-child { grid-template-columns: 1fr !important; gap: 24px !important; }
-  .hero { padding: 32px 18px 48px !important; }
-  .hero h1 { font-size: clamp(28px, 8vw, 38px) !important; }
-  .hero-sub { font-size: 15.5px !important; }
-  .hero-cta .btn { width: 100%; justify-content: center; }
-  .upload-section { padding: 48px 0 !important; }
+
+  /* HERO – kompakter, mit klarem Padding, kein Overflow */
+  .hero { padding: 26px 20px 36px !important; }
+  .hero-grid { gap: 24px !important; }
+  .hero-eyebrow { font-size: 11.5px !important; padding: 4px 10px !important; margin-bottom: 14px !important; }
+  .hero h1 { font-size: clamp(26px, 7.2vw, 32px) !important; line-height: 1.12 !important; margin-bottom: 14px !important; letter-spacing: -.02em !important; }
+  .hero-sub { font-size: 15px !important; line-height: 1.55 !important; margin-bottom: 22px !important; max-width: 100% !important; }
+  .hero-cta { width: 100%; }
+  .hero-cta .btn, .hero-cta .btn-xl { width: 100% !important; justify-content: center !important; padding: 14px 18px !important; font-size: 14.5px !important; }
+  .hero-trust { gap: 14px 18px !important; font-size: 12.5px !important; margin-top: 20px !important; }
+
+  /* TOPBAR – kompakter */
+  .topbar { padding: 6px 14px !important; font-size: 11px !important; }
+  .topbar-inner { gap: 10px 14px !important; padding: 0 !important; }
+  .topbar-item svg { width: 11px !important; height: 11px !important; }
+
+  /* NAV */
+  .nav-inner { padding: 10px 14px !important; gap: 10px !important; }
+  .nav .btn { padding: 9px 14px !important; font-size: 13px !important; }
+
+  /* SECTION HEADS – sauberes Wrapping */
+  .section-head { margin-bottom: 28px !important; padding: 0 4px !important; }
+  .section h2, section h2 { font-size: clamp(22px, 6.4vw, 28px) !important; line-height: 1.18 !important; letter-spacing: -.015em !important; }
+  .section-lead { font-size: 14.5px !important; line-height: 1.55 !important; }
+  .section-eyebrow { font-size: 11.5px !important; padding: 4px 10px !important; }
+
+  /* UPLOAD */
+  .upload-section { padding: 40px 0 !important; }
   .upload-inner { padding: 0 14px !important; }
-  .upload-card { padding: 20px 16px !important; border-radius: 14px !important; }
-  .upload-card h3 { font-size: 19px !important; }
-  .upload-card .sub { font-size: 14px !important; }
-  .section-head { margin-bottom: 32px !important; }
-  .section h2, section h2 { font-size: clamp(24px, 6.5vw, 30px) !important; }
-  .section-lead { font-size: 15px !important; }
-  .step-actions .btn, .step-actions .btn-large { padding: 13px 18px !important; font-size: 14.5px !important; flex: 1; }
+  .upload-card { padding: 18px 14px !important; border-radius: 14px !important; }
+  .upload-card h3 { font-size: 18px !important; line-height: 1.25 !important; }
+  .upload-card .sub { font-size: 13.5px !important; margin-bottom: 20px !important; }
+
+  /* STEP-INDICATOR auf Mobile vereinfachen */
+  .step-indicator { font-size: 11px !important; gap: 6px !important; margin-bottom: 22px !important; }
+  .step-pip { width: 26px !important; height: 26px !important; font-size: 12px !important; }
+  .step-pip-label { display: none !important; }
+  .step-line { min-width: 10px !important; }
+
+  /* CHECK-TYPE SELECTOR – auf Mobile direkt 1-spaltig */
+  .check-type-selector { grid-template-columns: 1fr !important; gap: 8px !important; margin-bottom: 20px !important; }
+  .check-type-card { padding: 12px 14px !important; display: flex !important; align-items: center !important; gap: 12px !important; }
+  .check-type-card .ico { margin-bottom: 0 !important; flex-shrink: 0; }
+  .check-type-card .name { font-size: 14px !important; margin-bottom: 1px !important; }
+  .check-type-card .desc { font-size: 12px !important; }
+
+  /* FORMS */
+  .form-grid { gap: 14px !important; margin-bottom: 16px !important; }
+  .field label { font-size: 12.5px !important; }
+  .field input { padding: 12px !important; font-size: 16px !important; /* iOS no-zoom */ border-radius: 9px !important; }
+  .field .hint { font-size: 11.5px !important; }
+
+  /* DROPZONE */
+  .dropzone { padding: 32px 14px !important; border-radius: 12px !important; }
+  .dropzone-icon { width: 44px !important; height: 44px !important; margin-bottom: 12px !important; }
+  .dropzone-icon svg { width: 20px !important; height: 20px !important; }
+  .dropzone .primary { font-size: 14.5px !important; }
+  .dropzone .secondary { font-size: 12.5px !important; line-height: 1.5 !important; }
+  .privacy-note { font-size: 11.5px !important; gap: 6px !important; align-items: flex-start; }
+  .consent { padding: 12px !important; font-size: 12.5px !important; gap: 8px !important; }
+
+  /* STEP-ACTIONS */
   .step-actions { gap: 8px !important; }
-  .step-actions.right .btn { width: 100%; }
-  .dropzone { padding: 38px 18px !important; }
-  .dropzone-icon { width: 48px !important; height: 48px !important; }
-  .dropzone .primary { font-size: 15px !important; }
-  .field input { padding: 13px 12px !important; font-size: 16px !important; /* iOS no-zoom */ }
-  .check-type-card { padding: 13px !important; }
-  .savings-card { padding: 22px 16px !important; }
+  .step-actions .btn, .step-actions .btn-large { padding: 13px 16px !important; font-size: 14px !important; flex: 1 1 auto; justify-content: center !important; }
+  .step-actions.right .btn { width: 100% !important; }
+  .step-back { font-size: 13px !important; flex-shrink: 0; }
+
+  /* RESULT */
+  .savings-card { padding: 22px 16px !important; border-radius: 14px !important; margin-bottom: 18px !important; }
+  .savings-amount { font-size: clamp(34px, 11vw, 44px) !important; }
+  .findings-list h4 { font-size: 14px !important; }
+  .finding-detail { gap: 10px !important; padding: 12px 0 !important; }
+  .finding-detail-title { font-size: 13.5px !important; }
+  .finding-detail-desc { font-size: 13px !important; }
+
+  /* CARDS in Listen-Sections */
   .audience-card, .check-card { padding: 18px !important; }
-  .faq-q { padding: 14px 16px !important; font-size: 14.5px !important; gap: 10px !important; }
-  .faq-a-inner { padding: 0 16px 16px !important; font-size: 14px !important; }
-  section[style*="padding:88px"] { padding: 52px 0 !important; }
-  section[style*="padding:80px"] { padding: 52px 18px !important; }
-  .topbar { padding: 6px 0 !important; }
-  .nav-inner { padding: 11px 16px !important; }
-  .btn { padding: 11px 16px !important; }
-  .btn-xl { padding: 14px 22px !important; font-size: 14.5px !important; }
+  .audience-card h3 { font-size: 17px !important; }
+  .audience-card p { font-size: 13.5px !important; }
+  .check-card h4 { font-size: 14.5px !important; }
+  .check-card p { font-size: 13px !important; }
+
+  /* FAQ */
+  .faq-q { padding: 14px 16px !important; font-size: 14.5px !important; gap: 10px !important; line-height: 1.35 !important; }
+  .faq-a-inner { padding: 0 16px 16px !important; font-size: 13.5px !important; }
+  .faq-ico { width: 24px !important; height: 24px !important; font-size: 15px !important; flex-shrink: 0; }
+
+  /* SECTION-PADDINGS global verkleinern */
+  section[style*="padding:88px"] { padding: 48px 0 !important; }
+  section[style*="padding:80px"] { padding: 48px 18px !important; }
+  section[style*="padding:56px"] { padding: 40px 0 !important; }
+
+  /* GENERAL BUTTONS */
+  .btn { padding: 11px 16px !important; font-size: 13.5px !important; }
+  .btn-xl { padding: 14px 20px !important; font-size: 14.5px !important; }
+
+  /* FINAL CTA */
+  .btn[style*="background:#fff"] { width: 100% !important; }
+}
+
+/* Sehr schmale Geräte (< 380px) – Notlauf */
+@media (max-width: 379px) {
+  .hero h1 { font-size: 24px !important; }
+  .section h2, section h2 { font-size: 21px !important; }
+  .upload-card { padding: 14px 12px !important; }
+  .upload-inner { padding: 0 10px !important; }
+  .hero { padding: 22px 16px 30px !important; }
+  .nav .btn { padding: 8px 12px !important; font-size: 12px !important; }
 }
 
 /* ════════════════════════════════════════════
