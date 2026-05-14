@@ -188,12 +188,28 @@ PRÜFE FOLGENDE PUNKTE:
      · "Aufzugswartung Haus 9" → 1 Aufzug
      · "Aufzugswartung Haus 9, 11, 15" → 3 Aufzüge
      · Wenn nicht ersichtlich → 0 (heißt: unbekannt)
-   - parteien_count: Wie viele Wohn-/Nutzungseinheiten teilen sich die Kosten?
-     · Suche nach Verteilerschlüsseln "Einheiten" mit einem Gesamtwert (z.B. "Hausreinigung Einheiten 73,000" → 73 Parteien).
-     · Auch "Wohneinheiten" oder "Personen" können Hinweise geben.
-     · Bei Miteigentumsanteile (MEA): MEA-Verteilung verrät NICHT direkt die Parteien-Anzahl — dann auf andere Position mit "Einheiten" schauen.
-     · Wenn nicht ableitbar → 0 (heißt: unbekannt). NICHT raten!
-   - Diese Zahlen brauchen wir für: Ersparnis pro Partei pro Monat = total_eur / parteien_count / 12.
+
+   - verteilerschluessel: WELCHER Schlüssel wird für die Aufzug-Position genutzt?
+     · "mea" → Miteigentumsanteile (üblich bei WEG)
+     · "qm" → Wohnfläche
+     · "einheit" → gleichmäßig pro Wohneinheit
+     · "person" → pro Person
+     · "unbekannt" → wenn nicht ersichtlich
+
+   - WENN verteilerschluessel === "mea" (Miteigentumsanteile):
+     · mea_pool_total: Die GESAMT-MEA der Aufzug-Position (das ist NICHT 100.000 — sondern nur die Summe für den Aufzug-Verteilerschlüssel, z.B. 17.051 für "Aufzugswartung Haus 9").
+     · mea_eigentuemer: Der MEA-Anteil des anfragenden Eigentümers an der Aufzug-Position (z.B. 1.263).
+     · parteien_count: NUR setzen, wenn aus dem Dokument klar hervorgeht, wie viele Parteien sich den Aufzug-Pool teilen. Sonst 0. NIE die "73 Einheiten" einer anderen Position (z.B. Hausreinigung) übernehmen — der Aufzug betrifft oft nur EIN Haus mit weniger Parteien.
+
+   - WENN verteilerschluessel === "einheit" (gleiche Anzahl pro Partei):
+     · parteien_count: Anzahl Einheiten am Verteilerschlüssel der Aufzug-Position direkt (z.B. wenn Aufzug-Position "Einheiten 13" → 13 Parteien).
+     · mea_pool_total / mea_eigentuemer leer/0 lassen.
+
+   - WENN verteilerschluessel === "qm" oder "person":
+     · Beides leer lassen (nur individuelle Berechnung aus "Ihr Anteil EUR" möglich).
+     · parteien_count: 0, sofern nicht eindeutig ableitbar.
+
+   - Mathematische Konsistenz: Die KI MUSS sicherstellen, dass aufzug_count * Wartung pro Anlage ≈ Gesamt-Aufzug-Position. Wenn das nicht passt → Werte korrigieren.
 
 ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
 {
@@ -208,20 +224,23 @@ ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
     }
   ],
   "aufzug_count": Zahl (Anzahl erkannter Aufzüge in der Abrechnung, 0 wenn unklar),
-  "parteien_count": Zahl (Anzahl Parteien/Einheiten im Verteilerschlüssel, 0 wenn unklar),
+  "verteilerschluessel": "mea" | "qm" | "einheit" | "person" | "unbekannt",
+  "parteien_count": Zahl (NUR bei verteilerschluessel "einheit" oder "person", sonst 0 — siehe Regel oben),
+  "mea_pool_total": Zahl (Gesamt-MEA der Aufzug-Position, NUR bei verteilerschluessel "mea"; sonst 0),
+  "mea_eigentuemer": Zahl (MEA-Anteil des Anfragenden, NUR bei verteilerschluessel "mea"; sonst 0),
   "savings_total_eur": Zahl (geschätzte jährliche Gesamtersparnis fürs ganze Haus in EUR, 0 wenn keine),
-  "savings_individual_eur": Zahl (geschätzte jährliche Ersparnis für die anfragende Partei in EUR — auf Basis Verteilerschlüssel; 0 wenn nicht berechenbar),
+  "savings_individual_eur": Zahl (geschätzte jährliche Ersparnis für die anfragende Partei in EUR — bei MEA: savings_total_eur * mea_eigentuemer / mea_pool_total; bei Einheit: savings_total_eur / parteien_count; 0 wenn nicht berechenbar),
   "savings_estimate_eur": Zahl (Legacy-Feld; identisch zu savings_total_eur),
   "savings_text": "z.B. 'rund 40% der bisherigen Aufzug-Kosten'",
   "anonymized_data": {
     "abrechnungszeitraum": "z.B. 2024",
     "betrag_aufzug_brutto": Zahl,
-    "verteilerschluessel": "qm" | "person" | "wohneinheit" | "unbekannt",
+    "verteilerschluessel": "mea" | "qm" | "einheit" | "person" | "unbekannt",
     "vollwartung_erwaehnt": true | false,
     "vorwegabzug_ausgewiesen": true | false,
     "anzahl_wartungen": Zahl | null,
     "anzahl_aufzuege": Zahl,
-    "anzahl_parteien": Zahl,
+    "mea_pool_total": Zahl,
     "anbieter_branche": "kone" | "schindler" | "tk-elevator" | "otis" | "sonstige" | "unbekannt"
   }
 }
@@ -389,13 +408,23 @@ export default async function (req: Request): Promise<Response> {
     // savings_total_eur ist die Gesamthaus-Ersparnis (Fallback: legacy savings_estimate_eur)
     // savings_individual_eur ist die Ersparnis für die anfragende Partei
     const savingsTotal = Number(result.savings_total_eur || result.savings_estimate_eur || 0);
-    const savingsIndividual = Number(result.savings_individual_eur || 0);
+    const meaPool       = Number(result.mea_pool_total || 0);
+    const meaEigentuemer = Number(result.mea_eigentuemer || 0);
+    // Sicherheitsnetz: Wenn MEA-Werte da sind und savings_individual_eur leer,
+    // rechnen wir selbst — verhindert "73 Parteien"-Fehler bei MEA-Verteilung
+    let savingsIndividual = Number(result.savings_individual_eur || 0);
+    if (!savingsIndividual && savingsTotal > 0 && meaPool > 0 && meaEigentuemer > 0) {
+      savingsIndividual = Math.round(savingsTotal * meaEigentuemer / meaPool);
+    }
     return jsonResp({
       ampel: result.ampel,
       summary: result.summary,
       findings: result.findings || [],
       aufzug_count: Number(result.aufzug_count || 0),
+      verteilerschluessel: String(result.verteilerschluessel || 'unbekannt'),
       parteien_count: Number(result.parteien_count || 0),
+      mea_pool_total: meaPool,
+      mea_eigentuemer: meaEigentuemer,
       savings_total_eur: savingsTotal,
       savings_individual_eur: savingsIndividual,
       savings_estimate_eur: savingsTotal, // Legacy für altes Frontend
