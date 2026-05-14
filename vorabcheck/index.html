@@ -1506,6 +1506,18 @@ function renderResult(r) {
       '</strong>'
     );
   }
+  // MEA-Hinweis bei Eigentümer/Mieter — Anteile am Gesamtobjekt sind individuell
+  if (isMea && role !== 'verwalter') {
+    const meaHint = role === 'mieter'
+      ? 'Die Aufzugskosten werden über die Hausverwaltung nach Miteigentumsanteilen verteilt — jede Wohnung trägt einen anderen Anteil am Gesamtobjekt. Die Pro-Partei-Zahl oben ist ein Durchschnittswert.'
+      : 'Aufzugskosten werden nach Miteigentumsanteilen (MEA) verteilt — jeder Eigentümer zahlt nach seinem Anteil am Gesamtobjekt. Die Pro-Partei-Zahl oben ist ein Durchschnitt; Ihr tatsächlicher Anteil kann höher oder niedriger sein.';
+    secLines.push(
+      '<div style="margin-top:10px;padding:9px 11px;background:rgba(255,255,255,.12);border-left:2px solid rgba(255,255,255,.4);border-radius:6px;font-size:12px;line-height:1.5;opacity:.92">' +
+        'ℹ️ ' + meaHint +
+      '</div>'
+    );
+  }
+
   if (secLines.length) {
     secBox.innerHTML = secLines.join('<div style="height:10px"></div>');
     secBox.style.display = 'block';
