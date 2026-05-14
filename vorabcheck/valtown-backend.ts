@@ -20,8 +20,8 @@ import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 // ───────────────────────────────────────────────────────────────
 // Konfiguration
 // ───────────────────────────────────────────────────────────────
-const MODEL = "claude-sonnet-4-5-20250929";
-const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.5)
+const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
+const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
 const COST_PER_M_OUTPUT_TOKENS = 15.0; // $ pro 1M Output-Tokens
 const USD_TO_EUR = 0.92;
 
@@ -132,6 +132,46 @@ function buildSystemPrompt(checkType: string, role: string, customMap: Record<st
 // ───────────────────────────────────────────────────────────────
 const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
   nebenkosten: `Du bist Aufzug-Experte und Bau-/Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
+
+═══════════════════════════════════════════
+TASK 1 (HÖCHSTE PRIORITÄT): DATEN EXTRAHIEREN
+═══════════════════════════════════════════
+Suche im Dokument die Aufzug-Wartungs-Position. Typische Bezeichnungen:
+  · "Aufzugskosten/Wartung/TÜV"
+  · "Aufzugswartung Haus X"
+  · "Aufzugswartung"
+  · "Aufzug Wartung"
+  · "Wartung Aufzug"
+  · "Aufzugskosten" (wenn nichts spezifischeres da ist)
+
+Daraus extrahiere den **GESAMT-Wartungsbetrag** — das ist der Wert in der
+GESAMT-Spalte (auch genannt: "Gesamt", "Verteilungsrelevante Beträge",
+"Ausgaben Gesamt", "Brutto"). Das ist NICHT "Ihr Anteil" / "Ihr Betrag".
+
+KONKRETE BEISPIELE (du musst genau lesen können):
+
+Beispiel A — tabellarisch mit MEA-Schlüssel:
+  Konto  Bezeichnung                  Verteilungsrelevante Beträge  Schlüssel  Gesamt  Ihr Anteil  Ihr Betrag
+  5000   Aufzugskosten/Wartung/TÜV    8.832,46                       MEA        10000   81          71,54
+  → betrag_aufzug_brutto = 8832.46  (NICHT 71.54!)
+
+Beispiel B — Haus-Position:
+  Aufzugswartung Haus 9   Miteigentumsanteile   17.051   1.263   2.100,00   155,55
+  → betrag_aufzug_brutto = 2100.00  (NICHT 155.55!)
+
+Beispiel C — Einfach:
+  Aufzugswartung   450,00 €   (Einheit)
+  → betrag_aufzug_brutto = 450.00
+
+Wichtige Regeln zur Extraktion:
+- IMMER den größten EUR-Wert der Aufzug-Wartungs-Zeile nehmen, NIE den Eigentümer-Anteil
+- Bei mehreren Aufzug-Wartungs-Positionen (z.B. mehrere Häuser): ADDIERE die Gesamt-Werte
+- Wenn du dir bei einem Wert nicht 100 % sicher bist: 0 zurückgeben, NIE raten
+- Tausender-Trenner ist Punkt, Dezimal-Komma: "8.832,46" = 8832.46
+
+═══════════════════════════════════════════
+TASK 2: RECHTLICHE BEWERTUNG (kurz)
+═══════════════════════════════════════════
 
 🎯 ZWEI SEPARATE BEWERTUNGEN — IMMER BEIDE DURCHFÜHREN:
 
@@ -427,7 +467,7 @@ export default async function (req: Request): Promise<Response> {
 
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096, // Erhöht von 2048 — komplexe Tabellen brauchen mehr Output-Spielraum
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
     });
