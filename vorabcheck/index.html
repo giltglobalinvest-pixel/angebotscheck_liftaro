@@ -735,6 +735,24 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
           <div class="check-nr-badge" id="check-nr-badge">CHECK-NR: VC-—</div>
         </div>
 
+        <!-- Zweite Card: Reparatur-Sparpotenzial (nur Eigentümer/Verwalter) -->
+        <div id="repair-savings-card" style="display:none;background:linear-gradient(135deg,#0e2440 0%,#1a3a5c 60%,#2d5a8c 100%);color:#fff;border-radius:16px;padding:24px;margin-top:14px;margin-bottom:24px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:-40%;right:-10%;width:240px;height:240px;background:radial-gradient(circle,rgba(125,194,66,.18) 0%,transparent 60%);pointer-events:none"></div>
+          <div style="position:relative;z-index:1">
+            <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(125,194,66,.25);color:#b8e07d;padding:4px 10px;border-radius:100px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Zusätzliches Potenzial
+            </div>
+            <div style="font-size:14.5px;font-weight:600;color:rgba(255,255,255,.92);margin-bottom:8px">Reparaturen unterm Jahr</div>
+            <div style="font-size:clamp(28px,5.5vw,42px);font-weight:800;line-height:1.05;letter-spacing:-.02em;margin-bottom:10px">
+              bis zu <span style="color:#a8e070">80&nbsp;%</span> Ersparnis
+            </div>
+            <div style="font-size:14px;color:rgba(255,255,255,.85);line-height:1.5">
+              Die obige Wartungs-Ersparnis berücksichtigt <strong>nur Wartung + Notruf</strong>. Unterjährige Reparaturen sind das größte Optimierungsfeld — durch <strong>laufende Liftaro-Betreuung</strong> lassen sich im Einzelfall bis zu <strong>8.000 €/Jahr zusätzlich</strong> einsparen.
+            </div>
+          </div>
+        </div>
+
         <div class="findings-list">
           <h4>Was wir gefunden haben</h4>
           <div id="findings-container"></div>
@@ -1380,6 +1398,12 @@ function renderResult(r) {
     secBox.style.display = 'none';
   }
 
+  // Reparatur-Card nur für Eigentümer + Hausverwalter (Mieter zahlt keine Reparaturen)
+  const repairCard = document.getElementById('repair-savings-card');
+  if (repairCard) {
+    repairCard.style.display = (role === 'eigentuemer' || role === 'verwalter') ? 'block' : 'none';
+  }
+
   // Rollen-spezifische CTA
   renderResultCta(role, r);
 
@@ -1414,6 +1438,10 @@ function escapeHtml(s) {
 }
 
 // ── Rollenabhängige CTA im Result-Screen ──────────────────────────────
+// Erzeugt rollen-spezifische E-Mail-Entwürfe (mailto). Mail-Client öffnet sich
+// auf Tap und der User kann den vorbereiteten Entwurf prüfen + abschicken.
+// E-Mail-Empfänger werden bewusst leer gelassen, wenn wir sie nicht kennen
+// (Vermieter / Hausverwaltung) — User trägt sie selbst ein.
 function renderResultCta(role, r) {
   const titleEl   = document.getElementById('result-cta-title');
   const textEl    = document.getElementById('result-cta-text');
@@ -1422,58 +1450,138 @@ function renderResultCta(role, r) {
   actionsEl.innerHTML = '';
   hintEl.style.display = 'none';
 
-  const checkNr = r.check_nr || '—';
-  const summary = (r.summary || '').slice(0, 200);
+  // Daten für die E-Mail-Vorlagen sammeln
+  const checkNr   = r.check_nr || '—';
+  const summary   = (r.summary || '').trim();
+  const vorname   = (document.getElementById('vorname')?.value || '').trim();
+  const nachname  = (document.getElementById('nachname')?.value || '').trim();
+  const adresse   = (document.getElementById('adresse')?.value || '').trim();
+  const fullName  = (vorname + ' ' + nachname).trim() || 'Ihr Name';
+  const savingsTotal = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  const savingsIndividual = Number(r.savings_individual_eur || 0);
+  const savingsTotalStr = savingsTotal > 0 ? Math.round(savingsTotal).toLocaleString('de-DE') + ' €/Jahr' : 'siehe Auswertung';
+  const savingsIndividualStr = savingsIndividual > 0 ? Math.round(savingsIndividual).toLocaleString('de-DE') + ' €/Jahr' : '';
+  const landingUrl = location.origin + location.pathname;
 
+  // ── MIETER: E-Mail an Vermieter (Bitte um Nebenkosten-Senkung über Hausverwaltung) ──
   if (role === 'mieter') {
     titleEl.textContent = 'Nächste Schritte für Mieter';
     textEl.innerHTML =
-      'Eine konkrete Einsparungsberechnung und Vertragsoptimierung kann nur durch den <strong>Eigentümer oder Hausverwalter</strong> beauftragt werden — als Mieter sind Sie nicht Vertragspartner. Sie können aber: ' +
-      '<br><br>• Unsere Auswertung an Ihre Hausverwaltung weiterleiten' +
-      '<br>• Bei begründetem Verdacht auf rechtswidrige Umlage einen Fachanwalt einschalten — wir vermitteln gerne.';
-    const mailSubject = encodeURIComponent('Anwalt-Vermittlung Mietrecht – Check ' + checkNr);
-    const mailBody    = encodeURIComponent('Hallo Liftaro-Team,\n\nbitte vermitteln Sie mir einen Fachanwalt für Mietrecht zu meinem Vorabcheck ' + checkNr + '.\n\nAuswertung in Kurzform: ' + summary + '\n\nViele Grüße');
+      'Als Mieter sind Sie nicht Vertragspartner — eine Vertragsoptimierung kann nur Ihr <strong>Vermieter oder die Hausverwaltung</strong> anstoßen. ' +
+      'Wir haben eine höfliche E-Mail-Vorlage an Ihren Vermieter vorbereitet, die Sie nur noch zu prüfen und abzusenden brauchen.';
+
+    const subj = encodeURIComponent('Bitte um Prüfung der Aufzug-Wartungskosten in der Nebenkostenabrechnung');
+    const body =
+      'Sehr geehrte Damen und Herren,\n\n' +
+      'ich habe einen kostenlosen Vorabcheck meiner Nebenkostenabrechnung durch Liftaro durchführen lassen ' +
+      '(Check-Nr. ' + checkNr + '). Die Analyse zeigt, dass bei der Aufzug-Position Optimierungspotenzial besteht.\n\n' +
+      'Auswertung in Kurzform:\n' + summary + '\n\n' +
+      'Geschätzte jährliche Gesamt-Ersparnis für das Haus: ' + savingsTotalStr + '\n\n' +
+      'Ich möchte Sie freundlich bitten, dies bei Ihrer Hausverwaltung anzuregen — Liftaro bietet eine ' +
+      'unverbindliche, konkrete Einsparungsberechnung an und unterstützt die Hausverwaltung gerne dabei. ' +
+      'Auch eine laufende Begleitung zur Reduzierung unterjähriger Reparaturkosten (im Einzelfall bis zu ' +
+      '80 %) ist möglich.\n\n' +
+      'Weitere Informationen: ' + landingUrl + '\n' +
+      'Kontakt Liftaro: check@liftaro.de\n\n' +
+      'Vielen Dank für Ihre Mühe.\n\n' +
+      'Mit freundlichen Grüßen\n' + fullName +
+      (adresse ? '\n' + adresse : '');
+    const mailLink = 'mailto:?subject=' + subj + '&body=' + encodeURIComponent(body);
+
     actionsEl.innerHTML =
-      '<a href="mailto:check@liftaro.de?subject=' + mailSubject + '&body=' + mailBody + '" class="btn">' +
+      '<a href="' + mailLink + '" class="btn">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-        'Fachanwalt anfragen' +
+        'E-Mail an Vermieter vorbereiten' +
       '</a>';
     hintEl.style.display = 'block';
-    hintEl.textContent = 'Wir geben keine Rechtsberatung. Die Vermittlung erfolgt an unabhängige Kanzleien.';
+    hintEl.textContent = 'Die E-Mail-Adresse Ihres Vermieters tragen Sie bitte selbst im geöffneten Mail-Entwurf ein. Wir geben keine Rechtsberatung.';
     return;
   }
 
-  // Eigentümer & Verwalter — können direkt eine konkrete Einsparungsberechnung anfragen
-  const isVerwalter = (role === 'verwalter');
-  titleEl.textContent = isVerwalter
-    ? 'Nächste Schritte für Hausverwalter'
-    : 'Nächste Schritte für Eigentümer';
-  textEl.innerHTML = isVerwalter
-    ? 'Für eine konkrete, rechtssichere Einsparungsberechnung über alle verwalteten Anlagen schicken Sie uns die Anfrage per E-Mail. Wir antworten in der Regel innerhalb von 24 h mit einem unverbindlichen Optimierungs-Vorschlag.'
-    : 'Als Eigentümer sind Sie Vertragspartner und können eine konkrete Einsparungsberechnung direkt beauftragen. Wir erstellen Ihnen einen unverbindlichen Vorschlag basierend auf dieser Indikation.';
+  // ── EIGENTÜMER: zwei Optionen (E-Mail an Hausverwaltung ODER direkt an Liftaro) ──
+  if (role === 'eigentuemer') {
+    titleEl.textContent = 'Nächste Schritte für Eigentümer';
+    textEl.innerHTML =
+      'Sie haben zwei Möglichkeiten — entweder Sie leiten die Optimierung über Ihre Hausverwaltung an, ' +
+      'oder Sie kontaktieren Liftaro direkt für eine konkrete Einsparungsberechnung. ' +
+      'Letzteres umfasst auch die laufende Reparatur-Prüfung (im Einzelfall bis zu 80 % Ersparnis).';
 
-  const subj = encodeURIComponent('Einsparungsberechnung – ' + (isVerwalter ? 'Verwalter' : 'Eigentümer') + ' – Check ' + checkNr);
-  const bodyLines = [
-    'Hallo Liftaro-Team,',
-    '',
-    'bitte erstellen Sie mir eine konkrete Einsparungsberechnung zu meinem Vorabcheck ' + checkNr + '.',
-    '',
-    'Rolle: ' + (isVerwalter ? 'Hausverwalter' : 'Eigentümer'),
-    'Auswertung in Kurzform: ' + summary,
-    '',
-    'Ich bestätige, dass ich als ' + (isVerwalter ? 'Hausverwalter mit Verwaltungsmandat' : 'Eigentümer') + ' berechtigt bin, eine Vertragsoptimierung zu beauftragen.',
-    '',
-    'Viele Grüße'
-  ];
-  const body = encodeURIComponent(bodyLines.join('\n'));
+    // E-Mail-Vorlage A: an Hausverwaltung
+    const subjHV = encodeURIComponent('Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro');
+    const bodyHV =
+      'Sehr geehrte Hausverwaltung,\n\n' +
+      'als Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen ' +
+      'Liftaro-Vorabcheck prüfen lassen (Check-Nr. ' + checkNr + '). Bei der Aufzug-Position besteht ' +
+      'Optimierungspotenzial.\n\n' +
+      'Auswertung in Kurzform:\n' + summary + '\n\n' +
+      'Geschätzte jährliche Gesamtersparnis für das Haus: ' + savingsTotalStr +
+      (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
+      'Ich bitte Sie, bei Liftaro (check@liftaro.de) eine konkrete Einsparungsberechnung anzufragen. ' +
+      'Liftaro ist auf Aufzug-Wartungsverträge spezialisiert und bietet zusätzlich eine laufende ' +
+      'Begleitung an, durch die unterjährige Reparaturkosten im Einzelfall um bis zu 80 % reduziert ' +
+      'werden können.\n\n' +
+      'Weitere Informationen: ' + landingUrl + '\n\n' +
+      'Vielen Dank für Ihre Mühe.\n\n' +
+      'Mit freundlichen Grüßen\n' + fullName;
+    const mailHV = 'mailto:?subject=' + subjHV + '&body=' + encodeURIComponent(bodyHV);
+
+    // E-Mail-Vorlage B: direkt an Liftaro
+    const subjLT = encodeURIComponent('Konkrete Einsparungsberechnung – Eigentümer – Check ' + checkNr);
+    const bodyLT =
+      'Hallo Liftaro-Team,\n\n' +
+      'ich bin Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'und habe einen Vorabcheck ' +
+      'unter ' + checkNr + ' durchgeführt.\n\n' +
+      'Ich möchte eine konkrete Einsparungsberechnung in Auftrag geben — sowohl für die Aufzug-Wartung ' +
+      'als auch für eine laufende Reparatur-Prüfung (bis zu 80 % Einsparung möglich).\n\n' +
+      'Auswertung in Kurzform:\n' + summary + '\n\n' +
+      'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
+      (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
+      'Ich bestätige, dass ich als Eigentümer berechtigt bin, eine Vertragsoptimierung anzustoßen.\n\n' +
+      'Mit freundlichen Grüßen\n' + fullName;
+    const mailLT = 'mailto:check@liftaro.de?subject=' + subjLT + '&body=' + encodeURIComponent(bodyLT);
+
+    actionsEl.innerHTML =
+      '<a href="' + mailHV + '" class="btn">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+        'E-Mail an Hausverwaltung' +
+      '</a>' +
+      '<a href="' + mailLT + '" class="btn btn-ghost">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+        'Direkt bei Liftaro anfragen' +
+      '</a>';
+    hintEl.style.display = 'block';
+    hintEl.textContent = 'Die E-Mail-Adresse Ihrer Hausverwaltung tragen Sie bei Option 1 bitte selbst im Mail-Entwurf ein. Wir geben keine Rechtsberatung.';
+    return;
+  }
+
+  // ── HAUSVERWALTER: direkte Anfrage an Liftaro ──
+  titleEl.textContent = 'Nächste Schritte für Hausverwalter';
+  textEl.innerHTML =
+    'Sie verwalten oft mehrere Objekte — bei jedem davon können wir Ihnen helfen, die Aufzug-Konditionen ' +
+    'marktgerecht zu optimieren und über eine laufende Betreuung auch unterjährige Reparaturkosten um ' +
+    'bis zu 80 % zu senken.';
+
+  const subjV = encodeURIComponent('Zusammenarbeit Hausverwaltung – Einsparungs-Konzept – Check ' + checkNr);
+  const bodyV =
+    'Hallo Liftaro-Team,\n\n' +
+    'ich bin Hausverwalter und habe für eines meiner verwalteten Objekte einen Vorabcheck unter ' +
+    checkNr + ' durchgeführt.\n\n' +
+    'Auswertung in Kurzform:\n' + summary + '\n\n' +
+    'Geschätzte jährliche Gesamtersparnis (nur Wartung+Notruf für dieses Objekt): ' + savingsTotalStr + '\n\n' +
+    'Ich interessiere mich für eine laufende Zusammenarbeit zur Optimierung der Aufzug-Wartungskonditionen ' +
+    'UND zur Reparatur-Kostenkontrolle bei allen meinen verwalteten Objekten (im Einzelfall bis zu 8.000 €/Jahr ' +
+    'Reparatur-Ersparnis pro Objekt). Bitte erstellen Sie mir einen Vorschlag mit den Konditionen Ihrer ' +
+    'laufenden Betreuung.\n\n' +
+    'Mit freundlichen Grüßen\n' + fullName;
+  const mailV = 'mailto:check@liftaro.de?subject=' + subjV + '&body=' + encodeURIComponent(bodyV);
 
   actionsEl.innerHTML =
-    '<a href="mailto:check@liftaro.de?subject=' + subj + '&body=' + body + '" class="btn">' +
+    '<a href="' + mailV + '" class="btn">' +
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-      'Einsparungsberechnung anfragen' +
+      'Anfrage an Liftaro senden' +
     '</a>';
   hintEl.style.display = 'block';
-  hintEl.textContent = 'Anfragen sind nur durch Eigentümer oder Hausverwalter zulässig. Wir geben keine Rechtsberatung.';
+  hintEl.textContent = 'Wir antworten i.d.R. innerhalb von 24 h mit einem unverbindlichen Konzept-Vorschlag. Wir geben keine Rechtsberatung.';
 }
 </script>
 
