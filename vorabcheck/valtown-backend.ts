@@ -148,7 +148,8 @@ B) MARKT-OPTIMIERUNG (steuert "savings_total_eur" — UNABHÄNGIG von A!)
    - Bei Wartung über Median: Erzeuge ein "amber" oder "blue" Finding "Optimierungspotenzial:
      Wartungspauschale X EUR liegt Y EUR über dem Marktmedian von 980 EUR. Geschätzte Ersparnis
      bei Neuausschreibung: Z EUR/Jahr."
-   - savings_total_eur = (tatsächliche_Wartung_pro_Anlage − 980) × Anzahl_Aufzüge × 0,7
+   - savings_total_eur = (tatsächliche_Wartung_pro_Anlage − 980) × Anzahl_Aufzüge
+     (exakte Differenz zum Marktmedian — kein Sicherheits-/Verhandlungsfaktor abziehen)
      (NICHT mehr null setzen, nur weil Ampel grün ist!)
    - savings_text z.B. "rund X % der bisherigen Wartungskosten durch marktgerechte Konditionen"
 
@@ -190,17 +191,18 @@ PRÜFE FOLGENDE PUNKTE:
    b) Teile durch aufzug_count (z.B. 2.100 / 1 = 2.100 € pro Anlage und Jahr)
    c) Vergleiche mit 980 €:
       · pro_anlage ≤ 1.200 → marktüblich, kein Befund (savings_total_eur = 0)
-      · 1.200 < pro_anlage ≤ 1.500 → leicht erhöht (blue/amber-Hinweis, kleine Ersparnis)
+      · 1.200 < pro_anlage ≤ 1.500 → leicht erhöht (blue/amber-Hinweis)
       · 1.500 < pro_anlage ≤ 1.800 → deutlich über Markt (amber/warn)
       · pro_anlage > 1.800 → KLAR ZU TEUER (warn, konkrete Ersparnis ausweisen)
-   d) Geschätzte Ersparnis = (pro_anlage − 980) × aufzug_count × 0,7
+   d) Ersparnis bei Neuausschreibung zum Median = (pro_anlage − 980) × aufzug_count
+      (KEINEN Verhandlungs-Faktor abziehen — wenn der Vertrag auf Median geht, ist genau das die Ersparnis.)
 
    KONKRETES BEISPIEL (für Konsistenz-Check):
    "Aufzugswartung Haus 9: 2.100 €, 1 Aufzug"
    → pro_anlage = 2.100 €
    → 2.100 > 1.800 → KLAR ZU TEUER
-   → savings_total_eur = (2.100 − 980) × 1 × 0,7 = 784 €
-   → savings_text = "rund 53 % der bisherigen Wartungskosten durch Neuausschreibung"
+   → savings_total_eur = (2.100 − 980) × 1 = 1.120 €
+   → savings_text = "rund 53 % der bisherigen Wartungskosten durch Neuausschreibung zum Marktmedian"
    → summary muss das WIDERSPIEGELN, NICHT "unter Marktmedian" behaupten!
 
    VERBOT: Schreibe NIE "unter Marktmedian" oder "marktüblich" wenn pro_anlage > 1.200 €.
@@ -297,7 +299,7 @@ LIFTARO-REFERENZWERTE (verbindlich, aus Marktdaten):
 - Wartungspauschale inkl. Notruf: **Median 980 €/Jahr** je Wohnaufzug
 - Servicestunden-Satz: 95–125 €/h Wohnaufzug, 110–145 €/h Gewerbe
 - Bei Wartungsangeboten > ~1.500 €/Jahr deutlich über Markt → konkret Ersparnis ausweisen
-- Geschätzte Ersparnis = (Angebotsbetrag − 980) × 0,7
+- Geschätzte Ersparnis bei Neuausschreibung = (Angebotsbetrag − 980) (exakte Differenz)
 
 Bei Mieter: §-Bezug bei umlagefähigkeitsrelevanten Themen (Reparatur vs. Wartung).
 Bei Eigentümer/Verwalter: wirtschaftlich/sachlich.
@@ -340,7 +342,7 @@ LIFTARO-REFERENZWERTE (verbindlich, aus Marktdaten):
   · 1.200–1.500 € → leicht erhöht (Hinweis)
   · 1.500–1.800 € → deutlich über Markt (amber/warn, Optimierung nennen)
   · über 1.800 € → klar zu teuer (warn, Ersparnis konkret ausweisen)
-- Geschätzte Ersparnis bei Neuausschreibung = (Vertragsbetrag − 980) × 0,7
+- Geschätzte Ersparnis bei Neuausschreibung = (Vertragsbetrag − 980) (exakte Differenz)
 - Bei mehreren Anlagen im Vertrag immer pro Anlage rechnen (Summe ÷ Anzahl)
 
 Bei Mieter: Mietrechtliche Konsequenzen mit §-Bezug benennen, wenn die Vertragsgestaltung die Umlagefähigkeit beeinflusst.
@@ -491,11 +493,13 @@ export default async function (req: Request): Promise<Response> {
 
       // Authoritative Berechnung — überschreibt IMMER die KI-Werte, wenn der Markt-Vergleich greift
       if (proAnlage > 1200) {
-        const correctTotal = Math.round((proAnlage - 980) * aufzugCount * 0.7);
+        // Ersparnis = exakte Differenz zwischen aktuellem Wartungspreis und Marktmedian.
+        // Kein "Verhandlungsfaktor" mehr — wenn neu ausgeschrieben wird, ist genau das die
+        // erreichbare Ersparnis.
+        const correctTotal = Math.round((proAnlage - 980) * aufzugCount);
         const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
         const diffStr      = Math.round(proAnlage - 980).toLocaleString('de-DE');
-        // pctSavings muss zum tatsächlichen Eurobetrag passen (correctTotal/aufzugBrutto),
-        // NICHT zum theoretischen Maximum (1 - 980/proAnlage). Sonst Inkonsistenz auf der Anzeige.
+        // pctSavings = exakter prozentualer Anteil (Differenz/Brutto)
         const pctSavings = aufzugBrutto > 0 ? Math.round((correctTotal / aufzugBrutto) * 100) : 0;
 
         // Authoritative-Override (savings + summary + finding + ampel)
@@ -515,7 +519,7 @@ export default async function (req: Request): Promise<Response> {
         findings.unshift({
           severity: proAnlage > 1800 ? 'warn' : (proAnlage > 1500 ? 'amber' : 'blue'),
           title: 'Wartungspauschale über Marktmedian',
-          description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diffStr + ' € über dem Liftaro-Marktmedian von 980 €/Jahr (inkl. Notruf). Eine Neuausschreibung kann ca. ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis bringen (Schätzung mit Verhandlungsrealismus, Faktor 0,7).',
+          description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt ' + diffStr + ' € über dem Liftaro-Marktmedian von 980 €/Jahr (inkl. Notruf). Bei Neuausschreibung zum Marktmedian: ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis.',
           tag: 'Liftaro-Marktreferenz · ' + proAnlageStr + ' vs. 980 EUR',
         });
         result.findings = findings;
