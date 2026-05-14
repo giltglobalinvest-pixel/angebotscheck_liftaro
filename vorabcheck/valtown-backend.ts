@@ -429,6 +429,48 @@ export default async function (req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
+
+    // ── Action-Routing: action="correct" speichert User-Korrekturen für Lern-Datenbasis ──
+    if (body.action === 'correct') {
+      const cn = String(body.check_nr || '').trim();
+      if (!cn) return jsonResp({ error: 'check_nr fehlt' }, 400, corsHeaders);
+      const key = Deno.env.get("AIRTABLE_KEY");
+      const base = Deno.env.get("AIRTABLE_BASE_ID");
+      if (!key || !base) return jsonResp({ ok: false, warning: 'Airtable nicht konfiguriert' }, 200, corsHeaders);
+      const fields = body.fields || {};
+      const records: any[] = [];
+      Object.keys(fields).forEach(k => {
+        const v = fields[k];
+        if (v && v.changed) {
+          records.push({
+            fields: {
+              check_nr: cn,
+              field_name: k,
+              original_value: String(v.original ?? ''),
+              corrected_value: String(v.corrected ?? ''),
+              savedAt: new Date().toISOString(),
+            }
+          });
+        }
+      });
+      if (!records.length) return jsonResp({ ok: true, count: 0 }, 200, corsHeaders);
+      try {
+        // Airtable: max 10 Records pro POST-Batch
+        const url = `https://api.airtable.com/v0/${base}/Vorabcheck-Korrekturen`;
+        for (let i = 0; i < records.length; i += 10) {
+          const batch = records.slice(i, i + 10);
+          await fetch(url, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ records: batch }),
+          });
+        }
+        return jsonResp({ ok: true, count: records.length }, 200, corsHeaders);
+      } catch (e: any) {
+        return jsonResp({ ok: false, error: e.message }, 500, corsHeaders);
+      }
+    }
+
     const { check_type, file, lead, turnstile_token, consent_given } = body;
     // Rolle normalisieren (Default = mieter, falls Frontend keinen Wert sendet)
     const role = ['mieter','eigentuemer','verwalter'].includes(body.role) ? body.role : 'mieter';
