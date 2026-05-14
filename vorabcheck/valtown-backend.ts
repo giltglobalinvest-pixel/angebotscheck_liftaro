@@ -392,6 +392,8 @@ export default async function (req: Request): Promise<Response> {
     const { check_type, file, lead, turnstile_token, consent_given } = body;
     // Rolle normalisieren (Default = mieter, falls Frontend keinen Wert sendet)
     const role = ['mieter','eigentuemer','verwalter'].includes(body.role) ? body.role : 'mieter';
+    // Vom Nutzer bestätigte Aufzug-Anzahl (Frontend-Pflichtfeld). Default 1.
+    const aufzugCountUser = Math.max(1, Math.min(50, parseInt(String(body.aufzug_count_user || '1'), 10) || 1));
 
     // 1. Turnstile validieren (wenn konfiguriert)
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
@@ -471,7 +473,9 @@ export default async function (req: Request): Promise<Response> {
     // Strategie: brutto-Wartungsbetrag erstmal aus anonymized_data lesen, sonst per Regex aus
     // dem Klartext (summary + findings) extrahieren. Dann mit Median 980 €/Anlage/Jahr vergleichen.
     if (check_type === 'nebenkosten') {
-      const aufzugCount = Math.max(1, Number(result.aufzug_count || 1));
+      // User-Angabe hat Vorrang vor KI-Schätzung (aus Dokument oft nicht eindeutig ableitbar)
+      const aufzugCount = aufzugCountUser;
+      result.aufzug_count = aufzugCount; // Im Response konsistent halten
       let aufzugBrutto  = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
 
       // Fallback: aus Klartext extrahieren. Sucht "Aufzug…wartung … 2.100 €" o.Ä.
@@ -572,7 +576,7 @@ export default async function (req: Request): Promise<Response> {
       ampel: result.ampel,
       summary: result.summary,
       findings: result.findings || [],
-      aufzug_count: Number(result.aufzug_count || 0),
+      aufzug_count: aufzugCountUser,
       verteilerschluessel: String(result.verteilerschluessel || 'unbekannt'),
       parteien_count: Number(result.parteien_count || 0),
       mea_pool_total: meaPool,
