@@ -900,7 +900,7 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
 <!-- KOSTENLOS-CHECK-HINWEIS -->
 <div class="free-banner">
   ⚡ Neu: KI-gestützter Aufzug-Check — kostenlos in 30 Sekunden.
-  <a href="/vorabcheck/">Jetzt prüfen lassen →</a>
+  <a href="../vorabcheck/">Jetzt prüfen lassen →</a>
 </div>
 
 <!-- NAV -->
@@ -916,7 +916,7 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
       <a href="#fuer-wen">Für wen</a>
       <a href="#kontakt">Kontakt</a>
     </nav>
-    <a href="/vorabcheck/" class="btn">Kostenlos prüfen</a>
+    <a href="../vorabcheck/" class="btn">Kostenlos prüfen</a>
   </div>
 </header>
 
@@ -931,7 +931,7 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
       <h1>Aufzugskosten verstehen. <span class="accent">Transparenz schaffen.</span> Sparen.</h1>
       <p class="hero-sub">Liftaro prüft Wartungsverträge, Reparaturangebote und Nebenkostenabrechnungen für Mieter, Eigentümer und Hausverwalter — mit KI-Analyse und Branchenwissen aus tausenden Verträgen.</p>
       <div class="hero-cta">
-        <a href="/vorabcheck/" class="btn btn-xl">
+        <a href="../vorabcheck/" class="btn btn-xl">
           Kostenlos prüfen — in 30 Sek
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </a>
@@ -1053,7 +1053,7 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Erfolgsbeteiligung: 50 % der realisierten Ersparnis</li>
           <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Keine laufenden Kosten</li>
         </ul>
-        <a href="/vorabcheck/" class="btn">Jetzt Free-Check starten</a>
+        <a href="../vorabcheck/" class="btn">Jetzt Free-Check starten</a>
       </div>
 
       <!-- Light -->
@@ -1160,7 +1160,7 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
 </section>
 
 <!-- FINAL CTA -->
-<section class="final-cta" id="kontakt">
+<section class="final-cta">
   <div class="final-cta-inner">
     <span class="final-cta-eyebrow">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -1168,15 +1168,69 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
     </span>
     <h2>Bereit für Klarheit über Ihre Aufzugskosten?</h2>
     <p>Starten Sie mit dem kostenlosen Vorabcheck — in 30 Sekunden zur ersten Indikation. Ohne Anmeldung, ohne Bindung.</p>
-    <a href="/vorabcheck/" class="btn btn-xl">
+    <a href="../vorabcheck/" class="btn btn-xl">
       Jetzt kostenlos prüfen
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </a>
-    <div style="margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-size:14px;line-height:1.6">
-      Light-Paket gewünscht oder individuelle Frage?<br>
-      Schreiben Sie uns an <a href="mailto:check@liftaro.de" style="color:var(--green);font-weight:700;text-decoration:none">check@liftaro.de</a> — wir antworten innerhalb von 24 Stunden.
-    </div>
   </div>
+</section>
+
+<!-- KONTAKT-FORMULAR (für Light-Paket & individuelle Anfragen) -->
+<section class="section" id="kontakt" style="background:var(--bg-soft);border-top:1px solid var(--line);padding:80px 24px">
+  <div class="section-head" style="margin-bottom:32px">
+    <span class="section-eyebrow">Anfrage</span>
+    <h2>Light-Paket oder <span class="accent">individuelle Frage</span>?</h2>
+    <p class="section-lead">Schicken Sie uns die Details — wir antworten innerhalb von 24 Stunden mit einem unverbindlichen Angebot.</p>
+  </div>
+  <form id="kontakt-form" style="max-width:680px;margin:0 auto;background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:32px 30px;box-shadow:var(--shadow-sm)" onsubmit="return submitKontaktForm(event)">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <label for="kf-name" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Name <span style="color:#dc2626">*</span></label>
+        <input type="text" id="kf-name" required autocomplete="name" placeholder="Max Mustermann" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink)">
+      </div>
+      <div>
+        <label for="kf-firma" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Firma / Hausverwaltung</label>
+        <input type="text" id="kf-firma" autocomplete="organization" placeholder="optional" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink)">
+      </div>
+      <div>
+        <label for="kf-email" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">E-Mail <span style="color:#dc2626">*</span></label>
+        <input type="email" id="kf-email" required autocomplete="email" placeholder="max@beispiel.de" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink)">
+      </div>
+      <div>
+        <label for="kf-tel" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Telefon</label>
+        <input type="tel" id="kf-tel" autocomplete="tel" placeholder="optional" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink)">
+      </div>
+      <div>
+        <label for="kf-paket" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Paket-Interesse</label>
+        <select id="kf-paket" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink)">
+          <option value="light">Light — 45 €/Monat je Aufzug</option>
+          <option value="free">Free — kostenlos, mit Erfolgsbeteiligung</option>
+          <option value="andere">Andere / unklar</option>
+        </select>
+      </div>
+      <div>
+        <label for="kf-anzahl" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Anzahl Aufzüge</label>
+        <input type="number" id="kf-anzahl" min="1" max="999" placeholder="z.B. 1, 5, 20" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink)">
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label for="kf-nachricht" style="display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Ihre Nachricht <span style="color:#dc2626">*</span></label>
+      <textarea id="kf-nachricht" required rows="4" placeholder="Worum geht's konkret? (z.B. Adresse, aktuelle Wartungssumme, gewünschter Start, besondere Anforderungen …)" style="width:100%;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14.5px;background:#fff;outline:none;font-family:inherit;color:var(--ink);resize:vertical;line-height:1.5"></textarea>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:var(--bg-soft);border-radius:6px;border:1px solid var(--line);margin-bottom:20px;font-size:13px;color:var(--ink-2);line-height:1.5">
+      <input type="checkbox" id="kf-consent" required checked style="margin-top:2px;width:16px;height:16px;accent-color:var(--green);flex-shrink:0;cursor:pointer">
+      <label for="kf-consent" style="cursor:pointer">Ich willige in die Verarbeitung meiner Daten zur Bearbeitung der Anfrage ein. Widerruf jederzeit möglich.</label>
+    </div>
+    <button type="submit" class="btn btn-large" style="width:100%;justify-content:center">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Anfrage senden
+    </button>
+    <div id="kf-feedback" style="display:none;margin-top:14px;padding:11px 14px;border-radius:6px;font-size:13.5px;line-height:1.5"></div>
+    <div style="margin-top:18px;font-size:12px;color:var(--ink-3);text-align:center;line-height:1.6">
+      Beim Klick öffnet sich Ihr Mail-Programm mit einem vorausgefüllten Entwurf an <strong>check@liftaro.de</strong>.<br>
+      Antwort innerhalb von 24 Stunden. Alternativ direkt anrufen.
+    </div>
+  </form>
 </section>
 
 <!-- FOOTER -->
@@ -1189,7 +1243,7 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
     <div>
       <h5>Produkt</h5>
       <ul>
-        <li><a href="/vorabcheck/">Kostenlos prüfen</a></li>
+        <li><a href="../vorabcheck/">Kostenlos prüfen</a></li>
         <li><a href="#services">Pakete</a></li>
         <li><a href="#leistungen">Was wir prüfen</a></li>
         <li><a href="#wie-es-geht">So funktioniert's</a></li>
@@ -1223,6 +1277,56 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
 </footer>
 
 <script>
+// ── Kontakt-Formular: baut einen vorausgefüllten mailto-Entwurf ────────
+function submitKontaktForm(e) {
+  e.preventDefault();
+  var val = function(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+  var name = val('kf-name');
+  var firma = val('kf-firma');
+  var email = val('kf-email');
+  var tel   = val('kf-tel');
+  var paket = val('kf-paket');
+  var anzahl = val('kf-anzahl');
+  var msg = val('kf-nachricht');
+
+  var paketLabel = paket === 'free' ? 'Free (kostenlos, mit Erfolgsbeteiligung)'
+                 : paket === 'light' ? 'Light (45 €/Monat je Aufzug)'
+                 : 'Andere / unklar';
+  var subject = 'Liftaro-Anfrage — ' + paketLabel + (anzahl ? ' (' + anzahl + ' Aufzug' + (anzahl === '1' ? '' : 'e') + ')' : '');
+  var bodyLines = [
+    'Hallo Liftaro-Team,',
+    '',
+    'ich interessiere mich für das Paket: ' + paketLabel + '.',
+    '',
+    '--- Kontakt ---',
+    'Name: ' + name,
+    firma ? 'Firma / Hausverwaltung: ' + firma : null,
+    'E-Mail: ' + email,
+    tel ? 'Telefon: ' + tel : null,
+    anzahl ? 'Anzahl Aufzüge: ' + anzahl : null,
+    '',
+    '--- Nachricht ---',
+    msg,
+    '',
+    'Mit freundlichen Grüßen',
+    name,
+  ].filter(function(x) { return x !== null; });
+  var body = bodyLines.join('\n');
+  var mailto = 'mailto:check@liftaro.de?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+
+  var fb = document.getElementById('kf-feedback');
+  if (fb) {
+    fb.style.display = 'block';
+    fb.style.background = '#eaf6dd';
+    fb.style.border = '1px solid #b8e07d';
+    fb.style.color = '#3d7a14';
+    fb.textContent = '✓ Mail-Entwurf wird geöffnet … Sollte sich kein Mail-Programm öffnen, schicken Sie uns die Anfrage bitte direkt an check@liftaro.de.';
+  }
+  // Mail-Programm öffnen
+  window.location.href = mailto;
+  return false;
+}
+
 // ── Design-Varianten-Switch ───────────────────────────
 // "clean" (Default) = ohne Stat-Bar, "stats" = mit Stat-Bar unter dem Hero.
 // Prioritäten (höchste zuerst):
