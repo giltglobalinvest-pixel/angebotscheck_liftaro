@@ -185,6 +185,7 @@ PRÜFE FOLGENDE PUNKTE:
 3. WARTUNGSPAUSCHALE — LIFTARO-REFERENZWERT (verbindlich, NICHT VERHANDELBAR)
    - **Marktmedian Wohnaufzug INKL. Notruf/Bereitschaftsdienst: 980 €/Jahr je Anlage**
    - Dieser Wert ist die Liftaro-Referenz aus Marktdaten. Verwende ihn als HARTE Vergleichsbasis. Erfinde KEINE anderen Median-Werte.
+   - **WICHTIG — Diskretion bei der Ausgabe:** Den konkreten Wert "980 €" NIE wörtlich in summary, savings_text oder findings nennen. Stattdessen sprich vom "branchenüblichen Marktmedian", "Marktreferenz für Wartung und Notruf" oder "marktüblichem Vergleichswert". Die Differenz und die Ersparnis dürfen genannt werden — nur die Median-Zahl selbst nicht.
 
    PFLICHT-RECHENGANG (immer durchführen):
    a) Hole den Aufzug-Brutto-Betrag aus der Abrechnung (z.B. "Aufzugswartung Haus 9: 2.100 €")
@@ -201,9 +202,10 @@ PRÜFE FOLGENDE PUNKTE:
    "Aufzugswartung Haus 9: 2.100 €, 1 Aufzug"
    → pro_anlage = 2.100 €
    → 2.100 > 1.800 → KLAR ZU TEUER
-   → savings_total_eur = (2.100 − 980) × 1 = 1.120 €
-   → savings_text = "rund 53 % der bisherigen Wartungskosten durch Neuausschreibung zum Marktmedian"
+   → savings_total_eur = (2.100 − 980) × 1 = 1.120 € (intern berechnen, NICHT den Median-Wert anzeigen)
+   → savings_text = "rund 53 % der bisherigen Wartungskosten durch Neuausschreibung zu marktüblichen Konditionen"
    → summary muss das WIDERSPIEGELN, NICHT "unter Marktmedian" behaupten!
+   → finding-Description: "liegt rund 1.120 € über dem branchenüblichen Marktmedian" (KEINE konkrete 980-Zahl!)
 
    VERBOT: Schreibe NIE "unter Marktmedian" oder "marktüblich" wenn pro_anlage > 1.200 €.
    Achtung: Hohe Beträge können in Sondersituationen gerechtfertigt sein (hochwertige/seltene Anlage, mehrere Wartungen p.a., Großgebäude mit ständigem Notruf-Bedarf). Bei Anhaltspunkten dafür: Befund-Severity um eine Stufe abmildern — aber NICHT die mathematische Aussage drehen.
@@ -506,11 +508,20 @@ export default async function (req: Request): Promise<Response> {
         savingsTotal = correctTotal;
         result.savings_text = 'rund ' + pctSavings + ' % der bisherigen Wartungskosten durch marktgerechte Neuausschreibung';
 
-        // Summary überschreiben, wenn KI eine falsche/keine Marktposition genannt hat
+        // Summary überschreiben, wenn KI eine falsche/keine Marktposition genannt hat.
+        // Konkreten Median-Wert (980 €) NICHT erwähnen — nur generische Marktreferenz.
         const summaryHasMarketClaim = /markt|median/i.test(String(result.summary || ''));
         const summaryIsConsistent = summaryHasMarketClaim && /über|ueber|deutlich|teuer/i.test(String(result.summary || ''));
         if (!summaryIsConsistent) {
-          result.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diffStr + ' € über dem Liftaro-Marktmedian von 980 €. Optimierungspotenzial vorhanden.';
+          result.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diffStr + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Optimierungspotenzial vorhanden.';
+        }
+        // Falls die KI selbst die konkrete 980-Zahl in summary geschrieben hat → entfernen
+        if (result.summary) {
+          result.summary = String(result.summary).replace(/\bvon\s+9\s?80\s*(€|EUR)\b/gi, '').replace(/\(?\b9\s?80\s*(€|EUR)\b\)?/gi, '').replace(/\s{2,}/g, ' ').trim();
+        }
+        // Selbe Säuberung für savings_text
+        if (result.savings_text) {
+          result.savings_text = String(result.savings_text).replace(/\bvon\s+9\s?80\s*(€|EUR)\b/gi, '').replace(/\(?\b9\s?80\s*(€|EUR)\b\)?/gi, '').replace(/\s{2,}/g, ' ').trim();
         }
 
         // Vorhandenes Markt-Finding ENTFERNEN (KI-Mathe ist meist falsch), durch authoritatives ersetzen
@@ -519,9 +530,10 @@ export default async function (req: Request): Promise<Response> {
         findings.unshift({
           severity: proAnlage > 1800 ? 'warn' : (proAnlage > 1500 ? 'amber' : 'blue'),
           title: 'Wartungspauschale über Marktmedian',
-          description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt ' + diffStr + ' € über dem Liftaro-Marktmedian von 980 €/Jahr (inkl. Notruf). Bei Neuausschreibung zum Marktmedian: ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis.',
-          tag: 'Liftaro-Marktreferenz · ' + proAnlageStr + ' vs. 980 EUR',
+          description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt ' + diffStr + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Bei Neuausschreibung zu marktüblichen Konditionen: ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis.',
+          tag: 'Liftaro-Marktreferenz · aktuell ' + proAnlageStr + ' EUR/Jahr',
         });
+
         result.findings = findings;
 
         // Ampel anpassen: bei deutlich über Markt mindestens gelb
@@ -530,6 +542,23 @@ export default async function (req: Request): Promise<Response> {
         }
 
         console.log('[liftaro-vorabcheck] Markt-Override: brutto=' + aufzugBrutto + ', anlagen=' + aufzugCount + ', proAnlage=' + proAnlage + ', diff=' + diffStr + ', ersparnis=' + correctTotal);
+      }
+
+      // Zusatz-Hinweis für Eigentümer und Hausverwalter — IMMER (unabhängig davon, ob die Wartung
+      // überteuert ist). Das Sparpotenzial dieser Auswertung deckt nur Wartung + Notruf ab.
+      // Bei unterjährigen Reparaturen kann Liftaro im Einzelfall bis zu 8.000 €/Jahr zusätzlich einsparen.
+      if (role === 'eigentuemer' || role === 'verwalter') {
+        const findings = result.findings || [];
+        const hasRepairHint = findings.some(f => /reparatur.*(8\.?000|einsparen|liftaro.*pr[üu]f|zus[äa]tzlich)/i.test((f.title||'') + ' ' + (f.description||'')));
+        if (!hasRepairHint) {
+          findings.push({
+            severity: 'blue',
+            title: 'Zusätzliches Sparpotenzial bei Reparaturen',
+            description: 'Diese Schätzung berücksichtigt nur Wartung und Notruf. Unterjährige Reparaturen sind nicht eingerechnet — gerade dort steckt oft das größte Potenzial. Durch regelmäßige Überprüfung der Reparatur-Rechnungen durch Liftaro lassen sich im Einzelfall bis zu 8.000 € pro Jahr zusätzlich einsparen.',
+            tag: 'Reparatur-Prüfung · Liftaro-Service',
+          });
+          result.findings = findings;
+        }
       }
     }
 
