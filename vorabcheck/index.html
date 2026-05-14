@@ -627,8 +627,8 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
 
       <!-- STEP 2: CONTACT FORM -->
       <div class="step-pane" id="step-2">
-        <!-- DEV-Mode Shortcut: nur sichtbar bei ?dev=1 in der URL -->
-        <div id="dev-shortcut" style="display:none;background:#fff7e6;border:1.5px dashed #f0a020;border-radius:10px;padding:12px 14px;margin-bottom:18px;display:none;align-items:center;gap:10px;flex-wrap:wrap">
+        <!-- DEV-Mode Shortcut: sichtbar bei ?dev=1 in URL ODER wenn localStorage 'liftaro-dev-mode' = '1' -->
+        <div id="dev-shortcut" style="display:none;background:#fff7e6;border:1.5px dashed #f0a020;border-radius:10px;padding:12px 14px;margin-bottom:18px;align-items:center;gap:10px;flex-wrap:wrap">
           <span style="font-size:13px;color:#7a4d00">🧪 <strong>Dev-Mode aktiv</strong> · Schritt mit Test-Daten überspringen?</span>
           <button type="button" id="dev-fill-submit" style="background:#f0a020;border:none;color:#fff;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer">Test-Daten + sofort starten →</button>
         </div>
@@ -992,7 +992,9 @@ function applyLandingTheme(theme) {
   } catch (e) {}
 })();
 
-// ── DEV-MODE (?dev=1) – Schritt 2 mit Test-Daten überspringen ──
+// ── DEV-MODE (?dev=1 oder localStorage) – Schritt 2 mit Test-Daten überspringen ──
+// Aktivierung: ?dev=1 in URL → setzt localStorage 'liftaro-dev-mode'='1' (persistent).
+// Deaktivierung: ?dev=0 → löscht localStorage. Sonst bleibt Dev-Mode aktiv, bis bewusst aus.
 const _DEV_DEFAULTS = {
   vorname:  'Max',
   nachname: 'Tester',
@@ -1002,8 +1004,14 @@ const _DEV_DEFAULTS = {
 };
 (function () {
   try {
-    const isDev = new URLSearchParams(location.search).get('dev') === '1';
+    const param = new URLSearchParams(location.search).get('dev');
+    if (param === '1') { try { localStorage.setItem('liftaro-dev-mode', '1'); } catch(e){} }
+    if (param === '0') { try { localStorage.removeItem('liftaro-dev-mode'); } catch(e){} }
+    let stored = '';
+    try { stored = localStorage.getItem('liftaro-dev-mode') || ''; } catch(e){}
+    const isDev = (param === '1') || (stored === '1' && param !== '0');
     if (!isDev) return;
+    console.log('[Vorabcheck] Dev-Mode aktiv');
     document.addEventListener('DOMContentLoaded', () => {
       const box = document.getElementById('dev-shortcut');
       if (box) box.style.display = 'flex';
