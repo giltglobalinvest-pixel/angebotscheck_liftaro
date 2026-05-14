@@ -445,6 +445,147 @@ html[data-theme="liftaro"] section[style*="linear-gradient(135deg,var(--brand-de
 /* Footer behält dunklen Ink-Ton (Navy) */
 html[data-theme="liftaro"] footer { background: #0a1c33 !important; }
 html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background: #0a1c33 !important; }
+
+/* Liftaro-Brand: eckigere Buttons + härtere Kanten an Cards (B2B-Look) */
+html[data-theme="liftaro"] .btn { border-radius: 6px; }
+html[data-theme="liftaro"] .btn-large { border-radius: 6px; }
+html[data-theme="liftaro"] .btn-xl { border-radius: 8px; }
+html[data-theme="liftaro"] .btn-ghost { border-radius: 6px; }
+html[data-theme="liftaro"] .upload-card { border-radius: 8px; }
+html[data-theme="liftaro"] .check-card { border-radius: 6px; }
+html[data-theme="liftaro"] .audience-card { border-radius: 8px; }
+html[data-theme="liftaro"] .faq-item { border-radius: 6px; }
+html[data-theme="liftaro"] .field input { border-radius: 5px; }
+
+/* Liftaro-Brand-only Sektionen: standardmäßig ausgeblendet, nur bei aktivem Theme sichtbar */
+.liftaro-only { display: none; }
+html[data-theme="liftaro"] .liftaro-only { display: block; }
+
+/* Trust-Stat-Bar (direkt unter Hero) */
+html[data-theme="liftaro"] .liftaro-stats {
+  background: #f4f7fa;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 28px 24px;
+}
+html[data-theme="liftaro"] .liftaro-stats-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+html[data-theme="liftaro"] .liftaro-stat {
+  text-align: center;
+  padding: 8px 12px;
+}
+html[data-theme="liftaro"] .liftaro-stat-value {
+  font-size: clamp(28px, 4.5vw, 42px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -.025em;
+  color: #1a3a5c;
+  margin-bottom: 4px;
+}
+html[data-theme="liftaro"] .liftaro-stat-value .accent { color: #7dc242; }
+html[data-theme="liftaro"] .liftaro-stat-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a5568;
+  line-height: 1.4;
+}
+@media (max-width: 720px) {
+  html[data-theme="liftaro"] .liftaro-stats { padding: 22px 16px; }
+  html[data-theme="liftaro"] .liftaro-stats-inner { gap: 14px; grid-template-columns: 1fr; text-align: center; }
+  html[data-theme="liftaro"] .liftaro-stat { padding: 6px; }
+  html[data-theme="liftaro"] .liftaro-stat-value { font-size: 26px; }
+}
+
+/* 4-Schritte-Prozess */
+html[data-theme="liftaro"] .liftaro-steps {
+  padding: 64px 24px;
+  background: #fff;
+}
+html[data-theme="liftaro"] .liftaro-steps-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+}
+html[data-theme="liftaro"] .liftaro-steps-head {
+  text-align: center;
+  margin-bottom: 42px;
+}
+html[data-theme="liftaro"] .liftaro-steps-head h2 {
+  font-size: clamp(26px, 3.5vw, 36px);
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: #1a3a5c;
+  margin-bottom: 10px;
+}
+html[data-theme="liftaro"] .liftaro-steps-head p {
+  font-size: 15.5px;
+  color: #6b7280;
+  max-width: 540px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
+html[data-theme="liftaro"] .liftaro-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  position: relative;
+}
+html[data-theme="liftaro"] .liftaro-step {
+  text-align: center;
+  position: relative;
+}
+html[data-theme="liftaro"] .liftaro-step-num {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  background: linear-gradient(180deg, #1a3a5c, #0e2440);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgba(26,58,92,.15), 0 6px 16px rgba(26,58,92,.18);
+  position: relative;
+  z-index: 2;
+}
+html[data-theme="liftaro"] .liftaro-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  left: calc(50% + 36px);
+  right: calc(-50% + 36px);
+  height: 2px;
+  background: linear-gradient(90deg, rgba(125,194,66,.5), rgba(26,58,92,.2));
+  z-index: 1;
+}
+html[data-theme="liftaro"] .liftaro-step-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a3a5c;
+  margin-bottom: 6px;
+  letter-spacing: -.005em;
+}
+html[data-theme="liftaro"] .liftaro-step-desc {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+@media (max-width: 880px) {
+  html[data-theme="liftaro"] .liftaro-steps { padding: 44px 18px; }
+  html[data-theme="liftaro"] .liftaro-steps-grid { grid-template-columns: repeat(2, 1fr); gap: 28px; }
+  html[data-theme="liftaro"] .liftaro-step:nth-child(2)::after { display: none; }
+}
+@media (max-width: 540px) {
+  html[data-theme="liftaro"] .liftaro-steps-grid { grid-template-columns: 1fr; gap: 24px; }
+  html[data-theme="liftaro"] .liftaro-step::after { display: none !important; }
+}
 </style>
 </head>
 
@@ -513,6 +654,56 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
       </div>
     </div>
     <div></div>
+  </div>
+</section>
+
+<!-- TRUST-STAT-BAR (nur Liftaro-Theme) -->
+<section class="liftaro-only liftaro-stats" aria-label="Liftaro auf einen Blick">
+  <div class="liftaro-stats-inner">
+    <div class="liftaro-stat">
+      <div class="liftaro-stat-value">0&nbsp;<span class="accent">€</span></div>
+      <div class="liftaro-stat-label">Erstprüfung — kostenlos und unverbindlich</div>
+    </div>
+    <div class="liftaro-stat">
+      <div class="liftaro-stat-value">30&nbsp;<span class="accent">Sek</span></div>
+      <div class="liftaro-stat-label">Auswertung direkt nach Upload</div>
+    </div>
+    <div class="liftaro-stat">
+      <div class="liftaro-stat-value">bis zu&nbsp;<span class="accent">60&nbsp;%</span></div>
+      <div class="liftaro-stat-label">Einsparpotenzial bei Wartung und Reparaturen</div>
+    </div>
+  </div>
+</section>
+
+<!-- 4-SCHRITTE-PROZESS (nur Liftaro-Theme) -->
+<section class="liftaro-only liftaro-steps" aria-label="In vier Schritten">
+  <div class="liftaro-steps-inner">
+    <div class="liftaro-steps-head">
+      <h2>In vier Schritten zur Transparenz</h2>
+      <p>Sie laden Ihr Dokument hoch — wir übernehmen den Rest. Ohne Verpflichtung, ohne Aufwand.</p>
+    </div>
+    <div class="liftaro-steps-grid">
+      <div class="liftaro-step">
+        <div class="liftaro-step-num">1</div>
+        <div class="liftaro-step-title">Dokument hochladen</div>
+        <div class="liftaro-step-desc">Nebenkostenabrechnung oder Reparatur-Angebot als PDF oder Bild.</div>
+      </div>
+      <div class="liftaro-step">
+        <div class="liftaro-step-num">2</div>
+        <div class="liftaro-step-title">KI prüft die Position</div>
+        <div class="liftaro-step-desc">Wartung, Notruf, Verteilung und Umlagefähigkeit werden analysiert.</div>
+      </div>
+      <div class="liftaro-step">
+        <div class="liftaro-step-num">3</div>
+        <div class="liftaro-step-title">Ergebnis in Klartext</div>
+        <div class="liftaro-step-desc">Ampelbewertung, konkrete Einspar-Schätzung und §-Bezüge.</div>
+      </div>
+      <div class="liftaro-step">
+        <div class="liftaro-step-num">4</div>
+        <div class="liftaro-step-title">Optimierung anstoßen</div>
+        <div class="liftaro-step-desc">Auf Wunsch begleiten wir die Neuausschreibung oder vermitteln einen Fachanwalt.</div>
+      </div>
+    </div>
   </div>
 </section>
 
