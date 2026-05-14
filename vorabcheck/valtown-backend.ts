@@ -546,7 +546,7 @@ export default async function (req: Request): Promise<Response> {
 
       // Zusatz-Hinweis für Eigentümer und Hausverwalter — IMMER (unabhängig davon, ob die Wartung
       // überteuert ist). Das Sparpotenzial dieser Auswertung deckt nur Wartung + Notruf ab.
-      // Bei unterjährigen Reparaturen kann Liftaro im Einzelfall bis zu 8.000 €/Jahr zusätzlich einsparen.
+      // Bei unterjährigen Reparaturen kann Liftaro im Einzelfall bis zu 8.000 € zusätzlich einsparen.
       if (role === 'eigentuemer' || role === 'verwalter') {
         const findings = result.findings || [];
         const hasRepairHint = findings.some(f => /reparatur.*(8\.?000|einsparen|liftaro.*pr[üu]f|zus[äa]tzlich)/i.test((f.title||'') + ' ' + (f.description||'')));
@@ -554,7 +554,7 @@ export default async function (req: Request): Promise<Response> {
           findings.push({
             severity: 'blue',
             title: 'Zusätzliches Sparpotenzial bei Reparaturen',
-            description: 'Diese Schätzung berücksichtigt nur Wartung und Notruf. Unterjährige Reparaturen sind nicht eingerechnet — gerade dort steckt oft das größte Potenzial. Durch regelmäßige Überprüfung der Reparatur-Rechnungen durch Liftaro lassen sich im Einzelfall bis zu 8.000 € pro Jahr zusätzlich einsparen.',
+            description: 'Diese Schätzung berücksichtigt nur Wartung und Notruf. Unterjährige Reparaturen sind nicht eingerechnet — gerade dort steckt oft das größte Potenzial. Durch regelmäßige Überprüfung der Reparatur-Rechnungen durch Liftaro lassen sich im Einzelfall bis zu 8.000 € zusätzlich einsparen.',
             tag: 'Reparatur-Prüfung · Liftaro-Service',
           });
           result.findings = findings;
