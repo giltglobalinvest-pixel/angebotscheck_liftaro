@@ -975,20 +975,35 @@ document.addEventListener('DOMContentLoaded', () => { loadProxyUrlFromMasterBase
 //   - 'classic' (Default) → grünes Design
 //   - 'liftaro'           → Navy-Header mit echtem Liftaro-Logo (passt zu liftaro.de)
 // Override per URL: ?theme=liftaro oder ?theme=classic (für Preview ohne Admin-Zugang)
-function applyLandingTheme(theme) {
+//
+// FOUC-Schutz: Das aktive Theme wird in localStorage gecached. Beim Seitenladen
+// wird es sofort angewendet (synchron, vor jedem Render), während der Master-
+// Base-Lookup im Hintergrund läuft und ggf. den Cache aktualisiert.
+const _THEME_KEY = 'liftaro-landing-theme';
+function applyLandingTheme(theme, opts) {
   const t = String(theme || 'classic').toLowerCase().trim();
   if (t === 'liftaro') {
     document.documentElement.setAttribute('data-theme', 'liftaro');
   } else {
     document.documentElement.removeAttribute('data-theme');
   }
+  // Im localStorage cachen, damit der nächste Page-Load sofort das richtige
+  // Theme anzeigt (ohne auf Master-Base zu warten)
+  if (!opts || !opts.skipCache) {
+    try { localStorage.setItem(_THEME_KEY, t); } catch (e) {}
+  }
   console.log('[Vorabcheck] Theme:', t);
 }
-// URL-Param-Override (vor Master-Base-Lookup, damit Preview instant funktioniert)
+// Sofort beim Script-Eval (vor DOMContentLoaded und vor Master-Base-Lookup)
 (function () {
   try {
+    // 1. URL-Param hat höchste Priorität
     const p = new URLSearchParams(location.search).get('theme');
-    if (p) applyLandingTheme(p);
+    if (p) { applyLandingTheme(p); return; }
+    // 2. Sonst aus localStorage (vom letzten Besuch)
+    let stored = '';
+    try { stored = localStorage.getItem(_THEME_KEY) || ''; } catch (e) {}
+    if (stored) applyLandingTheme(stored, { skipCache: true });
   } catch (e) {}
 })();
 
