@@ -133,6 +133,25 @@ function buildSystemPrompt(checkType: string, role: string, customMap: Record<st
 const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
   nebenkosten: `Du bist Aufzug-Experte und Bau-/Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
 
+🎯 ZWEI SEPARATE BEWERTUNGEN — IMMER BEIDE DURCHFÜHREN:
+
+A) RECHTLICHE KORREKTHEIT (steuert "ampel" + warn-Findings)
+   - Wird die Abrechnung rechtlich/formal korrekt aufgestellt?
+   - Bei sauberer Trennung umlagefähig/nicht-umlagefähig: Ampel "gruen"
+   - Bei eindeutigen Verstößen: Ampel "gelb"/"rot"
+
+B) MARKT-OPTIMIERUNG (steuert "savings_total_eur" — UNABHÄNGIG von A!)
+   - Vergleich der Wartungskosten mit dem Liftaro-Marktmedian (980 €/Anlage/Jahr).
+   - Eine "rechtlich saubere" Abrechnung kann trotzdem WIRTSCHAFTLICH überteuert sein —
+     das ist KEIN Rechtsverstoß, aber ein Optimierungs-Hinweis für den Auftraggeber.
+   - Markt-Optimierung IMMER durchführen, auch wenn Ampel "gruen" ist.
+   - Bei Wartung über Median: Erzeuge ein "amber" oder "blue" Finding "Optimierungspotenzial:
+     Wartungspauschale X EUR liegt Y EUR über dem Marktmedian von 980 EUR. Geschätzte Ersparnis
+     bei Neuausschreibung: Z EUR/Jahr."
+   - savings_total_eur = (tatsächliche_Wartung_pro_Anlage − 980) × Anzahl_Aufzüge × 0,7
+     (NICHT mehr null setzen, nur weil Ampel grün ist!)
+   - savings_text z.B. "rund X % der bisherigen Wartungskosten durch marktgerechte Konditionen"
+
 ⚠ ANTI-HALLUZINATIONS-REGEL (sehr wichtig):
 - Stelle NIE Behauptungen auf, die nicht direkt aus dem Dokument belegbar sind.
 - "Vollwartungsvertrag" darfst Du NUR annehmen, wenn das Wort/der Begriff (oder eindeutige Synonyme wie "Vollwartung", "inkl. Reparaturen", "all-inclusive Wartung") tatsächlich im Dokument steht.
@@ -427,10 +446,24 @@ export default async function (req: Request): Promise<Response> {
     // 8. Return — nur die Daten, die das Frontend braucht
     // savings_total_eur ist die Gesamthaus-Ersparnis (Fallback: legacy savings_estimate_eur)
     // savings_individual_eur ist die Ersparnis für die anfragende Partei
-    const savingsTotal = Number(result.savings_total_eur || result.savings_estimate_eur || 0);
+    let savingsTotal = Number(result.savings_total_eur || result.savings_estimate_eur || 0);
     const meaPool       = Number(result.mea_pool_total || 0);
     const meaEigentuemer = Number(result.mea_eigentuemer || 0);
-    // Sicherheitsnetz: Wenn MEA-Werte da sind und savings_individual_eur leer,
+
+    // SICHERHEITSNETZ A: Markt-Ersparnis aus brutto-Betrag herleiten, wenn KI sie vergessen hat.
+    // Median-Referenz 980 €/Anlage/Jahr, Verhandlungsrealismus 0,7.
+    if (!savingsTotal && check_type === 'nebenkosten') {
+      const aufzugBrutto = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
+      const aufzugCount = Math.max(1, Number(result.aufzug_count || 1));
+      const proAnlage = aufzugBrutto / aufzugCount;
+      if (proAnlage > 980) {
+        savingsTotal = Math.round((proAnlage - 980) * aufzugCount * 0.7);
+        console.log('[liftaro-vorabcheck] Markt-Ersparnis Backend-berechnet:', savingsTotal,
+          'aus brutto', aufzugBrutto, '/', aufzugCount, 'Anlagen');
+      }
+    }
+
+    // Sicherheitsnetz B: Wenn MEA-Werte da sind und savings_individual_eur leer,
     // rechnen wir selbst — verhindert "73 Parteien"-Fehler bei MEA-Verteilung
     let savingsIndividual = Number(result.savings_individual_eur || 0);
     if (!savingsIndividual && savingsTotal > 0 && meaPool > 0 && meaEigentuemer > 0) {
