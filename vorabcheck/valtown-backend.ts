@@ -430,6 +430,15 @@ export default async function (req: Request): Promise<Response> {
   try {
     const body = await req.json();
 
+    // ── Action-Routing: action="get_defaults" liefert die Backend-Default-Prompts ans Admin-UI ──
+    if (body.action === 'get_defaults') {
+      return jsonResp({
+        prompts: DEFAULT_SYSTEM_PROMPTS,
+        role_contexts: ROLE_CONTEXTS,
+        model: MODEL,
+      }, 200, corsHeaders);
+    }
+
     // ── Action-Routing: action="correct" speichert User-Korrekturen für Lern-Datenbasis ──
     if (body.action === 'correct') {
       const cn = String(body.check_nr || '').trim();
