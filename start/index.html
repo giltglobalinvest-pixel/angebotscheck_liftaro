@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liftaro — Transparenz für Aufzugskosten | kostenloser Check mit KI</title>
+<meta name="description" content="Liftaro prüft Wartungsverträge, Reparaturangebote und Nebenkostenabrechnungen für Aufzüge — mit KI und Branchenwissen. Kostenlose Erstprüfung in 30 Sekunden.">
+<meta name="theme-color" content="#0e2440">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --navy:        #0e2440;
+  --navy-2:      #1a3a5c;
+  --navy-deep:   #07182c;
+  --green:       #7dc242;
+  --green-dark:  #6aa838;
+  --green-tint:  #eaf6dd;
+  --ink:         #0e2440;
+  --ink-2:       #2e3a55;
+  --ink-3:       #6b7280;
+  --muted:       #9aa3ad;
+  --bg:          #ffffff;
+  --bg-soft:     #f4f7fa;
+  --bg-tint:     #eef2f7;
+  --line:        #e0e6ee;
+  --line-2:      #d0d8e3;
+  --r:           6px;
+  --r-lg:        8px;
+  --r-xl:        12px;
+  --max:         1180px;
+  --shadow-sm:   0 1px 2px rgba(14,36,64,.05);
+  --shadow:      0 6px 16px -4px rgba(14,36,64,.10), 0 2px 4px rgba(14,36,64,.04);
+  --shadow-lg:   0 24px 48px -12px rgba(14,36,64,.20), 0 8px 16px rgba(14,36,64,.06);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+img, svg { display: block; }
+
+/* ── TOP-BAR ─────────────────────────────────────── */
+.topbar {
+  background: var(--navy-deep);
+  color: rgba(255,255,255,.85);
+  font-size: 12px;
+  padding: 8px 0;
+  font-weight: 500;
+}
+.topbar-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.topbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.topbar-item svg {
+  color: var(--green);
+  width: 12px;
+  height: 12px;
+}
+.topbar-sep {
+  width: 1px;
+  height: 12px;
+  background: rgba(255,255,255,.15);
+}
+@media (max-width: 720px) {
+  .topbar-sep { display: none; }
+  .topbar-inner { gap: 14px; font-size: 11px; }
+}
+
+/* ── NAV ────────────────────────────────────────── */
+.nav {
+  background: linear-gradient(180deg, var(--navy-2) 0%, var(--navy) 100%);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.nav-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.nav-logo {
+  display: inline-flex;
+  align-items: center;
+}
+.nav-logo img {
+  height: 34px;
+  width: auto;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.25));
+}
+.nav-links {
+  display: flex;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255,255,255,.85);
+}
+.nav-links a {
+  transition: color 0.15s ease;
+}
+.nav-links a:hover {
+  color: var(--green);
+}
+@media (max-width: 880px) {
+  .nav-links { display: none; }
+}
+
+/* ── BUTTONS ────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 20px;
+  background: var(--green);
+  color: #fff;
+  border-radius: var(--r);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.005em;
+  transition: background .15s ease, transform .1s ease, box-shadow .15s ease;
+  border: 1px solid var(--green);
+  box-shadow: 0 2px 6px rgba(125,194,66,.25);
+  cursor: pointer;
+}
+.btn:hover {
+  background: var(--green-dark);
+  border-color: var(--green-dark);
+  box-shadow: 0 4px 12px rgba(125,194,66,.35);
+}
+.btn:active { transform: translateY(1px); }
+.btn-large { padding: 14px 26px; font-size: 15px; }
+.btn-xl    { padding: 18px 32px; font-size: 16px; border-radius: var(--r-lg); }
+.btn-ghost-light {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #fff;
+  box-shadow: none;
+}
+.btn-ghost-light:hover {
+  background: rgba(255,255,255,.16);
+  border-color: rgba(255,255,255,.3);
+}
+.btn-ghost-dark {
+  background: #fff;
+  color: var(--navy);
+  border: 1.5px solid var(--line-2);
+  box-shadow: var(--shadow-sm);
+}
+.btn-ghost-dark:hover {
+  background: var(--bg-soft);
+  border-color: var(--ink-3);
+}
+
+/* ── HERO ────────────────────────────────────────── */
+.hero {
+  padding: 72px 24px 84px;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 56px;
+  align-items: center;
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  background: var(--green-tint);
+  color: var(--navy);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 22px;
+  letter-spacing: .01em;
+}
+.hero-eyebrow svg {
+  width: 13px;
+  height: 13px;
+  color: var(--green-dark);
+}
+.hero h1 {
+  font-size: clamp(32px, 4.6vw, 54px);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -.025em;
+  color: var(--ink);
+  margin-bottom: 20px;
+}
+.hero h1 .accent { color: var(--green); }
+.hero-sub {
+  font-size: 17px;
+  color: var(--ink-3);
+  margin-bottom: 30px;
+  max-width: 540px;
+  line-height: 1.6;
+}
+.hero-cta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.hero-trust {
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.hero-trust svg { color: var(--green); width: 14px; height: 14px; }
+.hero-trust span { display: inline-flex; align-items: center; gap: 6px; }
+.hero-visual {
+  background: linear-gradient(135deg, var(--navy-2) 0%, var(--navy) 100%);
+  border-radius: 14px;
+  padding: 36px 32px;
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+.hero-visual::before {
+  content: "";
+  position: absolute;
+  top: -30%;
+  right: -10%;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(125,194,66,.18) 0%, transparent 60%);
+  pointer-events: none;
+}
+.hero-visual h3 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.7);
+  margin-bottom: 18px;
+}
+.hero-visual-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.hero-visual-stat .num {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -.025em;
+  line-height: 1;
+  color: #fff;
+}
+.hero-visual-stat .unit {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--green);
+}
+.hero-visual-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+.hero-visual-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  color: rgba(255,255,255,.88);
+}
+.hero-visual-list li svg {
+  color: var(--green);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+@media (max-width: 960px) {
+  .hero { padding: 44px 20px 56px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 36px; }
+  .hero-visual { padding: 26px 22px; }
+  .hero-visual-stat .num { font-size: 36px; }
+}
+
+/* ── STAT-BAR (unter Hero) ───────────────────────── */
+.stat-bar {
+  background: var(--bg-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 28px 24px;
+}
+.stat-bar-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.stat {
+  text-align: center;
+  padding: 8px 12px;
+}
+.stat-value {
+  font-size: clamp(28px, 4.2vw, 40px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -.025em;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+.stat-value .accent { color: var(--green); }
+.stat-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+@media (max-width: 720px) {
+  .stat-bar { padding: 22px 16px; }
+  .stat-bar-inner { gap: 14px; grid-template-columns: 1fr; }
+  .stat-value { font-size: 26px; }
+}
+
+/* ── SECTIONS ─────────────────────────────────────── */
+.section { padding: 80px 24px; }
+.section-head { text-align: center; margin-bottom: 48px; max-width: var(--max); margin-left: auto; margin-right: auto; }
+.section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--green-tint);
+  color: var(--navy);
+  border-radius: 100px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 16px;
+}
+.section h2 {
+  font-size: clamp(26px, 3.6vw, 38px);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -.022em;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+.section h2 .accent { color: var(--green); }
+.section-lead {
+  font-size: 16px;
+  color: var(--ink-3);
+  max-width: 620px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ── SERVICES ─────────────────────────────────────── */
+.services {
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+  margin-top: 8px;
+}
+.service-card {
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 32px 28px;
+  position: relative;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.service-card:hover {
+  border-color: var(--navy-2);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+.service-card.featured {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-tint);
+}
+.service-card.featured::before {
+  content: "Empfohlen";
+  position: absolute;
+  top: -12px;
+  left: 28px;
+  background: var(--green);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 11px;
+  border-radius: 100px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.service-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--green-dark);
+  background: var(--green-tint);
+  padding: 3px 10px;
+  border-radius: 4px;
+  margin-bottom: 14px;
+}
+.service-card h3 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.018em;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+.service-price {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 16px;
+}
+.service-price .num {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--navy);
+  letter-spacing: -.02em;
+  margin-right: 6px;
+}
+.service-price .frei {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--green);
+  letter-spacing: -.015em;
+}
+.service-card p {
+  font-size: 14.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.service-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.service-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.service-list li svg {
+  color: var(--green);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.service-card .btn { width: 100%; }
+@media (max-width: 760px) {
+  .service-grid { grid-template-columns: 1fr; }
+  .service-card { padding: 26px 22px; }
+}
+
+/* ── WAS WIR PRÜFEN (Cards) ──────────────────────── */
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.check-card {
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 22px 22px 20px;
+  transition: all .15s ease;
+}
+.check-card:hover {
+  border-color: var(--navy-2);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+.check-ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--green-tint);
+  color: var(--navy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.check-ico svg { width: 20px; height: 20px; }
+.check-card h4 {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -.008em;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+.check-card p {
+  font-size: 13.5px;
+  color: var(--ink-3);
+  line-height: 1.55;
+}
+
+/* ── 4-SCHRITTE ──────────────────────────────────── */
+.steps-section {
+  background: var(--bg-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  max-width: var(--max);
+  margin: 0 auto;
+  position: relative;
+}
+.step {
+  text-align: center;
+  position: relative;
+}
+.step-num {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  background: linear-gradient(180deg, var(--navy-2), var(--navy));
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgba(14,36,64,.15), 0 6px 16px rgba(14,36,64,.18);
+  position: relative;
+  z-index: 2;
+}
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  left: calc(50% + 36px);
+  right: calc(-50% + 36px);
+  height: 2px;
+  background: linear-gradient(90deg, rgba(125,194,66,.5), rgba(14,36,64,.2));
+  z-index: 1;
+}
+.step h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 6px;
+  letter-spacing: -.005em;
+}
+.step p {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+@media (max-width: 880px) {
+  .steps-grid { grid-template-columns: repeat(2, 1fr); gap: 28px; }
+  .step:nth-child(2)::after { display: none; }
+}
+@media (max-width: 540px) {
+  .steps-grid { grid-template-columns: 1fr; gap: 22px; }
+  .step::after { display: none !important; }
+}
+
+/* ── FÜR WEN ──────────────────────────────────────── */
+.audience-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.audience-card {
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 28px 26px;
+  transition: all .15s ease;
+}
+.audience-card:hover {
+  border-color: var(--navy-2);
+  box-shadow: var(--shadow);
+  transform: translateY(-3px);
+}
+.audience-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: var(--green-tint);
+  color: var(--navy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.audience-ico svg { width: 22px; height: 22px; }
+.audience-card h3 {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -.012em;
+  color: var(--navy);
+  margin-bottom: 8px;
+}
+.audience-card p {
+  font-size: 14px;
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+@media (max-width: 780px) {
+  .audience-grid { grid-template-columns: 1fr; }
+}
+
+/* ── TRUST-BAND (dunkel) ─────────────────────────── */
+.trust-band {
+  background: var(--navy);
+  color: rgba(255,255,255,.85);
+  padding: 56px 24px;
+}
+.trust-grid {
+  max-width: var(--max);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 28px;
+}
+.trust-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.trust-ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(125,194,66,.16);
+  border: 1px solid rgba(125,194,66,.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--green);
+  margin-bottom: 4px;
+}
+.trust-ico svg { width: 18px; height: 18px; }
+.trust-item h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -.005em;
+}
+.trust-item p {
+  font-size: 13px;
+  color: rgba(255,255,255,.65);
+  line-height: 1.5;
+}
+
+/* ── FINAL CTA ───────────────────────────────────── */
+.final-cta {
+  background: linear-gradient(135deg, var(--navy-deep) 0%, var(--navy) 60%, var(--navy-2) 100%);
+  color: #fff;
+  padding: 80px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.final-cta::before {
+  content: "";
+  position: absolute;
+  top: -30%;
+  right: -5%;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(125,194,66,.16) 0%, transparent 60%);
+  pointer-events: none;
+}
+.final-cta-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+.final-cta-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  background: rgba(125,194,66,.22);
+  color: #b8e07d;
+  border-radius: 100px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 22px;
+}
+.final-cta h2 {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 800;
+  letter-spacing: -.025em;
+  line-height: 1.1;
+  margin-bottom: 14px;
+  color: #fff;
+}
+.final-cta p {
+  font-size: 17px;
+  color: rgba(255,255,255,.85);
+  margin-bottom: 28px;
+  line-height: 1.6;
+}
+.final-cta .btn {
+  background: var(--green);
+  border-color: var(--green);
+  box-shadow: 0 8px 24px rgba(125,194,66,.25);
+}
+.final-cta .btn:hover {
+  background: var(--green-dark);
+  border-color: var(--green-dark);
+}
+
+/* ── FOOTER ──────────────────────────────────────── */
+footer {
+  background: var(--navy-deep);
+  color: rgba(255,255,255,.7);
+  padding: 56px 24px 22px;
+}
+.footer-grid {
+  max-width: var(--max);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 36px;
+  margin-bottom: 32px;
+}
+.footer-brand img {
+  height: 30px;
+  margin-bottom: 14px;
+}
+.footer-brand p {
+  font-size: 14px;
+  color: rgba(255,255,255,.55);
+  max-width: 280px;
+  line-height: 1.55;
+}
+footer h5 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.55);
+  margin-bottom: 14px;
+  font-weight: 700;
+}
+footer ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+footer ul a {
+  color: rgba(255,255,255,.8);
+  transition: color .15s;
+}
+footer ul a:hover { color: var(--green); }
+.footer-bottom {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 18px 0 0;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 13px;
+  color: rgba(255,255,255,.5);
+}
+.footer-legal {
+  max-width: var(--max);
+  margin: 14px auto 0;
+  font-size: 11.5px;
+  color: rgba(255,255,255,.4);
+  text-align: center;
+  line-height: 1.5;
+}
+@media (max-width: 780px) {
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+}
+@media (max-width: 540px) {
+  .footer-grid { grid-template-columns: 1fr; }
+}
+
+/* ── KOSTENLOS-PRÜFEN-HINWEIS (Banner unter Top-Bar) ── */
+.free-banner {
+  background: linear-gradient(90deg, var(--green-tint), #f8fbf3);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 24px;
+  font-size: 13.5px;
+  text-align: center;
+  color: var(--navy);
+  font-weight: 600;
+}
+.free-banner a {
+  color: var(--green-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+.free-banner a:hover { color: var(--navy); }
+@media (max-width: 600px) {
+  .free-banner { padding: 10px 16px; font-size: 12.5px; }
+}
+
+/* Globale Mobile-Anpassungen */
+@media (max-width: 720px) {
+  .section { padding: 56px 18px; }
+  .section h2 { font-size: clamp(24px, 6vw, 30px); }
+  .nav-inner { padding: 12px 16px; }
+  .nav-logo img { height: 28px; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- TOP-BAR -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="topbar-item">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3z"/></svg>
+      Made in Germany
+    </span>
+    <span class="topbar-sep"></span>
+    <span class="topbar-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      DSGVO-konform
+    </span>
+    <span class="topbar-sep"></span>
+    <span class="topbar-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Herstellerneutral
+    </span>
+  </div>
+</div>
+
+<!-- KOSTENLOS-CHECK-HINWEIS -->
+<div class="free-banner">
+  ⚡ Neu: KI-gestützter Aufzug-Check — kostenlos in 30 Sekunden.
+  <a href="/vorabcheck/">Jetzt prüfen lassen →</a>
+</div>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <img src="https://liftaro.de/wp-content/uploads/2026/01/liftaro-logo-white-scaled.png" alt="Liftaro">
+    </a>
+    <nav class="nav-links">
+      <a href="#leistungen">Leistungen</a>
+      <a href="#services">Pakete</a>
+      <a href="#wie-es-geht">So funktioniert's</a>
+      <a href="#fuer-wen">Für wen</a>
+      <a href="#kontakt">Kontakt</a>
+    </nav>
+    <a href="/vorabcheck/" class="btn">Kostenlos prüfen</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid">
+    <div>
+      <span class="hero-eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        KI-gestützte Aufzug-Analyse
+      </span>
+      <h1>Aufzugskosten verstehen. <span class="accent">Transparenz schaffen.</span> Sparen.</h1>
+      <p class="hero-sub">Liftaro prüft Wartungsverträge, Reparaturangebote und Nebenkostenabrechnungen für Mieter, Eigentümer und Hausverwalter — mit KI-Analyse und Branchenwissen aus tausenden Verträgen.</p>
+      <div class="hero-cta">
+        <a href="/vorabcheck/" class="btn btn-xl">
+          Kostenlos prüfen — in 30 Sek
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+        <a href="#services" class="btn btn-large btn-ghost-dark">Pakete ansehen</a>
+      </div>
+      <div class="hero-trust">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Erstprüfung kostenlos</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Keine Bindung</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ergebnis sofort</span>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <h3>Typische Ersparnis</h3>
+      <div class="hero-visual-stat">
+        <span class="num">bis zu&nbsp;60</span>
+        <span class="unit">%</span>
+      </div>
+      <p style="font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;line-height:1.5">der bisherigen Aufzug-Wartungskosten durch marktgerechte Neuausschreibung und laufende Reparatur-Kontrolle.</p>
+      <ul class="hero-visual-list">
+        <li>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          Wartung &amp; Notruf — Marktvergleich mit Liftaro-Median
+        </li>
+        <li>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          Reparatur-Angebote — bis zu 8.000 € Ersparnis im Einzelfall
+        </li>
+        <li>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          Vertragslaufzeiten, Klauseln, Umlagefähigkeit
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- STAT-BAR -->
+<section class="stat-bar" aria-label="Liftaro auf einen Blick">
+  <div class="stat-bar-inner">
+    <div class="stat">
+      <div class="stat-value">0&nbsp;<span class="accent">€</span></div>
+      <div class="stat-label">Erstprüfung — kostenlos und unverbindlich</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">30&nbsp;<span class="accent">Sek</span></div>
+      <div class="stat-label">Auswertung direkt nach Upload</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">980&nbsp;<span class="accent">€</span></div>
+      <div class="stat-label">Marktmedian Wartung + Notruf je Anlage / Jahr</div>
+    </div>
+  </div>
+</section>
+
+<!-- LEISTUNGEN (Was wir prüfen) -->
+<section class="section" id="leistungen">
+  <div class="section-head">
+    <span class="section-eyebrow">Was wir prüfen</span>
+    <h2>Vier Hebel für <span class="accent">echte Einsparung</span></h2>
+    <p class="section-lead">Liftaro analysiert genau die Stellen, an denen Aufzug-Kosten typischerweise überteuert sind — sachlich, marktbasiert, mit klarer Empfehlung.</p>
+  </div>
+  <div class="check-grid">
+    <div class="check-card">
+      <div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <h4>Wartungspauschale</h4>
+      <p>Vergleich mit dem Liftaro-Marktmedian für vergleichbare Anlagen. Inklusive Notruf und Bereitschaftsdienst.</p>
+    </div>
+    <div class="check-card">
+      <div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 18 18"/><path d="M10.5 6h7.5a2 2 0 0 1 2 2v7.5"/></svg></div>
+      <h4>Reparatur-Angebote</h4>
+      <p>Plausibilitätsprüfung jeder Position gegen aktuelle Marktpreise. Identifikation überteuerter Komponenten.</p>
+    </div>
+    <div class="check-card">
+      <div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <h4>Wartungsverträge</h4>
+      <p>Laufzeit, Kündigungsfristen, Preisgleitklauseln, Voll- vs. Teilwartung — wir prüfen jede Klausel.</p>
+    </div>
+    <div class="check-card">
+      <div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <h4>Nebenkostenabrechnung</h4>
+      <p>Umlagefähigkeit nach §§ 1, 2 BetrKV. Vorwegabzug bei Vollwartung. Verteilung nach MEA oder Einheit.</p>
+    </div>
+    <div class="check-card">
+      <div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h4>Notrufkosten</h4>
+      <p>24/7-Bereitschaft ist Pflicht — aber zu welchem Preis? Wir vergleichen gegen marktübliche Konditionen.</p>
+    </div>
+    <div class="check-card">
+      <div class="check-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 4 5-5"/></svg></div>
+      <h4>Servicestunden-Satz</h4>
+      <p>Regionale Marktwerte zwischen 95 und 145 €/h. Über 160 € — Verhandlungsgrund.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="section" id="services" style="background:var(--bg-soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="section-head">
+    <span class="section-eyebrow">Unsere Pakete</span>
+    <h2>Zwei Wege zur <span class="accent">Aufzug-Optimierung</span></h2>
+    <p class="section-lead">Vom kostenlosen Free-Check bis zur kompletten Aufzug-Verwaltung — Liftaro passt sich Ihrer Situation an.</p>
+  </div>
+  <div class="services">
+    <div class="service-grid">
+
+      <!-- Free -->
+      <div class="service-card">
+        <span class="service-tag">Free</span>
+        <h3>Sie senden — wir analysieren</h3>
+        <div class="service-price"><span class="frei">Kostenlos</span></div>
+        <p>Die Hausverwaltung leitet uns Angebote, Verträge oder Abrechnungen weiter. Liftaro führt den Angebots- bzw. Vertragscheck durch und identifiziert konkrete Einsparpotenziale.</p>
+        <ul class="service-list">
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Vorab-Check binnen 30 Sekunden</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Detailprüfung durch Experten innerhalb 48 h</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Konkrete Einspar-Schätzung mit §-Bezug</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Erfolgsbeteiligung: 50 % der realisierten Ersparnis</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Keine laufenden Kosten</li>
+        </ul>
+        <a href="/vorabcheck/" class="btn">Jetzt Free-Check starten</a>
+      </div>
+
+      <!-- Light -->
+      <div class="service-card featured">
+        <span class="service-tag">Light</span>
+        <h3>Wir übernehmen die Verwaltung</h3>
+        <div class="service-price"><span class="num">45 €</span> / Monat je Aufzug</div>
+        <p>Liftaro kümmert sich um alle Aufzug-Themen: Vertragsmanagement, Wartungs-Überprüfung, Reparatur-Kontrolle und Nachverhandlung mit dem Wartungsdienstleister.</p>
+        <ul class="service-list">
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Laufende Vertrags-Überwachung</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Prüfung jeder Reparatur-Rechnung</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Nachverhandlung mit dem Anbieter</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Vollständige Kostentransparenz für WEG / Eigentümer</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> <strong>Keine Erfolgsbeteiligung</strong> — Sie behalten 100 % der Ersparnis</li>
+        </ul>
+        <a href="#kontakt" class="btn">Light-Paket anfragen</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- 4-SCHRITTE-PROZESS -->
+<section class="section steps-section" id="wie-es-geht">
+  <div class="section-head">
+    <span class="section-eyebrow">So funktioniert's</span>
+    <h2>In vier Schritten zur <span class="accent">Transparenz</span></h2>
+    <p class="section-lead">Sie laden Ihr Dokument hoch — wir übernehmen den Rest. Ohne Verpflichtung, ohne Aufwand.</p>
+  </div>
+  <div class="steps-grid">
+    <div class="step">
+      <div class="step-num">1</div>
+      <h4>Dokument hochladen</h4>
+      <p>Nebenkostenabrechnung, Reparatur-Angebot oder Wartungsvertrag als PDF oder Bild.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <h4>KI prüft die Position</h4>
+      <p>Wartung, Notruf, Verteilung und Umlagefähigkeit werden analysiert.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <h4>Ergebnis in Klartext</h4>
+      <p>Ampelbewertung, konkrete Einspar-Schätzung und §-Bezüge.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <h4>Optimierung anstoßen</h4>
+      <p>Auf Wunsch begleiten wir die Neuausschreibung oder übernehmen die laufende Verwaltung.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FÜR WEN -->
+<section class="section" id="fuer-wen">
+  <div class="section-head">
+    <span class="section-eyebrow">Für wen wir arbeiten</span>
+    <h2>Liftaro funktioniert für <span class="accent">alle Seiten</span></h2>
+    <p class="section-lead">Egal ob Sie zahlen, abrechnen oder verwalten — die Auswertung liefert Klarheit und eine belastbare Verhandlungsgrundlage.</p>
+  </div>
+  <div class="audience-grid">
+    <div class="audience-card">
+      <div class="audience-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+      <h3>Für Mieter</h3>
+      <p>Sie zahlen Aufzug-Kosten über die Nebenkostenabrechnung. Wir prüfen, ob die Verteilung korrekt ist und nicht-umlagefähige Posten umgelegt wurden.</p>
+    </div>
+    <div class="audience-card">
+      <div class="audience-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></div>
+      <h3>Für Eigentümer</h3>
+      <p>Als WEG-Mitglied tragen Sie Aufzugskosten direkt. Liftaro liefert die Argumente für die nächste Eigentümerversammlung — sachlich und marktbasiert.</p>
+    </div>
+    <div class="audience-card">
+      <div class="audience-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22h20"/><path d="M6 18h12"/><path d="M3 14a9 9 0 0 1 18 0"/><circle cx="12" cy="6" r="3"/></svg></div>
+      <h3>Für Hausverwalter</h3>
+      <p>Mehrere Objekte effizient steuern. Mit dem Light-Paket übernimmt Liftaro die komplette Aufzug-Kostenkontrolle für Ihre Liegenschaften.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST-BAND -->
+<section class="trust-band">
+  <div class="trust-grid">
+    <div class="trust-item">
+      <div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <h4>Verschlüsselt</h4>
+      <p>Ende-zu-Ende-Übertragung. Dokumente werden nach 30 Tagen automatisch gelöscht.</p>
+    </div>
+    <div class="trust-item">
+      <div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h4>DSGVO-konform</h4>
+      <p>Server in der EU. Keine Weitergabe an Dritte oder Wartungsfirmen.</p>
+    </div>
+    <div class="trust-item">
+      <div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+      <h4>Branchen-Daten</h4>
+      <p>Marktvergleich aus tausenden Wartungsverträgen in Deutschland.</p>
+    </div>
+    <div class="trust-item">
+      <div class="trust-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
+      <h4>Herstellerneutral</h4>
+      <p>Wir arbeiten weder für KONE, Schindler, TKE noch für andere Wartungsfirmen.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final-cta" id="kontakt">
+  <div class="final-cta-inner">
+    <span class="final-cta-eyebrow">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      Kostenlos starten
+    </span>
+    <h2>Bereit für Klarheit über Ihre Aufzugskosten?</h2>
+    <p>Starten Sie mit dem kostenlosen Vorabcheck — in 30 Sekunden zur ersten Indikation. Ohne Anmeldung, ohne Bindung.</p>
+    <a href="/vorabcheck/" class="btn btn-xl">
+      Jetzt kostenlos prüfen
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-size:14px;line-height:1.6">
+      Light-Paket gewünscht oder individuelle Frage?<br>
+      Schreiben Sie uns an <a href="mailto:check@liftaro.de" style="color:var(--green);font-weight:700;text-decoration:none">check@liftaro.de</a> — wir antworten innerhalb von 24 Stunden.
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <img src="https://liftaro.de/wp-content/uploads/2026/01/liftaro-logo-white-scaled.png" alt="Liftaro">
+      <p>Transparenz für Aufzugskosten. Für Mieter, Eigentümer und Hausverwaltungen in ganz Deutschland.</p>
+    </div>
+    <div>
+      <h5>Produkt</h5>
+      <ul>
+        <li><a href="/vorabcheck/">Kostenlos prüfen</a></li>
+        <li><a href="#services">Pakete</a></li>
+        <li><a href="#leistungen">Was wir prüfen</a></li>
+        <li><a href="#wie-es-geht">So funktioniert's</a></li>
+      </ul>
+    </div>
+    <div>
+      <h5>Unternehmen</h5>
+      <ul>
+        <li><a href="#fuer-wen">Für wen</a></li>
+        <li><a href="#kontakt">Kontakt</a></li>
+        <li><a href="mailto:check@liftaro.de">check@liftaro.de</a></li>
+      </ul>
+    </div>
+    <div>
+      <h5>Rechtliches</h5>
+      <ul>
+        <li><a href="#">Impressum</a></li>
+        <li><a href="#">Datenschutz</a></li>
+        <li><a href="#">AGB</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div>© 2026 Liftaro GmbH · Alle Rechte vorbehalten.</div>
+    <div>Made in Germany 🇩🇪</div>
+  </div>
+  <div class="footer-legal">
+    Liftaro liefert technisch-wirtschaftliche Indikationen zu Aufzugskosten und ist keine Rechtsberatung im Sinne des RDG.
+    Auf Wunsch vermitteln wir Fachanwälte für Miet- bzw. WEG-Recht.
+  </div>
+</footer>
+
+</body>
+</html>
