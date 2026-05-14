@@ -394,6 +394,8 @@ export default async function (req: Request): Promise<Response> {
     const role = ['mieter','eigentuemer','verwalter'].includes(body.role) ? body.role : 'mieter';
     // Vom Nutzer bestätigte Aufzug-Anzahl (Frontend-Pflichtfeld). Default 1.
     const aufzugCountUser = Math.max(1, Math.min(50, parseInt(String(body.aufzug_count_user || '1'), 10) || 1));
+    // Optionaler User-Wert für die Wartungssumme. > 0 = User hat Wert eingetragen → Vorrang vor KI.
+    const wartungBruttoUser = Math.max(0, parseFloat(String(body.wartung_brutto_user || '0').replace(',', '.')) || 0);
 
     // 1. Turnstile validieren (wenn konfiguriert)
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
@@ -476,21 +478,34 @@ export default async function (req: Request): Promise<Response> {
       // User-Angabe hat Vorrang vor KI-Schätzung (aus Dokument oft nicht eindeutig ableitbar)
       const aufzugCount = aufzugCountUser;
       result.aufzug_count = aufzugCount; // Im Response konsistent halten
-      let aufzugBrutto  = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
+      let aufzugBrutto = 0;
+      let bruttoSource = 'unknown'; // 'user' | 'ki' | 'regex' — für Transparenz
 
-      // Fallback: aus Klartext extrahieren. Sucht "Aufzug…wartung … 2.100 €" o.Ä.
-      // Greift, wenn KI versehentlich Differenz oder anderen Wert in brutto-Feld geschrieben hat.
-      if (!aufzugBrutto || aufzugBrutto < 500) {
-        const haystack = String(result.summary || '') + ' ' +
-          (result.findings || []).map(f => (f.title||'') + ' ' + (f.description||'')).join(' ');
-        // de-DE Format: 2.100 EUR, 2.100,00 EUR, 2100 €
-        const matches = [...haystack.matchAll(/aufzug[a-zäöü\s\-/]*wartung[^0-9]{0,40}(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d{4,6}(?:,\d{2})?)\s*(?:€|eur)/gi)];
-        if (matches.length) {
-          // größten Treffer nehmen (das ist meist der Brutto-Wartungswert)
-          const candidates = matches.map(m => parseFloat(m[1].replace(/\./g, '').replace(',', '.'))).filter(n => n > 500);
-          if (candidates.length) {
-            aufzugBrutto = Math.max(...candidates);
-            console.log('[liftaro-vorabcheck] brutto via Regex aus Klartext:', aufzugBrutto);
+      if (wartungBruttoUser > 0) {
+        // Höchste Priorität: User hat den Wert manuell eingetragen
+        aufzugBrutto = wartungBruttoUser;
+        bruttoSource = 'user';
+        // anonymized_data konsistent halten — User-Wert auch dort speichern
+        if (!result.anonymized_data) result.anonymized_data = {};
+        result.anonymized_data.betrag_aufzug_brutto = aufzugBrutto;
+        console.log('[liftaro-vorabcheck] brutto vom User:', aufzugBrutto);
+      } else {
+        // Fallback 1: KI-extrahierter Wert aus anonymized_data
+        aufzugBrutto = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
+        if (aufzugBrutto >= 500) bruttoSource = 'ki';
+
+        // Fallback 2: Regex aus Klartext, wenn KI-Wert fehlt oder verdächtig klein
+        if (!aufzugBrutto || aufzugBrutto < 500) {
+          const haystack = String(result.summary || '') + ' ' +
+            (result.findings || []).map(f => (f.title||'') + ' ' + (f.description||'')).join(' ');
+          const matches = [...haystack.matchAll(/aufzug[a-zäöü\s\-/]*wartung[^0-9]{0,40}(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d{4,6}(?:,\d{2})?)\s*(?:€|eur)/gi)];
+          if (matches.length) {
+            const candidates = matches.map(m => parseFloat(m[1].replace(/\./g, '').replace(',', '.'))).filter(n => n > 500);
+            if (candidates.length) {
+              aufzugBrutto = Math.max(...candidates);
+              bruttoSource = 'regex';
+              console.log('[liftaro-vorabcheck] brutto via Regex aus Klartext:', aufzugBrutto);
+            }
           }
         }
       }
@@ -577,6 +592,8 @@ export default async function (req: Request): Promise<Response> {
       summary: result.summary,
       findings: result.findings || [],
       aufzug_count: aufzugCountUser,
+      wartung_brutto_used: Number(result.anonymized_data?.betrag_aufzug_brutto || wartungBruttoUser || 0),
+      wartung_brutto_source: wartungBruttoUser > 0 ? 'user' : 'ki', // Transparenz: woher kam der Wartungs-Wert?
       verteilerschluessel: String(result.verteilerschluessel || 'unbekannt'),
       parteien_count: Number(result.parteien_count || 0),
       mea_pool_total: meaPool,
