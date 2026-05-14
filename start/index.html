@@ -865,6 +865,13 @@ footer ul a:hover { color: var(--green); }
   .nav-inner { padding: 12px 16px; }
   .nav-logo img { height: 28px; }
 }
+
+/* ── DESIGN-VARIANTEN ─────────────────────────────────
+   Standard = "clean" (ohne Stat-Bar).
+   "stats" zeigt die Trust-Stat-Bar zusätzlich unter dem Hero.
+   Aktivierung: URL-Param ?variant=stats oder ?variant=clean (persistent in localStorage). */
+.variant-only-stats { display: none; }
+html[data-variant="stats"] .variant-only-stats { display: block; }
 </style>
 </head>
 
@@ -957,6 +964,24 @@ footer ul a:hover { color: var(--green); }
           Vertragslaufzeiten, Klauseln, Umlagefähigkeit
         </li>
       </ul>
+    </div>
+  </div>
+</section>
+
+<!-- STAT-BAR (nur bei Variante "stats") -->
+<section class="variant-only-stats stat-bar" aria-label="Liftaro auf einen Blick">
+  <div class="stat-bar-inner">
+    <div class="stat">
+      <div class="stat-value">0&nbsp;<span class="accent">€</span></div>
+      <div class="stat-label">KI-Check — kostenlos und unverbindlich</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">30&nbsp;<span class="accent">Sek</span></div>
+      <div class="stat-label">Auswertung direkt nach Upload</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">bis zu&nbsp;<span class="accent">60&nbsp;%</span></div>
+      <div class="stat-label">Einsparpotenzial bei Wartung und Reparaturen</div>
     </div>
   </div>
 </section>
@@ -1196,6 +1221,32 @@ footer ul a:hover { color: var(--green); }
     Auf Wunsch vermitteln wir Fachanwälte für Miet- bzw. WEG-Recht.
   </div>
 </footer>
+
+<script>
+// ── Design-Varianten-Switch ───────────────────────────
+// "clean" (Default) = ohne Stat-Bar, "stats" = mit Stat-Bar unter dem Hero.
+// Aktivierung per URL-Param ?variant=stats / ?variant=clean — wird in localStorage
+// gemerkt, damit Folgebesuche im selben Browser konsistent sind.
+(function () {
+  var STORAGE_KEY = 'liftaro-start-variant';
+  function applyVariant(v) {
+    var clean = String(v || '').toLowerCase().trim();
+    if (clean === 'stats') {
+      document.documentElement.setAttribute('data-variant', 'stats');
+    } else {
+      document.documentElement.removeAttribute('data-variant');
+    }
+    try { localStorage.setItem(STORAGE_KEY, clean === 'stats' ? 'stats' : 'clean'); } catch (e) {}
+  }
+  try {
+    var param = new URLSearchParams(location.search).get('variant');
+    if (param) { applyVariant(param); return; }
+    var stored = '';
+    try { stored = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
+    if (stored) applyVariant(stored);
+  } catch (e) {}
+})();
+</script>
 
 </body>
 </html>
