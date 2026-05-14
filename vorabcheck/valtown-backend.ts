@@ -494,7 +494,9 @@ export default async function (req: Request): Promise<Response> {
         const correctTotal = Math.round((proAnlage - 980) * aufzugCount * 0.7);
         const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
         const diffStr      = Math.round(proAnlage - 980).toLocaleString('de-DE');
-        const pctSavings   = Math.round((1 - 980 / proAnlage) * 100);
+        // pctSavings muss zum tatsächlichen Eurobetrag passen (correctTotal/aufzugBrutto),
+        // NICHT zum theoretischen Maximum (1 - 980/proAnlage). Sonst Inkonsistenz auf der Anzeige.
+        const pctSavings = aufzugBrutto > 0 ? Math.round((correctTotal / aufzugBrutto) * 100) : 0;
 
         // Authoritative-Override (savings + summary + finding + ampel)
         savingsTotal = correctTotal;
