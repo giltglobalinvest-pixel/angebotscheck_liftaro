@@ -585,6 +585,31 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
           </button>
         </div>
 
+        <h3 style="margin-top:8px">Wie viele Aufzüge sind in der Position enthalten?</h3>
+        <p class="sub">In der Abrechnung steht oft nur ein Sammelbetrag — die Anzahl ist entscheidend für die Marktwert-Berechnung. Falls unklar, wählen Sie 1.</p>
+        <div class="check-type-selector" id="aufzug-count-selector" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+          <button type="button" class="check-type-card aufzug-count-card active" data-aufzug="1" style="text-align:center;padding:14px 10px">
+            <div class="name" style="font-size:18px;font-weight:800;margin-bottom:2px">1</div>
+            <div class="desc" style="font-size:11px">Aufzug</div>
+          </button>
+          <button type="button" class="check-type-card aufzug-count-card" data-aufzug="2" style="text-align:center;padding:14px 10px">
+            <div class="name" style="font-size:18px;font-weight:800;margin-bottom:2px">2</div>
+            <div class="desc" style="font-size:11px">Aufzüge</div>
+          </button>
+          <button type="button" class="check-type-card aufzug-count-card" data-aufzug="3" style="text-align:center;padding:14px 10px">
+            <div class="name" style="font-size:18px;font-weight:800;margin-bottom:2px">3</div>
+            <div class="desc" style="font-size:11px">Aufzüge</div>
+          </button>
+          <button type="button" class="check-type-card aufzug-count-card" data-aufzug="custom" style="text-align:center;padding:14px 10px">
+            <div class="name" style="font-size:18px;font-weight:800;margin-bottom:2px">4+</div>
+            <div class="desc" style="font-size:11px">eigene</div>
+          </button>
+        </div>
+        <div id="aufzug-custom-wrap" style="display:none;margin-bottom:14px">
+          <label for="aufzug-custom" style="font-size:13px;font-weight:600;color:var(--ink-2);display:block;margin-bottom:6px">Anzahl Aufzüge</label>
+          <input type="number" id="aufzug-custom" min="1" max="50" value="4" style="width:120px;padding:10px 12px;background:var(--surface);border:1.5px solid var(--line-2);border-radius:8px;font-size:15px;color:var(--ink);outline:none">
+        </div>
+
         <h3 style="margin-top:8px">Dokument hochladen</h3>
         <p class="sub">PDF oder Bild. Bei mehrseitigen Dokumenten reicht die relevante Seite.</p>
 
@@ -1067,6 +1092,7 @@ const _DEV_DEFAULTS = {
 
 let _currentCheckType = 'nebenkosten';
 let _currentRole = 'mieter';   // 'mieter' | 'eigentuemer' | 'verwalter'
+let _currentAufzugCount = 1;   // Anzahl Aufzüge in der Position — vom User vor Upload bestätigt
 let _currentFile = null;
 let _turnstileToken = null;
 
@@ -1103,13 +1129,38 @@ document.querySelectorAll('.role-card').forEach(card => {
   });
 });
 
-// Check-Type Selector (nur die check-type-cards die KEIN data-role haben)
-document.querySelectorAll('.check-type-card:not(.role-card)').forEach(card => {
+// Check-Type Selector (nur die check-type-cards die KEIN data-role / data-aufzug haben)
+document.querySelectorAll('.check-type-card:not(.role-card):not(.aufzug-count-card)').forEach(card => {
   card.addEventListener('click', () => {
-    document.querySelectorAll('.check-type-card:not(.role-card)').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.check-type-card:not(.role-card):not(.aufzug-count-card)').forEach(c => c.classList.remove('active'));
     card.classList.add('active');
     _currentCheckType = card.dataset.type;
   });
+});
+
+// Aufzug-Anzahl Selector
+document.querySelectorAll('.aufzug-count-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.aufzug-count-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    const val = card.dataset.aufzug;
+    const customWrap = document.getElementById('aufzug-custom-wrap');
+    if (val === 'custom') {
+      if (customWrap) customWrap.style.display = 'block';
+      const n = parseInt(document.getElementById('aufzug-custom')?.value || '4', 10);
+      _currentAufzugCount = isNaN(n) || n < 1 ? 4 : Math.min(50, n);
+    } else {
+      if (customWrap) customWrap.style.display = 'none';
+      _currentAufzugCount = parseInt(val, 10) || 1;
+    }
+  });
+});
+// Bei Custom-Input direkt mit-tracken
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'aufzug-custom') {
+    const n = parseInt(e.target.value, 10);
+    _currentAufzugCount = isNaN(n) || n < 1 ? 1 : Math.min(50, n);
+  }
 });
 
 // File Upload
@@ -1218,6 +1269,7 @@ async function runAnalysis() {
     const payload = {
       check_type: _currentCheckType,
       role: _currentRole,
+      aufzug_count_user: _currentAufzugCount,
       file: { name: _currentFile.name, mime: _currentFile.type, base64: pdfBase64 },
       lead: {
         vorname: document.getElementById('vorname').value.trim(),
