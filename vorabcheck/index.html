@@ -798,6 +798,60 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
           <div id="result-cta-hint" style="display:none;margin-top:12px;font-size:12px;color:var(--ink-3);font-style:italic"></div>
         </div>
 
+        <!-- KORREKTUR-PANEL: erkannte Werte überprüfen + bei Bedarf korrigieren -->
+        <div id="correction-panel" style="margin-top:18px;background:var(--bg-soft);border:1.5px solid var(--line-2);border-radius:12px;overflow:hidden">
+          <button type="button" onclick="toggleCorrectionPanel()" style="width:100%;background:none;border:none;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;color:var(--ink);font-family:inherit;text-align:left">
+            <span style="display:flex;align-items:center;gap:10px">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--brand-dark);flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              <span><strong>Werte überprüfen und ggf. korrigieren</strong><br><span style="font-size:12.5px;color:var(--ink-3);font-weight:400">Wenn etwas nicht stimmt — anpassen und neu berechnen lassen</span></span>
+            </span>
+            <span id="correction-arrow" style="font-size:18px;color:var(--ink-3);transition:transform .25s">▾</span>
+          </button>
+          <div id="correction-content" style="display:none;padding:0 18px 16px;border-top:1px solid var(--line-2)">
+            <div style="padding-top:14px;display:grid;grid-template-columns:1fr;gap:12px">
+              <div class="field">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Wartungsbetrag €/Jahr (Gesamt, alle Aufzüge)</label>
+                <input type="number" id="corr-brutto" min="0" step="1" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+              </div>
+              <div class="field">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Anzahl Aufzüge</label>
+                <input type="number" id="corr-aufzug-count" min="1" max="50" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+              </div>
+              <div class="field">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Verteilungsschlüssel</label>
+                <select id="corr-verteiler" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+                  <option value="mea">Miteigentumsanteile (MEA)</option>
+                  <option value="einheit">Wohneinheiten gleich (pro Einheit)</option>
+                  <option value="person">pro Person</option>
+                  <option value="qm">Quadratmeter Wohnfläche</option>
+                  <option value="unbekannt">unbekannt</option>
+                </select>
+              </div>
+              <div class="field corr-mea-only" style="display:none">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Gesamt-MEA der Aufzug-Position</label>
+                <input type="number" id="corr-mea-pool" min="0" step="0.001" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+              </div>
+              <div class="field corr-mea-only" style="display:none">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Ihr MEA-Anteil</label>
+                <input type="number" id="corr-mea-eig" min="0" step="0.001" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+              </div>
+              <div class="field corr-parteien-only" style="display:none">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Anzahl Parteien</label>
+                <input type="number" id="corr-parteien" min="0" max="999" step="1" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+              <button type="button" onclick="recalculateWithCorrections()" class="btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Neu berechnen
+              </button>
+              <button type="button" onclick="resetCorrections()" class="btn btn-ghost">Originalwerte</button>
+            </div>
+            <div id="corr-feedback" style="margin-top:12px;font-size:12.5px;color:var(--ink-3);display:none"></div>
+            <div style="margin-top:14px;font-size:11.5px;color:var(--ink-3);font-style:italic;line-height:1.5">💡 Ihre Korrekturen helfen Liftaro, die KI für zukünftige Checks zu verbessern. Sie werden anonymisiert gespeichert.</div>
+          </div>
+        </div>
+
         <!-- Haftungsausschluss -->
         <div style="margin-top:18px;padding:14px 16px;background:#fff7e6;border-left:3px solid #f0a020;border-radius:8px;font-size:12.5px;color:var(--ink-2);line-height:1.55">
           <strong style="color:#7a4d00">Haftungsausschluss:</strong> Diese Auswertung ist eine technisch-wirtschaftliche Indikation und stellt <strong>keine Rechtsberatung</strong> im Sinne des RDG dar. Beträge sind Schätzwerte. Auf Wunsch vermitteln wir einen Fachanwalt für Miet- bzw. WEG-Recht.
@@ -1241,6 +1295,11 @@ document.getElementById('restart').addEventListener('click', () => {
   dropzone.style.display = 'block';
   document.querySelectorAll('.loading-step').forEach(el => el.classList.remove('active', 'done'));
   document.getElementById('loading-error').innerHTML = '';
+  // Korrektur-Panel-Zustand für nächsten Check zurücksetzen
+  window._lastResult = null;
+  window._origResult = null;
+  const cfb = document.getElementById('corr-feedback');
+  if (cfb) { cfb.style.display = 'none'; cfb.textContent = ''; }
 });
 
 // Loading-Step-Animation während des API-Calls
@@ -1325,6 +1384,10 @@ async function runAnalysis() {
 // Result-Rendering
 function renderResult(r) {
   goToStep(4);
+
+  // Für Korrektur-Panel: aktuelles Result merken; Original nur beim ersten Aufruf festhalten
+  window._lastResult = JSON.parse(JSON.stringify(r));
+  if (!window._origResult) window._origResult = JSON.parse(JSON.stringify(r));
 
   // Stamp & Title basierend auf Ampel
   const stamp = document.getElementById('result-stamp');
@@ -1478,6 +1541,9 @@ function renderResult(r) {
   // Rollen-spezifische CTA
   renderResultCta(role, r);
 
+  // Korrektur-Panel mit aktuellen Werten initialisieren
+  _populateCorrectionInputs(r);
+
   // Findings
   const container = document.getElementById('findings-container');
   container.innerHTML = '';
@@ -1506,6 +1572,166 @@ function renderResult(r) {
 
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ── Korrektur-Panel: User-Werte überschreiben + lokale Neuberechnung ──
+// Ablauf: 1) Beim Result-Rendering werden die aktuellen Werte in die Inputs
+// gefüllt, originale Backend-Werte werden in window._origResult gespeichert.
+// 2) User korrigiert + Klick "Neu berechnen" → recomputeMarketSavings() rechnet
+// die Markt-Logik des Backends im Frontend nach. 3) Geänderte Felder werden
+// an val.town gepostet (action=correct) und in Airtable Vorabcheck-Korrekturen
+// gespeichert — für spätere Few-Shot-Optimierung der KI.
+window._lastResult = null;
+window._origResult = null;
+
+function _populateCorrectionInputs(r) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el != null) el.value = (v == null || isNaN(v)) ? '' : v; };
+  set('corr-brutto',       Math.round(Number(r.wartung_brutto_used || 0)) || '');
+  set('corr-aufzug-count', Number(r.aufzug_count || 1));
+  const verteiler = String(r.verteilerschluessel || 'unbekannt').toLowerCase();
+  const sel = document.getElementById('corr-verteiler');
+  if (sel) sel.value = ['mea','einheit','person','qm'].includes(verteiler) ? verteiler : 'unbekannt';
+  set('corr-mea-pool', Number(r.mea_pool_total || 0) || '');
+  set('corr-mea-eig',  Number(r.mea_eigentuemer || 0) || '');
+  set('corr-parteien', Number(r.parteien_count || 0) || '');
+  _updateCorrectionVisibility();
+}
+function _updateCorrectionVisibility() {
+  const v = document.getElementById('corr-verteiler')?.value || 'unbekannt';
+  document.querySelectorAll('.corr-mea-only').forEach(el => { el.style.display = (v === 'mea') ? 'flex' : 'none'; });
+  document.querySelectorAll('.corr-parteien-only').forEach(el => { el.style.display = (v === 'einheit' || v === 'person') ? 'flex' : 'none'; });
+}
+// Sichtbarkeit der MEA/Parteien-Felder bei Schlüssel-Wechsel anpassen
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'corr-verteiler') _updateCorrectionVisibility();
+});
+
+function toggleCorrectionPanel() {
+  const content = document.getElementById('correction-content');
+  const arrow   = document.getElementById('correction-arrow');
+  if (!content || !arrow) return;
+  const open = content.style.display !== 'none';
+  content.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+}
+
+function resetCorrections() {
+  if (!window._origResult) return;
+  _populateCorrectionInputs(window._origResult);
+  renderResult(JSON.parse(JSON.stringify(window._origResult)));
+  const fb = document.getElementById('corr-feedback');
+  if (fb) { fb.style.display = 'block'; fb.textContent = '↺ Originalwerte wiederhergestellt.'; }
+}
+
+// Lokale Reimplementierung der Backend-Markt-Logik (Median 980, exakte Differenz)
+function recomputeMarketSavings(r) {
+  const aufzugCount = Math.max(1, Number(r.aufzug_count || 1));
+  const aufzugBrutto = Number(r.wartung_brutto_used || 0);
+  const proAnlage = aufzugBrutto / aufzugCount;
+  if (proAnlage > 1200) {
+    const total = Math.round((proAnlage - 980) * aufzugCount);
+    r.savings_total_eur = total;
+    r.savings_estimate_eur = total;
+    // Individuelle Ersparnis nach Verteilungsschlüssel
+    const v = String(r.verteilerschluessel || '').toLowerCase();
+    const meaPool = Number(r.mea_pool_total || 0);
+    const meaEig  = Number(r.mea_eigentuemer || 0);
+    const parteien = Number(r.parteien_count || 0);
+    if (v === 'mea' && meaPool > 0 && meaEig > 0) {
+      r.savings_individual_eur = Math.round(total * meaEig / meaPool);
+    } else if ((v === 'einheit' || v === 'person') && parteien > 0) {
+      r.savings_individual_eur = Math.round(total / parteien);
+    } else {
+      r.savings_individual_eur = 0;
+    }
+    const pct = aufzugBrutto > 0 ? Math.round(total / aufzugBrutto * 100) : 0;
+    r.savings_text = 'rund ' + pct + ' % der bisherigen Wartungskosten durch Neuausschreibung zu marktüblichen Konditionen';
+    // Summary und Finding aktualisieren
+    const diff = Math.round(proAnlage - 980).toLocaleString('de-DE');
+    const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
+    r.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diff + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Optimierungspotenzial vorhanden.';
+    let findings = (r.findings || []).filter(f => !/markt|wartung.*(zu\s+(teuer|hoch)|ueber|über)|optimierung.*?wartung/i.test((f.title||'') + ' ' + (f.description||'')));
+    findings.unshift({
+      severity: proAnlage > 1800 ? 'warn' : (proAnlage > 1500 ? 'amber' : 'blue'),
+      title: 'Wartungspauschale über Marktmedian',
+      description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt ' + diff + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Bei Neuausschreibung zu marktüblichen Konditionen: ' + total.toLocaleString('de-DE') + ' €/Jahr Ersparnis.',
+      tag: 'Liftaro-Marktreferenz · aktuell ' + proAnlageStr + ' EUR/Jahr',
+    });
+    r.findings = findings;
+    if ((r.ampel === 'gruen' || r.ampel === 'grün') && proAnlage > 1500) r.ampel = 'gelb';
+  } else {
+    r.savings_total_eur = 0;
+    r.savings_estimate_eur = 0;
+    r.savings_individual_eur = 0;
+    r.savings_text = 'Wartungskosten liegen im marktüblichen Rahmen — keine signifikante Ersparnis erkennbar.';
+    // Markt-Findings entfernen
+    r.findings = (r.findings || []).filter(f => !/markt|wartung.*(zu\s+(teuer|hoch)|ueber|über)|optimierung.*?wartung/i.test((f.title||'') + ' ' + (f.description||'')));
+  }
+}
+
+function recalculateWithCorrections() {
+  if (!window._lastResult) return;
+  const r = JSON.parse(JSON.stringify(window._lastResult));
+  const orig = window._origResult || r;
+  // Werte aus den Inputs lesen
+  const newBrutto = Math.max(0, parseFloat(document.getElementById('corr-brutto')?.value || '0') || 0);
+  const newCount  = Math.max(1, parseInt(document.getElementById('corr-aufzug-count')?.value || '1', 10) || 1);
+  const newVert   = document.getElementById('corr-verteiler')?.value || 'unbekannt';
+  const newPool   = parseFloat(document.getElementById('corr-mea-pool')?.value || '0') || 0;
+  const newEig    = parseFloat(document.getElementById('corr-mea-eig')?.value  || '0') || 0;
+  const newPart   = parseInt(document.getElementById('corr-parteien')?.value   || '0', 10) || 0;
+  // In das Result-Objekt übernehmen
+  r.wartung_brutto_used = newBrutto;
+  r.wartung_brutto_source = 'user'; // korrigiert
+  r.aufzug_count = newCount;
+  r.verteilerschluessel = newVert;
+  r.mea_pool_total = newVert === 'mea' ? newPool : 0;
+  r.mea_eigentuemer = newVert === 'mea' ? newEig : 0;
+  r.parteien_count = (newVert === 'einheit' || newVert === 'person') ? newPart : 0;
+  // Markt-Berechnung neu mit User-Werten
+  recomputeMarketSavings(r);
+  // Re-Render — Korrektur-Panel offen halten
+  const wasOpen = document.getElementById('correction-content')?.style.display !== 'none';
+  renderResult(r);
+  if (wasOpen) {
+    const content = document.getElementById('correction-content');
+    const arrow   = document.getElementById('correction-arrow');
+    if (content) content.style.display = 'block';
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+  }
+  // Geänderte Felder ermitteln + an Backend zum Lernen schicken
+  const changes = {
+    wartung_brutto_used: { original: orig.wartung_brutto_used, corrected: newBrutto, changed: Math.round(Number(orig.wartung_brutto_used||0)) !== Math.round(newBrutto) },
+    aufzug_count:        { original: orig.aufzug_count,        corrected: newCount,  changed: Number(orig.aufzug_count||0) !== newCount },
+    verteilerschluessel: { original: orig.verteilerschluessel, corrected: newVert,   changed: String(orig.verteilerschluessel||'') !== newVert },
+    mea_pool_total:      { original: orig.mea_pool_total,      corrected: newPool,   changed: Number(orig.mea_pool_total||0) !== newPool },
+    mea_eigentuemer:     { original: orig.mea_eigentuemer,     corrected: newEig,    changed: Number(orig.mea_eigentuemer||0) !== newEig },
+    parteien_count:      { original: orig.parteien_count,      corrected: newPart,   changed: Number(orig.parteien_count||0) !== newPart },
+  };
+  const anyChange = Object.values(changes).some(function(c) { return c.changed; });
+  const fb = document.getElementById('corr-feedback');
+  if (anyChange && r.check_nr) {
+    if (fb) { fb.style.display = 'block'; fb.textContent = '✓ Neu berechnet. Korrekturen werden an Liftaro übermittelt …'; }
+    // Persist im Hintergrund (kein neuer KI-Call — schnell)
+    if (LIFTARO_API_URL) {
+      fetch(LIFTARO_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'correct', check_nr: r.check_nr, fields: changes }),
+      }).then(res => res.json()).then(data => {
+        if (fb) fb.textContent = data.ok
+          ? '✓ Neu berechnet. ' + (data.count || 0) + ' Korrektur(en) gespeichert — danke fürs Helfen!'
+          : '✓ Neu berechnet. (Korrektur-Speichern fehlgeschlagen, Werte sind aber lokal aktualisiert.)';
+      }).catch(() => {
+        if (fb) fb.textContent = '✓ Neu berechnet. (Korrektur-Speichern fehlgeschlagen, Werte sind aber lokal aktualisiert.)';
+      });
+    } else if (fb) {
+      fb.textContent = '✓ Neu berechnet.';
+    }
+  } else if (fb) {
+    fb.style.display = 'block';
+    fb.textContent = '✓ Neu berechnet (keine Änderungen).';
+  }
 }
 
 // ── Rollenabhängige CTA im Result-Screen ──────────────────────────────
