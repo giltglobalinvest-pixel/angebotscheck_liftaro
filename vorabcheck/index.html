@@ -1451,12 +1451,12 @@ function renderResult(r) {
     ? Math.round(savings_total / parteien)
     : 0;
 
-  // Verwalter: Gesamt primär; Mieter/Eigentümer: Individuell primär (Fallback auf Gesamt wenn kein Indiv vorliegt)
+  // Verwalter: NUR Gesamt — keine Anteile, keine Pro-Partei. Mieter/Eigentümer: Individuell primär.
   let primaryValue, primaryLabel, secondaryValue = null, secondaryLabel = null;
   if (role === 'verwalter') {
     primaryValue = savings_total;
     primaryLabel = 'Gesamtersparnis Haus / Jahr';
-    if (hasIndividual) { secondaryValue = savings_individual; secondaryLabel = 'pro Partei / Jahr'; }
+    // KEIN secondaryValue — Verwalter sieht nur Gesamtwerte
   } else {
     if (hasIndividual) {
       primaryValue = savings_individual;
@@ -1493,7 +1493,8 @@ function renderResult(r) {
   }
   // Pro-Partei-Anzeige: bei beliebigem Verteilerschlüssel, sobald Parteien-Anzahl bekannt.
   // Bei MEA ist das ein Durchschnitt (jeder Eigentümer hat anderen Anteil), gut genug fürs Vorabcheck.
-  if (savingsPerPartyMonth > 0 && parteien > 1) {
+  // Verwalter sieht das NICHT — der bekommt nur Gesamt-Sicht.
+  if (savingsPerPartyMonth > 0 && parteien > 1 && role !== 'verwalter') {
     secLines.push(
       '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
         'Pro Partei (bei ' + parteien + ' Parteien)' +
