@@ -827,17 +827,10 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
                   <option value="unbekannt">unbekannt</option>
                 </select>
               </div>
-              <div class="field corr-mea-only" style="display:none">
-                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Gesamt-MEA der Aufzug-Position</label>
-                <input type="number" id="corr-mea-pool" min="0" step="0.001" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
-              </div>
-              <div class="field corr-mea-only" style="display:none">
-                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Ihr MEA-Anteil</label>
-                <input type="number" id="corr-mea-eig" min="0" step="0.001" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
-              </div>
-              <div class="field corr-parteien-only" style="display:none">
-                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Anzahl Parteien</label>
-                <input type="number" id="corr-parteien" min="0" max="999" step="1" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+              <div class="field">
+                <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Anzahl Parteien im Haus</label>
+                <input type="number" id="corr-parteien" min="0" max="999" step="1" placeholder="z.B. 12" style="padding:9px 11px;background:#fff;border:1.5px solid var(--line-2);border-radius:7px;font-size:14.5px;color:var(--ink);outline:none">
+                <span style="font-size:11.5px;color:var(--ink-3);margin-top:3px">Wohneinheiten, die sich die Aufzugskosten teilen — für die Pro-Partei-Hochrechnung. 0 = unbekannt.</span>
               </div>
             </div>
             <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
@@ -1428,13 +1421,13 @@ function renderResult(r) {
       const tag = bruttoSrc === 'user' ? '<span style="opacity:.7;font-size:11px"> · von Ihnen angegeben</span>' : '<span style="opacity:.7;font-size:11px"> · aus Dokument erkannt</span>';
       parts.push('Wartung: <strong>' + Math.round(wartungBrutto).toLocaleString('de-DE') + ' €/Jahr</strong> gesamt' + tag);
     }
-    if (isMea && meaEig > 0) {
-      const pct = (meaEig / meaPool * 100).toFixed(2).replace('.', ',');
-      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong> · Ihr Anteil: <strong>' + pct + ' %</strong>');
-    } else if (isMea) {
-      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong>');
+    // Verteilung + Parteien-Anzahl in einer Zeile
+    if (parteien > 0 && isMea) {
+      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong> · ca. <strong>' + parteien + '</strong> Parteien');
     } else if (parteien > 0) {
       parts.push('<strong>' + parteien + '</strong> Partei' + (parteien === 1 ? '' : 'en') + ' im Verteilerschlüssel');
+    } else if (isMea) {
+      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong>');
     }
     buildingText.innerHTML = parts.join('<br>');
     buildingBox.style.display = 'flex';
@@ -1498,26 +1491,13 @@ function renderResult(r) {
       Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + '</strong>'
     );
   }
-  // Bei MEA-Verteilung KEINE Pro-Partei-Zeile (jeder Eigentümer hat anderen Anteil)
-  // Stattdessen MEA-Anteil und individuellen Eurobetrag prominenter machen
-  if (isMea && meaPool > 0 && meaEig > 0 && savings_total > 0) {
-    const pctNum = (meaEig / meaPool * 100);
-    const indivCalc = Math.round(savings_total * meaEig / meaPool);
+  // Pro-Partei-Anzeige: bei beliebigem Verteilerschlüssel, sobald Parteien-Anzahl bekannt.
+  // Bei MEA ist das ein Durchschnitt (jeder Eigentümer hat anderen Anteil), gut genug fürs Vorabcheck.
+  if (savingsPerPartyMonth > 0 && parteien > 1) {
     secLines.push(
       '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
-        'Ihr MEA-Anteil an dieser Position' +
-      '</div>' +
-      '<strong style="font-size:17px;display:block;margin-top:2px">' +
-        pctNum.toFixed(2).replace('.', ',') + ' %' +
-        '<span style="opacity:.7;font-weight:600;font-size:14px"> · ' +
-        '€' + indivCalc.toLocaleString('de-DE') + ' / Jahr für Sie</span>' +
-      '</strong>'
-    );
-  } else if (savingsPerPartyMonth > 0 && parteien > 1 && (verteilerschluessel === 'einheit' || verteilerschluessel === 'person')) {
-    // Pro-Partei nur bei Einheiten- oder Person-Verteilung — sonst ist die Aufteilung ungleich
-    secLines.push(
-      '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
-        'Pro Partei (bei ' + parteien + ' Einheiten)' +
+        'Pro Partei (bei ' + parteien + ' Parteien)' +
+        (isMea ? ' <span style="font-size:11px;opacity:.7">· Durchschnitt</span>' : '') +
       '</div>' +
       '<strong style="font-size:17px;display:block;margin-top:2px">' +
         '€' + savingsPerPartyMonth.toLocaleString('de-DE') + ' / Monat ' +
@@ -1591,20 +1571,14 @@ function _populateCorrectionInputs(r) {
   const verteiler = String(r.verteilerschluessel || 'unbekannt').toLowerCase();
   const sel = document.getElementById('corr-verteiler');
   if (sel) sel.value = ['mea','einheit','person','qm'].includes(verteiler) ? verteiler : 'unbekannt';
-  set('corr-mea-pool', Number(r.mea_pool_total || 0) || '');
-  set('corr-mea-eig',  Number(r.mea_eigentuemer || 0) || '');
-  set('corr-parteien', Number(r.parteien_count || 0) || '');
-  _updateCorrectionVisibility();
+  // Parteien-Anzahl bevorzugt aus parteien_count; falls leer, aus MEA-Pool/MEA-Eigentümer schätzen
+  let parteien = Number(r.parteien_count || 0);
+  if (!parteien && Number(r.mea_pool_total || 0) > 0 && Number(r.mea_eigentuemer || 0) > 0) {
+    // Grob-Schätzung: Wenn alle Eigentümer gleich groß wären, mea_pool / mea_eig Parteien
+    parteien = Math.round(Number(r.mea_pool_total) / Number(r.mea_eigentuemer));
+  }
+  set('corr-parteien', parteien || '');
 }
-function _updateCorrectionVisibility() {
-  const v = document.getElementById('corr-verteiler')?.value || 'unbekannt';
-  document.querySelectorAll('.corr-mea-only').forEach(el => { el.style.display = (v === 'mea') ? 'flex' : 'none'; });
-  document.querySelectorAll('.corr-parteien-only').forEach(el => { el.style.display = (v === 'einheit' || v === 'person') ? 'flex' : 'none'; });
-}
-// Sichtbarkeit der MEA/Parteien-Felder bei Schlüssel-Wechsel anpassen
-document.addEventListener('change', (e) => {
-  if (e.target && e.target.id === 'corr-verteiler') _updateCorrectionVisibility();
-});
 
 function toggleCorrectionPanel() {
   const content = document.getElementById('correction-content');
@@ -1623,7 +1597,10 @@ function resetCorrections() {
   if (fb) { fb.style.display = 'block'; fb.textContent = '↺ Originalwerte wiederhergestellt.'; }
 }
 
-// Lokale Reimplementierung der Backend-Markt-Logik (Median 980, exakte Differenz)
+// Lokale Reimplementierung der Backend-Markt-Logik (Median 980, exakte Differenz).
+// Pro-Partei-Hochrechnung: total ÷ parteien_count (Durchschnitt). Bei MEA-Verteilung
+// ist das eine Schätzung, weil jeder Eigentümer einen anderen Anteil hat — aber
+// gut genug für den Vorabcheck.
 function recomputeMarketSavings(r) {
   const aufzugCount = Math.max(1, Number(r.aufzug_count || 1));
   const aufzugBrutto = Number(r.wartung_brutto_used || 0);
@@ -1632,18 +1609,9 @@ function recomputeMarketSavings(r) {
     const total = Math.round((proAnlage - 980) * aufzugCount);
     r.savings_total_eur = total;
     r.savings_estimate_eur = total;
-    // Individuelle Ersparnis nach Verteilungsschlüssel
-    const v = String(r.verteilerschluessel || '').toLowerCase();
-    const meaPool = Number(r.mea_pool_total || 0);
-    const meaEig  = Number(r.mea_eigentuemer || 0);
+    // Individuelle Ersparnis = Gesamtersparnis ÷ Anzahl Parteien (egal welcher Verteilerschlüssel)
     const parteien = Number(r.parteien_count || 0);
-    if (v === 'mea' && meaPool > 0 && meaEig > 0) {
-      r.savings_individual_eur = Math.round(total * meaEig / meaPool);
-    } else if ((v === 'einheit' || v === 'person') && parteien > 0) {
-      r.savings_individual_eur = Math.round(total / parteien);
-    } else {
-      r.savings_individual_eur = 0;
-    }
+    r.savings_individual_eur = parteien > 0 ? Math.round(total / parteien) : 0;
     const pct = aufzugBrutto > 0 ? Math.round(total / aufzugBrutto * 100) : 0;
     r.savings_text = 'rund ' + pct + ' % der bisherigen Wartungskosten durch Neuausschreibung zu marktüblichen Konditionen';
     // Summary und Finding aktualisieren
@@ -1677,17 +1645,16 @@ function recalculateWithCorrections() {
   const newBrutto = Math.max(0, parseFloat(document.getElementById('corr-brutto')?.value || '0') || 0);
   const newCount  = Math.max(1, parseInt(document.getElementById('corr-aufzug-count')?.value || '1', 10) || 1);
   const newVert   = document.getElementById('corr-verteiler')?.value || 'unbekannt';
-  const newPool   = parseFloat(document.getElementById('corr-mea-pool')?.value || '0') || 0;
-  const newEig    = parseFloat(document.getElementById('corr-mea-eig')?.value  || '0') || 0;
-  const newPart   = parseInt(document.getElementById('corr-parteien')?.value   || '0', 10) || 0;
+  const newPart   = parseInt(document.getElementById('corr-parteien')?.value || '0', 10) || 0;
   // In das Result-Objekt übernehmen
   r.wartung_brutto_used = newBrutto;
   r.wartung_brutto_source = 'user'; // korrigiert
   r.aufzug_count = newCount;
   r.verteilerschluessel = newVert;
-  r.mea_pool_total = newVert === 'mea' ? newPool : 0;
-  r.mea_eigentuemer = newVert === 'mea' ? newEig : 0;
-  r.parteien_count = (newVert === 'einheit' || newVert === 'person') ? newPart : 0;
+  r.parteien_count = newPart;
+  // MEA-Felder zurücksetzen — Pro-Partei-Anzeige nutzt jetzt einheitlich parteien_count
+  r.mea_pool_total = 0;
+  r.mea_eigentuemer = 0;
   // Markt-Berechnung neu mit User-Werten
   recomputeMarketSavings(r);
   // Re-Render — Korrektur-Panel offen halten
@@ -1704,8 +1671,6 @@ function recalculateWithCorrections() {
     wartung_brutto_used: { original: orig.wartung_brutto_used, corrected: newBrutto, changed: Math.round(Number(orig.wartung_brutto_used||0)) !== Math.round(newBrutto) },
     aufzug_count:        { original: orig.aufzug_count,        corrected: newCount,  changed: Number(orig.aufzug_count||0) !== newCount },
     verteilerschluessel: { original: orig.verteilerschluessel, corrected: newVert,   changed: String(orig.verteilerschluessel||'') !== newVert },
-    mea_pool_total:      { original: orig.mea_pool_total,      corrected: newPool,   changed: Number(orig.mea_pool_total||0) !== newPool },
-    mea_eigentuemer:     { original: orig.mea_eigentuemer,     corrected: newEig,    changed: Number(orig.mea_eigentuemer||0) !== newEig },
     parteien_count:      { original: orig.parteien_count,      corrected: newPart,   changed: Number(orig.parteien_count||0) !== newPart },
   };
   const anyChange = Object.values(changes).some(function(c) { return c.changed; });
