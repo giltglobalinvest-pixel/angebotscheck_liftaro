@@ -60,25 +60,113 @@ async function loadCustomPrompts(): Promise<Record<string, string>> {
 }
 
 // ───────────────────────────────────────────────────────────────
+// Rollen-spezifischer Kontext, der vor jeden Default-Prompt
+// gehängt wird. Sorgt für die korrekte rechtliche Einordnung
+// (Mieter vs. WEG-Eigentümer vs. Verwalter).
+// ───────────────────────────────────────────────────────────────
+const ROLE_CONTEXTS: Record<string, string> = {
+  mieter: `ROLLEN-KONTEXT: MIETER (Wohnraum-Mietvertrag)
+
+Der Nutzer ist Mieter. Folgendes gilt rechtlich:
+- § 2 BetrKV definiert abschließend, welche Kosten als Betriebskosten umgelegt werden dürfen.
+- Aufzug-Wartung, Strom, Aufsicht/Bedienung, TÜV/ZÜS-Prüfung, Reinigung → umlagefähig.
+- Reparaturen, Instandsetzung, Modernisierung, Verwaltungskosten → NICHT umlagefähig (§ 1 Abs. 2 BetrKV).
+- Bei Vollwartungsverträgen MUSS ein Vorwegabzug für Instandsetzungs-Anteile erfolgen (BGH VIII ZR 123/14, ca. 20–50 % je Vertragsumfang). Fehlender Vorwegabzug = unzulässige Umlage.
+- § 556 Abs. 3 BGB: 12 Monate Einwendungsfrist ab Erhalt der Nebenkostenabrechnung.
+- Erdgeschoss-Mieter: Aufzugskosten nur dann zulässig, wenn vertraglich vereinbart (LG-Rechtsprechung uneinheitlich).
+
+⚠ VORSICHTS-REGEL für Mieter (sehr wichtig):
+Markiere einen Posten NUR DANN als rechtswidrig/fehlerhaft (Severity "warn"/Ampel "rot"), wenn der Verstoß
+EINDEUTIG aus dem Dokument hervorgeht. Beispiele für eindeutig:
+  · Position "Reparatur Aufzug" oder "Instandsetzung Aufzug" wird unter umlagefähige Betriebskosten gezogen.
+  · Position "Modernisierung Aufzug" wird umgelegt.
+  · Explizit erwähnter Vollwartungsvertrag OHNE Vorwegabzug.
+NICHT als Fehler markieren bei (nicht eindeutigen Hinweisen):
+  · Hohe Wartungspauschale alleine — kann viele plausible Gründe haben (Anlagengröße, Hochhaus, Notruf, Hersteller-Service).
+  · Unklarer Vertragstyp — wenn das Dokument nicht eindeutig Vollwartung sagt: kein Vorwegabzug-Befund.
+  · Nicht erkennbare Verteilerschlüssel-Diskussion (Erdgeschoss etc.) — ohne Vertragsklausel-Info bleibt das spekulativ.
+Bei Unsicherheit: severity "blue" (Hinweis "bitte separat prüfen lassen") oder "amber" — NIEMALS "warn" auf Verdacht.
+Die Ampel "rot" darf nur kommen, wenn es mindestens einen "warn"-Befund mit eindeutiger Belegstelle aus dem Dokument gibt.
+
+SPRACHE: Bei eindeutigen Verstößen klar und durchsetzungs-orientiert formulieren mit §-Bezug (z.B. "Verstoß gegen § 1 Abs. 2 BetrKV"). Bei Zweifelsfällen offen formulieren ("Hinweis", "bitte prüfen lassen", "ggf. separat klären"). KEINE Rechtsberatung.`,
+
+  eigentuemer: `ROLLEN-KONTEXT: EIGENTÜMER (WEG-Mitglied oder Selbstnutzer)
+
+Der Nutzer ist Eigentümer. Folgendes gilt:
+- Alle Aufzugskosten (Wartung, Reparatur, Instandsetzung) werden in der WEG-Abrechnung umgelegt — es gibt KEINE Umlage-Beschränkung wie bei Mietern.
+- Relevante Prüfung: Marktangemessenheit der Konditionen, Vertragsoptimierungs-Potenzial, Vollwartung vs. Teilwartung, Servicestunden-Sätze, Vertragslaufzeit/Kündigungsfristen.
+- Befunde wie "Reparaturen versteckt" sind hier KEIN Rechtsverstoß, sondern Transparenz-/Verhandlungs-Argument.
+- Eigentümer kann als Vertragspartner direkt eine Optimierung anstoßen.
+
+SPRACHE: Sachlich, wirtschaftlich orientiert. §-Bezug nur wo relevant (z.B. WEG-Recht bei Verteilerschlüssel). Fokus auf konkrete Einsparungs-Hebel.`,
+
+  verwalter: `ROLLEN-KONTEXT: HAUSVERWALTER (Verwaltungsmandat)
+
+Der Nutzer ist Hausverwalter. Folgendes gilt:
+- Verwaltet möglicherweise mehrere Anlagen → Ersparnis-Hochrechnung "pro Anlage + portfolio-weit" ist besonders relevant.
+- Hat Verantwortung gegenüber Eigentümern (WEG) bzw. Vermietern und muss wirtschaftlich + rechtssicher handeln.
+- Kann als Vertragspartner direkt Vertragsoptimierungen einleiten.
+- Relevante Prüfung: Optimierungs-Hebel, Compliance-Risiken (z.B. fehlender Vorwegabzug bei Mieter-Umlage), Marktbenchmarks.
+
+SPRACHE: Professionell, knapp, kennzahlen-orientiert. Bezugnahme auf §§ wo relevant — insbesondere bei Konstellationen, wo Mietumlage betroffen ist (dann Mietrecht-Hinweis).`,
+};
+
+function buildSystemPrompt(checkType: string, role: string, customMap: Record<string, string>): string | null {
+  // 1. Custom-Prompt aus Airtable bevorzugen (Schlüssel "checkType.role" oder "checkType")
+  if (customMap[checkType + '.' + role]) return customMap[checkType + '.' + role];
+  if (customMap[checkType]) return customMap[checkType];
+
+  // 2. Default-Prompt + Rollen-Kontext vorne anhängen
+  const base = DEFAULT_SYSTEM_PROMPTS[checkType];
+  if (!base) return null;
+  const roleCtx = ROLE_CONTEXTS[role] || ROLE_CONTEXTS.mieter;
+  return roleCtx + '\n\n────────────────────────────────────────\n\n' + base;
+}
+
+// ───────────────────────────────────────────────────────────────
 // DEFAULT-System-Prompts pro Check-Typ (Fallback, wenn nichts in
-// Airtable hinterlegt ist)
+// Airtable hinterlegt ist).
+//
+// HINWEIS: Diese Default-Prompts werden zur Laufzeit mit einem
+// rollen-spezifischen Vorspann (siehe ROLE_CONTEXTS) kombiniert.
 // ───────────────────────────────────────────────────────────────
 const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
-  nebenkosten: `Du bist Aufzug-Experte und Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
+  nebenkosten: `Du bist Aufzug-Experte und Bau-/Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
+
+⚠ ANTI-HALLUZINATIONS-REGEL (sehr wichtig):
+- Stelle NIE Behauptungen auf, die nicht direkt aus dem Dokument belegbar sind.
+- "Vollwartungsvertrag" darfst Du NUR annehmen, wenn das Wort/der Begriff (oder eindeutige Synonyme wie "Vollwartung", "inkl. Reparaturen", "all-inclusive Wartung") tatsächlich im Dokument steht.
+- Wenn nur eine Position "Wartung" und separat eine Position "Instandhaltung/Reparatur" auftaucht → das spricht STARK GEGEN Vollwartung. In diesem Fall KEIN Vorwegabzug-Befund erzeugen.
+- Wenn Du den Vertragstyp aus dem Dokument NICHT bestimmen kannst → "vollwartung_erwaehnt": false und KEIN Finding zum Vorwegabzug. Stattdessen optional ein blue-Finding: "Vertragstyp unklar — bitte Wartungsvertrag separat prüfen lassen."
+
+⚠ ZUSÄTZLICHE VORSICHTS-REGEL bei Mieter-Rolle:
+Bei Nebenkostenabrechnungen, die einem MIETER vorgelegt werden, gilt: Markiere die Abrechnung NUR DANN als
+fehlerhaft (Ampel "rot" oder Severity "warn"), wenn der Fehler OFFENSICHTLICH und EINDEUTIG aus dem Dokument
+hervorgeht (z.B. eine Position "Reparatur Aufzug" steht klar unter umlagefähigen Betriebskosten, oder ein
+ausdrücklicher Vollwartungsvertrag ohne ausgewiesenen Vorwegabzug). Wenn nur ein Verdacht besteht oder das
+Dokument unklar ist → severity "blue"/"amber" (Hinweis statt Verstoß), Ampel "gruen" oder "gelb".
+Liftaro will Mieter NICHT zu unbegründeten Streitigkeiten ermutigen — nur bei eindeutigen Verstößen klare Kante.
 
 PRÜFE FOLGENDE PUNKTE:
 
-1. UMLAGEFÄHIGKEIT (§2 Nr. 7 BetrKV)
+1. UMLAGEFÄHIGKEIT (§ 2 Nr. 7 BetrKV)
    - Umlagefähig: Wartung, Strom, Aufsicht, TÜV (ZÜS), Reinigung
-   - NICHT umlagefähig (§1 BetrKV): Reparaturen, Instandsetzung, Modernisierung
+   - NICHT umlagefähig (§ 1 Abs. 2 BetrKV): Reparaturen, Instandsetzung, Modernisierung
+   - Bei Mieter: Verstöße klar als solche benennen mit §-Bezug.
+   - Bei Eigentümer/Verwalter: als Transparenz-Hinweis formulieren (kein Rechtsverstoß).
+   - WICHTIG: Wenn Instandhaltung in der Abrechnung BEREITS unter "nicht umlagefähig" geführt wird → das ist KORREKT, kein Verstoß. Lobe das ausdrücklich.
 
-2. VOLLWARTUNGSVERTRAG
-   - Bei Vollwartung muss ein Vorwegabzug für Instandsetzung erfolgen (20–50%, BGH)
-   - Wenn nicht ausgewiesen → Rotflag
+2. VOLLWARTUNGSVERTRAG — nur prüfen wenn EXPLIZIT erwähnt
+   - Voraussetzung: Das Dokument erwähnt Vollwartung wörtlich.
+   - Bei expliziter Vollwartung + Mieter-Umlage muss ein Vorwegabzug für Instandsetzung erfolgen (20–50 %, BGH VIII ZR 123/14).
+   - Wenn nicht ausgewiesen UND Vollwartung explizit → Rotflag bei Mieter.
+   - Bei separat ausgewiesener Instandhaltung → KEIN Vollwartungs-Vermutung, KEIN Vorwegabzug-Befund.
 
 3. WARTUNGSPAUSCHALE
    - Marktmedian für Wohnaufzüge: 450–550 €/Jahr je Anlage
    - Über 700 € → mit Verdacht prüfen, kontextabhängig
+   - Bei mehreren Aufzügen: Pauschale ÷ Anzahl Aufzüge ergibt den Pro-Anlage-Wert
+   - Achtung: Hohe Beträge können auch durch Notruf-Kosten, mehrere Wartungen p.a. oder hochwertige Anlage gerechtfertigt sein. Mahne mit Maß.
 
 4. SERVICESTUNDEN-SATZ
    - Marktüblich 95–125 €/h, regional unterschiedlich
@@ -89,11 +177,23 @@ PRÜFE FOLGENDE PUNKTE:
    - 4 Wartungen → gelb (kann ok sein bei stark genutzten Anlagen)
 
 6. VERTEILUNGSSCHLÜSSEL
-   - Erdgeschoss-Mieter zahlt nur wenn vertraglich vereinbart
-   - Übliche Schlüssel: m² Wohnfläche oder Person
+   - Erdgeschoss-Mieter zahlt nur wenn vertraglich vereinbart (Mieter-spezifisch)
+   - Übliche Schlüssel: m² Wohnfläche oder Person oder Miteigentumsanteile (MEA)
 
-7. FRIST §556 Abs. 3 BGB
+7. FRIST § 556 Abs. 3 BGB (nur Mieter)
    - 12 Monate ab Erhalt der Abrechnung für Einwendungen
+
+8. ANLAGEN-ERFASSUNG (immer extrahieren — wichtig für Hochrechnung)
+   - aufzug_count: Wie viele Aufzüge sind in der Abrechnung enthalten?
+     · "Aufzugswartung Haus 9" → 1 Aufzug
+     · "Aufzugswartung Haus 9, 11, 15" → 3 Aufzüge
+     · Wenn nicht ersichtlich → 0 (heißt: unbekannt)
+   - parteien_count: Wie viele Wohn-/Nutzungseinheiten teilen sich die Kosten?
+     · Suche nach Verteilerschlüsseln "Einheiten" mit einem Gesamtwert (z.B. "Hausreinigung Einheiten 73,000" → 73 Parteien).
+     · Auch "Wohneinheiten" oder "Personen" können Hinweise geben.
+     · Bei Miteigentumsanteile (MEA): MEA-Verteilung verrät NICHT direkt die Parteien-Anzahl — dann auf andere Position mit "Einheiten" schauen.
+     · Wenn nicht ableitbar → 0 (heißt: unbekannt). NICHT raten!
+   - Diese Zahlen brauchen wir für: Ersparnis pro Partei pro Monat = total_eur / parteien_count / 12.
 
 ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
 {
@@ -104,10 +204,14 @@ ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
       "severity": "warn" | "amber" | "blue",
       "title": "Kurze Überschrift",
       "description": "1–2 Sätze Erklärung mit konkreten Beträgen wenn möglich",
-      "tag": "z.B. Position 4.2 oder §556 BGB"
+      "tag": "z.B. § 2 Nr. 7 BetrKV oder Position 4.2"
     }
   ],
-  "savings_estimate_eur": Zahl (geschätzte jährliche Ersparnis in EUR, 0 wenn keine),
+  "aufzug_count": Zahl (Anzahl erkannter Aufzüge in der Abrechnung, 0 wenn unklar),
+  "parteien_count": Zahl (Anzahl Parteien/Einheiten im Verteilerschlüssel, 0 wenn unklar),
+  "savings_total_eur": Zahl (geschätzte jährliche Gesamtersparnis fürs ganze Haus in EUR, 0 wenn keine),
+  "savings_individual_eur": Zahl (geschätzte jährliche Ersparnis für die anfragende Partei in EUR — auf Basis Verteilerschlüssel; 0 wenn nicht berechenbar),
+  "savings_estimate_eur": Zahl (Legacy-Feld; identisch zu savings_total_eur),
   "savings_text": "z.B. 'rund 40% der bisherigen Aufzug-Kosten'",
   "anonymized_data": {
     "abrechnungszeitraum": "z.B. 2024",
@@ -116,6 +220,8 @@ ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
     "vollwartung_erwaehnt": true | false,
     "vorwegabzug_ausgewiesen": true | false,
     "anzahl_wartungen": Zahl | null,
+    "anzahl_aufzuege": Zahl,
+    "anzahl_parteien": Zahl,
     "anbieter_branche": "kone" | "schindler" | "tk-elevator" | "otis" | "sonstige" | "unbekannt"
   }
 }
@@ -128,14 +234,22 @@ PRÜFE:
 1. Marktüblichkeit der Positionspreise (Reparaturkomponenten, Servicestunden)
 2. Vollständigkeit (Gewährleistung, Lieferzeit, Anschrift, Steuer-ID)
 3. Auffällige Klauseln (lange Bindefristen, Preisgleitklauseln)
+4. Anlagen-Bezug: wie viele Aufzüge betrifft das Angebot? Welche Anzahl Parteien profitiert?
 
 Servicestunden-Marktwerte: 95–125 €/h Wohnaufzug, 110–145 €/h Gewerbe.
 
-ANTWORTE NUR MIT JSON wie folgt (gleiches Schema wie nebenkosten, mit angepasstem anonymized_data):
+Bei Mieter: §-Bezug bei umlagefähigkeitsrelevanten Themen (Reparatur vs. Wartung).
+Bei Eigentümer/Verwalter: wirtschaftlich/sachlich.
+
+ANTWORTE NUR MIT JSON:
 {
   "ampel": "gruen" | "gelb" | "rot",
   "summary": "...",
   "findings": [{ "severity": "warn"|"amber"|"blue", "title": "...", "description": "...", "tag": "..." }],
+  "aufzug_count": Zahl,
+  "parteien_count": Zahl,
+  "savings_total_eur": Zahl,
+  "savings_individual_eur": Zahl,
   "savings_estimate_eur": Zahl,
   "savings_text": "...",
   "anonymized_data": {
@@ -143,6 +257,7 @@ ANTWORTE NUR MIT JSON wie folgt (gleiches Schema wie nebenkosten, mit angepasste
     "angebotssumme_brutto": Zahl,
     "gewaehrleistung_monate": Zahl | null,
     "lieferzeit_wochen": Zahl | null,
+    "anzahl_aufzuege": Zahl,
     "anbieter_branche": "..."
   }
 }`,
@@ -151,16 +266,24 @@ ANTWORTE NUR MIT JSON wie folgt (gleiches Schema wie nebenkosten, mit angepasste
 
 PRÜFE:
 1. Laufzeit & Kündigungsfrist (typisch: 3 Monate vor Ablauf, max. 5 Jahre Erstlaufzeit)
-2. Vertragstyp (Voll- vs. Teilwartung)
+2. Vertragstyp (Voll- vs. Teilwartung) — bei Mieter-Umlage: Vorwegabzug-Pflicht für Instandsetzung (BGH VIII ZR 123/14)
 3. Preisgleitklauseln
-4. Anzahl Wartungen p.a. (TRBS-konform)
+4. Anzahl Wartungen p.a. (TRBS 1201 Teil 4)
 5. Bereitschaftsdienst / Notruf-Kosten
+6. Anzahl Anlagen im Vertrag + Anzahl Parteien zur Ersparnis-Hochrechnung
 
-ANTWORTE NUR MIT JSON wie folgt:
+Bei Mieter: Mietrechtliche Konsequenzen mit §-Bezug benennen, wenn die Vertragsgestaltung die Umlagefähigkeit beeinflusst.
+Bei Eigentümer/Verwalter: Optimierungs- und Verhandlungs-Hebel.
+
+ANTWORTE NUR MIT JSON:
 {
   "ampel": "gruen" | "gelb" | "rot",
   "summary": "...",
   "findings": [{ "severity": "warn"|"amber"|"blue", "title": "...", "description": "...", "tag": "..." }],
+  "aufzug_count": Zahl,
+  "parteien_count": Zahl,
+  "savings_total_eur": Zahl,
+  "savings_individual_eur": Zahl,
   "savings_estimate_eur": Zahl,
   "savings_text": "...",
   "anonymized_data": {
@@ -169,6 +292,8 @@ ANTWORTE NUR MIT JSON wie folgt:
     "kuendigungsfrist_monate": Zahl | null,
     "kosten_pro_jahr": Zahl,
     "anzahl_wartungen": Zahl | null,
+    "anzahl_aufzuege": Zahl,
+    "anzahl_parteien": Zahl,
     "anbieter_branche": "..."
   }
 }`,
@@ -190,6 +315,8 @@ export default async function (req: Request): Promise<Response> {
   try {
     const body = await req.json();
     const { check_type, file, lead, turnstile_token, consent_given } = body;
+    // Rolle normalisieren (Default = mieter, falls Frontend keinen Wert sendet)
+    const role = ['mieter','eigentuemer','verwalter'].includes(body.role) ? body.role : 'mieter';
 
     // 1. Turnstile validieren (wenn konfiguriert)
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
@@ -201,9 +328,9 @@ export default async function (req: Request): Promise<Response> {
     // 2. Consent prüfen
     if (!consent_given) return jsonResp({ error: "Einwilligung fehlt" }, 400, corsHeaders);
 
-    // 3. Check-Type validieren (Custom-Prompt aus Airtable > Default)
+    // 3. Check-Type validieren + Prompt zusammenbauen (Rolle-Kontext + Default)
     const custom = await loadCustomPrompts();
-    const systemPrompt = custom[check_type] || DEFAULT_SYSTEM_PROMPTS[check_type];
+    const systemPrompt = buildSystemPrompt(check_type, role, custom);
     if (!systemPrompt) return jsonResp({ error: "Unbekannter Check-Typ" }, 400, corsHeaders);
 
     // 4. Anthropic-Call
@@ -247,6 +374,7 @@ export default async function (req: Request): Promise<Response> {
     await saveToAirtable({
       check_nr: checkNr,
       check_type,
+      role,
       lead,
       result,
       file_name: file.name,
@@ -258,13 +386,22 @@ export default async function (req: Request): Promise<Response> {
     });
 
     // 8. Return — nur die Daten, die das Frontend braucht
+    // savings_total_eur ist die Gesamthaus-Ersparnis (Fallback: legacy savings_estimate_eur)
+    // savings_individual_eur ist die Ersparnis für die anfragende Partei
+    const savingsTotal = Number(result.savings_total_eur || result.savings_estimate_eur || 0);
+    const savingsIndividual = Number(result.savings_individual_eur || 0);
     return jsonResp({
       ampel: result.ampel,
       summary: result.summary,
       findings: result.findings || [],
-      savings_estimate_eur: result.savings_estimate_eur || 0,
+      aufzug_count: Number(result.aufzug_count || 0),
+      parteien_count: Number(result.parteien_count || 0),
+      savings_total_eur: savingsTotal,
+      savings_individual_eur: savingsIndividual,
+      savings_estimate_eur: savingsTotal, // Legacy für altes Frontend
       savings_text: result.savings_text || "",
       check_nr: checkNr,
+      role: role,
     }, 200, corsHeaders);
 
   } catch (e: any) {
@@ -303,6 +440,7 @@ async function generateCheckNr(): Promise<string> {
 async function saveToAirtable(data: {
   check_nr: string;
   check_type: string;
+  role: string;
   lead: any;
   result: any;
   file_name: string;
@@ -318,6 +456,9 @@ async function saveToAirtable(data: {
   const at = `https://api.airtable.com/v0/${base}`;
   const headers = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" };
 
+  const totalEur = Number(data.result.savings_total_eur || data.result.savings_estimate_eur || 0);
+  const indivEur = Number(data.result.savings_individual_eur || 0);
+
   // Lead-Tabelle (mit PII)
   await fetch(`${at}/Vorabcheck-Leads`, {
     method: "POST", headers,
@@ -325,6 +466,7 @@ async function saveToAirtable(data: {
       fields: {
         check_nr: data.check_nr,
         check_type: data.check_type,
+        role: data.role,
         vorname: data.lead.vorname,
         nachname: data.lead.nachname,
         email: data.lead.email,
@@ -343,9 +485,14 @@ async function saveToAirtable(data: {
       fields: {
         check_nr: data.check_nr,
         check_type: data.check_type,
+        role: data.role,
         ampel: data.result.ampel,
         summary: data.result.summary,
-        savings_estimate_eur: data.result.savings_estimate_eur || 0,
+        savings_estimate_eur: totalEur,
+        savings_total_eur: totalEur,
+        savings_individual_eur: indivEur,
+        aufzug_count: Number(data.result.aufzug_count || 0),
+        parteien_count: Number(data.result.parteien_count || 0),
         findings_json: JSON.stringify(data.result.findings || []),
         anonymized_data_json: JSON.stringify(data.result.anonymized_data || {}),
         savedAt: new Date().toISOString(),
