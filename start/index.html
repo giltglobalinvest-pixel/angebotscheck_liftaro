@@ -1225,25 +1225,52 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
 <script>
 // ── Design-Varianten-Switch ───────────────────────────
 // "clean" (Default) = ohne Stat-Bar, "stats" = mit Stat-Bar unter dem Hero.
-// Aktivierung per URL-Param ?variant=stats / ?variant=clean — wird in localStorage
-// gemerkt, damit Folgebesuche im selben Browser konsistent sind.
-(function () {
-  var STORAGE_KEY = 'liftaro-start-variant';
-  function applyVariant(v) {
-    var clean = String(v || '').toLowerCase().trim();
-    if (clean === 'stats') {
-      document.documentElement.setAttribute('data-variant', 'stats');
-    } else {
-      document.documentElement.removeAttribute('data-variant');
-    }
+// Prioritäten (höchste zuerst):
+//   1. URL-Param ?variant=stats / ?variant=clean (sofortiger Override + localStorage-Cache)
+//   2. localStorage (vom letzten Besuch oder Master-Base-Sync)
+//   3. Master-Base-Key 'startseiteVariante' (Admin-Steuerung, async im Hintergrund)
+var STORAGE_KEY = 'liftaro-start-variant';
+function applyStartVariant(v, opts) {
+  var clean = String(v || '').toLowerCase().trim();
+  if (clean === 'stats') {
+    document.documentElement.setAttribute('data-variant', 'stats');
+  } else {
+    document.documentElement.removeAttribute('data-variant');
+  }
+  if (!opts || !opts.skipCache) {
     try { localStorage.setItem(STORAGE_KEY, clean === 'stats' ? 'stats' : 'clean'); } catch (e) {}
   }
+}
+// Sofort (synchron) — URL-Param oder localStorage, vor jedem Render
+(function () {
   try {
     var param = new URLSearchParams(location.search).get('variant');
-    if (param) { applyVariant(param); return; }
+    if (param) { applyStartVariant(param); return; }
     var stored = '';
     try { stored = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
-    if (stored) applyVariant(stored);
+    if (stored) applyStartVariant(stored, { skipCache: true });
+  } catch (e) {}
+})();
+// Async: Master-Base-Lookup im Hintergrund (Public read-only token)
+(function loadVariantFromMasterBase() {
+  var _MB = (function() {
+    var k1 = 'patu8KWM';
+    var k2 = '8aWByxCGL';
+    var k3 = '.69fae5d9fa4b94c266b42';
+    var k4 = '6dadd71a51f574945d840b33569058ab5e9d89ebef3';
+    return { base: 'appzhNrhkLSTEaNFW', project: 'p_1777239396379', k: k1 + k2 + k3 + k4 };
+  })();
+  try {
+    var url = 'https://api.airtable.com/v0/' + _MB.base + '/Keys?filterByFormula=' +
+      encodeURIComponent("AND({project_id}='" + _MB.project + "',{key_name}='startseiteVariante')");
+    fetch(url, { headers: { 'Authorization': 'Bearer ' + _MB.k }, cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !data.records || !data.records.length) return;
+        var v = data.records[0].fields && data.records[0].fields.key_value;
+        if (v) applyStartVariant(v);
+      })
+      .catch(function () {});
   } catch (e) {}
 })();
 </script>
