@@ -272,7 +272,7 @@ ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
   "savings_text": "z.B. 'rund 40% der bisherigen Aufzug-Kosten'",
   "anonymized_data": {
     "abrechnungszeitraum": "z.B. 2024",
-    "betrag_aufzug_brutto": Zahl,
+    "betrag_aufzug_brutto": Zahl (ABSOLUTER Wartungsbetrag aus Zeile "Aufzugswartung … X EUR" Gesamt-Spalte; NICHT die Differenz zum Median, NICHT der Eigentümer-Anteil, NICHT die Ersparnis. Bei "Aufzugswartung Haus 9: 2.100 EUR" → 2100.),
     "verteilerschluessel": "mea" | "qm" | "einheit" | "person" | "unbekannt",
     "vollwartung_erwaehnt": true | false,
     "vorwegabzug_ausgewiesen": true | false,
@@ -463,46 +463,67 @@ export default async function (req: Request): Promise<Response> {
     const meaPool       = Number(result.mea_pool_total || 0);
     const meaEigentuemer = Number(result.mea_eigentuemer || 0);
 
-    // SICHERHEITSNETZ A: Markt-Ersparnis aus brutto-Betrag herleiten, wenn KI sie vergessen hat
-    // oder dem Markt-Vergleich widerspricht (Halluzination "unter Median" trotz 2.100 € Wartung).
-    // Median-Referenz 980 €/Anlage/Jahr, Verhandlungsrealismus 0,7.
+    // SICHERHEITSNETZ A: Markt-Ersparnis IMMER selbst rechnen — der KI-Rechnung wird NICHT mehr vertraut.
+    // Strategie: brutto-Wartungsbetrag erstmal aus anonymized_data lesen, sonst per Regex aus
+    // dem Klartext (summary + findings) extrahieren. Dann mit Median 980 €/Anlage/Jahr vergleichen.
     if (check_type === 'nebenkosten') {
-      const aufzugBrutto = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
-      const aufzugCount  = Math.max(1, Number(result.aufzug_count || 1));
-      const proAnlage    = aufzugBrutto / aufzugCount;
+      const aufzugCount = Math.max(1, Number(result.aufzug_count || 1));
+      let aufzugBrutto  = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
+
+      // Fallback: aus Klartext extrahieren. Sucht "Aufzug…wartung … 2.100 €" o.Ä.
+      // Greift, wenn KI versehentlich Differenz oder anderen Wert in brutto-Feld geschrieben hat.
+      if (!aufzugBrutto || aufzugBrutto < 500) {
+        const haystack = String(result.summary || '') + ' ' +
+          (result.findings || []).map(f => (f.title||'') + ' ' + (f.description||'')).join(' ');
+        // de-DE Format: 2.100 EUR, 2.100,00 EUR, 2100 €
+        const matches = [...haystack.matchAll(/aufzug[a-zäöü\s\-/]*wartung[^0-9]{0,40}(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d{4,6}(?:,\d{2})?)\s*(?:€|eur)/gi)];
+        if (matches.length) {
+          // größten Treffer nehmen (das ist meist der Brutto-Wartungswert)
+          const candidates = matches.map(m => parseFloat(m[1].replace(/\./g, '').replace(',', '.'))).filter(n => n > 500);
+          if (candidates.length) {
+            aufzugBrutto = Math.max(...candidates);
+            console.log('[liftaro-vorabcheck] brutto via Regex aus Klartext:', aufzugBrutto);
+          }
+        }
+      }
+
+      const proAnlage = aufzugCount > 0 ? aufzugBrutto / aufzugCount : 0;
+
+      // Authoritative Berechnung — überschreibt IMMER die KI-Werte, wenn der Markt-Vergleich greift
       if (proAnlage > 1200) {
         const correctTotal = Math.round((proAnlage - 980) * aufzugCount * 0.7);
-        // Wenn KI weniger oder gar nichts angegeben hat → überschreiben
-        if (!savingsTotal || savingsTotal < correctTotal * 0.6) {
-          savingsTotal = correctTotal;
-          // Auch summary & savings_text korrigieren, falls KI "unter Median" halluziniert hat
-          const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
-          const summaryHasFalseClaim = /unter\s+(dem\s+)?marktmedian|marktüblich|unter\s+markt|im\s+markt/i.test(String(result.summary || ''));
-          if (summaryHasFalseClaim || !result.summary) {
-            const pctSavings = Math.round((1 - 980 / proAnlage) * 100);
-            result.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt deutlich über dem Liftaro-Marktmedian von 980 €. Optimierungspotenzial vorhanden.';
-            result.savings_text = 'rund ' + pctSavings + ' % der bisherigen Wartungskosten durch marktgerechte Neuausschreibung';
-            // Optimierungs-Finding voranstellen, falls noch nicht da
-            const findings = result.findings || [];
-            const hasMarketFinding = findings.some(f => /markt|wartung.*?(zu\s+(teuer|hoch)|ueber|über)/i.test((f.title||'') + ' ' + (f.description||'')));
-            if (!hasMarketFinding) {
-              findings.unshift({
-                severity: proAnlage > 1800 ? 'warn' : 'amber',
-                title: 'Wartungspauschale über Marktmedian',
-                description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt klar über dem Liftaro-Marktmedian von 980 €/Jahr (inkl. Notruf). Eine Neuausschreibung kann ca. ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis bringen (Schätzung mit Verhandlungsrealismus).',
-                tag: 'Liftaro-Marktreferenz',
-              });
-              result.findings = findings;
-            }
-            // Ampel mindestens auf "gelb" setzen (eine teure Wartung sollte nicht "grün" sein)
-            if (result.ampel === 'gruen' || result.ampel === 'grün') {
-              result.ampel = 'gelb';
-            }
-            console.log('[liftaro-vorabcheck] KI-Aussage zur Marktposition korrigiert');
-          }
-          console.log('[liftaro-vorabcheck] Markt-Ersparnis Backend-berechnet:', savingsTotal,
-            'aus brutto', aufzugBrutto, '/', aufzugCount, 'Anlagen');
+        const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
+        const diffStr      = Math.round(proAnlage - 980).toLocaleString('de-DE');
+        const pctSavings   = Math.round((1 - 980 / proAnlage) * 100);
+
+        // Authoritative-Override (savings + summary + finding + ampel)
+        savingsTotal = correctTotal;
+        result.savings_text = 'rund ' + pctSavings + ' % der bisherigen Wartungskosten durch marktgerechte Neuausschreibung';
+
+        // Summary überschreiben, wenn KI eine falsche/keine Marktposition genannt hat
+        const summaryHasMarketClaim = /markt|median/i.test(String(result.summary || ''));
+        const summaryIsConsistent = summaryHasMarketClaim && /über|ueber|deutlich|teuer/i.test(String(result.summary || ''));
+        if (!summaryIsConsistent) {
+          result.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diffStr + ' € über dem Liftaro-Marktmedian von 980 €. Optimierungspotenzial vorhanden.';
         }
+
+        // Vorhandenes Markt-Finding ENTFERNEN (KI-Mathe ist meist falsch), durch authoritatives ersetzen
+        let findings = result.findings || [];
+        findings = findings.filter(f => !/markt|wartung.*(zu\s+(teuer|hoch)|ueber|über)|optimierung.*?wartung/i.test((f.title||'') + ' ' + (f.description||'')));
+        findings.unshift({
+          severity: proAnlage > 1800 ? 'warn' : (proAnlage > 1500 ? 'amber' : 'blue'),
+          title: 'Wartungspauschale über Marktmedian',
+          description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diffStr + ' € über dem Liftaro-Marktmedian von 980 €/Jahr (inkl. Notruf). Eine Neuausschreibung kann ca. ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis bringen (Schätzung mit Verhandlungsrealismus, Faktor 0,7).',
+          tag: 'Liftaro-Marktreferenz · ' + proAnlageStr + ' vs. 980 EUR',
+        });
+        result.findings = findings;
+
+        // Ampel anpassen: bei deutlich über Markt mindestens gelb
+        if ((result.ampel === 'gruen' || result.ampel === 'grün') && proAnlage > 1500) {
+          result.ampel = 'gelb';
+        }
+
+        console.log('[liftaro-vorabcheck] Markt-Override: brutto=' + aufzugBrutto + ', anlagen=' + aufzugCount + ', proAnlage=' + proAnlage + ', diff=' + diffStr + ', ersparnis=' + correctTotal);
       }
     }
 
