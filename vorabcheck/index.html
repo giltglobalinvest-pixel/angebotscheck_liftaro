@@ -610,6 +610,13 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
           <input type="number" id="aufzug-custom" min="1" max="50" value="4" style="width:120px;padding:10px 12px;background:var(--surface);border:1.5px solid var(--line-2);border-radius:8px;font-size:15px;color:var(--ink);outline:none">
         </div>
 
+        <h3 style="margin-top:8px">Wartungsbetrag aus der Abrechnung <span style="color:var(--ink-3);font-weight:500;font-size:14px">(optional, aber empfohlen)</span></h3>
+        <p class="sub">Falls die KI den richtigen Betrag nicht aus dem Dokument erkennt, geben Sie ihn hier direkt ein. Suchen Sie nach Positionen wie „Aufzugskosten/Wartung", „Aufzugswartung" o.ä. in der <strong>Gesamt-Spalte</strong> der Abrechnung.</p>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+          <input type="number" id="wartung-brutto-input" min="0" max="999999" step="1" placeholder="z.B. 8832" style="width:180px;padding:11px 12px;background:var(--surface);border:1.5px solid var(--line-2);border-radius:8px;font-size:15px;color:var(--ink);outline:none">
+          <span style="font-size:13px;color:var(--ink-3)">€ / Jahr Gesamt (alle Aufzüge zusammen)</span>
+        </div>
+
         <h3 style="margin-top:8px">Dokument hochladen</h3>
         <p class="sub">PDF oder Bild. Bei mehrseitigen Dokumenten reicht die relevante Seite.</p>
 
@@ -1093,6 +1100,7 @@ const _DEV_DEFAULTS = {
 let _currentCheckType = 'nebenkosten';
 let _currentRole = 'mieter';   // 'mieter' | 'eigentuemer' | 'verwalter'
 let _currentAufzugCount = 1;   // Anzahl Aufzüge in der Position — vom User vor Upload bestätigt
+let _currentWartungBrutto = 0; // Optional vom User eingegeben — überschreibt KI-Extraktion
 let _currentFile = null;
 let _turnstileToken = null;
 
@@ -1160,6 +1168,10 @@ document.addEventListener('input', (e) => {
   if (e.target && e.target.id === 'aufzug-custom') {
     const n = parseInt(e.target.value, 10);
     _currentAufzugCount = isNaN(n) || n < 1 ? 1 : Math.min(50, n);
+  }
+  if (e.target && e.target.id === 'wartung-brutto-input') {
+    const v = parseFloat(String(e.target.value).replace(',', '.'));
+    _currentWartungBrutto = isNaN(v) || v < 0 ? 0 : v;
   }
 });
 
@@ -1270,6 +1282,7 @@ async function runAnalysis() {
       check_type: _currentCheckType,
       role: _currentRole,
       aufzug_count_user: _currentAufzugCount,
+      wartung_brutto_user: _currentWartungBrutto,  // 0 wenn nicht gesetzt → KI darf extrahieren
       file: { name: _currentFile.name, mime: _currentFile.type, base64: pdfBase64 },
       lead: {
         vorname: document.getElementById('vorname').value.trim(),
@@ -1333,7 +1346,7 @@ function renderResult(r) {
   }
   summary.textContent = r.summary || 'Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.';
 
-  // Erkannte Anlagen-Info (Aufzug-Anzahl + Verteiler-Info)
+  // Erkannte Anlagen-Info (Aufzug-Anzahl + Verteiler-Info + Wartungs-Brutto)
   const buildingBox = document.getElementById('building-info');
   const buildingText = document.getElementById('building-info-text');
   const anzahl = Number(r.aufzug_count || 0);
@@ -1342,19 +1355,25 @@ function renderResult(r) {
   const meaPool = Number(r.mea_pool_total || 0);
   const meaEig  = Number(r.mea_eigentuemer || 0);
   const isMea = verteilerschluessel === 'mea' && meaPool > 0;
+  const wartungBrutto = Number(r.wartung_brutto_used || 0);
+  const bruttoSrc     = String(r.wartung_brutto_source || 'ki');
 
-  if (anzahl > 0 || parteien > 0 || isMea) {
+  if (anzahl > 0 || parteien > 0 || isMea || wartungBrutto > 0) {
     const parts = [];
-    if (anzahl > 0) parts.push('<strong>' + anzahl + '</strong> Aufzug' + (anzahl === 1 ? '' : 'e') + ' erkannt');
+    if (anzahl > 0) parts.push('<strong>' + anzahl + '</strong> Aufzug' + (anzahl === 1 ? '' : 'e'));
+    if (wartungBrutto > 0) {
+      const tag = bruttoSrc === 'user' ? '<span style="opacity:.7;font-size:11px"> · von Ihnen angegeben</span>' : '<span style="opacity:.7;font-size:11px"> · aus Dokument erkannt</span>';
+      parts.push('Wartung: <strong>' + Math.round(wartungBrutto).toLocaleString('de-DE') + ' €/Jahr</strong> gesamt' + tag);
+    }
     if (isMea && meaEig > 0) {
       const pct = (meaEig / meaPool * 100).toFixed(2).replace('.', ',');
-      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong> · Ihr Anteil: <strong>' + pct + ' %</strong> (' + meaEig.toLocaleString('de-DE') + ' von ' + meaPool.toLocaleString('de-DE') + ' MEA)');
+      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong> · Ihr Anteil: <strong>' + pct + ' %</strong>');
     } else if (isMea) {
       parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong>');
     } else if (parteien > 0) {
       parts.push('<strong>' + parteien + '</strong> Partei' + (parteien === 1 ? '' : 'en') + ' im Verteilerschlüssel');
     }
-    buildingText.innerHTML = parts.join(' · ');
+    buildingText.innerHTML = parts.join('<br>');
     buildingBox.style.display = 'flex';
   } else {
     buildingBox.style.display = 'none';
