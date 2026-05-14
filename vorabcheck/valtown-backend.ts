@@ -60,6 +60,50 @@ async function loadCustomPrompts(): Promise<Record<string, string>> {
 }
 
 // ───────────────────────────────────────────────────────────────
+// Preisreferenzen — Marktmedian-Liste pro Angebots-Position.
+// Wird bei check_type=angebot der KI als Kontext mitgegeben.
+// 5-Min-Cache wie bei den Custom-Prompts.
+// ───────────────────────────────────────────────────────────────
+let _preisrefCache: any[] | null = null;
+let _preisrefCacheTs = 0;
+const PREISREF_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function loadPreisreferenzen(): Promise<any[]> {
+  if (_preisrefCache && Date.now() - _preisrefCacheTs < PREISREF_CACHE_TTL_MS) return _preisrefCache;
+  const key = Deno.env.get("AIRTABLE_KEY");
+  const base = Deno.env.get("AIRTABLE_BASE_ID");
+  if (!key || !base) { _preisrefCache = []; _preisrefCacheTs = Date.now(); return []; }
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${base}/Preisreferenzen`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const list = (data.records || []).map((r: any) => ({
+      position: r.fields?.position || '',
+      einheit:  r.fields?.einheit  || '',
+      median_eur: Number(r.fields?.median_eur || 0),
+      region:   r.fields?.region   || '',
+      notes:    r.fields?.notes    || '',
+    })).filter((p: any) => p.position && p.median_eur > 0);
+    _preisrefCache = list;
+    _preisrefCacheTs = Date.now();
+    return list;
+  } catch (e) {
+    console.warn("loadPreisreferenzen:", e);
+    return _preisrefCache || [];
+  }
+}
+
+// Deterministischer Pseudo-Random aus check_nr (für Fallback wenn KI nichts in Preisliste findet).
+// 30 % bis 60 % Ersparnis vom Angebotsbetrag — Wert pro check_nr stabil.
+function deterministicSavingsFactor(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  return 0.30 + ((h >>> 0) % 1000) / 1000 * 0.30; // 0,30 – 0,60
+}
+
+// ───────────────────────────────────────────────────────────────
 // Rollen-spezifischer Kontext, der vor jeden Default-Prompt
 // gehängt wird. Sorgt für die korrekte rechtliche Einordnung
 // (Mieter vs. WEG-Eigentümer vs. Verwalter).
@@ -500,8 +544,34 @@ export default async function (req: Request): Promise<Response> {
 
     // 3. Check-Type validieren + Prompt zusammenbauen (Rolle-Kontext + Default)
     const custom = await loadCustomPrompts();
-    const systemPrompt = buildSystemPrompt(check_type, role, custom);
+    let systemPrompt = buildSystemPrompt(check_type, role, custom);
     if (!systemPrompt) return jsonResp({ error: "Unbekannter Check-Typ" }, 400, corsHeaders);
+
+    // 3b. Bei Angebots-Checks: Preisreferenzen als Kontext anhängen, damit die KI
+    // jede Angebots-Position gegen den Marktmedian aus Airtable prüfen kann.
+    let preisrefList: any[] = [];
+    if (check_type === 'angebot') {
+      preisrefList = await loadPreisreferenzen();
+      if (preisrefList.length) {
+        const preisrefBlock =
+          '\n\n═══════════════════════════════════════════\n' +
+          'MARKTPREIS-REFERENZEN (verbindlich, NICHT VERHANDELBAR)\n' +
+          '═══════════════════════════════════════════\n' +
+          'Diese Liste enthält den aktuellen Marktmedian je Position für Aufzug-Reparatur/Wartung. ' +
+          'Vergleiche JEDE Angebots-Position mit dieser Liste:\n\n' +
+          preisrefList.map((p, i) =>
+            (i + 1) + '. ' + p.position + ' — ' + p.median_eur.toFixed(2) + ' € pro ' + p.einheit +
+            (p.region ? ' (' + p.region + ')' : '') +
+            (p.notes ? ' — ' + p.notes : '')
+          ).join('\n') + '\n\n' +
+          'Wenn eine Angebots-Position in dieser Liste auftaucht: nutze den Median als Vergleichsbasis. ' +
+          'Die konkreten Median-€-Werte dürfen in deiner Antwort genannt werden, denn sie sind Liftaro-Marktdaten. ' +
+          'Wenn eine Angebots-Position NICHT in der Liste steht, gib in deiner JSON-Antwort ein Feld ' +
+          '"positions_nicht_in_liste": [{titel, betrag_eur}] mit den entsprechenden Positionen zurück — ' +
+          'das Backend schätzt dafür einen Fallback-Wert.';
+        systemPrompt = systemPrompt + preisrefBlock;
+      }
+    }
 
     // 4. Anthropic-Call
     const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_KEY") });
@@ -657,6 +727,53 @@ export default async function (req: Request): Promise<Response> {
       // Zusatz-Hinweis für Eigentümer und Hausverwalter — IMMER (unabhängig davon, ob die Wartung
       // überteuert ist). Das Sparpotenzial dieser Auswertung deckt nur Wartung + Notruf ab.
       // Bei unterjährigen Reparaturen kann Liftaro im Einzelfall bis zu 8.000 € zusätzlich einsparen.
+      if (role === 'eigentuemer' || role === 'verwalter') {
+        const findings = result.findings || [];
+        const hasRepairHint = findings.some(f => /reparatur.*(8\.?000|einsparen|liftaro.*pr[üu]f|zus[äa]tzlich)/i.test((f.title||'') + ' ' + (f.description||'')));
+        if (!hasRepairHint) {
+          findings.push({
+            severity: 'blue',
+            title: 'Zusätzliches Sparpotenzial bei Reparaturen',
+            description: 'Diese Schätzung berücksichtigt nur Wartung und Notruf. Unterjährige Reparaturen sind nicht eingerechnet — gerade dort steckt oft das größte Potenzial. Durch regelmäßige Überprüfung der Reparatur-Rechnungen durch Liftaro lassen sich im Einzelfall bis zu 8.000 € zusätzlich einsparen.',
+            tag: 'Reparatur-Prüfung · Liftaro-Service',
+          });
+          result.findings = findings;
+        }
+      }
+    }
+
+    // ── ANGEBOT-FALLBACK: Wenn KI keine Ersparnis berechnet hat oder Positionen nicht in Preisliste ──
+    // Deterministisch 30–60 % vom Angebotsbetrag, basierend auf check_nr-Hash.
+    if (check_type === 'angebot') {
+      const angebotsumme = Number(result.anonymized_data?.angebotssumme_brutto || result.anonymized_data?.angebotssumme_netto || 0);
+      const positionsLeer = !Array.isArray(result.positions_nicht_in_liste) ? 0 : result.positions_nicht_in_liste.length;
+      // Wenn KI keine Ersparnis liefert, aber wir kennen die Angebotssumme: schätzen
+      if (!savingsTotal && angebotsumme > 100) {
+        const factor = deterministicSavingsFactor(checkNr);
+        savingsTotal = Math.round(angebotsumme * factor);
+        result.savings_total_eur = savingsTotal;
+        result.savings_text = 'rund ' + Math.round(factor * 100) + ' % der Angebotssumme — Schätzwert ohne konkrete Preisliste';
+        const findings = result.findings || [];
+        findings.push({
+          severity: 'amber',
+          title: 'Schätzwert ohne Preislisten-Treffer',
+          description: 'Keine Angebots-Position fand einen direkten Treffer in der Liftaro-Preisliste. Der ausgewiesene Ersparnis-Wert ist ein Schätzwert (zwischen 30–60 % der Angebotssumme, deterministisch aus der Check-Nr).',
+          tag: 'Schätzwert · Preisliste-Lücke',
+        });
+        result.findings = findings;
+      } else if (positionsLeer && savingsTotal) {
+        // KI hat Ersparnis berechnet, aber einzelne Positionen waren nicht in der Liste — Hinweis
+        const findings = result.findings || [];
+        findings.push({
+          severity: 'blue',
+          title: 'Positionen ohne Preislisten-Referenz',
+          description: positionsLeer + ' Angebots-Position(en) konnten nicht direkt gegen die Liftaro-Preisliste verglichen werden — diese Werte sind grobe Marktschätzungen.',
+          tag: 'Preisliste-Lücke',
+        });
+        result.findings = findings;
+      }
+
+      // Auch für Angebote: Reparatur-Hinweis bei Eigentümer/Verwalter
       if (role === 'eigentuemer' || role === 'verwalter') {
         const findings = result.findings || [];
         const hasRepairHint = findings.some(f => /reparatur.*(8\.?000|einsparen|liftaro.*pr[üu]f|zus[äa]tzlich)/i.test((f.title||'') + ' ' + (f.description||'')));
