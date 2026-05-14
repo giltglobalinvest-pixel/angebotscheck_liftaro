@@ -181,17 +181,30 @@ PRÜFE FOLGENDE PUNKTE:
    - Wenn nicht ausgewiesen UND Vollwartung explizit → Rotflag bei Mieter.
    - Bei separat ausgewiesener Instandhaltung → KEIN Vollwartungs-Vermutung, KEIN Vorwegabzug-Befund.
 
-3. WARTUNGSPAUSCHALE — LIFTARO-REFERENZWERT (verbindlich)
+3. WARTUNGSPAUSCHALE — LIFTARO-REFERENZWERT (verbindlich, NICHT VERHANDELBAR)
    - **Marktmedian Wohnaufzug INKL. Notruf/Bereitschaftsdienst: 980 €/Jahr je Anlage**
-   - Dieser Wert ist die Liftaro-Referenz aus Marktdaten — verwende ihn als Basis.
-   - Bewertungs-Schwellen (Wartung+Notruf zusammen, pro Anlage und Jahr):
-     · bis ~1.200 €/Jahr → marktüblich, kein Befund
-     · 1.200–1.500 €/Jahr → leicht erhöht, blue/amber-Hinweis
-     · 1.500–1.800 €/Jahr → deutlich über Markt, amber/warn — Optimierungspotenzial nennen
-     · über 1.800 €/Jahr → klar zu teuer, warn-Befund mit konkretem Ersparnis-Schätzwert
-   - Geschätzte Ersparnis = (tatsächlicher Betrag − 980) × Faktor 0,7 (Verhandlungsrealismus)
-   - Bei mehreren Aufzügen: Pauschale ÷ Anzahl Aufzüge ergibt den Pro-Anlage-Wert, dann mit 980 € vergleichen.
-   - Achtung: Hohe Beträge können in Sondersituationen gerechtfertigt sein (hochwertige/seltene Anlage, mehrere Wartungen p.a., Großgebäude mit ständigem Notruf-Bedarf). Bei Anhaltspunkten dafür: Befund-Severity um eine Stufe abmildern.
+   - Dieser Wert ist die Liftaro-Referenz aus Marktdaten. Verwende ihn als HARTE Vergleichsbasis. Erfinde KEINE anderen Median-Werte.
+
+   PFLICHT-RECHENGANG (immer durchführen):
+   a) Hole den Aufzug-Brutto-Betrag aus der Abrechnung (z.B. "Aufzugswartung Haus 9: 2.100 €")
+   b) Teile durch aufzug_count (z.B. 2.100 / 1 = 2.100 € pro Anlage und Jahr)
+   c) Vergleiche mit 980 €:
+      · pro_anlage ≤ 1.200 → marktüblich, kein Befund (savings_total_eur = 0)
+      · 1.200 < pro_anlage ≤ 1.500 → leicht erhöht (blue/amber-Hinweis, kleine Ersparnis)
+      · 1.500 < pro_anlage ≤ 1.800 → deutlich über Markt (amber/warn)
+      · pro_anlage > 1.800 → KLAR ZU TEUER (warn, konkrete Ersparnis ausweisen)
+   d) Geschätzte Ersparnis = (pro_anlage − 980) × aufzug_count × 0,7
+
+   KONKRETES BEISPIEL (für Konsistenz-Check):
+   "Aufzugswartung Haus 9: 2.100 €, 1 Aufzug"
+   → pro_anlage = 2.100 €
+   → 2.100 > 1.800 → KLAR ZU TEUER
+   → savings_total_eur = (2.100 − 980) × 1 × 0,7 = 784 €
+   → savings_text = "rund 53 % der bisherigen Wartungskosten durch Neuausschreibung"
+   → summary muss das WIDERSPIEGELN, NICHT "unter Marktmedian" behaupten!
+
+   VERBOT: Schreibe NIE "unter Marktmedian" oder "marktüblich" wenn pro_anlage > 1.200 €.
+   Achtung: Hohe Beträge können in Sondersituationen gerechtfertigt sein (hochwertige/seltene Anlage, mehrere Wartungen p.a., Großgebäude mit ständigem Notruf-Bedarf). Bei Anhaltspunkten dafür: Befund-Severity um eine Stufe abmildern — aber NICHT die mathematische Aussage drehen.
 
 4. SERVICESTUNDEN-SATZ
    - Marktüblich 95–125 €/h, regional unterschiedlich
@@ -450,16 +463,46 @@ export default async function (req: Request): Promise<Response> {
     const meaPool       = Number(result.mea_pool_total || 0);
     const meaEigentuemer = Number(result.mea_eigentuemer || 0);
 
-    // SICHERHEITSNETZ A: Markt-Ersparnis aus brutto-Betrag herleiten, wenn KI sie vergessen hat.
+    // SICHERHEITSNETZ A: Markt-Ersparnis aus brutto-Betrag herleiten, wenn KI sie vergessen hat
+    // oder dem Markt-Vergleich widerspricht (Halluzination "unter Median" trotz 2.100 € Wartung).
     // Median-Referenz 980 €/Anlage/Jahr, Verhandlungsrealismus 0,7.
-    if (!savingsTotal && check_type === 'nebenkosten') {
+    if (check_type === 'nebenkosten') {
       const aufzugBrutto = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
-      const aufzugCount = Math.max(1, Number(result.aufzug_count || 1));
-      const proAnlage = aufzugBrutto / aufzugCount;
-      if (proAnlage > 980) {
-        savingsTotal = Math.round((proAnlage - 980) * aufzugCount * 0.7);
-        console.log('[liftaro-vorabcheck] Markt-Ersparnis Backend-berechnet:', savingsTotal,
-          'aus brutto', aufzugBrutto, '/', aufzugCount, 'Anlagen');
+      const aufzugCount  = Math.max(1, Number(result.aufzug_count || 1));
+      const proAnlage    = aufzugBrutto / aufzugCount;
+      if (proAnlage > 1200) {
+        const correctTotal = Math.round((proAnlage - 980) * aufzugCount * 0.7);
+        // Wenn KI weniger oder gar nichts angegeben hat → überschreiben
+        if (!savingsTotal || savingsTotal < correctTotal * 0.6) {
+          savingsTotal = correctTotal;
+          // Auch summary & savings_text korrigieren, falls KI "unter Median" halluziniert hat
+          const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
+          const summaryHasFalseClaim = /unter\s+(dem\s+)?marktmedian|marktüblich|unter\s+markt|im\s+markt/i.test(String(result.summary || ''));
+          if (summaryHasFalseClaim || !result.summary) {
+            const pctSavings = Math.round((1 - 980 / proAnlage) * 100);
+            result.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt deutlich über dem Liftaro-Marktmedian von 980 €. Optimierungspotenzial vorhanden.';
+            result.savings_text = 'rund ' + pctSavings + ' % der bisherigen Wartungskosten durch marktgerechte Neuausschreibung';
+            // Optimierungs-Finding voranstellen, falls noch nicht da
+            const findings = result.findings || [];
+            const hasMarketFinding = findings.some(f => /markt|wartung.*?(zu\s+(teuer|hoch)|ueber|über)/i.test((f.title||'') + ' ' + (f.description||'')));
+            if (!hasMarketFinding) {
+              findings.unshift({
+                severity: proAnlage > 1800 ? 'warn' : 'amber',
+                title: 'Wartungspauschale über Marktmedian',
+                description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt klar über dem Liftaro-Marktmedian von 980 €/Jahr (inkl. Notruf). Eine Neuausschreibung kann ca. ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis bringen (Schätzung mit Verhandlungsrealismus).',
+                tag: 'Liftaro-Marktreferenz',
+              });
+              result.findings = findings;
+            }
+            // Ampel mindestens auf "gelb" setzen (eine teure Wartung sollte nicht "grün" sein)
+            if (result.ampel === 'gruen' || result.ampel === 'grün') {
+              result.ampel = 'gelb';
+            }
+            console.log('[liftaro-vorabcheck] KI-Aussage zur Marktposition korrigiert');
+          }
+          console.log('[liftaro-vorabcheck] Markt-Ersparnis Backend-berechnet:', savingsTotal,
+            'aus brutto', aufzugBrutto, '/', aufzugCount, 'Anlagen');
+        }
       }
     }
 
