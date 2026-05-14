@@ -1263,15 +1263,27 @@ function renderResult(r) {
   }
   summary.textContent = r.summary || 'Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.';
 
-  // Erkannte Anlagen-Info (Aufzug-Anzahl)
+  // Erkannte Anlagen-Info (Aufzug-Anzahl + Verteiler-Info)
   const buildingBox = document.getElementById('building-info');
   const buildingText = document.getElementById('building-info-text');
   const anzahl = Number(r.aufzug_count || 0);
   const parteien = Number(r.parteien_count || 0);
-  if (anzahl > 0 || parteien > 0) {
+  const verteilerschluessel = String(r.verteilerschluessel || 'unbekannt').toLowerCase();
+  const meaPool = Number(r.mea_pool_total || 0);
+  const meaEig  = Number(r.mea_eigentuemer || 0);
+  const isMea = verteilerschluessel === 'mea' && meaPool > 0;
+
+  if (anzahl > 0 || parteien > 0 || isMea) {
     const parts = [];
     if (anzahl > 0) parts.push('<strong>' + anzahl + '</strong> Aufzug' + (anzahl === 1 ? '' : 'e') + ' erkannt');
-    if (parteien > 0) parts.push('<strong>' + parteien + '</strong> Partei' + (parteien === 1 ? '' : 'en') + ' im Verteilerschlüssel');
+    if (isMea && meaEig > 0) {
+      const pct = (meaEig / meaPool * 100).toFixed(2).replace('.', ',');
+      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong> · Ihr Anteil: <strong>' + pct + ' %</strong> (' + meaEig.toLocaleString('de-DE') + ' von ' + meaPool.toLocaleString('de-DE') + ' MEA)');
+    } else if (isMea) {
+      parts.push('Verteilung nach <strong>Miteigentumsanteilen</strong>');
+    } else if (parteien > 0) {
+      parts.push('<strong>' + parteien + '</strong> Partei' + (parteien === 1 ? '' : 'en') + ' im Verteilerschlüssel');
+    }
     buildingText.innerHTML = parts.join(' · ');
     buildingBox.style.display = 'flex';
   } else {
@@ -1325,7 +1337,7 @@ function renderResult(r) {
   document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
 
   const secBox = document.getElementById('savings-secondary');
-  // Zwei mögliche Zusatz-Infos: Sekundärwert (Gesamt/Individuell) + pro-Partei-Monat
+  // Zusatz-Infos: Sekundärwert (Gesamt/Individuell) + entweder MEA-Anteil-Block ODER pro-Partei-Monat
   const secLines = [];
   if (secondaryValue && secondaryValue > 0) {
     secLines.push(
@@ -1334,7 +1346,23 @@ function renderResult(r) {
       Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + '</strong>'
     );
   }
-  if (savingsPerPartyMonth > 0 && parteien > 1) {
+  // Bei MEA-Verteilung KEINE Pro-Partei-Zeile (jeder Eigentümer hat anderen Anteil)
+  // Stattdessen MEA-Anteil und individuellen Eurobetrag prominenter machen
+  if (isMea && meaPool > 0 && meaEig > 0 && savings_total > 0) {
+    const pctNum = (meaEig / meaPool * 100);
+    const indivCalc = Math.round(savings_total * meaEig / meaPool);
+    secLines.push(
+      '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
+        'Ihr MEA-Anteil an dieser Position' +
+      '</div>' +
+      '<strong style="font-size:17px;display:block;margin-top:2px">' +
+        pctNum.toFixed(2).replace('.', ',') + ' %' +
+        '<span style="opacity:.7;font-weight:600;font-size:14px"> · ' +
+        '€' + indivCalc.toLocaleString('de-DE') + ' / Jahr für Sie</span>' +
+      '</strong>'
+    );
+  } else if (savingsPerPartyMonth > 0 && parteien > 1 && (verteilerschluessel === 'einheit' || verteilerschluessel === 'person')) {
+    // Pro-Partei nur bei Einheiten- oder Person-Verteilung — sonst ist die Aufteilung ungleich
     secLines.push(
       '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
         'Pro Partei (bei ' + parteien + ' Einheiten)' +
