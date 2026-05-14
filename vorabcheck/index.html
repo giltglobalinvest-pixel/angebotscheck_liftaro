@@ -606,6 +606,11 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
 
       <!-- STEP 2: CONTACT FORM -->
       <div class="step-pane" id="step-2">
+        <!-- DEV-Mode Shortcut: nur sichtbar bei ?dev=1 in der URL -->
+        <div id="dev-shortcut" style="display:none;background:#fff7e6;border:1.5px dashed #f0a020;border-radius:10px;padding:12px 14px;margin-bottom:18px;display:none;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13px;color:#7a4d00">🧪 <strong>Dev-Mode aktiv</strong> · Schritt mit Test-Daten überspringen?</span>
+          <button type="button" id="dev-fill-submit" style="background:#f0a020;border:none;color:#fff;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer">Test-Daten + sofort starten →</button>
+        </div>
         <h3>Wohin schicken wir die Check-Nummer?</h3>
         <p class="sub">Sie erhalten direkt nach der Analyse eine Check-Nummer angezeigt. Für Rückfragen oder eine ausführliche Beratung speichern wir Ihre Kontaktdaten verschlüsselt.</p>
 
@@ -942,6 +947,38 @@ function applyLandingTheme(theme) {
   try {
     const p = new URLSearchParams(location.search).get('theme');
     if (p) applyLandingTheme(p);
+  } catch (e) {}
+})();
+
+// ── DEV-MODE (?dev=1) – Schritt 2 mit Test-Daten überspringen ──
+const _DEV_DEFAULTS = {
+  vorname:  'Max',
+  nachname: 'Tester',
+  email:    'test@liftaro.local',
+  telefon:  '+49 711 000 000',
+  adresse:  'Beispielstraße 12, 70173 Stuttgart',
+};
+(function () {
+  try {
+    const isDev = new URLSearchParams(location.search).get('dev') === '1';
+    if (!isDev) return;
+    document.addEventListener('DOMContentLoaded', () => {
+      const box = document.getElementById('dev-shortcut');
+      if (box) box.style.display = 'flex';
+      const btn = document.getElementById('dev-fill-submit');
+      if (btn) btn.addEventListener('click', () => {
+        Object.entries(_DEV_DEFAULTS).forEach(([id, val]) => {
+          const el = document.getElementById(id);
+          if (el) { el.value = val; el.classList.remove('error'); }
+        });
+        const cons = document.getElementById('consent');
+        if (cons) cons.checked = true;
+        // Turnstile im Dev-Mode überspringen
+        _turnstileToken = _turnstileToken || 'dev-bypass-token';
+        // Direkt den regulären Submit-Knopf triggern
+        document.getElementById('to-step-3').click();
+      });
+    });
   } catch (e) {}
 })();
 
