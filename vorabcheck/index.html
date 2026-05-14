@@ -543,6 +543,27 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
 
       <!-- STEP 1: TYPE + UPLOAD -->
       <div class="step-pane active" id="step-1">
+        <h3>In welcher Rolle prüfen Sie?</h3>
+        <p class="sub">Mieter, Eigentümer und Hausverwalter haben unterschiedliche Rechte und Hebel. Wir passen die Analyse entsprechend an.</p>
+
+        <div class="check-type-selector" style="margin-bottom:22px">
+          <button type="button" class="check-type-card role-card active" data-role="mieter">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+            <div class="name">Mieter</div>
+            <div class="desc">Wohnraum-Mietvertrag</div>
+          </button>
+          <button type="button" class="check-type-card role-card" data-role="eigentuemer">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></div>
+            <div class="name">Eigentümer</div>
+            <div class="desc">WEG / Selbstnutzer</div>
+          </button>
+          <button type="button" class="check-type-card role-card" data-role="verwalter">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg></div>
+            <div class="name">Hausverwalter</div>
+            <div class="desc">Verwaltungsmandat</div>
+          </button>
+        </div>
+
         <h3>Welches Dokument möchten Sie prüfen?</h3>
         <p class="sub">Wählen Sie den Check-Typ — unsere KI passt die Analyse entsprechend an.</p>
 
@@ -699,10 +720,21 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
         <h3 id="result-title">Ihre Auswertung ist fertig</h3>
         <p class="sub" id="result-summary">Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.</p>
 
+        <!-- Erkannte Anlagen-Info (Aufzug-Anzahl) -->
+        <div id="building-info" style="display:none;background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13.5px;color:var(--ink-2);display:none;align-items:center;gap:10px;flex-wrap:wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--brand-dark);flex-shrink:0"><rect x="6" y="2" width="12" height="20" rx="1"/><line x1="12" y1="6" x2="12" y2="18"/><polyline points="9 9 12 6 15 9"/><polyline points="9 15 12 18 15 15"/></svg>
+          <span id="building-info-text">—</span>
+        </div>
+
         <div class="savings-card" id="savings-card" style="display:none">
-          <div class="savings-label">Geschätztes Einsparpotenzial</div>
+          <div class="savings-label" id="savings-label-primary">Geschätztes Einsparpotenzial</div>
           <div class="savings-amount" id="savings-amount"><sup>€</sup>0<small> / Jahr</small></div>
           <div class="savings-sub" id="savings-sub"></div>
+          <!-- Sekundärer Betrag (Gesamthaus oder eigene Partei) -->
+          <div id="savings-secondary" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;color:rgba(255,255,255,.92)">
+            <span id="savings-secondary-label" style="opacity:.85">—</span>
+            <strong id="savings-secondary-value" style="font-size:18px;display:block;margin-top:3px">—</strong>
+          </div>
           <div class="check-nr-badge" id="check-nr-badge">CHECK-NR: VC-—</div>
         </div>
 
@@ -711,7 +743,20 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
           <div id="findings-container"></div>
         </div>
 
-        <div class="step-actions" style="margin-top:28px;border-top:1px solid var(--line);padding-top:20px;">
+        <!-- Rollenabhängige CTA -->
+        <div id="result-cta" style="margin-top:24px;background:var(--brand-tint-2);border:1.5px solid var(--brand-tint);border-radius:12px;padding:18px 20px">
+          <div id="result-cta-title" style="font-size:15.5px;font-weight:700;color:var(--ink);margin-bottom:6px;line-height:1.35">Nächste Schritte</div>
+          <div id="result-cta-text" style="font-size:13.5px;color:var(--ink-2);line-height:1.55;margin-bottom:14px"></div>
+          <div id="result-cta-actions" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+          <div id="result-cta-hint" style="display:none;margin-top:12px;font-size:12px;color:var(--ink-3);font-style:italic"></div>
+        </div>
+
+        <!-- Haftungsausschluss -->
+        <div style="margin-top:18px;padding:14px 16px;background:#fff7e6;border-left:3px solid #f0a020;border-radius:8px;font-size:12.5px;color:var(--ink-2);line-height:1.55">
+          <strong style="color:#7a4d00">Haftungsausschluss:</strong> Diese Auswertung ist eine technisch-wirtschaftliche Indikation und stellt <strong>keine Rechtsberatung</strong> im Sinne des RDG dar. Beträge sind Schätzwerte. Auf Wunsch vermitteln wir einen Fachanwalt für Miet- bzw. WEG-Recht.
+        </div>
+
+        <div class="step-actions" style="margin-top:24px;border-top:1px solid var(--line);padding-top:20px;">
           <button class="step-back" id="restart">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             Neues Dokument prüfen
@@ -983,6 +1028,7 @@ const _DEV_DEFAULTS = {
 })();
 
 let _currentCheckType = 'nebenkosten';
+let _currentRole = 'mieter';   // 'mieter' | 'eigentuemer' | 'verwalter'
 let _currentFile = null;
 let _turnstileToken = null;
 
@@ -1010,10 +1056,19 @@ function goToStep(n) {
   document.querySelector('.upload-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Check-Type Selector
-document.querySelectorAll('.check-type-card').forEach(card => {
+// Rolle-Selector (Mieter / Eigentümer / Verwalter)
+document.querySelectorAll('.role-card').forEach(card => {
   card.addEventListener('click', () => {
-    document.querySelectorAll('.check-type-card').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.role-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    _currentRole = card.dataset.role;
+  });
+});
+
+// Check-Type Selector (nur die check-type-cards die KEIN data-role haben)
+document.querySelectorAll('.check-type-card:not(.role-card)').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.check-type-card:not(.role-card)').forEach(c => c.classList.remove('active'));
     card.classList.add('active');
     _currentCheckType = card.dataset.type;
   });
@@ -1124,6 +1179,7 @@ async function runAnalysis() {
     const pdfBase64 = await fileToBase64(_currentFile);
     const payload = {
       check_type: _currentCheckType,
+      role: _currentRole,
       file: { name: _currentFile.name, mime: _currentFile.type, base64: pdfBase64 },
       lead: {
         vorname: document.getElementById('vorname').value.trim(),
@@ -1131,6 +1187,7 @@ async function runAnalysis() {
         email: document.getElementById('email').value.trim(),
         telefon: document.getElementById('telefon').value.trim(),
         adresse: document.getElementById('adresse').value.trim(),
+        role: _currentRole,
       },
       turnstile_token: _turnstileToken,
       consent_given: true,
@@ -1186,20 +1243,70 @@ function renderResult(r) {
   }
   summary.textContent = r.summary || 'Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.';
 
-  // Sparpotenzial
-  if (r.savings_estimate_eur && r.savings_estimate_eur > 0) {
-    document.getElementById('savings-card').style.display = 'block';
-    document.getElementById('savings-amount').innerHTML =
-      '<sup>€</sup>' + Number(r.savings_estimate_eur).toLocaleString('de-DE', { maximumFractionDigits: 0 }) +
-      '<small> / Jahr</small>';
-    document.getElementById('savings-sub').textContent = r.savings_text || '';
-    document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
+  // Erkannte Anlagen-Info (Aufzug-Anzahl)
+  const buildingBox = document.getElementById('building-info');
+  const buildingText = document.getElementById('building-info-text');
+  const anzahl = Number(r.aufzug_count || 0);
+  const parteien = Number(r.parteien_count || 0);
+  if (anzahl > 0 || parteien > 0) {
+    const parts = [];
+    if (anzahl > 0) parts.push('<strong>' + anzahl + '</strong> Aufzug' + (anzahl === 1 ? '' : 'e') + ' erkannt');
+    if (parteien > 0) parts.push('<strong>' + parteien + '</strong> Partei' + (parteien === 1 ? '' : 'en') + ' im Verteilerschlüssel');
+    buildingText.innerHTML = parts.join(' · ');
+    buildingBox.style.display = 'flex';
   } else {
-    document.getElementById('savings-card').style.display = 'block';
-    document.getElementById('savings-amount').innerHTML = '—';
-    document.getElementById('savings-sub').textContent = '';
-    document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
+    buildingBox.style.display = 'none';
   }
+
+  // Sparpotenzial — duale Anzeige mit rollenabhängiger Priorisierung
+  const savings_individual = Number(r.savings_individual_eur || 0);
+  const savings_total      = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  const hasIndividual = savings_individual > 0;
+  const hasTotal      = savings_total > 0;
+  const role          = (r.role || _currentRole || 'mieter');
+
+  // Verwalter: Gesamt primär; Mieter/Eigentümer: Individuell primär (Fallback auf Gesamt wenn kein Indiv vorliegt)
+  let primaryValue, primaryLabel, secondaryValue = null, secondaryLabel = null;
+  if (role === 'verwalter') {
+    primaryValue = savings_total;
+    primaryLabel = 'Gesamtersparnis Haus / Jahr';
+    if (hasIndividual) { secondaryValue = savings_individual; secondaryLabel = 'pro Partei / Jahr'; }
+  } else {
+    if (hasIndividual) {
+      primaryValue = savings_individual;
+      primaryLabel = role === 'eigentuemer' ? 'Ihre Ersparnis als Eigentümer / Jahr' : 'Ihre Ersparnis als Mieter / Jahr';
+      if (hasTotal) { secondaryValue = savings_total; secondaryLabel = 'Gesamtersparnis Haus / Jahr'; }
+    } else {
+      primaryValue = savings_total;
+      primaryLabel = 'Geschätzte Gesamtersparnis / Jahr';
+    }
+  }
+
+  const savingsCard = document.getElementById('savings-card');
+  savingsCard.style.display = 'block';
+  document.getElementById('savings-label-primary').textContent = primaryLabel;
+  if (primaryValue > 0) {
+    document.getElementById('savings-amount').innerHTML =
+      '<sup>€</sup>' + Number(primaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) +
+      '<small> / Jahr</small>';
+  } else {
+    document.getElementById('savings-amount').innerHTML = '—';
+  }
+  document.getElementById('savings-sub').textContent = r.savings_text || '';
+  document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
+
+  const secBox = document.getElementById('savings-secondary');
+  if (secondaryValue && secondaryValue > 0) {
+    document.getElementById('savings-secondary-label').textContent = secondaryLabel;
+    document.getElementById('savings-secondary-value').textContent =
+      '€' + Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 });
+    secBox.style.display = 'block';
+  } else {
+    secBox.style.display = 'none';
+  }
+
+  // Rollen-spezifische CTA
+  renderResultCta(role, r);
 
   // Findings
   const container = document.getElementById('findings-container');
@@ -1229,6 +1336,69 @@ function renderResult(r) {
 
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ── Rollenabhängige CTA im Result-Screen ──────────────────────────────
+function renderResultCta(role, r) {
+  const titleEl   = document.getElementById('result-cta-title');
+  const textEl    = document.getElementById('result-cta-text');
+  const actionsEl = document.getElementById('result-cta-actions');
+  const hintEl    = document.getElementById('result-cta-hint');
+  actionsEl.innerHTML = '';
+  hintEl.style.display = 'none';
+
+  const checkNr = r.check_nr || '—';
+  const summary = (r.summary || '').slice(0, 200);
+
+  if (role === 'mieter') {
+    titleEl.textContent = 'Nächste Schritte für Mieter';
+    textEl.innerHTML =
+      'Eine konkrete Einsparungsberechnung und Vertragsoptimierung kann nur durch den <strong>Eigentümer oder Hausverwalter</strong> beauftragt werden — als Mieter sind Sie nicht Vertragspartner. Sie können aber: ' +
+      '<br><br>• Unsere Auswertung an Ihre Hausverwaltung weiterleiten' +
+      '<br>• Bei begründetem Verdacht auf rechtswidrige Umlage einen Fachanwalt einschalten — wir vermitteln gerne.';
+    const mailSubject = encodeURIComponent('Anwalt-Vermittlung Mietrecht – Check ' + checkNr);
+    const mailBody    = encodeURIComponent('Hallo Liftaro-Team,\n\nbitte vermitteln Sie mir einen Fachanwalt für Mietrecht zu meinem Vorabcheck ' + checkNr + '.\n\nAuswertung in Kurzform: ' + summary + '\n\nViele Grüße');
+    actionsEl.innerHTML =
+      '<a href="mailto:check@liftaro.de?subject=' + mailSubject + '&body=' + mailBody + '" class="btn">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+        'Fachanwalt anfragen' +
+      '</a>';
+    hintEl.style.display = 'block';
+    hintEl.textContent = 'Wir geben keine Rechtsberatung. Die Vermittlung erfolgt an unabhängige Kanzleien.';
+    return;
+  }
+
+  // Eigentümer & Verwalter — können direkt eine konkrete Einsparungsberechnung anfragen
+  const isVerwalter = (role === 'verwalter');
+  titleEl.textContent = isVerwalter
+    ? 'Nächste Schritte für Hausverwalter'
+    : 'Nächste Schritte für Eigentümer';
+  textEl.innerHTML = isVerwalter
+    ? 'Für eine konkrete, rechtssichere Einsparungsberechnung über alle verwalteten Anlagen schicken Sie uns die Anfrage per E-Mail. Wir antworten in der Regel innerhalb von 24 h mit einem unverbindlichen Optimierungs-Vorschlag.'
+    : 'Als Eigentümer sind Sie Vertragspartner und können eine konkrete Einsparungsberechnung direkt beauftragen. Wir erstellen Ihnen einen unverbindlichen Vorschlag basierend auf dieser Indikation.';
+
+  const subj = encodeURIComponent('Einsparungsberechnung – ' + (isVerwalter ? 'Verwalter' : 'Eigentümer') + ' – Check ' + checkNr);
+  const bodyLines = [
+    'Hallo Liftaro-Team,',
+    '',
+    'bitte erstellen Sie mir eine konkrete Einsparungsberechnung zu meinem Vorabcheck ' + checkNr + '.',
+    '',
+    'Rolle: ' + (isVerwalter ? 'Hausverwalter' : 'Eigentümer'),
+    'Auswertung in Kurzform: ' + summary,
+    '',
+    'Ich bestätige, dass ich als ' + (isVerwalter ? 'Hausverwalter mit Verwaltungsmandat' : 'Eigentümer') + ' berechtigt bin, eine Vertragsoptimierung zu beauftragen.',
+    '',
+    'Viele Grüße'
+  ];
+  const body = encodeURIComponent(bodyLines.join('\n'));
+
+  actionsEl.innerHTML =
+    '<a href="mailto:check@liftaro.de?subject=' + subj + '&body=' + body + '" class="btn">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+      'Einsparungsberechnung anfragen' +
+    '</a>';
+  hintEl.style.display = 'block';
+  hintEl.textContent = 'Anfragen sind nur durch Eigentümer oder Hausverwalter zulässig. Wir geben keine Rechtsberatung.';
 }
 </script>
 
