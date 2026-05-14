@@ -730,11 +730,8 @@ html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background:
           <div class="savings-label" id="savings-label-primary">Geschätztes Einsparpotenzial</div>
           <div class="savings-amount" id="savings-amount"><sup>€</sup>0<small> / Jahr</small></div>
           <div class="savings-sub" id="savings-sub"></div>
-          <!-- Sekundärer Betrag (Gesamthaus oder eigene Partei) -->
-          <div id="savings-secondary" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;color:rgba(255,255,255,.92)">
-            <span id="savings-secondary-label" style="opacity:.85">—</span>
-            <strong id="savings-secondary-value" style="font-size:18px;display:block;margin-top:3px">—</strong>
-          </div>
+          <!-- Sekundärer Bereich: Gesamt/Individuell + pro Partei pro Monat (JS-gefüllt) -->
+          <div id="savings-secondary" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;color:rgba(255,255,255,.92)"></div>
           <div class="check-nr-badge" id="check-nr-badge">CHECK-NR: VC-—</div>
         </div>
 
@@ -1261,9 +1258,18 @@ function renderResult(r) {
   // Sparpotenzial — duale Anzeige mit rollenabhängiger Priorisierung
   const savings_individual = Number(r.savings_individual_eur || 0);
   const savings_total      = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  const parteien           = Number(r.parteien_count || 0);
   const hasIndividual = savings_individual > 0;
   const hasTotal      = savings_total > 0;
   const role          = (r.role || _currentRole || 'mieter');
+
+  // Pro-Partei-Monatsersparnis berechnen, wenn parteien_count bekannt und savings_total vorhanden
+  const savingsPerPartyMonth = (parteien > 0 && savings_total > 0)
+    ? Math.round(savings_total / parteien / 12)
+    : 0;
+  const savingsPerPartyYear = (parteien > 0 && savings_total > 0)
+    ? Math.round(savings_total / parteien)
+    : 0;
 
   // Verwalter: Gesamt primär; Mieter/Eigentümer: Individuell primär (Fallback auf Gesamt wenn kein Indiv vorliegt)
   let primaryValue, primaryLabel, secondaryValue = null, secondaryLabel = null;
@@ -1296,10 +1302,28 @@ function renderResult(r) {
   document.getElementById('check-nr-badge').textContent = 'CHECK-NR: ' + (r.check_nr || '—');
 
   const secBox = document.getElementById('savings-secondary');
+  // Zwei mögliche Zusatz-Infos: Sekundärwert (Gesamt/Individuell) + pro-Partei-Monat
+  const secLines = [];
   if (secondaryValue && secondaryValue > 0) {
-    document.getElementById('savings-secondary-label').textContent = secondaryLabel;
-    document.getElementById('savings-secondary-value').textContent =
-      '€' + Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 });
+    secLines.push(
+      '<div style="opacity:.85;font-size:13px">' + secondaryLabel + '</div>' +
+      '<strong style="font-size:18px;display:block;margin-top:2px">€' +
+      Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + '</strong>'
+    );
+  }
+  if (savingsPerPartyMonth > 0 && parteien > 1) {
+    secLines.push(
+      '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
+        'Pro Partei (bei ' + parteien + ' Einheiten)' +
+      '</div>' +
+      '<strong style="font-size:17px;display:block;margin-top:2px">' +
+        '€' + savingsPerPartyMonth.toLocaleString('de-DE') + ' / Monat ' +
+        '<span style="opacity:.7;font-weight:600;font-size:14px">· €' + savingsPerPartyYear.toLocaleString('de-DE') + ' / Jahr</span>' +
+      '</strong>'
+    );
+  }
+  if (secLines.length) {
+    secBox.innerHTML = secLines.join('<div style="height:10px"></div>');
     secBox.style.display = 'block';
   } else {
     secBox.style.display = 'none';
