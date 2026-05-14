@@ -162,11 +162,17 @@ PRÜFE FOLGENDE PUNKTE:
    - Wenn nicht ausgewiesen UND Vollwartung explizit → Rotflag bei Mieter.
    - Bei separat ausgewiesener Instandhaltung → KEIN Vollwartungs-Vermutung, KEIN Vorwegabzug-Befund.
 
-3. WARTUNGSPAUSCHALE
-   - Marktmedian für Wohnaufzüge: 450–550 €/Jahr je Anlage
-   - Über 700 € → mit Verdacht prüfen, kontextabhängig
-   - Bei mehreren Aufzügen: Pauschale ÷ Anzahl Aufzüge ergibt den Pro-Anlage-Wert
-   - Achtung: Hohe Beträge können auch durch Notruf-Kosten, mehrere Wartungen p.a. oder hochwertige Anlage gerechtfertigt sein. Mahne mit Maß.
+3. WARTUNGSPAUSCHALE — LIFTARO-REFERENZWERT (verbindlich)
+   - **Marktmedian Wohnaufzug INKL. Notruf/Bereitschaftsdienst: 980 €/Jahr je Anlage**
+   - Dieser Wert ist die Liftaro-Referenz aus Marktdaten — verwende ihn als Basis.
+   - Bewertungs-Schwellen (Wartung+Notruf zusammen, pro Anlage und Jahr):
+     · bis ~1.200 €/Jahr → marktüblich, kein Befund
+     · 1.200–1.500 €/Jahr → leicht erhöht, blue/amber-Hinweis
+     · 1.500–1.800 €/Jahr → deutlich über Markt, amber/warn — Optimierungspotenzial nennen
+     · über 1.800 €/Jahr → klar zu teuer, warn-Befund mit konkretem Ersparnis-Schätzwert
+   - Geschätzte Ersparnis = (tatsächlicher Betrag − 980) × Faktor 0,7 (Verhandlungsrealismus)
+   - Bei mehreren Aufzügen: Pauschale ÷ Anzahl Aufzüge ergibt den Pro-Anlage-Wert, dann mit 980 € vergleichen.
+   - Achtung: Hohe Beträge können in Sondersituationen gerechtfertigt sein (hochwertige/seltene Anlage, mehrere Wartungen p.a., Großgebäude mit ständigem Notruf-Bedarf). Bei Anhaltspunkten dafür: Befund-Severity um eine Stufe abmildern.
 
 4. SERVICESTUNDEN-SATZ
    - Marktüblich 95–125 €/h, regional unterschiedlich
@@ -255,7 +261,11 @@ PRÜFE:
 3. Auffällige Klauseln (lange Bindefristen, Preisgleitklauseln)
 4. Anlagen-Bezug: wie viele Aufzüge betrifft das Angebot? Welche Anzahl Parteien profitiert?
 
-Servicestunden-Marktwerte: 95–125 €/h Wohnaufzug, 110–145 €/h Gewerbe.
+LIFTARO-REFERENZWERTE (verbindlich, aus Marktdaten):
+- Wartungspauschale inkl. Notruf: **Median 980 €/Jahr** je Wohnaufzug
+- Servicestunden-Satz: 95–125 €/h Wohnaufzug, 110–145 €/h Gewerbe
+- Bei Wartungsangeboten > ~1.500 €/Jahr deutlich über Markt → konkret Ersparnis ausweisen
+- Geschätzte Ersparnis = (Angebotsbetrag − 980) × 0,7
 
 Bei Mieter: §-Bezug bei umlagefähigkeitsrelevanten Themen (Reparatur vs. Wartung).
 Bei Eigentümer/Verwalter: wirtschaftlich/sachlich.
@@ -290,6 +300,16 @@ PRÜFE:
 4. Anzahl Wartungen p.a. (TRBS 1201 Teil 4)
 5. Bereitschaftsdienst / Notruf-Kosten
 6. Anzahl Anlagen im Vertrag + Anzahl Parteien zur Ersparnis-Hochrechnung
+
+LIFTARO-REFERENZWERTE (verbindlich, aus Marktdaten):
+- Wartungspauschale inkl. Notruf/Bereitschaft: **Median 980 €/Jahr** je Wohnaufzug
+- Bewertung pro Anlage:
+  · bis ~1.200 €/Jahr → marktüblich
+  · 1.200–1.500 € → leicht erhöht (Hinweis)
+  · 1.500–1.800 € → deutlich über Markt (amber/warn, Optimierung nennen)
+  · über 1.800 € → klar zu teuer (warn, Ersparnis konkret ausweisen)
+- Geschätzte Ersparnis bei Neuausschreibung = (Vertragsbetrag − 980) × 0,7
+- Bei mehreren Anlagen im Vertrag immer pro Anlage rechnen (Summe ÷ Anzahl)
 
 Bei Mieter: Mietrechtliche Konsequenzen mit §-Bezug benennen, wenn die Vertragsgestaltung die Umlagefähigkeit beeinflusst.
 Bei Eigentümer/Verwalter: Optimierungs- und Verhandlungs-Hebel.
