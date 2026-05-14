@@ -247,9 +247,115 @@ img, svg { display: block; }
 .logo-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 8px rgba(22,163,74,.25); }
 .logo-mark svg { width: 18px; height: 18px; }
 .logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; text-decoration: none; }
+
+/* ── MOBILE-OPTIMIERUNG (für beide Themes) ── */
 @media (max-width: 720px) {
   footer > div:first-child { grid-template-columns: 1fr !important; gap: 24px !important; }
+  .hero { padding: 32px 18px 48px !important; }
+  .hero h1 { font-size: clamp(28px, 8vw, 38px) !important; }
+  .hero-sub { font-size: 15.5px !important; }
+  .hero-cta .btn { width: 100%; justify-content: center; }
+  .upload-section { padding: 48px 0 !important; }
+  .upload-inner { padding: 0 14px !important; }
+  .upload-card { padding: 20px 16px !important; border-radius: 14px !important; }
+  .upload-card h3 { font-size: 19px !important; }
+  .upload-card .sub { font-size: 14px !important; }
+  .section-head { margin-bottom: 32px !important; }
+  .section h2, section h2 { font-size: clamp(24px, 6.5vw, 30px) !important; }
+  .section-lead { font-size: 15px !important; }
+  .step-actions .btn, .step-actions .btn-large { padding: 13px 18px !important; font-size: 14.5px !important; flex: 1; }
+  .step-actions { gap: 8px !important; }
+  .step-actions.right .btn { width: 100%; }
+  .dropzone { padding: 38px 18px !important; }
+  .dropzone-icon { width: 48px !important; height: 48px !important; }
+  .dropzone .primary { font-size: 15px !important; }
+  .field input { padding: 13px 12px !important; font-size: 16px !important; /* iOS no-zoom */ }
+  .check-type-card { padding: 13px !important; }
+  .savings-card { padding: 22px 16px !important; }
+  .audience-card, .check-card { padding: 18px !important; }
+  .faq-q { padding: 14px 16px !important; font-size: 14.5px !important; gap: 10px !important; }
+  .faq-a-inner { padding: 0 16px 16px !important; font-size: 14px !important; }
+  section[style*="padding:88px"] { padding: 52px 0 !important; }
+  section[style*="padding:80px"] { padding: 52px 18px !important; }
+  .topbar { padding: 6px 0 !important; }
+  .nav-inner { padding: 11px 16px !important; }
+  .btn { padding: 11px 16px !important; }
+  .btn-xl { padding: 14px 22px !important; font-size: 14.5px !important; }
 }
+
+/* ════════════════════════════════════════════
+   LIFTARO-BRAND-THEME (data-theme="liftaro")
+   Navy-Header + echtes Liftaro-Logo;
+   CTAs bleiben Liftaro-Grün als Akzent.
+   ════════════════════════════════════════════ */
+html[data-theme="liftaro"] {
+  --ink: #0e2440;
+  --ink-2: #1a3a5c;
+  --brand: #7dc242;         /* Liftaro-Grün als CTA */
+  --brand-dark: #6aa838;
+  --brand-deep: #5a9230;
+  --brand-tint: #eaf6dd;
+  --brand-tint-2: #f3faea;
+  --bg-soft: #f5f7fa;
+  --bg-tint: #eef2f7;
+  --line: #e0e6ee;
+  --line-2: #d0d8e3;
+}
+html[data-theme="liftaro"] .topbar { background: #0a1c33; }
+html[data-theme="liftaro"] .topbar-item svg { color: #7dc242; }
+html[data-theme="liftaro"] .nav {
+  background: linear-gradient(180deg, #1a3a5c 0%, #0e2440 100%);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+html[data-theme="liftaro"] .nav .logo { color: #fff; }
+html[data-theme="liftaro"] .nav-links { color: rgba(255,255,255,.85); }
+html[data-theme="liftaro"] .nav-links a { color: rgba(255,255,255,.85); }
+html[data-theme="liftaro"] .nav-links a:hover { color: #7dc242; }
+html[data-theme="liftaro"] .nav-links .pill {
+  background: rgba(125,194,66,.22);
+  color: #b8e07d;
+}
+/* Eigenes Logo-Bild ersetzt das SVG-Mark + Wortmarke */
+html[data-theme="liftaro"] .nav .logo .logo-mark,
+html[data-theme="liftaro"] footer .logo .logo-mark { display: none !important; }
+html[data-theme="liftaro"] .nav .logo .logo-text,
+html[data-theme="liftaro"] footer .logo .logo-text { display: none !important; }
+html[data-theme="liftaro"] .nav .logo .logo-img,
+html[data-theme="liftaro"] footer .logo .logo-img {
+  display: inline-block !important;
+  height: 32px;
+  width: auto;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.25));
+}
+html[data-theme="liftaro"] footer .logo .logo-img { height: 28px; }
+
+/* Hero: dezenter Navy-Akzent statt Grün-Verlauf */
+html[data-theme="liftaro"] .hero h1 .grad,
+html[data-theme="liftaro"] .section h2 .grad,
+html[data-theme="liftaro"] h2 .grad {
+  background: linear-gradient(135deg, #1a3a5c 0%, #0e2440 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Final-CTA: Navy statt Grün */
+html[data-theme="liftaro"] section[style*="linear-gradient(135deg,var(--brand-deep)"] {
+  background: linear-gradient(135deg, #0e2440 0%, #1a3a5c 60%, #2d5a8c 100%) !important;
+}
+html[data-theme="liftaro"] section[style*="linear-gradient(135deg,var(--brand-deep)"] .btn {
+  background: #7dc242 !important;
+  color: #fff !important;
+  border-color: #7dc242 !important;
+}
+html[data-theme="liftaro"] section[style*="linear-gradient(135deg,var(--brand-deep)"] .btn:hover {
+  background: #6aa838 !important;
+  border-color: #6aa838 !important;
+}
+
+/* Footer behält dunklen Ink-Ton (Navy) */
+html[data-theme="liftaro"] footer { background: #0a1c33 !important; }
+html[data-theme="liftaro"] section[style*="background:var(--ink)"] { background: #0a1c33 !important; }
 </style>
 </head>
 
@@ -284,7 +390,8 @@ img, svg { display: block; }
           <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
         </svg>
       </span>
-      Liftaro
+      <span class="logo-text">Liftaro</span>
+      <img class="logo-img" src="https://liftaro.de/wp-content/uploads/2026/01/liftaro-logo-white-scaled.png" alt="Liftaro" style="display:none">
     </a>
     <nav class="nav-links">
       <a href="#pruefen">Prüfen lassen <span class="pill">Kostenlos</span></a>
@@ -633,7 +740,7 @@ img, svg { display: block; }
 <footer style="background:var(--ink);color:rgba(255,255,255,.85);padding:48px 0 24px">
   <div style="max-width:var(--max);margin:0 auto;padding:0 24px;display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:32px;margin-bottom:32px">
     <div>
-      <a href="#" class="logo" style="color:#fff;margin-bottom:14px"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></span>Liftaro</a>
+      <a href="#" class="logo" style="color:#fff;margin-bottom:14px"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></span><span class="logo-text">Liftaro</span><img class="logo-img" src="https://liftaro.de/wp-content/uploads/2026/01/liftaro-logo-white-scaled.png" alt="Liftaro" style="display:none"></a>
       <p style="font-size:14px;color:rgba(255,255,255,.55);max-width:280px;line-height:1.55;margin-top:14px">Transparenz für Aufzugskosten. Für Mieter, Eigentümer und Hausverwaltungen in ganz Deutschland.</p>
     </div>
     <div>
@@ -700,7 +807,7 @@ async function loadProxyUrlFromMasterBase() {
   // ablegen — die werden nur via val.town-Env-Vars genutzt.
   try {
     const url = 'https://api.airtable.com/v0/' + _MB.base + '/Keys?filterByFormula=' +
-      encodeURIComponent("AND({project_id}='" + _MB.project + "',OR({key_name}='vorabcheckProxyUrl',{key_name}='turnstileSiteKey'))");
+      encodeURIComponent("AND({project_id}='" + _MB.project + "',OR({key_name}='vorabcheckProxyUrl',{key_name}='turnstileSiteKey',{key_name}='vorabcheckLandingTheme'))");
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _MB.k }, cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -710,6 +817,9 @@ async function loadProxyUrlFromMasterBase() {
       }
       if (r.fields.key_name === 'turnstileSiteKey' && r.fields.key_value && !TURNSTILE_SITE_KEY) {
         TURNSTILE_SITE_KEY = r.fields.key_value;
+      }
+      if (r.fields.key_name === 'vorabcheckLandingTheme' && r.fields.key_value) {
+        applyLandingTheme(r.fields.key_value);
       }
     });
     if (LIFTARO_API_URL) console.log('[Vorabcheck] Proxy:', LIFTARO_API_URL);
@@ -723,6 +833,28 @@ async function loadProxyUrlFromMasterBase() {
 }
 // Sofort beim DOM-Load anstoßen, asynchron im Hintergrund
 document.addEventListener('DOMContentLoaded', () => { loadProxyUrlFromMasterBase(); });
+
+// ── Landing-Theme ──────────────────────────────────────────────
+// Wird via Master-Base-Key 'vorabcheckLandingTheme' gesteuert:
+//   - 'classic' (Default) → grünes Design
+//   - 'liftaro'           → Navy-Header mit echtem Liftaro-Logo (passt zu liftaro.de)
+// Override per URL: ?theme=liftaro oder ?theme=classic (für Preview ohne Admin-Zugang)
+function applyLandingTheme(theme) {
+  const t = String(theme || 'classic').toLowerCase().trim();
+  if (t === 'liftaro') {
+    document.documentElement.setAttribute('data-theme', 'liftaro');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  console.log('[Vorabcheck] Theme:', t);
+}
+// URL-Param-Override (vor Master-Base-Lookup, damit Preview instant funktioniert)
+(function () {
+  try {
+    const p = new URLSearchParams(location.search).get('theme');
+    if (p) applyLandingTheme(p);
+  } catch (e) {}
+})();
 
 let _currentCheckType = 'nebenkosten';
 let _currentFile = null;
