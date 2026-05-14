@@ -1279,9 +1279,9 @@ function renderResult(r) {
   }
 
   // Sparpotenzial — duale Anzeige mit rollenabhängiger Priorisierung
+  // (parteien ist oben schon deklariert)
   const savings_individual = Number(r.savings_individual_eur || 0);
   const savings_total      = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
-  const parteien           = Number(r.parteien_count || 0);
   const hasIndividual = savings_individual > 0;
   const hasTotal      = savings_total > 0;
   const role          = (r.role || _currentRole || 'mieter');
