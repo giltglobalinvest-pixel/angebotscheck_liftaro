@@ -1459,8 +1459,40 @@ document.getElementById('to-step-3').addEventListener('click', async () => {
     alert('Bitte den Captcha bestätigen.'); return;
   }
   goToStep(3);
+  // Soft-Lead-Capture: feuert sofort einen Lead in Pipedrive, falls die Analyse
+  // gleich crashed/abgebrochen wird. Dedupliziert serverseitig per Email.
+  softCaptureLead();
   await runAnalysis();
 });
+
+// Fire-and-forget Soft-Lead-Capture vor der eigentlichen Analyse
+function softCaptureLead() {
+  if (!LIFTARO_API_URL) return;
+  try {
+    const payload = {
+      action: 'soft_capture',
+      check_type: _currentCheckType,
+      file_meta: _currentFile ? { name: _currentFile.name, size: _currentFile.size, mime: _currentFile.type } : null,
+      lead: {
+        vorname: (document.getElementById('vorname')?.value || '').trim(),
+        nachname: (document.getElementById('nachname')?.value || '').trim(),
+        email: (document.getElementById('email')?.value || '').trim(),
+        telefon: (document.getElementById('telefon')?.value || '').trim(),
+        adresse: (document.getElementById('adresse')?.value || '').trim(),
+        rolle: (document.getElementById('rolle')?.value || '').trim(),
+        firma: (document.getElementById('firma')?.value || '').trim(),
+      },
+    };
+    // Fire-and-forget — keepalive damit der Request auch beim Navigation-Wegklicken durchgeht
+    fetch(LIFTARO_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).then(r => r.ok ? console.log('[Soft-Lead] OK') : console.warn('[Soft-Lead] HTTP', r.status))
+      .catch(e => console.warn('[Soft-Lead] err:', e?.message));
+  } catch (e) { console.warn('[Soft-Lead] exc:', e); }
+}
 
 document.getElementById('restart').addEventListener('click', () => {
   goToStep(1);
