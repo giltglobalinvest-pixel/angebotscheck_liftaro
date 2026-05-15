@@ -878,8 +878,12 @@ html[data-theme="liftaro"] .liftaro-step-desc {
         </div>
 
         <!-- Cloudflare Turnstile Widget -->
-        <div class="turnstile-wrap">
-          <div class="cf-turnstile" id="turnstile-widget" data-sitekey="REPLACE_WITH_TURNSTILE_SITE_KEY" data-callback="onTurnstileSuccess"></div>
+        <div class="turnstile-wrap" id="turnstile-wrap" style="display:none">
+          <!-- KEIN data-sitekey Placeholder & KEINE cf-turnstile-Class beim Initial-Render —
+               sonst initialisiert Cloudflare's api.js mit ungültigem Key (Error 400020).
+               Erst per turnstile.render() aktiviert, wenn ein echter Site-Key aus der
+               Master-Base geladen wurde. -->
+          <div id="turnstile-widget"></div>
         </div>
 
         <div class="step-actions">
@@ -1238,10 +1242,7 @@ async function loadProxyUrlFromMasterBase() {
       }
     });
     if (LIFTARO_API_URL) console.log('[Vorabcheck] Proxy:', LIFTARO_API_URL);
-    if (TURNSTILE_SITE_KEY) {
-      const tw = document.getElementById('turnstile-widget');
-      if (tw) tw.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
-    }
+    if (TURNSTILE_SITE_KEY) renderTurnstileWidget();
   } catch (e) {
     console.warn('[Vorabcheck] Master-Base-Lookup fehlgeschlagen:', e.message);
   }
@@ -1334,6 +1335,32 @@ let _currentFile = null;
 let _turnstileToken = null;
 
 window.onTurnstileSuccess = function(token) { _turnstileToken = token; };
+
+// Turnstile-Widget aktivieren, sobald Site-Key vorliegt. Wartet auf api.js falls noch nicht geladen.
+function renderTurnstileWidget() {
+  if (!TURNSTILE_SITE_KEY) return;
+  const wrap = document.getElementById('turnstile-wrap');
+  const el = document.getElementById('turnstile-widget');
+  if (!wrap || !el) return;
+  if (el.dataset.rendered === '1') return; // schon initialisiert
+  const tryRender = () => {
+    if (window.turnstile && typeof window.turnstile.render === 'function') {
+      try {
+        window.turnstile.render('#turnstile-widget', {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: window.onTurnstileSuccess,
+          theme: 'light',
+        });
+        el.dataset.rendered = '1';
+        wrap.style.display = 'flex';
+      } catch (e) { console.warn('[Turnstile] render fehlgeschlagen:', e); }
+    } else {
+      // api.js noch nicht da → später erneut versuchen
+      setTimeout(tryRender, 400);
+    }
+  };
+  tryRender();
+}
 
 // Step-Indicator
 const panes = document.querySelectorAll('.step-pane');
