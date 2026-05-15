@@ -102,30 +102,71 @@ async function createPipedriveLead(input: {
   org?: string;
   title: string;
   note: string;
-}): Promise<{ ok: boolean; lead_id?: string; person_id?: number; error?: string }> {
+}): Promise<{ ok: boolean; lead_id?: string; person_id?: number; reused?: boolean; error?: string }> {
+  // Legacy-Wrapper — leitet auf den neuen upsertPipedriveLead um (Dedup-fähig).
+  return upsertPipedriveLead(input);
+}
+
+// ───────────────────────────────────────────────────────────────
+// upsertPipedriveLead — Dedup per Email:
+//   1. Person via Email-Suche finden, sonst anlegen
+//   2. Vorhandenen offenen (nicht-archivierten) Lead der Person nutzen,
+//      sonst neuen anlegen
+//   3. Note in jedem Fall ANHÄNGEN (Verlauf bleibt erhalten)
+//
+// Resultat: 1 Pipedrive-Lead pro Kontakt, alle Touchpoints als Notes.
+// ───────────────────────────────────────────────────────────────
+async function upsertPipedriveLead(input: {
+  name: string;
+  email?: string;
+  phone?: string;
+  org?: string;
+  title: string;
+  note: string;
+}): Promise<{ ok: boolean; lead_id?: string; person_id?: number; reused?: boolean; error?: string }> {
   const cfg = await loadPipedriveConfig();
   if (!cfg) return { ok: false, error: 'Pipedrive nicht konfiguriert' };
   const base = 'https://' + cfg.domain + '/api/v1';
   const auth = '?api_token=' + encodeURIComponent(cfg.token);
   try {
-    // 1) Person anlegen
-    const personBody: any = { name: input.name || 'Anonym' };
-    if (input.email) personBody.email = [{ value: input.email, primary: true, label: 'work' }];
-    if (input.phone) personBody.phone = [{ value: input.phone, primary: true, label: 'work' }];
-    const personRes = await fetch(base + '/persons' + auth, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(personBody),
-    });
-    const personData = await personRes.json();
-    if (!personData.success) {
-      return { ok: false, error: 'Person: ' + JSON.stringify(personData.error || personData).slice(0, 200) };
-    }
-    const personId = personData.data.id;
+    let personId: number | null = null;
+    let personExisted = false;
 
-    // 2) Organization (optional)
+    // 1a) Person-Suche per Email
+    if (input.email) {
+      try {
+        const searchUrl = base + '/persons/search?fields=email&exact_match=true&limit=5&term=' +
+          encodeURIComponent(input.email) + '&api_token=' + encodeURIComponent(cfg.token);
+        const sr = await fetch(searchUrl);
+        const sd = await sr.json();
+        if (sd?.success && sd.data?.items?.length) {
+          // Erstes exaktes Match
+          personId = sd.data.items[0].item?.id || null;
+          if (personId) personExisted = true;
+        }
+      } catch (e) { /* fallthrough zur Anlage */ }
+    }
+
+    // 1b) Person anlegen, wenn nicht gefunden
+    if (!personId) {
+      const personBody: any = { name: input.name || 'Anonym' };
+      if (input.email) personBody.email = [{ value: input.email, primary: true, label: 'work' }];
+      if (input.phone) personBody.phone = [{ value: input.phone, primary: true, label: 'work' }];
+      const personRes = await fetch(base + '/persons' + auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(personBody),
+      });
+      const personData = await personRes.json();
+      if (!personData.success) {
+        return { ok: false, error: 'Person: ' + JSON.stringify(personData.error || personData).slice(0, 200) };
+      }
+      personId = personData.data.id;
+    }
+
+    // 2) Organization (optional) — nur bei neuen Personen / neuen Leads
     let orgId: number | null = null;
-    if (input.org && input.org.trim()) {
+    if (input.org && input.org.trim() && !personExisted) {
       try {
         const orgRes = await fetch(base + '/organizations' + auth, {
           method: 'POST',
@@ -137,33 +178,55 @@ async function createPipedriveLead(input: {
       } catch (e) { /* ok */ }
     }
 
-    // 3) Lead anlegen
-    const leadBody: any = { title: input.title, person_id: personId };
-    if (orgId) leadBody.organization_id = orgId;
-    const leadRes = await fetch(base + '/leads' + auth, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(leadBody),
-    });
-    const leadData = await leadRes.json();
-    if (!leadData.success) {
-      return { ok: false, error: 'Lead: ' + JSON.stringify(leadData.error || leadData).slice(0, 200), person_id: personId };
-    }
-    const leadId = leadData.data.id;
+    // 3a) Existierenden, nicht-archivierten Lead der Person finden
+    let leadId: string | null = null;
+    let leadReused = false;
+    try {
+      const leadsUrl = base + '/leads?person_id=' + personId + '&archived_status=not_archived&limit=20&api_token=' + encodeURIComponent(cfg.token);
+      const lr = await fetch(leadsUrl);
+      const ld = await lr.json();
+      if (ld?.success && Array.isArray(ld.data) && ld.data.length > 0) {
+        // Neuesten offenen Lead nehmen (Pipedrive sortiert default ASC nach Erstelldatum)
+        const sorted = ld.data.slice().sort((a: any, b: any) =>
+          String(b.add_time || '').localeCompare(String(a.add_time || ''))
+        );
+        leadId = sorted[0].id;
+        leadReused = true;
+      }
+    } catch (e) { /* fallthrough zur Neuanlage */ }
 
-    // 4) Note anhängen (best-effort)
+    // 3b) Neuen Lead anlegen, wenn keiner offen ist
+    if (!leadId) {
+      const leadBody: any = { title: input.title, person_id: personId };
+      if (orgId) leadBody.organization_id = orgId;
+      const leadRes = await fetch(base + '/leads' + auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leadBody),
+      });
+      const leadData = await leadRes.json();
+      if (!leadData.success) {
+        return { ok: false, error: 'Lead: ' + JSON.stringify(leadData.error || leadData).slice(0, 200), person_id: personId };
+      }
+      leadId = leadData.data.id;
+    }
+
+    // 4) Note IMMER anhängen — egal ob neuer oder reused Lead
     if (input.note) {
       try {
+        const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+        const noteWithStamp = '🕒 ' + stamp + '\n\n' + input.note;
         await fetch(base + '/notes' + auth, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: input.note, lead_id: leadId }),
+          body: JSON.stringify({ content: noteWithStamp, lead_id: leadId }),
         });
       } catch (e) { /* lead exists, note is non-critical */ }
     }
 
-    console.log('[Pipedrive] Lead erstellt:', leadId, 'für', input.name);
-    return { ok: true, lead_id: leadId, person_id: personId };
+    console.log('[Pipedrive] ' + (leadReused ? 'Lead reused' : 'Lead created') + ':', leadId,
+      'person=' + personId + (personExisted ? ' (existed)' : ' (new)'));
+    return { ok: true, lead_id: leadId, person_id: personId, reused: leadReused };
   } catch (e: any) {
     return { ok: false, error: 'Exception: ' + (e.message || String(e)) };
   }
@@ -639,6 +702,45 @@ export default async function (req: Request): Promise<Response> {
         phone: telefon || undefined,
         org: firma || undefined,
         title: '[Inbound] ' + name + ' — ' + paketLabel + (anzahl ? ' (' + anzahl + ' Aufzug' + (anzahl === 1 ? '' : 'e') + ')' : ''),
+        note: noteLines.join('\n'),
+      });
+      return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
+    }
+
+    // ── Action-Routing: action="soft_capture" — Lead-Auffangnetz, wenn User
+    // die Analyse startet aber sie scheitert / abgebrochen wird ──
+    if (body.action === 'soft_capture') {
+      const lead = body.lead || {};
+      const ct = String(body.check_type || '').trim() || 'unbekannt';
+      const fileMeta = body.file_meta || {};
+      const name = ((String(lead.vorname || '').trim() + ' ' + String(lead.nachname || '').trim()).trim()) || 'Anonym';
+      const email = String(lead.email || '').trim();
+      const telefon = String(lead.telefon || '').trim();
+      const adresse = String(lead.adresse || '').trim();
+      const rolle = String(lead.rolle || '').trim();
+      const firma = String(lead.firma || '').trim();
+      if (!email) return jsonResp({ ok: false, error: 'email Pflicht' }, 400, corsHeaders);
+
+      const noteLines = [
+        '🟡 SOFT-LEAD — User hat Step 2 abgeschickt, Analyse läuft / könnte abbrechen',
+        '',
+        'Quelle: Vorabcheck Public-Landing',
+        'Check-Typ: ' + ct,
+        rolle ? 'Rolle: ' + rolle : '',
+        adresse ? 'Adresse Objekt: ' + adresse : '',
+        firma ? 'Firma: ' + firma : '',
+        'Telefon: ' + (telefon || '–'),
+        fileMeta.name ? 'Hochgeladenes Dokument: ' + fileMeta.name : '',
+        fileMeta.size ? 'Dateigröße: ' + Math.round(fileMeta.size / 1024) + ' KB' : '',
+      ].filter(Boolean);
+
+      // Async — Frontend muss nicht warten
+      const pd = await upsertPipedriveLead({
+        name,
+        email,
+        phone: telefon || undefined,
+        org: firma || undefined,
+        title: '[Vorabcheck Start] ' + name + ' — ' + ct,
         note: noteLines.join('\n'),
       });
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
