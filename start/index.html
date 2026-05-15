@@ -1277,55 +1277,119 @@ html[data-variant="stats"] .variant-only-stats { display: block; }
 </footer>
 
 <script>
-// ── Kontakt-Formular: baut einen vorausgefüllten mailto-Entwurf ────────
-function submitKontaktForm(e) {
+// ── Kontakt-Formular: POST an val.town-Backend → Pipedrive-Lead.
+// Fallback auf mailto, wenn der Endpoint nicht erreichbar ist.
+async function submitKontaktForm(e) {
   e.preventDefault();
   var val = function(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
-  var name = val('kf-name');
-  var firma = val('kf-firma');
-  var email = val('kf-email');
-  var tel   = val('kf-tel');
-  var paket = val('kf-paket');
-  var anzahl = val('kf-anzahl');
-  var msg = val('kf-nachricht');
+  var data = {
+    name:      val('kf-name'),
+    firma:     val('kf-firma'),
+    email:     val('kf-email'),
+    telefon:   val('kf-tel'),
+    paket:     val('kf-paket'),
+    anzahl:    val('kf-anzahl'),
+    nachricht: val('kf-nachricht'),
+  };
 
-  var paketLabel = paket === 'free' ? 'Free (kostenlos, mit Erfolgsbeteiligung)'
-                 : paket === 'light' ? 'Light (45 €/Monat je Aufzug)'
+  var fb = document.getElementById('kf-feedback');
+  var submitBtn = e.target.querySelector('button[type=submit]');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.style.opacity = '0.7'; }
+  if (fb) {
+    fb.style.display = 'block';
+    fb.style.background = '#f1f5f9';
+    fb.style.border = '1px solid #cbd5e1';
+    fb.style.color = '#475569';
+    fb.textContent = '… Anfrage wird gesendet …';
+  }
+
+  // Proxy-URL aus Master-Base laden (gleicher Mechanismus wie auf der KI-Check-Landing)
+  var apiUrl = await _resolveBackendUrl();
+  if (apiUrl) {
+    try {
+      var res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'contact', contact: data }),
+      });
+      var json = await res.json();
+      if (res.ok && json && json.ok) {
+        if (fb) {
+          fb.style.background = '#eaf6dd';
+          fb.style.border = '1px solid #b8e07d';
+          fb.style.color = '#3d7a14';
+          var pdMsg = json.pipedrive && json.pipedrive.ok ? ' Ihre Anfrage liegt jetzt bei unserem Vertriebsteam.' : '';
+          fb.textContent = '✓ Vielen Dank! Wir melden uns innerhalb von 24 Stunden.' + pdMsg;
+        }
+        // Formular zurücksetzen außer den feedback-Bereich
+        e.target.reset();
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; }
+        return false;
+      }
+      throw new Error((json && json.error) || ('HTTP ' + res.status));
+    } catch (err) {
+      console.warn('[Kontakt] Backend-Call fehlgeschlagen, Fallback auf mailto:', err);
+      // Fallthrough zu mailto
+    }
+  }
+
+  // Fallback: mailto-Entwurf öffnen
+  var paketLabel = data.paket === 'free' ? 'Free (kostenlos, mit Erfolgsbeteiligung)'
+                 : data.paket === 'light' ? 'Light (45 €/Monat je Aufzug)'
                  : 'Andere / unklar';
-  var subject = 'Liftaro-Anfrage — ' + paketLabel + (anzahl ? ' (' + anzahl + ' Aufzug' + (anzahl === '1' ? '' : 'e') + ')' : '');
+  var subject = 'Liftaro-Anfrage — ' + paketLabel + (data.anzahl ? ' (' + data.anzahl + ' Aufzug' + (data.anzahl === '1' ? '' : 'e') + ')' : '');
   var bodyLines = [
     'Hallo Liftaro-Team,',
     '',
     'ich interessiere mich für das Paket: ' + paketLabel + '.',
     '',
-    '--- Kontakt ---',
-    'Name: ' + name,
-    firma ? 'Firma / Hausverwaltung: ' + firma : null,
-    'E-Mail: ' + email,
-    tel ? 'Telefon: ' + tel : null,
-    anzahl ? 'Anzahl Aufzüge: ' + anzahl : null,
+    '— Kontakt —',
+    'Name: ' + data.name,
+    data.firma ? 'Firma / Hausverwaltung: ' + data.firma : null,
+    'E-Mail: ' + data.email,
+    data.telefon ? 'Telefon: ' + data.telefon : null,
+    data.anzahl ? 'Anzahl Aufzüge: ' + data.anzahl : null,
     '',
-    '--- Nachricht ---',
-    msg,
+    '— Nachricht —',
+    data.nachricht,
     '',
     'Mit freundlichen Grüßen',
-    name,
+    data.name,
   ].filter(function(x) { return x !== null; });
-  var body = bodyLines.join('\n');
-  var mailto = 'mailto:check@liftaro.de?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-
-  var fb = document.getElementById('kf-feedback');
+  var mailto = 'mailto:check@liftaro.de?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(bodyLines.join('\n'));
   if (fb) {
-    fb.style.display = 'block';
-    fb.style.background = '#eaf6dd';
-    fb.style.border = '1px solid #b8e07d';
-    fb.style.color = '#3d7a14';
-    fb.textContent = '✓ Mail-Entwurf wird geöffnet … Sollte sich kein Mail-Programm öffnen, schicken Sie uns die Anfrage bitte direkt an check@liftaro.de.';
+    fb.style.background = '#fff7e6';
+    fb.style.border = '1px solid #f0d4a8';
+    fb.style.color = '#7a4d00';
+    fb.textContent = 'Direktversand nicht erreichbar — Mail-Entwurf wird geöffnet. Bitte abschicken.';
   }
-  // Mail-Programm öffnen
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; }
   window.location.href = mailto;
   return false;
 }
+
+// Hilfsfunktion: val.town-Proxy-URL aus Liftaro-Master-Base laden (öffentlicher Read-Token)
+async function _resolveBackendUrl() {
+  if (window._liftaroBackendUrl) return window._liftaroBackendUrl;
+  var k1 = 'patu8KWM', k2 = '8aWByxCGL';
+  var k3 = '.69fae5d9fa4b94c266b42', k4 = '6dadd71a51f574945d840b33569058ab5e9d89ebef3';
+  var base = 'appzhNrhkLSTEaNFW', project = 'p_1777239396379';
+  try {
+    var url = 'https://api.airtable.com/v0/' + base + '/Keys?filterByFormula=' +
+      encodeURIComponent("AND({project_id}='" + project + "',{key_name}='vorabcheckProxyUrl')");
+    var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + (k1+k2+k3+k4) }, cache: 'no-store' });
+    if (!res.ok) return null;
+    var data = await res.json();
+    var v = data.records && data.records[0] && data.records[0].fields && data.records[0].fields.key_value;
+    if (v) {
+      window._liftaroBackendUrl = String(v).replace(/\/+$/, '');
+      return window._liftaroBackendUrl;
+    }
+  } catch (e) { /* network error etc. */ }
+  return null;
+}
+
+// ── Design-Varianten-Switch ───────────────────────────
 
 // ── Design-Varianten-Switch ───────────────────────────
 // "clean" (Default) = ohne Stat-Bar, "stats" = mit Stat-Bar unter dem Hero.
