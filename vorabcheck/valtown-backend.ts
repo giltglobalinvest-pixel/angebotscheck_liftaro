@@ -897,40 +897,6 @@ export default async function (req: Request): Promise<Response> {
       duration_ms,
     });
 
-    // 7b. Pipedrive-Lead anlegen — best-effort, blockiert die Response nicht.
-    // Jeder Vorabcheck mit Kontaktdaten landet als Lead in der Sales-Pipeline.
-    if (lead?.email) {
-      const fullName = ((lead.vorname || '') + ' ' + (lead.nachname || '')).trim() || lead.email;
-      const roleLabel = role === 'eigentuemer' ? 'Eigentümer'
-                      : role === 'verwalter'  ? 'Hausverwalter'
-                      :                          'Mieter';
-      const checkTypeLabel = check_type === 'nebenkosten' ? 'Nebenkostenabrechnung'
-                           : check_type === 'angebot'    ? 'Angebot'
-                           :                                'Wartungsvertrag';
-      const ampelLabel = result.ampel === 'rot' ? '🔴 Rot' : result.ampel === 'gelb' ? '🟡 Gelb' : result.ampel === 'gruen' ? '🟢 Grün' : '–';
-      const noteLines = [
-        'Quelle: KI-Vorabcheck (Check-Nr ' + checkNr + ')',
-        'Rolle: ' + roleLabel,
-        'Check-Typ: ' + checkTypeLabel,
-        'Ampel: ' + ampelLabel,
-        savingsTotal ? 'Geschätzte Gesamtersparnis: ' + Math.round(savingsTotal).toLocaleString('de-DE') + ' €/Jahr' : 'Geschätzte Ersparnis: –',
-        'Adresse Objekt: ' + (lead.adresse || '–'),
-        '',
-        '— Zusammenfassung —',
-        result.summary || '(keine)',
-      ];
-      const note = noteLines.join('\n');
-      const title = '[Vorabcheck] ' + fullName + ' — ' + roleLabel + ' (' + checkNr + ')';
-      // Async, fehlerresistent
-      createPipedriveLead({
-        name: fullName,
-        email: lead.email,
-        phone: lead.telefon || undefined,
-        title,
-        note,
-      }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
-    }
-
     // 8. Return — nur die Daten, die das Frontend braucht
     // savings_total_eur ist die Gesamthaus-Ersparnis (Fallback: legacy savings_estimate_eur)
     // savings_individual_eur ist die Ersparnis für die anfragende Partei
@@ -1101,6 +1067,46 @@ export default async function (req: Request): Promise<Response> {
     if (!savingsIndividual && savingsTotal > 0 && meaPool > 0 && meaEigentuemer > 0) {
       savingsIndividual = Math.round(savingsTotal * meaEigentuemer / meaPool);
     }
+
+    // 7b. Pipedrive-Lead anlegen — best-effort, blockiert die Response nicht.
+    // Jeder Vorabcheck mit Kontaktdaten landet als Lead in der Sales-Pipeline.
+    // (Steht hier UNTERHALB der Savings-Berechnung, weil savingsTotal/savingsIndividual
+    // hier final feststehen — TDZ-Bug bei früherer Position behoben.)
+    if (lead?.email) {
+      const fullName = ((lead.vorname || '') + ' ' + (lead.nachname || '')).trim() || lead.email;
+      const roleLabel = role === 'eigentuemer' ? 'Eigentümer'
+                      : role === 'verwalter'  ? 'Hausverwalter'
+                      :                          'Mieter';
+      const checkTypeLabel = check_type === 'nebenkosten' ? 'Nebenkostenabrechnung'
+                           : check_type === 'angebot'    ? 'Angebot'
+                           :                                'Wartungsvertrag';
+      const ampelLabel = result.ampel === 'rot' ? '🔴 Rot' : result.ampel === 'gelb' ? '🟡 Gelb' : result.ampel === 'gruen' ? '🟢 Grün' : '–';
+      const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
+      const noteLines = [
+        '✅ ANALYSE ABGESCHLOSSEN — Check-Nr ' + checkNr,
+        '',
+        'Rolle: ' + roleLabel,
+        'Check-Typ: ' + checkTypeLabel,
+        'Ampel: ' + ampelLabel,
+        savingsTotal ? 'Geschätzte Gesamtersparnis (Haus): ' + fmt(savingsTotal) + ' €/Jahr' : 'Geschätzte Gesamtersparnis: –',
+        savingsIndividual ? 'Geschätzte individuelle Ersparnis: ' + fmt(savingsIndividual) + ' €/Jahr' : '',
+        'Adresse Objekt: ' + (lead.adresse || '–'),
+        '',
+        '— Zusammenfassung —',
+        result.summary || '(keine)',
+      ].filter(Boolean);
+      const note = noteLines.join('\n');
+      const title = '[Vorabcheck] ' + fullName + ' — ' + roleLabel + ' (' + checkNr + ')';
+      // Async, fehlerresistent — upsertPipedriveLead dedupliziert per Email
+      createPipedriveLead({
+        name: fullName,
+        email: lead.email,
+        phone: lead.telefon || undefined,
+        title,
+        note,
+      }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
+    }
+
     return jsonResp({
       ampel: result.ampel,
       summary: result.summary,
