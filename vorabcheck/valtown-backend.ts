@@ -60,6 +60,116 @@ async function loadCustomPrompts(): Promise<Record<string, string>> {
 }
 
 // ───────────────────────────────────────────────────────────────
+// Pipedrive-Integration: Lead pro Vorabcheck + pro Kontaktformular.
+// Token & Domain liegen in der Liftaro-Master-Base als Keys
+// 'pipedriveDomain' und 'pipedriveApiToken'. 5-Min-Cache.
+// ───────────────────────────────────────────────────────────────
+const PIPEDRIVE_MASTER_BASE = 'appzhNrhkLSTEaNFW';
+const PIPEDRIVE_PROJECT_ID  = 'p_1777239396379';
+let _pdCache: { domain: string, token: string } | null = null;
+let _pdCacheTs = 0;
+const PD_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function loadPipedriveConfig(): Promise<{ domain: string, token: string } | null> {
+  if (_pdCache && Date.now() - _pdCacheTs < PD_CACHE_TTL_MS) return _pdCache;
+  const atKey = Deno.env.get("AIRTABLE_KEY");
+  if (!atKey) { _pdCacheTs = Date.now(); return null; }
+  try {
+    const url = 'https://api.airtable.com/v0/' + PIPEDRIVE_MASTER_BASE + '/Keys?filterByFormula=' +
+      encodeURIComponent("AND({project_id}='" + PIPEDRIVE_PROJECT_ID + "',OR({key_name}='pipedriveDomain',{key_name}='pipedriveApiToken'))");
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + atKey } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    let domain = '', token = '';
+    (data.records || []).forEach((r: any) => {
+      if (r.fields?.key_name === 'pipedriveDomain')   domain = String(r.fields.key_value || '').trim();
+      if (r.fields?.key_name === 'pipedriveApiToken') token  = String(r.fields.key_value || '').trim();
+    });
+    _pdCacheTs = Date.now();
+    if (!domain || !token) { _pdCache = null; return null; }
+    _pdCache = { domain: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), token };
+    return _pdCache;
+  } catch (e) {
+    console.warn('[Pipedrive] loadPipedriveConfig:', e);
+    return null;
+  }
+}
+
+async function createPipedriveLead(input: {
+  name: string;
+  email?: string;
+  phone?: string;
+  org?: string;
+  title: string;
+  note: string;
+}): Promise<{ ok: boolean; lead_id?: string; person_id?: number; error?: string }> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg) return { ok: false, error: 'Pipedrive nicht konfiguriert' };
+  const base = 'https://' + cfg.domain + '/api/v1';
+  const auth = '?api_token=' + encodeURIComponent(cfg.token);
+  try {
+    // 1) Person anlegen
+    const personBody: any = { name: input.name || 'Anonym' };
+    if (input.email) personBody.email = [{ value: input.email, primary: true, label: 'work' }];
+    if (input.phone) personBody.phone = [{ value: input.phone, primary: true, label: 'work' }];
+    const personRes = await fetch(base + '/persons' + auth, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(personBody),
+    });
+    const personData = await personRes.json();
+    if (!personData.success) {
+      return { ok: false, error: 'Person: ' + JSON.stringify(personData.error || personData).slice(0, 200) };
+    }
+    const personId = personData.data.id;
+
+    // 2) Organization (optional)
+    let orgId: number | null = null;
+    if (input.org && input.org.trim()) {
+      try {
+        const orgRes = await fetch(base + '/organizations' + auth, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: input.org.trim() }),
+        });
+        const orgData = await orgRes.json();
+        if (orgData.success) orgId = orgData.data.id;
+      } catch (e) { /* ok */ }
+    }
+
+    // 3) Lead anlegen
+    const leadBody: any = { title: input.title, person_id: personId };
+    if (orgId) leadBody.organization_id = orgId;
+    const leadRes = await fetch(base + '/leads' + auth, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(leadBody),
+    });
+    const leadData = await leadRes.json();
+    if (!leadData.success) {
+      return { ok: false, error: 'Lead: ' + JSON.stringify(leadData.error || leadData).slice(0, 200), person_id: personId };
+    }
+    const leadId = leadData.data.id;
+
+    // 4) Note anhängen (best-effort)
+    if (input.note) {
+      try {
+        await fetch(base + '/notes' + auth, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: input.note, lead_id: leadId }),
+        });
+      } catch (e) { /* lead exists, note is non-critical */ }
+    }
+
+    console.log('[Pipedrive] Lead erstellt:', leadId, 'für', input.name);
+    return { ok: true, lead_id: leadId, person_id: personId };
+  } catch (e: any) {
+    return { ok: false, error: 'Exception: ' + (e.message || String(e)) };
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
 // Preisreferenzen — Marktmedian-Liste pro Angebots-Position.
 // Wird bei check_type=angebot der KI als Kontext mitgegeben.
 // 5-Min-Cache wie bei den Custom-Prompts.
@@ -474,6 +584,66 @@ export default async function (req: Request): Promise<Response> {
   try {
     const body = await req.json();
 
+    // ── Action-Routing: action="contact" empfängt das Kontakt-Formular der Startseite ──
+    if (body.action === 'contact') {
+      const c = body.contact || {};
+      const name = String(c.name || '').trim();
+      const email = String(c.email || '').trim();
+      if (!name || !email) return jsonResp({ ok: false, error: 'name und email sind Pflichtfelder' }, 400, corsHeaders);
+      const firma = String(c.firma || '').trim();
+      const telefon = String(c.telefon || '').trim();
+      const paket = String(c.paket || 'andere').toLowerCase();
+      const anzahl = parseInt(String(c.anzahl || '0'), 10) || 0;
+      const nachricht = String(c.nachricht || '').trim();
+      const paketLabel = paket === 'free' ? 'Free (50% Erfolgsbeteiligung)'
+                      : paket === 'light' ? 'Light (45 €/Monat je Aufzug)'
+                      : 'Andere / unklar';
+
+      // 1) Airtable-Backup (best-effort)
+      try {
+        const atKey = Deno.env.get("AIRTABLE_KEY");
+        const atBase = Deno.env.get("AIRTABLE_BASE_ID");
+        if (atKey && atBase) {
+          await fetch('https://api.airtable.com/v0/' + atBase + '/Kontakt-Anfragen', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + atKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                name, email,
+                firma: firma || '',
+                telefon: telefon || '',
+                paket: paketLabel,
+                anzahl_aufzuege: anzahl,
+                nachricht: nachricht || '',
+                savedAt: new Date().toISOString(),
+              },
+            }),
+          });
+        }
+      } catch (e: any) { console.warn('[Kontakt] Airtable failed:', e.message); }
+
+      // 2) Pipedrive-Lead anlegen
+      const noteLines = [
+        'Quelle: Startseite Kontakt-Formular',
+        'Paket-Interesse: ' + paketLabel,
+        anzahl ? 'Anzahl Aufzüge: ' + anzahl : 'Anzahl Aufzüge: –',
+        'Firma / Hausverwaltung: ' + (firma || '–'),
+        'Telefon: ' + (telefon || '–'),
+        '',
+        '— Nachricht —',
+        nachricht || '(keine)',
+      ];
+      const pd = await createPipedriveLead({
+        name,
+        email,
+        phone: telefon || undefined,
+        org: firma || undefined,
+        title: '[Inbound] ' + name + ' — ' + paketLabel + (anzahl ? ' (' + anzahl + ' Aufzug' + (anzahl === 1 ? '' : 'e') + ')' : ''),
+        note: noteLines.join('\n'),
+      });
+      return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
+    }
+
     // ── Action-Routing: action="get_defaults" liefert die Backend-Default-Prompts ans Admin-UI ──
     if (body.action === 'get_defaults') {
       return jsonResp({
@@ -624,6 +794,40 @@ export default async function (req: Request): Promise<Response> {
       model: MODEL,
       duration_ms,
     });
+
+    // 7b. Pipedrive-Lead anlegen — best-effort, blockiert die Response nicht.
+    // Jeder Vorabcheck mit Kontaktdaten landet als Lead in der Sales-Pipeline.
+    if (lead?.email) {
+      const fullName = ((lead.vorname || '') + ' ' + (lead.nachname || '')).trim() || lead.email;
+      const roleLabel = role === 'eigentuemer' ? 'Eigentümer'
+                      : role === 'verwalter'  ? 'Hausverwalter'
+                      :                          'Mieter';
+      const checkTypeLabel = check_type === 'nebenkosten' ? 'Nebenkostenabrechnung'
+                           : check_type === 'angebot'    ? 'Angebot'
+                           :                                'Wartungsvertrag';
+      const ampelLabel = result.ampel === 'rot' ? '🔴 Rot' : result.ampel === 'gelb' ? '🟡 Gelb' : result.ampel === 'gruen' ? '🟢 Grün' : '–';
+      const noteLines = [
+        'Quelle: KI-Vorabcheck (Check-Nr ' + checkNr + ')',
+        'Rolle: ' + roleLabel,
+        'Check-Typ: ' + checkTypeLabel,
+        'Ampel: ' + ampelLabel,
+        savingsTotal ? 'Geschätzte Gesamtersparnis: ' + Math.round(savingsTotal).toLocaleString('de-DE') + ' €/Jahr' : 'Geschätzte Ersparnis: –',
+        'Adresse Objekt: ' + (lead.adresse || '–'),
+        '',
+        '— Zusammenfassung —',
+        result.summary || '(keine)',
+      ];
+      const note = noteLines.join('\n');
+      const title = '[Vorabcheck] ' + fullName + ' — ' + roleLabel + ' (' + checkNr + ')';
+      // Async, fehlerresistent
+      createPipedriveLead({
+        name: fullName,
+        email: lead.email,
+        phone: lead.telefon || undefined,
+        title,
+        note,
+      }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
+    }
 
     // 8. Return — nur die Daten, die das Frontend braucht
     // savings_total_eur ist die Gesamthaus-Ersparnis (Fallback: legacy savings_estimate_eur)
