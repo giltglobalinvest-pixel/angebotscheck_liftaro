@@ -2225,15 +2225,20 @@ function renderResultCta(role, r) {
           '<input type="email" id="cta-hv-email" placeholder="hausverwaltung@beispiel.de" autocomplete="off" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
         '</div>' +
         '<div id="cta-hv-feedback" style="display:none;font-size:12px;margin-top:2px"></div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        '<div style="margin-top:6px">' +
           '<button type="button" onclick="submitEigentuemerCta()" class="btn">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>' +
             'Sparpotenzial einreichen' +
           '</button>' +
-          '<button type="button" onclick="submitEigentuemerCtaLiftaro()" class="btn btn-ghost">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-            'Direkt bei Liftaro anfragen' +
-          '</button>' +
+        '</div>' +
+        // Dezenter Link: Direktkontakt-Wunsch → Pipedrive-Hot-Markierung statt mailto
+        '<div id="cta-hv-callback-wrap" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-2);text-align:center">' +
+          '<a href="javascript:void(0)" id="cta-hv-callback-link" onclick="requestLiftaroCallback()" style="font-size:13px;color:var(--ink-3);text-decoration:underline;text-underline-offset:3px">' +
+            'Lieber direkt mit Liftaro sprechen? <span style="color:var(--brand);font-weight:600">Wir melden uns binnen 24 h →</span>' +
+          '</a>' +
+          '<div id="cta-hv-callback-done" style="display:none;font-size:13.5px;color:var(--brand);font-weight:600;padding:8px 12px;background:rgba(125,194,66,.10);border:1px solid rgba(125,194,66,.4);border-radius:8px">' +
+            '✓ Vielen Dank — wir melden uns innerhalb 24 h bei Ihnen.' +
+          '</div>' +
         '</div>' +
       '</div>';
     hintEl.style.display = 'block';
@@ -2410,15 +2415,38 @@ function submitEigentuemerCta() {
   window.location.href = href;
 }
 
-// ── Eigentümer-CTA: direkte Anfrage an Liftaro (sekundäre Option) ──
-function submitEigentuemerCtaLiftaro() {
+// ── Eigentümer-CTA: Direktkontakt-Wunsch → Pipedrive-Hot-Markierung (kein mailto mehr) ──
+function requestLiftaroCallback() {
   var ctx = window._eigCtaCtx || {};
-  var subj = ctx.subjLT || 'Konkrete Einsparungsberechnung – Eigentümer';
-  var body = ctx.bodyLT || '';
-  var href = 'mailto:check@liftaro.de' +
-             '?subject=' + encodeURIComponent(subj) +
-             '&body=' + encodeURIComponent(body);
-  window.location.href = href;
+  var linkEl = document.getElementById('cta-hv-callback-link');
+  var doneEl = document.getElementById('cta-hv-callback-done');
+  // Optimistisch: UI sofort umschalten — keinen User-Wait
+  if (linkEl) linkEl.style.display = 'none';
+  if (doneEl) doneEl.style.display = 'block';
+
+  if (!LIFTARO_API_URL || !ctx.userEmail) return;
+  var nameInput = document.getElementById('cta-hv-name');
+  var hvName = (nameInput && nameInput.value ? nameInput.value : '').trim();
+  var vorname  = (document.getElementById('vorname')?.value  || '').trim();
+  var nachname = (document.getElementById('nachname')?.value || '').trim();
+  var fullName = (vorname + ' ' + nachname).trim();
+  try {
+    fetch(LIFTARO_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'request_liftaro_callback',
+        cta: {
+          user_email: ctx.userEmail,
+          user_name: fullName,
+          hv_name: hvName,
+          check_nr: (window._lastResult && window._lastResult.check_nr) || '',
+          role: 'eigentuemer',
+          savings_total_eur: (window._lastResult && Number(window._lastResult.savings_total_eur || window._lastResult.savings_estimate_eur || 0)) || 0,
+        },
+      }),
+    }).catch(function() { /* non-critical */ });
+  } catch (e) { /* non-critical */ }
 }
 </script>
 
