@@ -267,23 +267,45 @@ function pickGenericEmailFromPersons(persons: any[]): string | null {
   return null;
 }
 
-// Pipedrive-Org-Suche nach Namen.
-async function findPipedriveOrgByName(name: string): Promise<any | null> {
+// Pipedrive-Org-Suche nach Namen — strikt (case-insensitive Substring-Check)
+// + Score-Schwelle, damit Pipedrive's Fuzzy-Search keine zufälligen Treffer durchlässt.
+async function findPipedriveOrgsByName(name: string, limit = 3): Promise<any[]> {
   const cfg = await loadPipedriveConfig();
-  if (!cfg) return null;
+  if (!cfg) return [];
   const term = String(name || '').trim();
-  if (term.length < 3) return null;
+  if (term.length < 3) return [];
+  const termLow = term.toLowerCase();
   const base = 'https://' + cfg.domain + '/api/v1';
   try {
     const url = base + '/organizations/search?term=' + encodeURIComponent(term) +
-                '&fields=name&exact_match=false&limit=5&api_token=' + encodeURIComponent(cfg.token);
+                '&fields=name&exact_match=false&limit=10&api_token=' + encodeURIComponent(cfg.token);
     const r = await fetch(url);
     const d = await r.json();
-    if (!d?.success || !d.data?.items?.length) return null;
-    // Beste Treffer-Reihenfolge: längste gemeinsame Präfix-Übereinstimmung
-    const items = d.data.items.map((it: any) => it.item).filter(Boolean);
-    return items[0] || null;
-  } catch (e) { console.warn('[Pipedrive] findOrgByName:', e); return null; }
+    if (!d?.success || !d.data?.items?.length) return [];
+    const filtered = d.data.items
+      .map((it: any) => ({
+        item: it.item,
+        score: Number(it.result_score || 0),
+      }))
+      .filter((x: any) => {
+        if (!x.item || !x.item.name) return false;
+        // Substring-Match: term muss case-insensitive im Namen vorkommen
+        const nameLow = String(x.item.name).toLowerCase();
+        if (!nameLow.includes(termLow)) return false;
+        // Score-Schwelle: 0.3 ist ein moderater Cut-Off, Pipedrive's Top-Match liegt typisch bei 0.5-1.0
+        return x.score >= 0.3 || term.length >= 5; // bei längerem Term Score-Toleranz lockern
+      })
+      .sort((a: any, b: any) => b.score - a.score)
+      .slice(0, limit)
+      .map((x: any) => x.item);
+    return filtered;
+  } catch (e) { console.warn('[Pipedrive] findOrgsByName:', e); return []; }
+}
+
+// Single-Treffer-Wrapper für Submit-Pfad
+async function findPipedriveOrgByName(name: string): Promise<any | null> {
+  const hits = await findPipedriveOrgsByName(name, 1);
+  return hits.length ? hits[0] : null;
 }
 
 // Allgemeine Geschäfts-Email einer Org aus den verknüpften Persons holen.
@@ -1012,24 +1034,25 @@ export default async function (req: Request): Promise<Response> {
     }
 
     // ── Action-Routing: action="find_property_manager" — Live-Suche in Pipedrive nach HV-Name.
-    //    Phase 1: nur DB-Lookup (Pipedrive-Organizations). Phase 4 ergänzt Serper+Claude-Fallback. ──
+    //    Liefert Top-3 Treffer (Substring-Match) zum User-Auswählen — User sieht echte Org-Namen statt
+    //    generischem "HV bekannt". Phase 4 ergänzt Serper+Claude-Fallback. ──
     if (body.action === 'find_property_manager') {
       const q = String(body.query || '').trim();
       if (q.length < 3) return jsonResp({ ok: true, results: [] }, 200, corsHeaders);
-      const org = await findPipedriveOrgByName(q);
-      if (!org) return jsonResp({ ok: true, results: [], source: 'db' }, 200, corsHeaders);
-      const email = await getOrgGenericEmail(org.id);
-      return jsonResp({
-        ok: true,
-        source: 'db',
-        results: [{
+      const orgs = await findPipedriveOrgsByName(q, 3);
+      if (!orgs.length) return jsonResp({ ok: true, results: [], source: 'db' }, 200, corsHeaders);
+      // Pro Treffer: generische Email holen (parallel)
+      const enriched = await Promise.all(orgs.map(async (org: any) => {
+        const email = await getOrgGenericEmail(org.id);
+        return {
           org_id: org.id,
           name: org.name,
-          email: email,            // null wenn nur personalisierte Mails vorhanden
-          city: org.address || '', // best-effort
+          email: email,                 // null wenn nur personalisierte Mails vorhanden
+          city: org.address || '',      // best-effort, Pipedrive-Adresse als Volltext
           confidence: email ? 100 : 60, // mit Email = sichere DB-Quelle
-        }],
-      }, 200, corsHeaders);
+        };
+      }));
+      return jsonResp({ ok: true, source: 'db', results: enriched }, 200, corsHeaders);
     }
 
     // ── Action-Routing: action="submit_eigentuemer_cta" — Eigentümer reicht Sparpotenzial ein.
