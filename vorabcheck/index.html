@@ -2210,9 +2210,20 @@ function renderResultCta(role, r) {
     };
 
     actionsEl.innerHTML =
-      '<div style="width:100%;display:flex;flex-direction:column;gap:8px">' +
-        '<label for="cta-hv-email" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">E-Mail-Adresse Ihrer Hausverwaltung <span style="font-weight:400;color:var(--ink-3)">(optional)</span></label>' +
-        '<input type="email" id="cta-hv-email" placeholder="hausverwaltung@beispiel.de — leer lassen, dann erhalten Sie die Auswertung selbst" autocomplete="off" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+      '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+        // HV-Name (mit Live-Suche)
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          '<label for="cta-hv-name" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Name Ihrer Hausverwaltung <span style="font-weight:400;color:var(--ink-3)">(z.B. Müller Immobilien GmbH)</span></label>' +
+          '<div style="position:relative">' +
+            '<input type="text" id="cta-hv-name" placeholder="Hausverwaltung eingeben — wir suchen automatisch die Kontaktdaten" autocomplete="off" oninput="_searchHvName()" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+            '<div id="cta-hv-status" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--ink-3);display:none"></div>' +
+          '</div>' +
+        '</div>' +
+        // HV-Email
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          '<label for="cta-hv-email" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">E-Mail-Adresse <span style="font-weight:400;color:var(--ink-3)">(optional — leer lassen, dann erhalten Sie die Auswertung selbst)</span></label>' +
+          '<input type="email" id="cta-hv-email" placeholder="hausverwaltung@beispiel.de" autocomplete="off" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+        '</div>' +
         '<div id="cta-hv-feedback" style="display:none;font-size:12px;margin-top:2px"></div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
           '<button type="button" onclick="submitEigentuemerCta()" class="btn">' +
@@ -2260,13 +2271,97 @@ function renderResultCta(role, r) {
   hintEl.textContent = 'Wir antworten i.d.R. innerhalb von 24 h mit einem unverbindlichen Konzept-Vorschlag. Wir geben keine Rechtsberatung.';
 }
 
+// ── Hausverwaltungs-Suche: Live-Lookup in Pipedrive während User tippt (Debounced) ──
+var _hvSearchTimer = null;
+var _hvSearchLastQ = '';
+var _hvUserEditedEmail = false;
+function _searchHvName() {
+  var nameEl   = document.getElementById('cta-hv-name');
+  var emailEl  = document.getElementById('cta-hv-email');
+  var statusEl = document.getElementById('cta-hv-status');
+  var q = (nameEl && nameEl.value ? nameEl.value : '').trim();
+  if (q.length < 3) {
+    if (statusEl) statusEl.style.display = 'none';
+    return;
+  }
+  if (q === _hvSearchLastQ) return;
+  // User-Edits an der Email-Adresse merken — nur überschreiben wenn unverändert
+  if (emailEl && !_hvUserEditedEmail) {
+    emailEl.addEventListener('input', function _flag() {
+      _hvUserEditedEmail = true;
+      emailEl.removeEventListener('input', _flag);
+    });
+  }
+  clearTimeout(_hvSearchTimer);
+  _hvSearchTimer = setTimeout(function() {
+    if (!LIFTARO_API_URL) return;
+    _hvSearchLastQ = q;
+    if (statusEl) {
+      statusEl.style.display = 'inline-block';
+      statusEl.textContent = '🔎 sucht …';
+    }
+    fetch(LIFTARO_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'find_property_manager', query: q }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d || !d.ok) { if (statusEl) statusEl.style.display = 'none'; return; }
+        var hit = (d.results && d.results.length) ? d.results[0] : null;
+        if (!hit) {
+          if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '— neu —'; }
+          return;
+        }
+        // DB-Treffer: Name + Email evtl. vorbefüllen
+        if (statusEl) {
+          statusEl.style.display = 'inline-block';
+          statusEl.textContent = hit.email ? '✓ in Datenbank' : '✓ HV bekannt';
+        }
+        if (emailEl && hit.email && !_hvUserEditedEmail) {
+          emailEl.value = hit.email;
+        }
+      })
+      .catch(function() { if (statusEl) statusEl.style.display = 'none'; });
+  }, 400);
+}
+
 // ── Eigentümer-CTA: Sparpotenzial einreichen (an HV oder als Selbst-Sicherung) ──
 function submitEigentuemerCta() {
   var ctx = window._eigCtaCtx || {};
   var input = document.getElementById('cta-hv-email');
   var feedback = document.getElementById('cta-hv-feedback');
   var hvMail = (input && input.value ? input.value : '').trim();
+  var nameInput = document.getElementById('cta-hv-name');
+  var hvName = (nameInput && nameInput.value ? nameInput.value : '').trim();
   var isValidMail = function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); };
+
+  // HV als B2B-Lead in Pipedrive einspielen (best-effort, fire-and-forget) —
+  // läuft parallel zum mailto: und blockiert die User-UX nicht.
+  if (hvName && LIFTARO_API_URL) {
+    try {
+      fetch(LIFTARO_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'submit_eigentuemer_cta',
+          cta: {
+            hv_name: hvName,
+            hv_email: hvMail,
+            user_email: ctx.userEmail || '',
+            user_name: (function() {
+              var vn = (document.getElementById('vorname')?.value || '').trim();
+              var nn = (document.getElementById('nachname')?.value || '').trim();
+              return (vn + ' ' + nn).trim();
+            })(),
+            check_nr: (window._lastResult && window._lastResult.check_nr) || '',
+            role: 'eigentuemer',
+            savings_total_eur: (window._lastResult && Number(window._lastResult.savings_total_eur || window._lastResult.savings_estimate_eur || 0)) || 0,
+          },
+        }),
+      }).catch(function() { /* non-critical */ });
+    } catch (e) { /* non-critical */ }
+  }
 
   var toAddr, subj, body, feedbackTxt, feedbackColor;
   if (hvMail) {
