@@ -969,6 +969,48 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
     }
 
+    // ── Action-Routing: action="request_liftaro_callback" — User wünscht Direktkontakt durch Liftaro.
+    //    Markiert den existierenden User-Lead in Pipedrive als HOT mit Note + Titel-Prefix. ──
+    if (body.action === 'request_liftaro_callback') {
+      const c = body.cta || {};
+      const userEmail = String(c.user_email || '').trim();
+      const userName  = String(c.user_name  || '').trim() || userEmail || 'Anonym';
+      const checkNr   = String(c.check_nr   || '').trim() || '—';
+      const role      = String(c.role       || 'eigentuemer').trim();
+      const savings   = Number(c.savings_total_eur || 0);
+      const hvName    = String(c.hv_name    || '').trim();
+      if (!userEmail) return jsonResp({ ok: false, error: 'user_email Pflichtfeld' }, 400, corsHeaders);
+
+      const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
+      const roleLabel = role === 'eigentuemer' ? 'Eigentümer'
+                      : role === 'verwalter'  ? 'Hausverwalter'
+                      :                          'Mieter';
+      const noteLines = [
+        '🔥 HOT-LEAD — User hat „Direktkontakt durch Liftaro" angeklickt',
+        '',
+        'User-Wunsch: Liftaro soll proaktiv binnen 24h kontaktieren.',
+        '',
+        'Vorabcheck-Kontext:',
+        '  Check-Nr: ' + checkNr,
+        '  Rolle: ' + roleLabel,
+        savings ? '  Sparpotenzial: ' + fmt(savings) + ' € / Jahr' : '',
+        hvName  ? '  Hausverwaltung (genannt): ' + hvName : '  Hausverwaltung: nicht angegeben',
+        '',
+        'Empfehlung Vertrieb:',
+        '  → Anruf oder persönliche Mail innerhalb 24h.',
+        '  → Konkrete Einsparungsberechnung anbieten.',
+        '  → Light-Paket-Pitch anschließen wenn passend.',
+      ].filter(Boolean);
+
+      const result = await upsertPipedriveLead({
+        name: userName,
+        email: userEmail,
+        title: '🔥 [HOT] ' + userName + ' — wünscht Direktkontakt (' + checkNr + ')',
+        note: noteLines.join('\n'),
+      });
+      return jsonResp({ ok: true, pipedrive: result }, 200, corsHeaders);
+    }
+
     // ── Action-Routing: action="find_property_manager" — Live-Suche in Pipedrive nach HV-Name.
     //    Phase 1: nur DB-Lookup (Pipedrive-Organizations). Phase 4 ergänzt Serper+Claude-Fallback. ──
     if (body.action === 'find_property_manager') {
