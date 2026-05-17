@@ -968,17 +968,17 @@ html[data-theme="liftaro"] .liftaro-step-desc {
           </div>
         </div>
 
-        <div class="findings-list">
-          <h4>Was wir gefunden haben</h4>
-          <div id="findings-container"></div>
-        </div>
-
-        <!-- Rollenabhängige CTA -->
+        <!-- Rollenabhängige CTA — direkt im Engagement-Peak nach Ersparnis-Anzeige -->
         <div id="result-cta" style="margin-top:24px;background:var(--brand-tint-2);border:1.5px solid var(--brand-tint);border-radius:12px;padding:18px 20px">
           <div id="result-cta-title" style="font-size:15.5px;font-weight:700;color:var(--ink);margin-bottom:6px;line-height:1.35">Nächste Schritte</div>
           <div id="result-cta-text" style="font-size:13.5px;color:var(--ink-2);line-height:1.55;margin-bottom:14px"></div>
           <div id="result-cta-actions" style="display:flex;gap:10px;flex-wrap:wrap"></div>
           <div id="result-cta-hint" style="display:none;margin-top:12px;font-size:12px;color:var(--ink-3);font-style:italic"></div>
+        </div>
+
+        <div class="findings-list" style="margin-top:28px">
+          <h4>Was wir gefunden haben</h4>
+          <div id="findings-container"></div>
         </div>
 
         <!-- KORREKTUR-PANEL: erkannte Werte überprüfen + bei Bedarf korrigieren -->
@@ -1534,6 +1534,8 @@ document.getElementById('restart').addEventListener('click', () => {
   window._origResult = null;
   const cfb = document.getElementById('corr-feedback');
   if (cfb) { cfb.style.display = 'none'; cfb.textContent = ''; }
+  // Sticky-CTA ausblenden
+  if (typeof _hideStickyCta === 'function') _hideStickyCta();
 });
 
 // Loading-Step-Animation während des API-Calls
@@ -1802,6 +1804,9 @@ function renderResult(r) {
   if (!(r.findings || []).length) {
     container.innerHTML = '<p style="font-size:14px;color:var(--ink-3)">Keine spezifischen Auffälligkeiten — Ihr Dokument liegt im erwartbaren Rahmen.</p>';
   }
+
+  // Sticky-CTA (Mobile) — erscheint, wenn die Haupt-CTA aus dem Sichtfeld scrollt
+  setTimeout(function () { _setupStickyCta(role); }, 120);
 }
 
 function escapeHtml(s) {
@@ -1953,6 +1958,42 @@ function recalculateWithCorrections() {
   }
 }
 
+// ── Sticky-CTA für Mobile: blendet sich ein, wenn die Haupt-CTA aus dem
+// Sichtfeld scrollt. Verhindert dass User in Findings/Korrektur-Panel "versinken".
+function _setupStickyCta(role) {
+  const cta = document.getElementById('result-cta');
+  const sticky = document.getElementById('result-sticky-cta');
+  const subEl = document.getElementById('result-sticky-cta-sub');
+  if (!cta || !sticky) return;
+  // Rolle-basierter Subtext
+  if (subEl) {
+    subEl.textContent = role === 'mieter'
+      ? 'E-Mail an Vermieter senden'
+      : role === 'verwalter'
+        ? 'Anfrage an Liftaro senden'
+        : 'E-Mail an Hausverwaltung senden';
+  }
+  if (window._stickyCtaObserver) window._stickyCtaObserver.disconnect();
+  window._stickyCtaObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      const isMobile = window.innerWidth <= 720;
+      const step4Active = document.getElementById('step-4')?.classList.contains('active');
+      if (!isMobile || !step4Active) { sticky.style.display = 'none'; return; }
+      sticky.style.display = e.isIntersecting ? 'none' : 'flex';
+    });
+  }, { threshold: 0.15 });
+  window._stickyCtaObserver.observe(cta);
+}
+function _hideStickyCta() {
+  const sticky = document.getElementById('result-sticky-cta');
+  if (sticky) sticky.style.display = 'none';
+  if (window._stickyCtaObserver) { window._stickyCtaObserver.disconnect(); window._stickyCtaObserver = null; }
+}
+function scrollToResultCta() {
+  const el = document.getElementById('result-cta');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // ── Rollenabhängige CTA im Result-Screen ──────────────────────────────
 // Erzeugt rollen-spezifische E-Mail-Entwürfe (mailto). Mail-Client öffnet sich
 // auf Tap und der User kann den vorbereiteten Entwurf prüfen + abschicken.
@@ -2100,6 +2141,22 @@ function renderResultCta(role, r) {
   hintEl.textContent = 'Wir antworten i.d.R. innerhalb von 24 h mit einem unverbindlichen Konzept-Vorschlag. Wir geben keine Rechtsberatung.';
 }
 </script>
+
+<!-- STICKY-CTA (nur Mobile, nur auf Step 4 wenn Haupt-CTA aus dem Sichtfeld scrollt) -->
+<div id="result-sticky-cta" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1.5px solid var(--line);padding:10px 14px;z-index:200;box-shadow:0 -6px 18px rgba(0,0,0,.10);align-items:center;gap:10px;justify-content:space-between">
+  <div style="flex:1;min-width:0;line-height:1.3">
+    <strong style="color:var(--ink);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Nächster Schritt</strong>
+    <span id="result-sticky-cta-sub" style="font-size:12px;color:var(--ink-3);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">E-Mail-Anfrage senden</span>
+  </div>
+  <button onclick="scrollToResultCta()" class="btn" style="padding:11px 16px;font-size:13.5px;white-space:nowrap;flex-shrink:0;border-radius:8px">
+    Weiter
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+  </button>
+</div>
+<style>
+/* Sticky-CTA nur auf Mobile/Touch. Desktop sieht ihn nie. */
+@media (min-width: 721px) { #result-sticky-cta { display: none !important; } }
+</style>
 
 </body>
 </html>
