@@ -2217,6 +2217,7 @@ function renderResultCta(role, r) {
           '<div style="position:relative">' +
             '<input type="text" id="cta-hv-name" placeholder="Hausverwaltung eingeben — wir suchen automatisch die Kontaktdaten" autocomplete="off" oninput="_searchHvName()" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
             '<div id="cta-hv-status" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--ink-3);display:none"></div>' +
+            '<div id="cta-hv-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:50;max-height:240px;overflow-y:auto"></div>' +
           '</div>' +
         '</div>' +
         // HV-Email
@@ -2280,6 +2281,51 @@ function renderResultCta(role, r) {
 var _hvSearchTimer = null;
 var _hvSearchLastQ = '';
 var _hvUserEditedEmail = false;
+var _hvLastResults = [];
+
+function _hideHvSuggestions() {
+  var sug = document.getElementById('cta-hv-suggestions');
+  if (sug) sug.style.display = 'none';
+}
+
+function _renderHvSuggestions(results) {
+  var sug = document.getElementById('cta-hv-suggestions');
+  if (!sug) return;
+  if (!results || !results.length) { sug.style.display = 'none'; return; }
+  var html = results.map(function(r, idx) {
+    var nameHtml = escapeHtml(r.name || '—');
+    var cityHtml = r.city ? '<span style="color:var(--ink-3);font-size:12px"> · ' + escapeHtml(r.city) + '</span>' : '';
+    var mailIcon = r.email
+      ? '<span style="color:var(--brand);font-size:11px;font-weight:600">✉ Mail vorhanden</span>'
+      : '<span style="color:var(--ink-3);font-size:11px">keine allgemeine Mail</span>';
+    return '<button type="button" onclick="_pickHvSuggestion(' + idx + ')" ' +
+           'style="display:block;width:100%;padding:10px 13px;background:#fff;border:none;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;font-family:inherit;color:var(--ink);font-size:13.5px;line-height:1.4" ' +
+           'onmouseover="this.style.background=\'var(--bg-soft)\'" onmouseout="this.style.background=\'#fff\'">' +
+             '<div style="font-weight:600">' + nameHtml + cityHtml + '</div>' +
+             '<div style="margin-top:2px">' + mailIcon + '</div>' +
+           '</button>';
+  }).join('');
+  // Letzte Reihe bündig
+  html = html.replace(/border-bottom:1px solid var\(--line\);([^"]*)"(?=[^<]*$)/, 'border-bottom:none;$1"');
+  sug.innerHTML = html;
+  sug.style.display = 'block';
+}
+
+function _pickHvSuggestion(idx) {
+  var hit = _hvLastResults[idx];
+  if (!hit) return;
+  var nameEl  = document.getElementById('cta-hv-name');
+  var emailEl = document.getElementById('cta-hv-email');
+  var statusEl = document.getElementById('cta-hv-status');
+  if (nameEl) nameEl.value = hit.name || '';
+  if (emailEl && hit.email) {
+    emailEl.value = hit.email;
+    _hvUserEditedEmail = true; // wurde jetzt gesetzt — keine Auto-Überschreibung mehr
+  }
+  if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '✓ übernommen'; }
+  _hideHvSuggestions();
+}
+
 function _searchHvName() {
   var nameEl   = document.getElementById('cta-hv-name');
   var emailEl  = document.getElementById('cta-hv-email');
@@ -2287,6 +2333,7 @@ function _searchHvName() {
   var q = (nameEl && nameEl.value ? nameEl.value : '').trim();
   if (q.length < 3) {
     if (statusEl) statusEl.style.display = 'none';
+    _hideHvSuggestions();
     return;
   }
   if (q === _hvSearchLastQ) return;
@@ -2312,24 +2359,33 @@ function _searchHvName() {
     })
       .then(function(r) { return r.json(); })
       .then(function(d) {
-        if (!d || !d.ok) { if (statusEl) statusEl.style.display = 'none'; return; }
-        var hit = (d.results && d.results.length) ? d.results[0] : null;
-        if (!hit) {
+        if (!d || !d.ok) { if (statusEl) statusEl.style.display = 'none'; _hideHvSuggestions(); return; }
+        var results = (d.results && d.results.length) ? d.results : [];
+        _hvLastResults = results;
+        if (!results.length) {
           if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '— neu —'; }
+          _hideHvSuggestions();
           return;
         }
-        // DB-Treffer: Name + Email evtl. vorbefüllen
+        // Mehrere Treffer? Liste anzeigen. Status: Anzahl.
         if (statusEl) {
           statusEl.style.display = 'inline-block';
-          statusEl.textContent = hit.email ? '✓ in Datenbank' : '✓ HV bekannt';
+          statusEl.textContent = results.length === 1 ? '1 Treffer' : results.length + ' Treffer';
         }
-        if (emailEl && hit.email && !_hvUserEditedEmail) {
-          emailEl.value = hit.email;
-        }
+        _renderHvSuggestions(results);
       })
-      .catch(function() { if (statusEl) statusEl.style.display = 'none'; });
+      .catch(function() { if (statusEl) statusEl.style.display = 'none'; _hideHvSuggestions(); });
   }, 400);
 }
+
+// Suggestion-Dropdown bei Klick außerhalb schließen
+document.addEventListener('click', function(e) {
+  var sug = document.getElementById('cta-hv-suggestions');
+  var inp = document.getElementById('cta-hv-name');
+  if (!sug || sug.style.display === 'none') return;
+  if (sug.contains(e.target) || (inp && inp.contains(e.target))) return;
+  sug.style.display = 'none';
+});
 
 // ── Eigentümer-CTA: Sparpotenzial einreichen (an HV oder als Selbst-Sicherung) ──
 function submitEigentuemerCta() {
