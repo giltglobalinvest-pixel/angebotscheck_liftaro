@@ -1700,16 +1700,28 @@ function renderResult(r) {
     ? Math.round(savings_total / parteien)
     : 0;
 
-  // Verwalter: NUR Gesamt — keine Anteile, keine Pro-Partei. Mieter/Eigentümer: Individuell primär.
+  // Verwalter: NUR Gesamt — keine Anteile, keine Pro-Partei.
+  // Eigentümer: Gesamtersparnis als Hero ("Held der WEG"), persönlicher Anteil sekundär.
+  // Mieter: persönlicher Anteil primär (das ist sein realer Hebel).
   let primaryValue, primaryLabel, secondaryValue = null, secondaryLabel = null;
   if (role === 'verwalter') {
     primaryValue = savings_total;
     primaryLabel = 'Gesamtersparnis Haus / Jahr';
     // KEIN secondaryValue — Verwalter sieht nur Gesamtwerte
+  } else if (role === 'eigentuemer') {
+    if (hasTotal) {
+      primaryValue = savings_total;
+      primaryLabel = 'Gesamtersparnis für Ihre WEG / Jahr';
+      if (hasIndividual) { secondaryValue = savings_individual; secondaryLabel = 'Ihr persönlicher Anteil / Jahr'; }
+    } else if (hasIndividual) {
+      primaryValue = savings_individual;
+      primaryLabel = 'Ihre Ersparnis als Eigentümer / Jahr';
+    }
   } else {
+    // mieter
     if (hasIndividual) {
       primaryValue = savings_individual;
-      primaryLabel = role === 'eigentuemer' ? 'Ihre Ersparnis als Eigentümer / Jahr' : 'Ihre Ersparnis als Mieter / Jahr';
+      primaryLabel = 'Ihre Ersparnis als Mieter / Jahr';
       if (hasTotal) { secondaryValue = savings_total; secondaryLabel = 'Gesamtersparnis Haus / Jahr'; }
     } else {
       primaryValue = savings_total;
@@ -1731,6 +1743,13 @@ function renderResult(r) {
     if (role === 'verwalter') {
       // Verwalter sieht nur Gesamt — kein Tooltip nötig
       tooltipText = '';
+    } else if (role === 'eigentuemer') {
+      // Eigentümer als Held: Tooltip beschreibt die Gesamt-Hero-Zahl + persönlichen Anteil
+      tooltipText = 'Das ist die Ersparnis für die gesamte Eigentümergemeinschaft (WEG) zusammen. ' +
+                    (hasIndividual
+                      ? 'Ihr persönlicher Anteil davon (' + Number(savings_individual).toLocaleString('de-DE') + ' €) richtet sich nach Ihren Miteigentumsanteilen. '
+                      : '') +
+                    'Wenn Sie das Sparpotenzial einreichen, profitieren alle Eigentümer Ihrer WEG.';
     } else if (isMea) {
       tooltipText = 'Berechnet aus Ihrem Wohnungsanteil am Gebäude. Bei einer WEG zahlt jeder Eigentümer nach seinen Miteigentumsanteilen — Ihre Ersparnis hängt also davon ab, wie groß Ihre Wohnung im Verhältnis zum Gesamtobjekt ist.';
     } else if (parteien > 1) {
@@ -1772,7 +1791,10 @@ function renderResult(r) {
   // Pro-Partei-Anzeige: bei beliebigem Verteilerschlüssel, sobald Parteien-Anzahl bekannt.
   // Bei MEA ist das ein Durchschnitt (jeder Eigentümer hat anderen Anteil), gut genug fürs Vorabcheck.
   // Verwalter sieht das NICHT — der bekommt nur Gesamt-Sicht.
-  if (savingsPerPartyMonth > 0 && parteien > 1 && role !== 'verwalter') {
+  // Eigentümer ohne MEA sieht den persönlichen Anteil bereits als Secondary — Pro-Partei wäre redundant.
+  const showProPartei = savingsPerPartyMonth > 0 && parteien > 1 && role !== 'verwalter'
+                        && !(role === 'eigentuemer' && !isMea);
+  if (showProPartei) {
     secLines.push(
       '<div style="opacity:.85;font-size:13px;margin-top:8px">' +
         'Pro Partei (bei ' + parteien + ' Parteien)' +
