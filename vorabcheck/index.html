@@ -942,9 +942,15 @@ html[data-theme="liftaro"] .liftaro-step-desc {
         </div>
 
         <div class="savings-card" id="savings-card" style="display:none">
-          <div class="savings-label" id="savings-label-primary">Geschätztes Einsparpotenzial</div>
+          <div class="savings-label" id="savings-label-primary" style="position:relative;display:inline-flex;align-items:center;gap:6px;justify-content:center">
+            <span id="savings-label-text">Geschätztes Einsparpotenzial</span>
+            <button type="button" id="savings-info-btn" onclick="toggleSavingsTooltip()" aria-label="Mehr Informationen" style="display:none;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;width:20px;height:20px;border-radius:50%;font-size:12px;font-weight:700;cursor:pointer;line-height:1;padding:0;font-family:inherit">i</button>
+          </div>
+          <div id="savings-info-tooltip" style="display:none;max-width:380px;margin:8px auto 0;padding:8px 12px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.2);border-radius:8px;font-size:12.5px;line-height:1.5;color:rgba(255,255,255,.95);text-align:left"></div>
           <div class="savings-amount" id="savings-amount"><sup>€</sup>0<small> / Jahr</small></div>
           <div class="savings-sub" id="savings-sub"></div>
+          <!-- Vergleichs-Balken Ist vs. Marktüblich (JS-gefüllt, nur bei Über-Markt-Position) -->
+          <div id="savings-balken" style="display:none;margin-top:14px;text-align:left"></div>
           <!-- Sekundärer Bereich: Gesamt/Individuell + pro Partei pro Monat (JS-gefüllt) -->
           <div id="savings-secondary" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;color:rgba(255,255,255,.92)"></div>
           <div class="check-nr-badge" id="check-nr-badge">CHECK-NR: VC-—</div>
@@ -1713,7 +1719,36 @@ function renderResult(r) {
 
   const savingsCard = document.getElementById('savings-card');
   savingsCard.style.display = 'block';
-  document.getElementById('savings-label-primary').textContent = primaryLabel;
+  // Label-Text neu setzen (Info-Button bleibt erhalten)
+  const labelTextEl = document.getElementById('savings-label-text');
+  if (labelTextEl) labelTextEl.textContent = primaryLabel;
+
+  // Info-Tooltip & Button kontextbezogen befüllen
+  const infoBtn = document.getElementById('savings-info-btn');
+  const infoTt  = document.getElementById('savings-info-tooltip');
+  if (infoBtn && infoTt) {
+    let tooltipText = '';
+    if (role === 'verwalter') {
+      // Verwalter sieht nur Gesamt — kein Tooltip nötig
+      tooltipText = '';
+    } else if (isMea) {
+      tooltipText = 'Berechnet aus Ihrem Wohnungsanteil am Gebäude. Bei einer WEG zahlt jeder Eigentümer nach seinen Miteigentumsanteilen — Ihre Ersparnis hängt also davon ab, wie groß Ihre Wohnung im Verhältnis zum Gesamtobjekt ist.';
+    } else if (parteien > 1) {
+      tooltipText = 'Berechnet als Durchschnitt: Gesamtersparnis geteilt durch die Anzahl Parteien im Haus. Ihr tatsächlicher Anteil kann je nach Verteilerschlüssel der Hausverwaltung leicht abweichen.';
+    } else if (role === 'mieter') {
+      tooltipText = 'Sie zahlen Aufzug-Kosten anteilig über Ihre Nebenkostenabrechnung. Die genaue Verteilung steht im Mietvertrag bzw. in der Abrechnung Ihrer Hausverwaltung.';
+    }
+    if (tooltipText) {
+      infoBtn.style.display = 'inline-flex';
+      infoBtn.title = tooltipText;
+      infoTt.textContent = tooltipText;
+      infoTt.style.display = 'none'; // initial geschlossen, User-Toggle
+    } else {
+      infoBtn.style.display = 'none';
+      infoTt.style.display = 'none';
+    }
+  }
+
   if (primaryValue > 0) {
     document.getElementById('savings-amount').innerHTML =
       '<sup>€</sup>' + Number(primaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) +
@@ -1768,6 +1803,9 @@ function renderResult(r) {
     secBox.style.display = 'none';
   }
 
+  // Vergleichs-Balken (Ist vs. marktüblich) — nur bei Über-Markt-Position, ohne konkreten Median-Wert
+  _renderSavingsBalken(r);
+
   // Reparatur-Card nur für Eigentümer + Hausverwalter (Mieter zahlt keine Reparaturen)
   const repairCard = document.getElementById('repair-savings-card');
   if (repairCard) {
@@ -1811,6 +1849,38 @@ function renderResult(r) {
 
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Toggle des Info-Tooltips am primären Wert
+function toggleSavingsTooltip() {
+  const tt = document.getElementById('savings-info-tooltip');
+  if (!tt) return;
+  tt.style.display = tt.style.display === 'block' ? 'none' : 'block';
+}
+
+// Vergleichs-Balken: zeigt das Verhältnis "marktüblicher Anteil | Überteuerung"
+// OHNE den konkreten Median-Wert (Liftaro-Diskretion). Nur sichtbar bei Über-Markt-Position.
+function _renderSavingsBalken(r) {
+  const box = document.getElementById('savings-balken');
+  if (!box) return;
+  const brutto = Number(r.wartung_brutto_used || 0);
+  const total  = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  const aufzugCount = Math.max(1, Number(r.aufzug_count || 1));
+  if (!brutto || !total || brutto <= total) { box.style.display = 'none'; return; }
+  const proAnlage = brutto / aufzugCount;
+  const diffPro = total / aufzugCount;
+  const ueberAnteilPct = Math.max(8, Math.min(85, Math.round(diffPro / proAnlage * 100))); // 8–85 % cap für gute Lesbarkeit
+  const marktAnteilPct = 100 - ueberAnteilPct;
+  const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
+  const diffStr      = Math.round(diffPro).toLocaleString('de-DE');
+  box.innerHTML =
+    '<div style="font-size:12px;color:rgba(255,255,255,.9);margin-bottom:8px;font-weight:600;letter-spacing:.02em">Aktueller Preis je Aufzug im Vergleich</div>' +
+    '<div style="display:flex;height:26px;border-radius:7px;overflow:hidden;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18)" role="img" aria-label="Vergleich aktueller Preis und marktüblicher Anteil">' +
+      '<div style="width:' + marktAnteilPct + '%;background:rgba(125,194,66,.85);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;padding:0 4px">marktüblich</div>' +
+      '<div style="width:' + ueberAnteilPct + '%;background:rgba(220,80,80,.85);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;padding:0 4px">+ ' + diffStr + ' €</div>' +
+    '</div>' +
+    '<div style="font-size:11.5px;color:rgba(255,255,255,.8);margin-top:6px">Ihr Preis: <strong style="color:#fff">' + proAnlageStr + ' €</strong> pro Aufzug und Jahr</div>';
+  box.style.display = 'block';
 }
 
 // ── Korrektur-Panel: User-Werte überschreiben + lokale Neuberechnung ──
@@ -1876,12 +1946,12 @@ function recomputeMarketSavings(r) {
     // Summary und Finding aktualisieren
     const diff = Math.round(proAnlage - 980).toLocaleString('de-DE');
     const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
-    r.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diff + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Optimierungspotenzial vorhanden.';
+    r.summary = 'Ihre Wartung kostet ' + proAnlageStr + ' € pro Jahr je Aufzug — das ist rund ' + diff + ' € mehr als der übliche Marktpreis für Wartung und Notruf. Optimierungspotenzial vorhanden.';
     let findings = (r.findings || []).filter(f => !/markt|wartung.*(zu\s+(teuer|hoch)|ueber|über)|optimierung.*?wartung/i.test((f.title||'') + ' ' + (f.description||'')));
     findings.unshift({
       severity: proAnlage > 1800 ? 'warn' : (proAnlage > 1500 ? 'amber' : 'blue'),
-      title: 'Wartungspauschale über Marktmedian',
-      description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt ' + diff + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Bei Neuausschreibung zu marktüblichen Konditionen: ' + total.toLocaleString('de-DE') + ' €/Jahr Ersparnis.',
+      title: 'Wartung teurer als üblich',
+      description: 'Die Wartung kostet ' + proAnlageStr + ' € pro Jahr je Aufzug — rund ' + diff + ' € mehr als der übliche Marktpreis. Bei einer Neuausschreibung zu marktüblichen Konditionen sparen Sie ' + total.toLocaleString('de-DE') + ' € pro Jahr.',
       tag: 'Liftaro-Marktreferenz · aktuell ' + proAnlageStr + ' EUR/Jahr',
     });
     r.findings = findings;
@@ -2055,16 +2125,15 @@ function renderResultCta(role, r) {
     return;
   }
 
-  // ── EIGENTÜMER: zwei Optionen (E-Mail an Hausverwaltung ODER direkt an Liftaro) ──
+  // ── EIGENTÜMER: Hausverwalter-Mail-Feld + Submit-Button mit Fallback "an mich selbst" ──
   if (role === 'eigentuemer') {
-    titleEl.textContent = 'Nächste Schritte für Eigentümer';
+    const userEmail = (document.getElementById('email')?.value || '').trim();
+    titleEl.textContent = 'Sparpotenzial einreichen';
     textEl.innerHTML =
-      'Sie haben zwei Möglichkeiten — entweder Sie leiten die Optimierung über Ihre Hausverwaltung an, ' +
-      'oder Sie kontaktieren Liftaro direkt für eine konkrete Einsparungsberechnung. ' +
-      'Letzteres umfasst auch die laufende Reparatur-Prüfung (im Einzelfall bis zu 80 % Ersparnis).';
+      'Leiten Sie das Ergebnis direkt an Ihre Hausverwaltung weiter — oder lassen Sie es sich selbst zusenden, falls Sie die E-Mail-Adresse gerade nicht zur Hand haben.';
 
-    // E-Mail-Vorlage A: an Hausverwaltung
-    const subjHV = encodeURIComponent('Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro');
+    // Mail-Texte vorbereiten (werden zur Click-Zeit über window._eigCtaCtx ausgelesen)
+    const subjHV = 'Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro';
     const bodyHV =
       'Sehr geehrte Hausverwaltung,\n\n' +
       'als Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen ' +
@@ -2080,10 +2149,25 @@ function renderResultCta(role, r) {
       'Weitere Informationen: ' + landingUrl + '\n\n' +
       'Vielen Dank für Ihre Mühe.\n\n' +
       'Mit freundlichen Grüßen\n' + fullName;
-    const mailHV = 'mailto:?subject=' + subjHV + '&body=' + encodeURIComponent(bodyHV);
 
-    // E-Mail-Vorlage B: direkt an Liftaro
-    const subjLT = encodeURIComponent('Konkrete Einsparungsberechnung – Eigentümer – Check ' + checkNr);
+    // E-Mail "an mich selbst sichern" (wenn HV-Mail leer)
+    const subjSelf = 'Ihr Liftaro-Vorabcheck — Auswertung ' + checkNr;
+    const bodySelf =
+      'Hallo ' + fullName + ',\n\n' +
+      'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
+      'Check-Nr: ' + checkNr + '\n' +
+      (adresse ? 'Objekt: ' + adresse + '\n' : '') + '\n' +
+      'Zusammenfassung:\n' + summary + '\n\n' +
+      'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
+      (savingsIndividualStr ? '\nIhr anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
+      'Ihre nächsten Schritte:\n' +
+      '• Diese E-Mail an Ihre Hausverwaltung weiterleiten\n' +
+      '• Oder direkt eine konkrete Einsparungsberechnung bei Liftaro anfragen: check@liftaro.de\n' +
+      '• Webseite: ' + landingUrl + '\n\n' +
+      'Beste Grüße\nLiftaro';
+
+    // E-Mail direkt an Liftaro (sekundäre Option)
+    const subjLT = 'Konkrete Einsparungsberechnung – Eigentümer – Check ' + checkNr;
     const bodyLT =
       'Hallo Liftaro-Team,\n\n' +
       'ich bin Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'und habe einen Vorabcheck ' +
@@ -2095,19 +2179,32 @@ function renderResultCta(role, r) {
       (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
       'Ich bestätige, dass ich als Eigentümer berechtigt bin, eine Vertragsoptimierung anzustoßen.\n\n' +
       'Mit freundlichen Grüßen\n' + fullName;
-    const mailLT = 'mailto:check@liftaro.de?subject=' + subjLT + '&body=' + encodeURIComponent(bodyLT);
+
+    window._eigCtaCtx = {
+      subjHV: subjHV, bodyHV: bodyHV,
+      subjSelf: subjSelf, bodySelf: bodySelf,
+      subjLT: subjLT, bodyLT: bodyLT,
+      userEmail: userEmail,
+    };
 
     actionsEl.innerHTML =
-      '<a href="' + mailHV + '" class="btn">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-        'E-Mail an Hausverwaltung' +
-      '</a>' +
-      '<a href="' + mailLT + '" class="btn btn-ghost">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-        'Direkt bei Liftaro anfragen' +
-      '</a>';
+      '<div style="width:100%;display:flex;flex-direction:column;gap:8px">' +
+        '<label for="cta-hv-email" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">E-Mail-Adresse Ihrer Hausverwaltung <span style="font-weight:400;color:var(--ink-3)">(optional)</span></label>' +
+        '<input type="email" id="cta-hv-email" placeholder="hausverwaltung@beispiel.de — leer lassen, dann erhalten Sie die Auswertung selbst" autocomplete="off" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+        '<div id="cta-hv-feedback" style="display:none;font-size:12px;margin-top:2px"></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+          '<button type="button" onclick="submitEigentuemerCta()" class="btn">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>' +
+            'Sparpotenzial einreichen' +
+          '</button>' +
+          '<button type="button" onclick="submitEigentuemerCtaLiftaro()" class="btn btn-ghost">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+            'Direkt bei Liftaro anfragen' +
+          '</button>' +
+        '</div>' +
+      '</div>';
     hintEl.style.display = 'block';
-    hintEl.textContent = 'Die E-Mail-Adresse Ihrer Hausverwaltung tragen Sie bei Option 1 bitte selbst im Mail-Entwurf ein. Wir geben keine Rechtsberatung.';
+    hintEl.textContent = 'Wir versenden keine E-Mail in Ihrem Namen — Sie sehen den Entwurf in Ihrem Mail-Programm und schicken ihn selbst ab.';
     return;
   }
 
@@ -2139,6 +2236,72 @@ function renderResultCta(role, r) {
     '</a>';
   hintEl.style.display = 'block';
   hintEl.textContent = 'Wir antworten i.d.R. innerhalb von 24 h mit einem unverbindlichen Konzept-Vorschlag. Wir geben keine Rechtsberatung.';
+}
+
+// ── Eigentümer-CTA: Sparpotenzial einreichen (an HV oder als Selbst-Sicherung) ──
+function submitEigentuemerCta() {
+  var ctx = window._eigCtaCtx || {};
+  var input = document.getElementById('cta-hv-email');
+  var feedback = document.getElementById('cta-hv-feedback');
+  var hvMail = (input && input.value ? input.value : '').trim();
+  var isValidMail = function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); };
+
+  var toAddr, subj, body, feedbackTxt, feedbackColor;
+  if (hvMail) {
+    // Validierung
+    if (!isValidMail(hvMail)) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.color = '#b91c1c';
+        feedback.textContent = 'Bitte eine gültige E-Mail-Adresse eingeben — oder das Feld leer lassen, dann erhalten Sie die Auswertung selbst.';
+      }
+      input.focus();
+      return;
+    }
+    toAddr = hvMail;
+    subj = ctx.subjHV || '';
+    body = ctx.bodyHV || '';
+    feedbackTxt = 'Entwurf wird in Ihrem Mail-Programm geöffnet — bitte prüfen und absenden.';
+    feedbackColor = 'var(--ink-3)';
+  } else {
+    // Fallback: an User selbst (Hausverwaltung-Mail später nachreichen)
+    var userMail = (ctx.userEmail || '').trim();
+    if (!userMail || !isValidMail(userMail)) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.color = '#b91c1c';
+        feedback.textContent = 'Bitte tragen Sie oben eine gültige E-Mail-Adresse ein — entweder die Ihrer Hausverwaltung oder Ihre eigene (Schritt 2).';
+      }
+      if (input) input.focus();
+      return;
+    }
+    toAddr = userMail;
+    subj = ctx.subjSelf || '';
+    body = ctx.bodySelf || '';
+    feedbackTxt = 'Sie erhalten die Auswertung an Ihre eigene E-Mail-Adresse — bitte leiten Sie sie an Ihre Hausverwaltung weiter.';
+    feedbackColor = 'var(--ink-3)';
+  }
+
+  var href = 'mailto:' + encodeURIComponent(toAddr) +
+             '?subject=' + encodeURIComponent(subj) +
+             '&body=' + encodeURIComponent(body);
+  if (feedback) {
+    feedback.style.display = 'block';
+    feedback.style.color = feedbackColor;
+    feedback.textContent = feedbackTxt;
+  }
+  window.location.href = href;
+}
+
+// ── Eigentümer-CTA: direkte Anfrage an Liftaro (sekundäre Option) ──
+function submitEigentuemerCtaLiftaro() {
+  var ctx = window._eigCtaCtx || {};
+  var subj = ctx.subjLT || 'Konkrete Einsparungsberechnung – Eigentümer';
+  var body = ctx.bodyLT || '';
+  var href = 'mailto:check@liftaro.de' +
+             '?subject=' + encodeURIComponent(subj) +
+             '&body=' + encodeURIComponent(body);
+  window.location.href = href;
 }
 </script>
 
