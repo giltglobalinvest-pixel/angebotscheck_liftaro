@@ -977,7 +977,7 @@ export default async function (req: Request): Promise<Response> {
         const summaryHasMarketClaim = /markt|median/i.test(String(result.summary || ''));
         const summaryIsConsistent = summaryHasMarketClaim && /über|ueber|deutlich|teuer/i.test(String(result.summary || ''));
         if (!summaryIsConsistent) {
-          result.summary = 'Aufzug-Wartung mit ' + proAnlageStr + ' €/Jahr je Anlage liegt rund ' + diffStr + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Optimierungspotenzial vorhanden.';
+          result.summary = 'Ihre Wartung kostet ' + proAnlageStr + ' € pro Jahr je Aufzug — das ist rund ' + diffStr + ' € mehr als der übliche Marktpreis für Wartung und Notruf. Optimierungspotenzial vorhanden.';
         }
         // Falls die KI selbst die konkrete 980-Zahl in summary geschrieben hat → entfernen
         if (result.summary) {
@@ -993,8 +993,8 @@ export default async function (req: Request): Promise<Response> {
         findings = findings.filter(f => !/markt|wartung.*(zu\s+(teuer|hoch)|ueber|über)|optimierung.*?wartung/i.test((f.title||'') + ' ' + (f.description||'')));
         findings.unshift({
           severity: proAnlage > 1800 ? 'warn' : (proAnlage > 1500 ? 'amber' : 'blue'),
-          title: 'Wartungspauschale über Marktmedian',
-          description: 'Die Wartungspauschale von ' + proAnlageStr + ' €/Jahr je Anlage liegt ' + diffStr + ' € über dem branchenüblichen Marktmedian für Wartung und Notruf. Bei Neuausschreibung zu marktüblichen Konditionen: ' + correctTotal.toLocaleString('de-DE') + ' €/Jahr Ersparnis.',
+          title: 'Wartung teurer als üblich',
+          description: 'Die Wartung kostet ' + proAnlageStr + ' € pro Jahr je Aufzug — rund ' + diffStr + ' € mehr als der übliche Marktpreis. Bei einer Neuausschreibung zu marktüblichen Konditionen sparen Sie ' + correctTotal.toLocaleString('de-DE') + ' € pro Jahr.',
           tag: 'Liftaro-Marktreferenz · aktuell ' + proAnlageStr + ' EUR/Jahr',
         });
 
