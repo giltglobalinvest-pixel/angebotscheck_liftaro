@@ -541,8 +541,20 @@ ANTWORTE NUR MIT JSON, OHNE MARKDOWN-CODE-BLOCKS:
     "anzahl_aufzuege": Zahl,
     "mea_pool_total": Zahl,
     "anbieter_branche": "kone" | "schindler" | "tk-elevator" | "otis" | "sonstige" | "unbekannt"
-  }
+  },
+  "aufzug_positionen": [
+    { "text": "Wörtlicher Positionsname aus der Abrechnung (z.B. 'Aufzugskosten/Wartung/TÜV')",
+      "betrag_eur": Zahl (Gesamt-Betrag dieser Position; aus der Gesamt-Spalte) }
+  ],
+  "aufzug_gesamtkosten_eur": Zahl (Summe ALLER Aufzug-bezogenen Positionen aus der Abrechnung — Wartung, Notruf, Instandhaltung, TÜV, Strom, etc. zusammen)
 }
+
+WICHTIG zu aufzug_positionen + aufzug_gesamtkosten_eur:
+- Finde JEDE Zeile in der Abrechnung, die "Aufzug" / "Aufzugs…" im Namen enthält (Wartung, Instandhaltung, Notruf, TÜV, Strom Aufzugsanlage, …).
+- Übernimm den Positions-Text 1:1 wörtlich aus der Abrechnung (kein Umformulieren, kein Kürzen).
+- betrag_eur ist immer der GESAMT-Betrag der Zeile (aus der Gesamt-Spalte), NICHT der Eigentümer-Anteil.
+- aufzug_gesamtkosten_eur = Summe aller betrag_eur in aufzug_positionen. Beide Felder müssen konsistent sein.
+- Wenn keine Aufzug-Position gefunden: leeres Array [] und 0.
 
 WICHTIG: anonymized_data darf KEINE personenbezogenen Daten enthalten (keine Namen, Adressen, Kontonummern).`,
 
@@ -1107,11 +1119,24 @@ export default async function (req: Request): Promise<Response> {
       }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
     }
 
+    // Aufzug-Positionen + Gesamtkosten aus KI-Antwort durchreichen (defensiv normalisieren)
+    const aufzugPositionen = Array.isArray(result.aufzug_positionen)
+      ? result.aufzug_positionen
+          .filter((p: any) => p && (p.text || p.betrag_eur))
+          .map((p: any) => ({ text: String(p.text || '').trim(), betrag_eur: Number(p.betrag_eur || 0) }))
+      : [];
+    let aufzugGesamtkosten = Number(result.aufzug_gesamtkosten_eur || 0);
+    if (!aufzugGesamtkosten && aufzugPositionen.length) {
+      aufzugGesamtkosten = aufzugPositionen.reduce((s, p) => s + (Number(p.betrag_eur) || 0), 0);
+    }
+
     return jsonResp({
       ampel: result.ampel,
       summary: result.summary,
       findings: result.findings || [],
       aufzug_count: aufzugCountUser,
+      aufzug_positionen: aufzugPositionen,
+      aufzug_gesamtkosten_eur: aufzugGesamtkosten,
       wartung_brutto_used: Number(result.anonymized_data?.betrag_aufzug_brutto || wartungBruttoUser || 0),
       wartung_brutto_source: wartungBruttoUser > 0 ? 'user' : 'ki', // Transparenz: woher kam der Wartungs-Wert?
       verteilerschluessel: String(result.verteilerschluessel || 'unbekannt'),
@@ -1200,6 +1225,16 @@ async function saveToAirtable(data: {
     }),
   }).catch(e => console.warn("Lead-Save:", e.message));
 
+  // Aufzug-Positionen + Gesamtkosten aus dem Result
+  const aufzugPositionen = Array.isArray(data.result.aufzug_positionen) ? data.result.aufzug_positionen : [];
+  const aufzugPositionenText = aufzugPositionen
+    .map((p: any) => (p.text || '') + ': ' + (Number(p.betrag_eur || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + ' €')
+    .join('\n');
+  let aufzugGesamtkosten = Number(data.result.aufzug_gesamtkosten_eur || 0);
+  if (!aufzugGesamtkosten && aufzugPositionen.length) {
+    aufzugGesamtkosten = aufzugPositionen.reduce((s: number, p: any) => s + (Number(p.betrag_eur) || 0), 0);
+  }
+
   // Vorab-Check-Tabelle (anonymisiert für KI-Lernen)
   await fetch(`${at}/Vorab-Checks`, {
     method: "POST", headers,
@@ -1215,6 +1250,9 @@ async function saveToAirtable(data: {
         savings_individual_eur: indivEur,
         aufzug_count: Number(data.result.aufzug_count || 0),
         parteien_count: Number(data.result.parteien_count || 0),
+        aufzug_gesamtkosten_eur: aufzugGesamtkosten,
+        aufzug_positionen_text: aufzugPositionenText,
+        aufzug_positionen_json: JSON.stringify(aufzugPositionen),
         findings_json: JSON.stringify(data.result.findings || []),
         anonymized_data_json: JSON.stringify(data.result.anonymized_data || {}),
         savedAt: new Date().toISOString(),
