@@ -233,6 +233,217 @@ async function upsertPipedriveLead(input: {
 }
 
 // ───────────────────────────────────────────────────────────────
+// HAUSVERWALTUNGS-SUCHE (Phase 1: Pipedrive-DB-Lookup, Phase 4: Serper+KI)
+// ───────────────────────────────────────────────────────────────
+// Whitelist für allgemeine, nicht-personalisierte Geschäfts-Mails einer HV.
+// Nur diese Local-Parts gelten als "öffentlich" und werden auto-befüllt.
+const HV_GENERIC_EMAIL_PREFIXES = [
+  'info', 'kontakt', 'service', 'mail', 'office',
+  'verwaltung', 'hausverwaltung', 'team', 'kundenservice',
+  'support', 'anfrage', 'post', 'zentrale', 'verwalter',
+  'buero', 'hello', 'welcome', 'empfang', 'sekretariat',
+  'wohnen', 'immobilien',
+];
+
+function isGenericHvEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const e = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
+  const local = e.split('@')[0];
+  // Exakter Match: "info@…" → true. "info.maier@…" → false (zu spezifisch).
+  return HV_GENERIC_EMAIL_PREFIXES.includes(local);
+}
+
+// Persons einer Organization → erste generische (allgemeine) Email zurückgeben.
+function pickGenericEmailFromPersons(persons: any[]): string | null {
+  if (!Array.isArray(persons) || !persons.length) return null;
+  for (const p of persons) {
+    const emails = Array.isArray(p?.email) ? p.email : [];
+    for (const e of emails) {
+      const val = String(e?.value || '').trim();
+      if (isGenericHvEmail(val)) return val;
+    }
+  }
+  return null;
+}
+
+// Pipedrive-Org-Suche nach Namen.
+async function findPipedriveOrgByName(name: string): Promise<any | null> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg) return null;
+  const term = String(name || '').trim();
+  if (term.length < 3) return null;
+  const base = 'https://' + cfg.domain + '/api/v1';
+  try {
+    const url = base + '/organizations/search?term=' + encodeURIComponent(term) +
+                '&fields=name&exact_match=false&limit=5&api_token=' + encodeURIComponent(cfg.token);
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!d?.success || !d.data?.items?.length) return null;
+    // Beste Treffer-Reihenfolge: längste gemeinsame Präfix-Übereinstimmung
+    const items = d.data.items.map((it: any) => it.item).filter(Boolean);
+    return items[0] || null;
+  } catch (e) { console.warn('[Pipedrive] findOrgByName:', e); return null; }
+}
+
+// Allgemeine Geschäfts-Email einer Org aus den verknüpften Persons holen.
+async function getOrgGenericEmail(orgId: number): Promise<string | null> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg || !orgId) return null;
+  const base = 'https://' + cfg.domain + '/api/v1';
+  try {
+    const url = base + '/organizations/' + orgId + '/persons?api_token=' + encodeURIComponent(cfg.token);
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!d?.success || !Array.isArray(d.data)) return null;
+    return pickGenericEmailFromPersons(d.data);
+  } catch (e) { console.warn('[Pipedrive] getOrgGenericEmail:', e); return null; }
+}
+
+// Org in Pipedrive anlegen (für KI-Fallback, Phase 4).
+async function createPipedriveOrgWithEmail(input: {
+  name: string;
+  email?: string;
+  website?: string;
+  city?: string;
+  source?: string;  // 'manuell' | 'ki_serper' | 'user_verifiziert'
+}): Promise<{ ok: boolean; org_id?: number; error?: string }> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg) return { ok: false, error: 'Pipedrive nicht konfiguriert' };
+  const base = 'https://' + cfg.domain + '/api/v1';
+  const auth = '?api_token=' + encodeURIComponent(cfg.token);
+  try {
+    const orgBody: any = { name: input.name };
+    // Custom-Field „Quelle" + Website können später hinzugefügt werden, sobald
+    // die Field-IDs in Pipedrive bekannt sind. Vorerst nur Name + optional Address.
+    if (input.city) orgBody.address = input.city;
+    const orgRes = await fetch(base + '/organizations' + auth, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orgBody),
+    });
+    const orgData = await orgRes.json();
+    if (!orgData.success) return { ok: false, error: 'Org-Create: ' + JSON.stringify(orgData.error || {}).slice(0, 200) };
+    const orgId = orgData.data.id;
+    // Wenn allgemeine Email vorhanden: als „Default-Person" der Org anlegen
+    if (input.email && isGenericHvEmail(input.email)) {
+      const personBody: any = {
+        name: input.name + ' (Allgemein)',
+        email: [{ value: input.email, primary: true, label: 'work' }],
+        org_id: orgId,
+      };
+      await fetch(base + '/persons' + auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(personBody),
+      }).catch(() => { /* non-critical */ });
+    }
+    return { ok: true, org_id: orgId };
+  } catch (e: any) {
+    return { ok: false, error: 'Exception: ' + (e.message || String(e)) };
+  }
+}
+
+// Person an Org linken (User → HV-Org).
+async function linkPersonToOrg(personId: number, orgId: number): Promise<boolean> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg || !personId || !orgId) return false;
+  const base = 'https://' + cfg.domain + '/api/v1';
+  const auth = '?api_token=' + encodeURIComponent(cfg.token);
+  try {
+    const r = await fetch(base + '/persons/' + personId + auth, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: orgId }),
+    });
+    const d = await r.json();
+    return !!d?.success;
+  } catch (e) { console.warn('[Pipedrive] linkPersonToOrg:', e); return false; }
+}
+
+// HV-Lead erzeugen — separater Lead aus B2B-Sicht.
+// Pipeline: orgId ist der „Eigentümer" des Leads (B2B-Pipeline).
+async function createHvLead(input: {
+  orgId: number;
+  userFullName: string;
+  userEmail?: string;
+  savingsTotal?: number;
+  checkNr: string;
+  role: string;
+  hvName: string;
+}): Promise<{ ok: boolean; lead_id?: string; error?: string }> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg) return { ok: false, error: 'Pipedrive nicht konfiguriert' };
+  const base = 'https://' + cfg.domain + '/api/v1';
+  const auth = '?api_token=' + encodeURIComponent(cfg.token);
+  try {
+    // 1. Existierenden offenen HV-Lead suchen → Dedup pro Org
+    let leadId: string | null = null;
+    let reused = false;
+    try {
+      const lr = await fetch(base + '/leads?organization_id=' + input.orgId +
+        '&archived_status=not_archived&limit=20&api_token=' + encodeURIComponent(cfg.token));
+      const ld = await lr.json();
+      if (ld?.success && Array.isArray(ld.data) && ld.data.length > 0) {
+        const sorted = ld.data.slice().sort((a: any, b: any) =>
+          String(b.add_time || '').localeCompare(String(a.add_time || '')));
+        leadId = sorted[0].id;
+        reused = true;
+      }
+    } catch (e) { /* fallthrough */ }
+
+    // 2. Neuen HV-Lead anlegen wenn keiner offen
+    if (!leadId) {
+      const title = '[HV-Lead] ' + input.hvName + ' — via Vorabcheck ' + input.checkNr;
+      const leadBody: any = { title, organization_id: input.orgId };
+      const lr = await fetch(base + '/leads' + auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leadBody),
+      });
+      const ld = await lr.json();
+      if (!ld.success) return { ok: false, error: 'HV-Lead: ' + JSON.stringify(ld.error || {}).slice(0, 200) };
+      leadId = ld.data.id;
+    }
+
+    // 3. Note mit Vorabcheck-Kontext anhängen (jedes Mal)
+    const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
+    const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    const roleLabel = input.role === 'eigentuemer' ? 'Eigentümer'
+                    : input.role === 'verwalter'  ? 'Hausverwalter'
+                    :                                'Mieter';
+    const noteLines = [
+      '🕒 ' + stamp,
+      '',
+      'HV-Lead automatisch erzeugt aus einem Liftaro-Vorabcheck.',
+      '',
+      'Trigger-Vorabcheck:',
+      '  Check-Nr: ' + input.checkNr,
+      '  Rolle des Auftraggebers: ' + roleLabel,
+      '  Name: ' + input.userFullName,
+      input.userEmail ? '  E-Mail: ' + input.userEmail : '',
+      input.savingsTotal ? '  Identifiziertes Sparpotenzial: ' + fmt(input.savingsTotal) + ' € / Jahr' : '',
+      '',
+      'Vertriebs-Aufhänger:',
+      '  Der Auftraggeber hat das Sparpotenzial bereits an diese HV weitergeleitet.',
+      '  Möglicher Folgekontakt: Konkrete Einsparungsberechnung + Light-Paket-Angebot.',
+    ].filter(Boolean);
+    try {
+      await fetch(base + '/notes' + auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: noteLines.join('\n'), lead_id: leadId }),
+      });
+    } catch (e) { /* non-critical */ }
+
+    console.log('[Pipedrive] HV-Lead ' + (reused ? 'reused' : 'created') + ':', leadId, 'org=' + input.orgId);
+    return { ok: true, lead_id: leadId };
+  } catch (e: any) {
+    return { ok: false, error: 'Exception: ' + (e.message || String(e)) };
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
 // Preisreferenzen — Marktmedian-Liste pro Angebots-Position.
 // Wird bei check_type=angebot der KI als Kontext mitgegeben.
 // 5-Min-Cache wie bei den Custom-Prompts.
@@ -756,6 +967,120 @@ export default async function (req: Request): Promise<Response> {
         note: noteLines.join('\n'),
       });
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
+    }
+
+    // ── Action-Routing: action="find_property_manager" — Live-Suche in Pipedrive nach HV-Name.
+    //    Phase 1: nur DB-Lookup (Pipedrive-Organizations). Phase 4 ergänzt Serper+Claude-Fallback. ──
+    if (body.action === 'find_property_manager') {
+      const q = String(body.query || '').trim();
+      if (q.length < 3) return jsonResp({ ok: true, results: [] }, 200, corsHeaders);
+      const org = await findPipedriveOrgByName(q);
+      if (!org) return jsonResp({ ok: true, results: [], source: 'db' }, 200, corsHeaders);
+      const email = await getOrgGenericEmail(org.id);
+      return jsonResp({
+        ok: true,
+        source: 'db',
+        results: [{
+          org_id: org.id,
+          name: org.name,
+          email: email,            // null wenn nur personalisierte Mails vorhanden
+          city: org.address || '', // best-effort
+          confidence: email ? 100 : 60, // mit Email = sichere DB-Quelle
+        }],
+      }, 200, corsHeaders);
+    }
+
+    // ── Action-Routing: action="submit_eigentuemer_cta" — Eigentümer reicht Sparpotenzial ein.
+    //    Erzeugt/aktualisiert HV-Org in Pipedrive, linkt User-Person an Org und legt B2B-HV-Lead an. ──
+    if (body.action === 'submit_eigentuemer_cta') {
+      const c = body.cta || {};
+      const hvName  = String(c.hv_name  || '').trim();
+      const hvEmail = String(c.hv_email || '').trim();
+      const userEmail = String(c.user_email || '').trim();
+      const userName  = String(c.user_name  || '').trim() || userEmail || 'Anonym';
+      const checkNr   = String(c.check_nr || '').trim() || '—';
+      const role      = String(c.role     || 'eigentuemer').trim();
+      const savings   = Number(c.savings_total_eur || 0);
+
+      if (!hvName) return jsonResp({ ok: false, error: 'hv_name Pflichtfeld' }, 400, corsHeaders);
+
+      try {
+        // 1) HV-Org finden ODER anlegen
+        let org = await findPipedriveOrgByName(hvName);
+        let orgId: number | null = org?.id || null;
+        let orgCreated = false;
+        if (!orgId) {
+          const created = await createPipedriveOrgWithEmail({
+            name: hvName,
+            email: isGenericHvEmail(hvEmail) ? hvEmail : undefined,
+            source: 'user_verifiziert',
+          });
+          if (created.ok && created.org_id) { orgId = created.org_id; orgCreated = true; }
+        }
+
+        // 2) Wenn HV-Org existiert aber Email noch leer → user-übergebene Mail nachtragen (nur generisch)
+        if (orgId && !orgCreated && hvEmail && isGenericHvEmail(hvEmail)) {
+          const existingMail = await getOrgGenericEmail(orgId);
+          if (!existingMail) {
+            // Anonyme Default-Person mit der Mail an die Org hängen
+            const cfg = await loadPipedriveConfig();
+            if (cfg) {
+              const auth = '?api_token=' + encodeURIComponent(cfg.token);
+              await fetch('https://' + cfg.domain + '/api/v1/persons' + auth, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: hvName + ' (Allgemein)',
+                  email: [{ value: hvEmail, primary: true, label: 'work' }],
+                  org_id: orgId,
+                }),
+              }).catch(() => { /* non-critical */ });
+            }
+          }
+        }
+
+        // 3) User-Lead via Email finden → an Org linken
+        let userPersonId: number | null = null;
+        if (orgId && userEmail) {
+          const cfg = await loadPipedriveConfig();
+          if (cfg) {
+            try {
+              const searchUrl = 'https://' + cfg.domain + '/api/v1/persons/search?fields=email&exact_match=true&limit=5&term=' +
+                encodeURIComponent(userEmail) + '&api_token=' + encodeURIComponent(cfg.token);
+              const sr = await fetch(searchUrl);
+              const sd = await sr.json();
+              if (sd?.success && sd.data?.items?.length) {
+                userPersonId = sd.data.items[0].item?.id || null;
+              }
+            } catch (e) { /* ignore */ }
+          }
+          if (userPersonId) await linkPersonToOrg(userPersonId, orgId);
+        }
+
+        // 4) HV-Lead anlegen (separater B2B-Lead)
+        let hvLead: any = { ok: false };
+        if (orgId) {
+          hvLead = await createHvLead({
+            orgId,
+            userFullName: userName,
+            userEmail,
+            savingsTotal: savings,
+            checkNr,
+            role,
+            hvName,
+          });
+        }
+
+        return jsonResp({
+          ok: true,
+          org_id: orgId,
+          org_created: orgCreated,
+          user_person_id: userPersonId,
+          hv_lead: hvLead,
+        }, 200, corsHeaders);
+      } catch (e: any) {
+        return jsonResp({ ok: false, error: 'Exception: ' + (e.message || String(e)) }, 500, corsHeaders);
+      }
     }
 
     // ── Action-Routing: action="get_defaults" liefert die Backend-Default-Prompts ans Admin-UI ──
