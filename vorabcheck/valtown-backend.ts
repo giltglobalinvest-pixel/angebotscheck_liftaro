@@ -1,9 +1,9 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 
-const MODEL = "claude-sonnet-4-6";
-const COST_PER_M_INPUT_TOKENS = 3.0;
-const COST_PER_M_OUTPUT_TOKENS = 15.0;
+const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
+const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
+const COST_PER_M_OUTPUT_TOKENS = 15.0; // $ pro 1M Output-Tokens
 const USD_TO_EUR = 0.92;
 
 let _promptCache: Record<string, string> | null = null;
@@ -59,7 +59,7 @@ async function loadPipedriveConfig(): Promise<{ domain: string, token: string } 
     });
     _pdCacheTs = Date.now();
     if (!domain || !token) { _pdCache = null; return null; }
-    _pdCache = { domain: domain.replace(/^https?:\/\
+    _pdCache = { domain: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), token };
     return _pdCache;
   } catch (e) {
     console.warn('[Pipedrive] loadPipedriveConfig:', e);
@@ -75,7 +75,6 @@ async function createPipedriveLead(input: {
   title: string;
   note: string;
 }): Promise<{ ok: boolean; lead_id?: string; person_id?: number; reused?: boolean; error?: string }> {
-
   return upsertPipedriveLead(input);
 }
 
@@ -102,7 +101,6 @@ async function upsertPipedriveLead(input: {
         const sr = await fetch(searchUrl);
         const sd = await sr.json();
         if (sd?.success && sd.data?.items?.length) {
-
           personId = sd.data.items[0].item?.id || null;
           if (personId) personExisted = true;
         }
@@ -145,7 +143,6 @@ async function upsertPipedriveLead(input: {
       const lr = await fetch(leadsUrl);
       const ld = await lr.json();
       if (ld?.success && Array.isArray(ld.data) && ld.data.length > 0) {
-
         const sorted = ld.data.slice().sort((a: any, b: any) =>
           String(b.add_time || '').localeCompare(String(a.add_time || ''))
         );
@@ -202,7 +199,6 @@ function isGenericHvEmail(email: string): boolean {
   const e = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
   const local = e.split('@')[0];
-
   return HV_GENERIC_EMAIL_PREFIXES.includes(local);
 }
 
@@ -238,11 +234,9 @@ async function findPipedriveOrgsByName(name: string, limit = 3): Promise<any[]> 
       }))
       .filter((x: any) => {
         if (!x.item || !x.item.name) return false;
-
         const nameLow = String(x.item.name).toLowerCase();
         if (!nameLow.includes(termLow)) return false;
-
-        return x.score >= 0.3 || term.length >= 5;
+        return x.score >= 0.3 || term.length >= 5; // bei längerem Term Score-Toleranz lockern
       })
       .sort((a: any, b: any) => b.score - a.score)
       .slice(0, limit)
@@ -269,92 +263,12 @@ async function getOrgGenericEmail(orgId: number): Promise<string | null> {
   } catch (e) { console.warn('[Pipedrive] getOrgGenericEmail:', e); return null; }
 }
 
-async function getOrgFullDetails(orgId: number): Promise<any | null> {
-  const cfg = await loadPipedriveConfig();
-  if (!cfg || !orgId) return null;
-  const base = 'https://' + cfg.domain + '/api/v1';
-  try {
-    const orgUrl = base + '/organizations/' + orgId + '?api_token=' + encodeURIComponent(cfg.token);
-    const orgRes = await fetch(orgUrl);
-    const orgData = await orgRes.json();
-    if (!orgData?.success || !orgData.data) return null;
-    const org = orgData.data;
-
-    const personsUrl = base + '/organizations/' + orgId + '/persons?api_token=' + encodeURIComponent(cfg.token);
-    const personsRes = await fetch(personsUrl);
-    const personsData = await personsRes.json();
-    const persons = Array.isArray(personsData?.data) ? personsData.data : [];
-
-    const genericEmail = pickGenericEmailFromPersons(persons);
-
-    let gfName = '', gfTel = '', gfEmail = '';
-    const personalP = persons.find((p: any) => {
-      const emails = Array.isArray(p?.email) ? p.email : [];
-      return emails.some((e: any) => e?.value && !isGenericHvEmail(String(e.value)));
-    });
-    const firstP = personalP || persons[0];
-    if (firstP) {
-      gfName = String(firstP.name || '').replace(/\s*\(Allgemein\)\s*$/i, '').trim();
-      const emails = Array.isArray(firstP.email) ? firstP.email : [];
-      const phones = Array.isArray(firstP.phone) ? firstP.phone : [];
-      const pEmail = emails.find((e: any) => e?.value)?.value || '';
-      const pPhone = phones.find((p: any) => p?.value)?.value || '';
-      gfEmail = String(pEmail || '');
-      gfTel = String(pPhone || '');
-    }
-
-    let strasse = '', plz = '', ort = '';
-    const addrFull = String(org.address || '').trim();
-    if (addrFull) {
-      const parts = addrFull.split(',').map((s: string) => s.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        strasse = parts[0];
-        const plzOrt = parts[1].match(/^(\d{4,5})\s+(.+)$/);
-        if (plzOrt) { plz = plzOrt[1]; ort = plzOrt[2]; }
-        else ort = parts[1];
-      } else { strasse = addrFull; }
-    }
-    return {
-      org_id: org.id,
-      firma: String(org.name || ''),
-      gf: gfName,
-      strasse, plz, ort,
-      email: genericEmail || gfEmail || '',
-      tel: gfTel,
-      website: '',
-      person_count: persons.length,
-    };
-  } catch (e) { console.warn('[Pipedrive] getOrgFullDetails:', e); return null; }
-}
-
-async function listAllOrgs(opts: { start?: number; limit?: number } = {}): Promise<any[]> {
-  const cfg = await loadPipedriveConfig();
-  if (!cfg) return [];
-  const base = 'https://' + cfg.domain + '/api/v1';
-  const start = opts.start || 0;
-  const limit = Math.min(opts.limit || 500, 500);
-  try {
-    const url = base + '/organizations?start=' + start + '&limit=' + limit +
-                '&api_token=' + encodeURIComponent(cfg.token);
-    const r = await fetch(url);
-    const d = await r.json();
-    if (!d?.success || !Array.isArray(d.data)) return [];
-    return d.data.map((o: any) => ({
-      org_id: o.id,
-      name: o.name || '',
-      address: o.address || '',
-      person_count: Number(o.people_count || 0),
-      updated_at: o.update_time || o.add_time || '',
-    }));
-  } catch (e) { console.warn('[Pipedrive] listAllOrgs:', e); return []; }
-}
-
 async function createPipedriveOrgWithEmail(input: {
   name: string;
   email?: string;
   website?: string;
   city?: string;
-  source?: string;
+  source?: string;  // 'manuell' | 'ki_serper' | 'user_verifiziert'
 }): Promise<{ ok: boolean; org_id?: number; error?: string }> {
   const cfg = await loadPipedriveConfig();
   if (!cfg) return { ok: false, error: 'Pipedrive nicht konfiguriert' };
@@ -362,7 +276,6 @@ async function createPipedriveOrgWithEmail(input: {
   const auth = '?api_token=' + encodeURIComponent(cfg.token);
   try {
     const orgBody: any = { name: input.name };
-
     if (input.city) orgBody.address = input.city;
     const orgRes = await fetch(base + '/organizations' + auth, {
       method: 'POST',
@@ -372,7 +285,6 @@ async function createPipedriveOrgWithEmail(input: {
     const orgData = await orgRes.json();
     if (!orgData.success) return { ok: false, error: 'Org-Create: ' + JSON.stringify(orgData.error || {}).slice(0, 200) };
     const orgId = orgData.data.id;
-
     if (input.email && isGenericHvEmail(input.email)) {
       const personBody: any = {
         name: input.name + ' (Allgemein)',
@@ -421,7 +333,6 @@ async function createHvLead(input: {
   const base = 'https://' + cfg.domain + '/api/v1';
   const auth = '?api_token=' + encodeURIComponent(cfg.token);
   try {
-
     let leadId: string | null = null;
     let reused = false;
     try {
@@ -519,7 +430,7 @@ async function loadPreisreferenzen(): Promise<any[]> {
 function deterministicSavingsFactor(seed: string): number {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
-  return 0.30 + ((h >>> 0) % 1000) / 1000 * 0.30;
+  return 0.30 + ((h >>> 0) % 1000) / 1000 * 0.30; // 0,30 – 0,60
 }
 
 const ROLE_CONTEXTS: Record<string, string> = {
@@ -570,7 +481,6 @@ SPRACHE: Professionell, knapp, kennzahlen-orientiert. Bezugnahme auf §§ wo rel
 };
 
 function buildSystemPrompt(checkType: string, role: string, customMap: Record<string, string>): string | null {
-
   if (customMap[checkType + '.' + role]) return customMap[checkType + '.' + role];
   if (customMap[checkType]) return customMap[checkType];
 
@@ -877,7 +787,6 @@ ANTWORTE NUR MIT JSON:
 };
 
 export default async function (req: Request): Promise<Response> {
-
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -1023,33 +932,75 @@ export default async function (req: Request): Promise<Response> {
     }
 
     if (body.action === 'list_property_managers') {
-      const start = parseInt(String(body.start || '0'), 10) || 0;
-      const limit = Math.min(parseInt(String(body.limit || '500'), 10) || 500, 500);
-      const orgs = await listAllOrgs({ start, limit });
-      return jsonResp({ ok: true, results: orgs }, 200, corsHeaders);
+      const cfg = await loadPipedriveConfig();
+      if (!cfg) return jsonResp({ ok: false, error: 'pipedrive not configured' }, 500, corsHeaders);
+      const lim = Math.min(parseInt(String(body.limit || '500'), 10) || 500, 500);
+      try {
+        const r = await fetch('https://' + cfg.domain + '/api/v1/organizations?start=0&limit=' + lim +
+          '&api_token=' + encodeURIComponent(cfg.token));
+        const d = await r.json();
+        const orgs = (Array.isArray(d.data) ? d.data : []).map((o: any) => ({
+          org_id: o.id, name: o.name || '', address: o.address || '',
+          person_count: Number(o.people_count || 0),
+        }));
+        return jsonResp({ ok: true, results: orgs }, 200, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-
     if (body.action === 'get_property_manager_details') {
-      const orgId = parseInt(String(body.org_id || '0'), 10);
-      if (!orgId) return jsonResp({ ok: false, error: 'org_id Pflichtfeld' }, 400, corsHeaders);
-      const details = await getOrgFullDetails(orgId);
-      if (!details) return jsonResp({ ok: false, error: 'Org nicht gefunden' }, 404, corsHeaders);
-      return jsonResp({ ok: true, details }, 200, corsHeaders);
+      const oid = parseInt(String(body.org_id || '0'), 10);
+      if (!oid) return jsonResp({ ok: false, error: 'org_id required' }, 400, corsHeaders);
+      const cfg = await loadPipedriveConfig();
+      if (!cfg) return jsonResp({ ok: false, error: 'pipedrive not configured' }, 500, corsHeaders);
+      const auth = '?api_token=' + encodeURIComponent(cfg.token);
+      try {
+        const oRes = await fetch('https://' + cfg.domain + '/api/v1/organizations/' + oid + auth);
+        const oData = await oRes.json();
+        if (!oData?.success) return jsonResp({ ok: false, error: 'org not found' }, 404, corsHeaders);
+        const org = oData.data;
+        const pRes = await fetch('https://' + cfg.domain + '/api/v1/organizations/' + oid + '/persons' + auth);
+        const pData = await pRes.json();
+        const persons = Array.isArray(pData?.data) ? pData.data : [];
+        const genEmail = pickGenericEmailFromPersons(persons);
+        let gfName = '', gfTel = '', gfEmail = '';
+        const personalP = persons.find((p: any) => {
+          const emails = Array.isArray(p?.email) ? p.email : [];
+          return emails.some((e: any) => e?.value && !isGenericHvEmail(String(e.value)));
+        });
+        const firstP = personalP || persons[0];
+        if (firstP) {
+          gfName = String(firstP.name || '').replace(/\s*\(Allgemein\)\s*$/i, '').trim();
+          gfEmail = String((Array.isArray(firstP.email) ? firstP.email : []).find((e: any) => e?.value)?.value || '');
+          gfTel = String((Array.isArray(firstP.phone) ? firstP.phone : []).find((p: any) => p?.value)?.value || '');
+        }
+        let strasse = '', plz = '', ort = '';
+        const addr = String(org.address || '').trim();
+        if (addr) {
+          const parts = addr.split(',').map((s: string) => s.trim()).filter(Boolean);
+          if (parts.length >= 2) {
+            strasse = parts[0];
+            const m = parts[1].match(/^(\d{4,5})\s+(.+)$/);
+            if (m) { plz = m[1]; ort = m[2]; } else ort = parts[1];
+          } else { strasse = addr; }
+        }
+        return jsonResp({ ok: true, details: {
+          org_id: org.id, firma: String(org.name || ''), gf: gfName,
+          strasse, plz, ort, email: genEmail || gfEmail || '', tel: gfTel,
+        } }, 200, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
     if (body.action === 'find_property_manager') {
       const q = String(body.query || '').trim();
       if (q.length < 3) return jsonResp({ ok: true, results: [] }, 200, corsHeaders);
       const orgs = await findPipedriveOrgsByName(q, 3);
       if (!orgs.length) return jsonResp({ ok: true, results: [], source: 'db' }, 200, corsHeaders);
-
       const enriched = await Promise.all(orgs.map(async (org: any) => {
         const email = await getOrgGenericEmail(org.id);
         return {
           org_id: org.id,
           name: org.name,
-          email: email,
-          city: org.address || '',
-          confidence: email ? 100 : 60,
+          email: email,                 // null wenn nur personalisierte Mails vorhanden
+          city: org.address || '',      // best-effort, Pipedrive-Adresse als Volltext
+          confidence: email ? 100 : 60, // mit Email = sichere DB-Quelle
         };
       }));
       return jsonResp({ ok: true, source: 'db', results: enriched }, 200, corsHeaders);
@@ -1068,7 +1019,6 @@ export default async function (req: Request): Promise<Response> {
       if (!hvName) return jsonResp({ ok: false, error: 'hv_name Pflichtfeld' }, 400, corsHeaders);
 
       try {
-
         let org = await findPipedriveOrgByName(hvName);
         let orgId: number | null = org?.id || null;
         let orgCreated = false;
@@ -1084,7 +1034,6 @@ export default async function (req: Request): Promise<Response> {
         if (orgId && !orgCreated && hvEmail && isGenericHvEmail(hvEmail)) {
           const existingMail = await getOrgGenericEmail(orgId);
           if (!existingMail) {
-
             const cfg = await loadPipedriveConfig();
             if (cfg) {
               const auth = '?api_token=' + encodeURIComponent(cfg.token);
@@ -1175,7 +1124,6 @@ export default async function (req: Request): Promise<Response> {
       });
       if (!records.length) return jsonResp({ ok: true, count: 0 }, 200, corsHeaders);
       try {
-
         const url = `https://api.airtable.com/v0/${base}/Vorabcheck-Korrekturen`;
         for (let i = 0; i < records.length; i += 10) {
           const batch = records.slice(i, i + 10);
@@ -1192,11 +1140,8 @@ export default async function (req: Request): Promise<Response> {
     }
 
     const { check_type, file, lead, turnstile_token, consent_given } = body;
-
     const role = ['mieter','eigentuemer','verwalter'].includes(body.role) ? body.role : 'mieter';
-
     const aufzugCountUser = Math.max(1, Math.min(50, parseInt(String(body.aufzug_count_user || '1'), 10) || 1));
-
     const wartungBruttoUser = Math.max(0, parseFloat(String(body.wartung_brutto_user || '0').replace(',', '.')) || 0);
 
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
@@ -1249,7 +1194,7 @@ export default async function (req: Request): Promise<Response> {
 
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 4096, // Erhöht von 2048 — komplexe Tabellen brauchen mehr Output-Spielraum
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
     });
@@ -1288,22 +1233,18 @@ export default async function (req: Request): Promise<Response> {
     const meaEigentuemer = Number(result.mea_eigentuemer || 0);
 
     if (check_type === 'nebenkosten') {
-
       const aufzugCount = aufzugCountUser;
-      result.aufzug_count = aufzugCount;
+      result.aufzug_count = aufzugCount; // Im Response konsistent halten
       let aufzugBrutto = 0;
-      let bruttoSource = 'unknown';
+      let bruttoSource = 'unknown'; // 'user' | 'ki' | 'regex' — für Transparenz
 
       if (wartungBruttoUser > 0) {
-
         aufzugBrutto = wartungBruttoUser;
         bruttoSource = 'user';
-
         if (!result.anonymized_data) result.anonymized_data = {};
         result.anonymized_data.betrag_aufzug_brutto = aufzugBrutto;
         console.log('[liftaro-vorabcheck] brutto vom User:', aufzugBrutto);
       } else {
-
         aufzugBrutto = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
         if (aufzugBrutto >= 500) bruttoSource = 'ki';
 
@@ -1325,11 +1266,9 @@ export default async function (req: Request): Promise<Response> {
       const proAnlage = aufzugCount > 0 ? aufzugBrutto / aufzugCount : 0;
 
       if (proAnlage > 1200) {
-
         const correctTotal = Math.round((proAnlage - 980) * aufzugCount);
         const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
         const diffStr      = Math.round(proAnlage - 980).toLocaleString('de-DE');
-
         const pctSavings = aufzugBrutto > 0 ? Math.round((correctTotal / aufzugBrutto) * 100) : 0;
 
         savingsTotal = correctTotal;
@@ -1340,11 +1279,9 @@ export default async function (req: Request): Promise<Response> {
         if (!summaryIsConsistent) {
           result.summary = 'Ihre Wartung kostet ' + proAnlageStr + ' € pro Jahr je Aufzug — das ist rund ' + diffStr + ' € mehr als der übliche Marktpreis für Wartung und Notruf. Optimierungspotenzial vorhanden.';
         }
-
         if (result.summary) {
           result.summary = String(result.summary).replace(/\bvon\s+9\s?80\s*(€|EUR)\b/gi, '').replace(/\(?\b9\s?80\s*(€|EUR)\b\)?/gi, '').replace(/\s{2,}/g, ' ').trim();
         }
-
         if (result.savings_text) {
           result.savings_text = String(result.savings_text).replace(/\bvon\s+9\s?80\s*(€|EUR)\b/gi, '').replace(/\(?\b9\s?80\s*(€|EUR)\b\)?/gi, '').replace(/\s{2,}/g, ' ').trim();
         }
@@ -1385,7 +1322,6 @@ export default async function (req: Request): Promise<Response> {
     if (check_type === 'angebot') {
       const angebotsumme = Number(result.anonymized_data?.angebotssumme_brutto || result.anonymized_data?.angebotssumme_netto || 0);
       const positionsLeer = !Array.isArray(result.positions_nicht_in_liste) ? 0 : result.positions_nicht_in_liste.length;
-
       if (!savingsTotal && angebotsumme > 100) {
         const factor = deterministicSavingsFactor(checkNr);
         savingsTotal = Math.round(angebotsumme * factor);
@@ -1400,7 +1336,6 @@ export default async function (req: Request): Promise<Response> {
         });
         result.findings = findings;
       } else if (positionsLeer && savingsTotal) {
-
         const findings = result.findings || [];
         findings.push({
           severity: 'blue',
@@ -1456,7 +1391,6 @@ export default async function (req: Request): Promise<Response> {
       ].filter(Boolean);
       const note = noteLines.join('\n');
       const title = '[Vorabcheck] ' + fullName + ' — ' + roleLabel + ' (' + checkNr + ')';
-
       createPipedriveLead({
         name: fullName,
         email: lead.email,
@@ -1484,14 +1418,14 @@ export default async function (req: Request): Promise<Response> {
       aufzug_positionen: aufzugPositionen,
       aufzug_gesamtkosten_eur: aufzugGesamtkosten,
       wartung_brutto_used: Number(result.anonymized_data?.betrag_aufzug_brutto || wartungBruttoUser || 0),
-      wartung_brutto_source: wartungBruttoUser > 0 ? 'user' : 'ki',
+      wartung_brutto_source: wartungBruttoUser > 0 ? 'user' : 'ki', // Transparenz: woher kam der Wartungs-Wert?
       verteilerschluessel: String(result.verteilerschluessel || 'unbekannt'),
       parteien_count: Number(result.parteien_count || 0),
       mea_pool_total: meaPool,
       mea_eigentuemer: meaEigentuemer,
       savings_total_eur: savingsTotal,
       savings_individual_eur: savingsIndividual,
-      savings_estimate_eur: savingsTotal,
+      savings_estimate_eur: savingsTotal, // Legacy für altes Frontend
       savings_text: result.savings_text || "",
       check_nr: checkNr,
       role: role,
@@ -1521,7 +1455,6 @@ async function verifyTurnstile(token: string, secret: string): Promise<boolean> 
 }
 
 async function generateCheckNr(): Promise<string> {
-
   const year = new Date().getFullYear();
   const random = Math.floor(Math.random() * 9000) + 1000;
   return `VC-${year}-${random}`;
