@@ -953,6 +953,8 @@ html[data-theme="liftaro"] .liftaro-step-desc {
           <div id="savings-balken" style="display:none;margin-top:14px;text-align:left"></div>
           <!-- Sekundärer Bereich: Gesamt/Individuell + pro Partei pro Monat (JS-gefüllt) -->
           <div id="savings-secondary" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;color:rgba(255,255,255,.92)"></div>
+          <!-- Inline-CTA: HV-Auswahl + Submit-Button direkt im grünen Kasten (JS-gefüllt, nur Eigentümer) -->
+          <div id="savings-inline-cta" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.18);text-align:left;color:#fff"></div>
           <div class="check-nr-badge" id="check-nr-badge">CHECK-NR: VC-—</div>
         </div>
 
@@ -1792,10 +1794,18 @@ function renderResult(r) {
   // Zusatz-Infos: Sekundärwert (Gesamt/Individuell) + entweder MEA-Anteil-Block ODER pro-Partei-Monat
   const secLines = [];
   if (secondaryValue && secondaryValue > 0) {
+    // Berechnungs-Basis-Zeile: zeigt warum dieser Betrag der individuelle Anteil ist
+    var basisHint = '';
+    if (isMea && meaPool > 0 && meaEig > 0) {
+      basisHint = '<div style="opacity:.7;font-size:11.5px;margin-top:3px;font-weight:400">Basis: Ihr MEA <strong>' + meaEig.toLocaleString('de-DE') + '</strong> von <strong>' + meaPool.toLocaleString('de-DE') + '</strong> am Gesamtobjekt (' + (Math.round(meaEig * 10000 / meaPool) / 100).toLocaleString('de-DE') + '&nbsp;%)</div>';
+    } else if (parteien > 1) {
+      basisHint = '<div style="opacity:.7;font-size:11.5px;margin-top:3px;font-weight:400">Basis: <strong>1 von ' + parteien + '</strong> Parteien (Durchschnitt)</div>';
+    }
     secLines.push(
       '<div style="opacity:.85;font-size:13px">' + secondaryLabel + '</div>' +
       '<strong style="font-size:18px;display:block;margin-top:2px">€' +
-      Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + '</strong>'
+      Number(secondaryValue).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + '</strong>' +
+      basisHint
     );
   }
   // Pro-Partei-Anzeige: bei beliebigem Verteilerschlüssel, sobald Parteien-Anzahl bekannt.
@@ -1846,6 +1856,7 @@ function renderResult(r) {
 
   // Rollen-spezifische CTA
   renderResultCta(role, r);
+  _renderInlineCtaInSavingsCard(role, r);
 
   // Korrektur-Panel mit aktuellen Werten initialisieren
   _populateCorrectionInputs(r);
@@ -2102,12 +2113,21 @@ function scrollToResultCta() {
 // E-Mail-Empfänger werden bewusst leer gelassen, wenn wir sie nicht kennen
 // (Vermieter / Hausverwaltung) — User trägt sie selbst ein.
 function renderResultCta(role, r) {
+  const ctaWrap   = document.getElementById('result-cta');
   const titleEl   = document.getElementById('result-cta-title');
   const textEl    = document.getElementById('result-cta-text');
   const actionsEl = document.getElementById('result-cta-actions');
   const hintEl    = document.getElementById('result-cta-hint');
   actionsEl.innerHTML = '';
   hintEl.style.display = 'none';
+  // Bei Eigentümer wandert die ganze CTA in den grünen Sparkasten (#savings-inline-cta) —
+  // hier nichts mehr rendern, damit es keine doppelten IDs gibt.
+  if (role === 'eigentuemer') {
+    if (ctaWrap) ctaWrap.style.display = 'none';
+    return;
+  } else {
+    if (ctaWrap) ctaWrap.style.display = 'block';
+  }
 
   // Daten für die E-Mail-Vorlagen sammeln
   const checkNr   = r.check_nr || '—';
@@ -2553,6 +2573,96 @@ document.addEventListener('click', function(e) {
   if (sug.contains(e.target) || (inp && inp.contains(e.target))) return;
   sug.style.display = 'none';
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  Inline-CTA im grünen Sparkasten — HV-Auswahl + Submit-Button
+//  Nur bei Eigentümer & Mieter sinnvoll (Verwalter ruft Liftaro direkt).
+//  Nutzt dieselben IDs wie die volle CTA-Sektion (cta-hv-name, etc.),
+//  damit alle bestehenden Handler weiter funktionieren.
+// ══════════════════════════════════════════════════════════════════
+function _renderInlineCtaInSavingsCard(role, r) {
+  var el = document.getElementById('savings-inline-cta');
+  if (!el) return;
+  if (role !== 'eigentuemer' && role !== 'mieter') { el.style.display = 'none'; return; }
+  // Aktuell unterstützen wir die HV-Picker-Inline-CTA nur für Eigentümer.
+  // Mieter sieht stattdessen den klassischen mailto-Vermieter-Flow unten.
+  if (role !== 'eigentuemer') { el.style.display = 'none'; return; }
+
+  el.innerHTML =
+    '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px">Wählen Sie Ihre Hausverwaltung:</div>' +
+    '<div style="position:relative">' +
+      '<input type="text" id="cta-hv-name" placeholder="Hausverwaltung eingeben — wir suchen Adresse + Kontaktdaten" autocomplete="off" oninput="_searchHvName()" style="width:100%;padding:11px 13px;background:rgba(255,255,255,.95);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+      '<div id="cta-hv-status" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--ink-3);display:none"></div>' +
+      '<div id="cta-hv-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:50;max-height:340px;overflow-y:auto;text-align:left;color:var(--ink)"></div>' +
+    '</div>' +
+    '<div id="cta-hv-selected" style="display:none;background:rgba(255,255,255,.95);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.45;margin-top:8px;color:var(--ink)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="color:#3d7a14;font-weight:600;margin-bottom:2px">✓ Ausgewählt</div>' +
+          '<div id="cta-hv-selected-name" style="color:var(--ink);font-weight:600"></div>' +
+          '<div id="cta-hv-selected-addr" style="color:var(--ink-2);font-size:11.5px;margin-top:1px"></div>' +
+          '<div id="cta-hv-selected-mail" style="color:var(--ink-3);font-size:11px;margin-top:1px"></div>' +
+        '</div>' +
+        '<button type="button" onclick="_resetHvSelection()" style="background:none;border:1px solid var(--line-2);color:var(--ink-3);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit">✕ ändern</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="cta-hv-feedback" style="display:none;font-size:12px;margin-top:6px;color:#fff"></div>' +
+    '<button type="button" onclick="submitEigentuemerCta()" style="width:100%;background:#fff;color:var(--brand-deep);border:none;border-radius:10px;padding:13px 18px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;box-shadow:0 2px 8px rgba(0,0,0,.12)">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>' +
+      'Sparpotenzial bei Hausverwaltung einreichen' +
+    '</button>' +
+    '<div style="margin-top:8px;text-align:center">' +
+      '<a href="javascript:void(0)" id="cta-hv-callback-link" onclick="requestLiftaroCallback()" style="font-size:12px;color:rgba(255,255,255,.85);text-decoration:underline;text-underline-offset:2px">' +
+        'oder lieber direkt mit Liftaro sprechen — wir melden uns binnen 24 h →' +
+      '</a>' +
+      '<div id="cta-hv-callback-done" style="display:none;font-size:13px;color:#fff;font-weight:600;padding:8px 12px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:8px;margin-top:6px">' +
+        '✓ Vielen Dank — wir melden uns innerhalb 24 h bei Ihnen.' +
+      '</div>' +
+    '</div>';
+  el.style.display = 'block';
+
+  // E-Mail-Templates befüllen analog zur CTA-Sektion (für mailto + Callback)
+  var checkNr   = r.check_nr || '—';
+  var summary   = (r.summary || '').trim();
+  var vorname   = (document.getElementById('vorname')?.value || '').trim();
+  var nachname  = (document.getElementById('nachname')?.value || '').trim();
+  var adresse   = (document.getElementById('adresse')?.value || '').trim();
+  var fullName  = (vorname + ' ' + nachname).trim() || 'Ihr Name';
+  var userEmail = (document.getElementById('email')?.value || '').trim();
+  var savingsTotal = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  var savingsIndividual = Number(r.savings_individual_eur || 0);
+  var savingsTotalStr = savingsTotal > 0 ? Math.round(savingsTotal).toLocaleString('de-DE') + ' €/Jahr' : 'siehe Auswertung';
+  var savingsIndividualStr = savingsIndividual > 0 ? Math.round(savingsIndividual).toLocaleString('de-DE') + ' €/Jahr' : '';
+  var landingUrl = location.origin + location.pathname;
+  var bodyHV = 'Sehr geehrte Hausverwaltung,\n\n' +
+    'als Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen ' +
+    'Liftaro-Vorabcheck prüfen lassen (Check-Nr. ' + checkNr + '). Bei der Aufzug-Position besteht Optimierungspotenzial.\n\n' +
+    'Auswertung in Kurzform:\n' + summary + '\n\n' +
+    'Geschätzte jährliche Gesamtersparnis für das Haus: ' + savingsTotalStr +
+    (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
+    'Ich bitte Sie, bei Liftaro (check@liftaro.de) eine konkrete Einsparungsberechnung anzufragen. ' +
+    'Weitere Informationen: ' + landingUrl + '\n\n' +
+    'Vielen Dank.\nMit freundlichen Grüßen\n' + fullName;
+  var bodySelf = 'Hallo ' + fullName + ',\n\n' +
+    'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
+    'Check-Nr: ' + checkNr + '\n' +
+    (adresse ? 'Objekt: ' + adresse + '\n' : '') + '\n' +
+    'Zusammenfassung:\n' + summary + '\n\n' +
+    'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
+    (savingsIndividualStr ? '\nIhr anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
+    'Ihre nächsten Schritte:\n' +
+    '• Diese E-Mail an Ihre Hausverwaltung weiterleiten\n' +
+    '• Oder direkt eine konkrete Einsparungsberechnung bei Liftaro anfragen: check@liftaro.de\n' +
+    '• Webseite: ' + landingUrl + '\n\n' +
+    'Beste Grüße\nLiftaro';
+  window._eigCtaCtx = {
+    subjHV: 'Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro',
+    bodyHV: bodyHV,
+    subjSelf: 'Ihr Liftaro-Vorabcheck — Auswertung ' + checkNr,
+    bodySelf: bodySelf,
+    userEmail: userEmail,
+  };
+}
 
 // ── Eigentümer-CTA: Sparpotenzial einreichen (an HV oder als Selbst-Sicherung) ──
 function submitEigentuemerCta() {
