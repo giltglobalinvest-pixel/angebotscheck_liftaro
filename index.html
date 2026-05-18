@@ -1902,6 +1902,10 @@ const pdfWorkerReady = Promise.resolve();</script>
         Hausverwaltungen
         <span id="kundenCountBadge" class="btn-badge" style="display:none">0</span>
       </button>
+      <button class="nav-pill" data-nav="settings" onclick="openSettingsAdmin()" title="Einstellungen · Pipedrive, Serper, val.town-Proxy">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Einstellungen
+      </button>
       <span class="nav-shelf-divider"></span>
       <!-- Gruppe 3: Abrechnung / Workflow -->
       <button class="nav-pill" data-nav="due" onclick="openDueBillingsModal()" title="Fällige Vertragsabrechnungen">
@@ -1979,6 +1983,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openLightVertraegeModal()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
       Light-Verträge
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openSettingsAdmin()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.07 7.07l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.07-7.07l4.24-4.24"/></svg>
+      Einstellungen
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openDashboard()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -3528,7 +3536,6 @@ const pdfWorkerReady = Promise.resolve();</script>
         <button class="vch-tab" data-tab="prompts" onclick="switchVchTab('prompts')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">✏️ Prompts</button>
         <button class="vch-tab" data-tab="public" onclick="switchVchTab('public')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🌐 Mieter-Seite</button>
         <button class="vch-tab" data-tab="preise" onclick="switchVchTab('preise')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">💰 Preisliste</button>
-        <button class="vch-tab" data-tab="setup" onclick="switchVchTab('setup')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🔌 Proxy-Setup</button>
       </div>
     </div>
 
@@ -3669,68 +3676,84 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
       </div>
 
-      <!-- TAB: PROXY-SETUP -->
-      <div id="vch-pane-setup" class="vch-pane" style="display:none">
-        <div id="vch-setup-status" style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px">
-          <div style="font-weight:700;color:var(--text)">Status:</div>
-          <span id="vch-setup-status-badge">–</span>
-          <div id="vch-setup-status-detail" style="font-size:12px;color:var(--muted);flex-basis:100%"></div>
-        </div>
+    </div>
+  </div>
+</div>
 
-        <!-- PIPEDRIVE-INTEGRATION -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-            <div>
-              <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🎯 Pipedrive — Lead-Integration</h4>
-              <div style="font-size:12px;color:var(--muted);line-height:1.5">Jeder Vorabcheck mit Kontaktdaten + jede Kontaktformular-Anfrage erzeugt automatisch einen Pipedrive-Lead.</div>
-            </div>
-            <span id="vch-pd-status" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">–</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div class="field" style="display:flex;flex-direction:column;gap:6px">
-              <label for="vchPipedriveDomain" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Pipedrive-Domain</label>
-              <input type="text" id="vchPipedriveDomain" placeholder="liftaro.pipedrive.com" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
-              <span style="font-size:11.5px;color:var(--muted)">z. B. <code>liftaro.pipedrive.com</code> (ohne https://)</span>
-            </div>
-            <div class="field" style="display:flex;flex-direction:column;gap:6px">
-              <label for="vchPipedriveToken" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Pipedrive API-Token</label>
-              <input type="password" id="vchPipedriveToken" placeholder="••••••••••••" autocomplete="off" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
-              <span style="font-size:11.5px;color:var(--muted)">Settings → Personal Preferences → API</span>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-            <button onclick="savePipedriveConfig()" style="background:var(--green);border:none;color:#fff;border-radius:7px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer">💾 Speichern</button>
-            <button onclick="testPipedriveConfig()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">✓ Verbindung testen</button>
-            <div id="vch-pd-feedback" style="font-size:12px;color:var(--muted);align-self:center;margin-left:6px"></div>
-          </div>
-        </div>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     EINSTELLUNGEN (global): val.town Proxy + Pipedrive + Serper
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="settingsAdminModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(840px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px">
+      <div>
+        <span style="color:#fff;font-size:15px;font-weight:700">⚙️ Einstellungen</span>
+        <span style="color:rgba(255,255,255,.55);font-size:11px;margin-left:8px">Backend-Integrationen · App-weit gültig</span>
+      </div>
+      <button onclick="document.getElementById('settingsAdminModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:22px;background:var(--bg);display:flex;flex-direction:column;gap:16px">
+      <div id="vch-setup-status" style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px">
+        <div style="font-weight:700;color:var(--text)">val.town-Proxy:</div>
+        <span id="vch-setup-status-badge">–</span>
+        <div id="vch-setup-status-detail" style="font-size:12px;color:var(--muted);flex-basis:100%"></div>
+      </div>
 
-        <!-- SERPER-INTEGRATION -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-            <div>
-              <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🔍 Serper.dev — Web-Anreicherung</h4>
-              <div style="font-size:12px;color:var(--muted);line-height:1.5">Holt HV-Stammdaten (Adresse, USt-IdNr, Steuernr) per Google-Suche + Claude-Haiku. Genutzt vom Button „🔍 Web-Daten holen" in den Vertragseditoren.</div>
-            </div>
-            <span id="vch-serper-status" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">–</span>
+      <!-- PIPEDRIVE-INTEGRATION -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🎯 Pipedrive — CRM-Integration</h4>
+            <div style="font-size:12px;color:var(--muted);line-height:1.5">Quelle für die Hausverwaltungen-Liste, Lead-Anlage bei Vorabchecks + Kontaktformularen, HV-Auswahl in Vertragseditoren.</div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px">
-            <div class="field" style="display:flex;flex-direction:column;gap:6px">
-              <label for="vchSerperKey" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Serper API-Key</label>
-              <input type="password" id="vchSerperKey" placeholder="••••••••••••" autocomplete="off" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
-              <span style="font-size:11.5px;color:var(--muted)">Hol den Key kostenlos unter <a href="https://serper.dev" target="_blank" style="color:var(--blue-mid);text-decoration:underline">serper.dev</a> (2.500 freie Anfragen) · wird beim „Proxy aktualisieren" auch als val.town Env-Var <code>SERPER_API_KEY</code> gesetzt</span>
-            </div>
+          <span id="vch-pd-status" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">–</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="field" style="display:flex;flex-direction:column;gap:6px">
+            <label for="vchPipedriveDomain" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Pipedrive-Domain</label>
+            <input type="text" id="vchPipedriveDomain" placeholder="liftaro.pipedrive.com" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
+            <span style="font-size:11.5px;color:var(--muted)">z. B. <code>liftaro.pipedrive.com</code> (ohne https://)</span>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-            <button onclick="saveSerperConfig()" style="background:var(--green);border:none;color:#fff;border-radius:7px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer">💾 Speichern</button>
-            <button onclick="testSerperConfig()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">✓ Verbindung testen</button>
-            <div id="vch-serper-feedback" style="font-size:12px;color:var(--muted);align-self:center;margin-left:6px"></div>
+          <div class="field" style="display:flex;flex-direction:column;gap:6px">
+            <label for="vchPipedriveToken" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Pipedrive API-Token</label>
+            <input type="password" id="vchPipedriveToken" placeholder="••••••••••••" autocomplete="off" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
+            <span style="font-size:11.5px;color:var(--muted)">Settings → Personal Preferences → API</span>
           </div>
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button onclick="savePipedriveConfig()" style="background:var(--green);border:none;color:#fff;border-radius:7px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer">💾 Speichern</button>
+          <button onclick="testPipedriveConfig()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">✓ Verbindung testen</button>
+          <div id="vch-pd-feedback" style="font-size:12px;color:var(--muted);align-self:center;margin-left:6px"></div>
+        </div>
+      </div>
 
-        <div style="background:var(--sky);border-left:3px solid var(--blue-mid);padding:10px 14px;border-radius:8px;font-size:12.5px;color:var(--text);margin-bottom:14px;line-height:1.5">
-          <strong>Was passiert:</strong> Beim Klick legt die App auf val.town den Val <code>liftaroVorabcheckProxy</code> an oder updated den bestehenden, lädt den aktuellen Proxy-Code aus <code>vorabcheck/valtown-backend.ts</code>, setzt die Env-Vars (Anthropic/Airtable/Turnstile/Serper) und legt die Airtable-Tabellen an. Die Endpoint-URL landet als <code>vorabcheckProxyUrl</code> in der Master-Base.
+      <!-- SERPER-INTEGRATION -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🔍 Serper.dev — Web-Anreicherung</h4>
+            <div style="font-size:12px;color:var(--muted);line-height:1.5">Holt HV-Stammdaten (Adresse, USt-IdNr, Steuernr) per Google-Suche + Claude-Haiku. Genutzt vom Button „🔍 Web-Daten holen" in den Vertragseditoren.</div>
+          </div>
+          <span id="vch-serper-status" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">–</span>
         </div>
+        <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px">
+          <div class="field" style="display:flex;flex-direction:column;gap:6px">
+            <label for="vchSerperKey" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Serper API-Key</label>
+            <input type="password" id="vchSerperKey" placeholder="••••••••••••" autocomplete="off" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
+            <span style="font-size:11.5px;color:var(--muted)">Hol den Key kostenlos unter <a href="https://serper.dev" target="_blank" style="color:var(--blue-mid);text-decoration:underline">serper.dev</a> (2.500 freie Anfragen) · wird beim „Proxy aktualisieren" auch als val.town Env-Var <code>SERPER_API_KEY</code> gesetzt</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button onclick="saveSerperConfig()" style="background:var(--green);border:none;color:#fff;border-radius:7px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer">💾 Speichern</button>
+          <button onclick="testSerperConfig()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">✓ Verbindung testen</button>
+          <div id="vch-serper-feedback" style="font-size:12px;color:var(--muted);align-self:center;margin-left:6px"></div>
+        </div>
+      </div>
+
+      <!-- VAL.TOWN PROXY-SETUP -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">
+        <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🔌 val.town — Backend-Proxy</h4>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:14px">Beim Klick legt die App auf val.town den Val <code>liftaroVorabcheckProxy</code> an oder updated den Code aus <code>vorabcheck/valtown-backend.ts</code>, setzt Env-Vars (Anthropic/Airtable/Turnstile/Serper) und legt die Airtable-Tabellen an.</div>
         <div style="display:flex;flex-direction:column;gap:14px">
           <div class="field" style="display:flex;flex-direction:column;gap:6px">
             <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Val.town API-Key</label>
@@ -3754,7 +3777,6 @@ const pdfWorkerReady = Promise.resolve();</script>
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </div>
@@ -3860,7 +3882,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.33';
+const APP_VERSION = 'V9.34';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -13806,9 +13828,16 @@ document.addEventListener('keydown', e => {
 function openVorabcheckHub() {
   if (!isAdmin()) { showToast('Nur Admins.', 'error'); return; }
   document.getElementById('vorabcheckHubModal').style.display = 'flex';
-  // Default-Tab + Daten laden
   switchVchTab('overview');
+}
+
+// Globale Einstellungen (val.town Proxy + Pipedrive + Serper)
+function openSettingsAdmin() {
+  if (!isAdmin()) { showToast('Nur Admins.', 'error'); return; }
+  document.getElementById('settingsAdminModal').style.display = 'flex';
   refreshVchSetupStatus();
+  renderPipedriveConfig();
+  renderSerperConfig();
 }
 function switchVchTab(tab) {
   document.querySelectorAll('.vch-tab').forEach(b => {
@@ -13823,7 +13852,7 @@ function switchVchTab(tab) {
   if (tab === 'prompts')  loadVorabcheckPrompts();
   if (tab === 'public')   renderVchPublicTab();
   if (tab === 'preise')   loadPreisreferenzen();
-  if (tab === 'setup')    refreshVchSetupStatus();
+  // 'setup' wurde nach ⚙️ Einstellungen ausgelagert (openSettingsAdmin)
 }
 
 // ── TAB: ÜBERSICHT ──────────────────────────────────────────────
@@ -14651,8 +14680,6 @@ function renderVchPublicTab() {
   urlEl.textContent = url;
   renderLandingThemeSelection();
   renderStartVariantSelection();
-  renderPipedriveConfig();
-  renderSerperConfig();
 }
 function vchPublicUrl() {
   // Aktuelle GitHub-Pages-URL (oder Custom Domain, wenn gesetzt)
