@@ -3883,7 +3883,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.40';
+const APP_VERSION = 'V9.41';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -12340,26 +12340,32 @@ async function openDashboardData() {
   if (!content) return;
   content.innerHTML = '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite"></div> Daten werden geladen …</div>';
 
-  let checks = [], vertraege = [], vorabchecks = [];
+  let checks = [], vertraege = [], vorabchecks = [], vorabcheckLeads = [], lightVertraege = [], lightWegs = [];
   try {
-    [checks, vertraege] = await Promise.all([
+    [checks, vertraege, lightVertraege] = await Promise.all([
       loadChecksFromAirtable(),
       loadVertraege(),
+      loadLightVertraege(),
     ]);
   } catch(e) { console.warn('Dashboard load:', e.message); }
 
-  // Vorabchecks separat (toleriert NOT_FOUND wenn Tabelle noch nicht angelegt ist)
+  // Vorabchecks + Vorabcheck-Leads parallel (toleriert NOT_FOUND)
+  try { vorabchecks = ((await atRead('Vorab-Checks', null, { sort: false })) || []).map(r => r.fields); }
+  catch(e) { console.warn('Vorabchecks load:', e.message); }
+  try { vorabcheckLeads = ((await atRead('Vorabcheck-Leads', null, { sort: false })) || []).map(r => r.fields); }
+  catch(e) { console.warn('Vorabcheck-Leads load:', e.message); }
+  // Light-WEGs für Aufzug-Summen
   try {
-    const recs = await atRead('Vorab-Checks', null, { sort: false });
-    vorabchecks = (recs || []).map(r => r.fields);
-  } catch(e) {
-    console.warn('Vorabchecks load:', e.message);
-    vorabchecks = [];
-  }
+    const recs = await atRead('Light-WEGs', null, { sort: false });
+    lightWegs = (recs || []).map(r => r.fields);
+  } catch(e) { console.warn('Light-WEGs load:', e.message); }
 
   window._dashAllChecks = checks;
   window._dashAllVertraege = vertraege;
   window._dashAllVorabchecks = vorabchecks;
+  window._dashAllVorabcheckLeads = vorabcheckLeads;
+  window._dashAllLightVertraege = lightVertraege;
+  window._dashAllLightWegs = lightWegs;
   renderDashboard();
 }
 
@@ -12367,6 +12373,111 @@ function toggleDashStatus(v) {
   const set = window._dashStatusFilter;
   if (set.has(v)) set.delete(v); else set.add(v);
   renderDashboard();
+}
+
+// Filter-Toggle für Vorabchecks im Dashboard
+function toggleVcAmp(v) {
+  window._dashVcAmpFilt = window._dashVcAmpFilt || new Set();
+  if (window._dashVcAmpFilt.has(v)) window._dashVcAmpFilt.delete(v);
+  else window._dashVcAmpFilt.add(v);
+  renderDashboard();
+}
+function toggleVcRoll(v) {
+  window._dashVcRollFilt = window._dashVcRollFilt || new Set();
+  if (window._dashVcRollFilt.has(v)) window._dashVcRollFilt.delete(v);
+  else window._dashVcRollFilt.add(v);
+  renderDashboard();
+}
+
+// Detail-Modal für einen Vorabcheck: Kontaktdaten (Vorabcheck-Leads) + Result + Pipedrive-Link
+async function openVorabcheckDetail(checkNr) {
+  if (!checkNr) return;
+  const vorabchecks = window._dashAllVorabchecks || [];
+  const leads = window._dashAllVorabcheckLeads || [];
+  const vc = vorabchecks.find(v => v.check_nr === checkNr);
+  const ld = leads.find(l => l.check_nr === checkNr);
+  if (!vc) { showToast('Vorabcheck nicht gefunden: ' + checkNr, 'error'); return; }
+  // Modal existiert ggf. noch nicht — DOM einbauen
+  let m = document.getElementById('vorabcheckDetailModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'vorabcheckDetailModal';
+    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5500;align-items:center;justify-content:center;backdrop-filter:blur(6px)';
+    document.body.appendChild(m);
+  }
+  const amp = vc.ampel === 'gruen' ? '🟢 Grün' : vc.ampel === 'gelb' ? '🟡 Gelb' : vc.ampel === 'rot' ? '🔴 Rot' : '—';
+  const ampCol = vc.ampel === 'gruen' ? '#3d7a14' : vc.ampel === 'gelb' ? '#a06a00' : vc.ampel === 'rot' ? '#a8312f' : '#94a3b8';
+  const sav = Number(vc.savings_estimate_eur || vc.savings_total_eur || 0);
+  const savInd = Number(vc.savings_individual_eur || 0);
+  const date = vc.savedAt ? new Date(vc.savedAt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  const fullName = [ld?.vorname, ld?.nachname].filter(Boolean).join(' ') || '—';
+  // Pipedrive-Link bauen
+  let pipedriveBlock = '';
+  const pdDomain = (APP_KEYS.pipedriveDomain || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const leadId = vc.pipedrive_lead_id || '';
+  if (pdDomain && leadId) {
+    const directUrl = 'https://' + pdDomain + '/leads/inbox/' + leadId;
+    pipedriveBlock = `
+      <div style="background:#fff;border:1.5px solid var(--green);border-radius:10px;padding:12px 14px;margin-top:10px">
+        <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🎯 Pipedrive-Lead (fest verknüpft)</div>
+        <div style="font-size:12.5px;color:var(--text);margin-bottom:6px">Lead-ID: <code>${leadId}</code></div>
+        <a href="${directUrl}" target="_blank" rel="noopener" style="background:var(--green);color:#fff;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px">Lead in Pipedrive öffnen →</a>
+      </div>`;
+  } else if (pdDomain) {
+    const searchUrl = 'https://' + pdDomain + '/search?term=' + encodeURIComponent(checkNr) + '&page=1';
+    pipedriveBlock = `
+      <div style="background:#fff7e6;border:1.5px solid #f0d4a8;border-radius:10px;padding:12px 14px;margin-top:10px">
+        <div style="font-size:10.5px;font-weight:700;color:#7a4d00;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🎯 Pipedrive-Lead</div>
+        <div style="font-size:12px;color:var(--ink-2);margin-bottom:6px">Keine direkte Lead-ID gespeichert (älterer Eintrag). Suche per Check-Nr:</div>
+        <a href="${searchUrl}" target="_blank" rel="noopener" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:6px;padding:7px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px">In Pipedrive nach „${checkNr}" suchen →</a>
+      </div>`;
+  } else {
+    pipedriveBlock = '<div style="color:var(--muted);font-size:11.5px;margin-top:10px;font-style:italic">Pipedrive nicht konfiguriert — kein Direkt-Link verfügbar.</div>';
+  }
+  m.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+      <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div>
+          <span style="color:#fff;font-size:15px;font-weight:700">🛡️ Vorabcheck · ${checkNr}</span>
+          <span style="color:rgba(255,255,255,.55);font-size:11px;margin-left:8px">${date}</span>
+        </div>
+        <button onclick="document.getElementById('vorabcheckDetailModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;font-size:13.5px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span style="background:${ampCol};color:#fff;border-radius:10px;padding:3px 11px;font-size:12px;font-weight:700">${amp}</span>
+          <span style="color:var(--muted);font-size:12px">${vc.check_type || '—'} · ${vc.role || '—'}</span>
+        </div>
+        <div style="background:#f3faea;border:1.5px solid #c9e6a8;border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#3d7a14;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Sparpotenzial</div>
+          <div style="font-size:18px;font-weight:700;color:var(--navy)">${_fmtEuro(sav)} <span style="font-size:13px;font-weight:400;color:var(--muted)">/ Jahr (Gesamt)</span></div>
+          ${savInd > 0 ? `<div style="font-size:12.5px;color:var(--ink-2);margin-top:2px">Anteil individuell: <strong>${_fmtEuro(savInd)}</strong></div>` : ''}
+        </div>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+          <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">👤 Kontaktdaten (aus Vorabcheck-Leads)</div>
+          ${ld ? `
+            <div style="font-size:13px;color:var(--text);line-height:1.6">
+              <div><strong>${fullName.replace(/[<>"&]/g,'')}</strong></div>
+              <div>${ld.email ? `✉ <a href="mailto:${ld.email}" style="color:var(--blue-mid)">${ld.email}</a>` : 'keine E-Mail'}</div>
+              ${ld.telefon ? `<div>📞 <a href="tel:${ld.telefon}" style="color:var(--blue-mid)">${ld.telefon}</a></div>` : ''}
+              ${ld.adresse ? `<div>📍 ${String(ld.adresse).replace(/[<>"&]/g,'')}</div>` : ''}
+            </div>
+          ` : '<div style="color:var(--muted);font-style:italic;font-size:12px">Keine Lead-Daten gefunden (Tabelle Vorabcheck-Leads).</div>'}
+        </div>
+        ${pipedriveBlock}
+        ${vc.summary ? `
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📝 KI-Zusammenfassung</div>
+            <div style="font-size:13px;color:var(--ink-2);line-height:1.5">${String(vc.summary).replace(/[<>"&]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))}</div>
+          </div>` : ''}
+        ${vc.aufzug_positionen_text ? `
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🛗 Aufzug-Positionen aus dem Dokument</div>
+            <pre style="font-size:12px;color:var(--ink-2);white-space:pre-wrap;font-family:'DM Mono',monospace;margin:0">${String(vc.aufzug_positionen_text).replace(/[<>"&]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))}</pre>
+          </div>` : ''}
+      </div>
+    </div>`;
+  m.style.display = 'flex';
 }
 
 // ── Vertragscheck-Jahresrechnungs-Historie im Hauptformular ────────
@@ -13145,87 +13256,161 @@ function renderDashboard() {
     : '';
 
   // ── Vorabcheck-Stats (öffentliche Landing) ──
-  const vorabchecks = window._dashAllVorabchecks || [];
+  const vorabchecksAll = window._dashAllVorabchecks || [];
+  // Filter-State init
+  window._dashVcHidden  = window._dashVcHidden  || false;
+  window._dashVcAmpFilt = window._dashVcAmpFilt || new Set();
+  window._dashVcRollFilt= window._dashVcRollFilt|| new Set();
+  // Filter anwenden
+  const vorabchecks = vorabchecksAll.filter(v => {
+    if (window._dashVcAmpFilt.size  && !window._dashVcAmpFilt.has(v.ampel || '')) return false;
+    if (window._dashVcRollFilt.size && !window._dashVcRollFilt.has(v.role  || '')) return false;
+    return true;
+  });
   const vcTotal = vorabchecks.length;
+  const vcTotalAll = vorabchecksAll.length;
   const vcGruen = vorabchecks.filter(v => v.ampel === 'gruen').length;
   const vcGelb  = vorabchecks.filter(v => v.ampel === 'gelb').length;
   const vcRot   = vorabchecks.filter(v => v.ampel === 'rot').length;
   const vcSavings = vorabchecks.reduce((s, v) => s + (Number(v.savings_estimate_eur || v.savings_total_eur) || 0), 0);
-  // Letzte 7 Tage
   const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const vcLast7 = vorabchecks.filter(v => v.savedAt && new Date(v.savedAt) > sevenDaysAgo).length;
-  // Aufschlüsselung nach Rolle
   const vcMieter      = vorabchecks.filter(v => v.role === 'mieter').length;
   const vcEigentuemer = vorabchecks.filter(v => v.role === 'eigentuemer').length;
   const vcVerwalter   = vorabchecks.filter(v => v.role === 'verwalter').length;
-  // Aufschlüsselung nach Check-Typ
   const vcNK      = vorabchecks.filter(v => v.check_type === 'nebenkosten').length;
   const vcAngebot = vorabchecks.filter(v => v.check_type === 'angebot').length;
   const vcWartung = vorabchecks.filter(v => v.check_type === 'wartung').length;
 
-  // Vorabcheck-Block-HTML (nur rendern wenn Daten da)
-  const vcBlock = vcTotal === 0 ? '' : `
+  // Filter-Chips (Ampel + Rolle)
+  const ampChips = [
+    { v: 'gruen', l: '🟢 Grün', col: '#3d7a14' },
+    { v: 'gelb',  l: '🟡 Gelb', col: '#a06a00' },
+    { v: 'rot',   l: '🔴 Rot',  col: '#a8312f' },
+  ].map(s => {
+    const cnt = vorabchecksAll.filter(v => v.ampel === s.v).length;
+    const a = window._dashVcAmpFilt.has(s.v);
+    return `<button type="button" onclick="toggleVcAmp('${s.v}')" style="padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid ${a ? s.col : 'var(--border)'};background:${a ? s.col : '#fff'};color:${a ? '#fff' : s.col};font-family:'DM Sans',sans-serif;transition:all .15s">${s.l} (${cnt})</button>`;
+  }).join(' ');
+  const rollChips = [
+    { v: 'mieter', l: 'Mieter', col: '#94a3b8' },
+    { v: 'eigentuemer', l: 'Eigentümer', col: '#7dc242' },
+    { v: 'verwalter', l: 'Verwalter', col: '#2d5f96' },
+  ].map(s => {
+    const cnt = vorabchecksAll.filter(v => v.role === s.v).length;
+    const a = window._dashVcRollFilt.has(s.v);
+    return `<button type="button" onclick="toggleVcRoll('${s.v}')" style="padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid ${a ? s.col : 'var(--border)'};background:${a ? s.col : '#fff'};color:${a ? '#fff' : s.col};font-family:'DM Sans',sans-serif;transition:all .15s">${s.l} (${cnt})</button>`;
+  }).join(' ');
+  const vcResetBtn = (window._dashVcAmpFilt.size || window._dashVcRollFilt.size)
+    ? `<button type="button" onclick="window._dashVcAmpFilt.clear();window._dashVcRollFilt.clear();renderDashboard()" style="padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif">✕ Reset</button>`
+    : '';
+
+  // Vorabcheck-Block-HTML
+  const vcBlock = window._dashVcHidden ? `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:6px">
+      <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)">
+        <span style="background:#0e2440;color:#fff;border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:700">🛡️ Vorabchecks</span>
+        <span>${vcTotalAll} Einträge · ausgeblendet</span>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+        <input type="checkbox" onchange="window._dashVcHidden=false;renderDashboard()" style="accent-color:var(--navy);width:14px;height:14px"> einblenden
+      </label>
+    </div>` : (vcTotalAll === 0 ? '' : `
     <div style="background:linear-gradient(135deg,#f8faff,#fff);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:6px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="background:#0e2440;color:#fff;border-radius:4px;padding:3px 9px;font-size:11px;font-weight:700;letter-spacing:.3px">🛡️ VORABCHECKS</span>
-          <span style="font-size:12px;color:var(--muted)">Öffentliche Landing · ${vcLast7 > 0 ? `<strong style="color:#3d7a14">+${vcLast7} in 7 Tagen</strong>` : 'kein neuer Eintrag in 7 Tagen'}</span>
+          <span style="font-size:12px;color:var(--muted)">${vcLast7 > 0 ? `<strong style="color:#3d7a14">+${vcLast7} in 7 Tagen</strong>` : 'kein neuer Eintrag in 7 Tagen'}${window._dashVcAmpFilt.size||window._dashVcRollFilt.size ? ` · Filter aktiv: ${vcTotal}/${vcTotalAll}` : ''}</span>
         </div>
-        <button onclick="openVorabcheckHub()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer">Übersicht öffnen →</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;cursor:pointer;color:var(--muted)">
+            <input type="checkbox" onchange="window._dashVcHidden=true;renderDashboard()" style="accent-color:var(--navy);width:13px;height:13px"> ausblenden
+          </label>
+          <button onclick="openVorabcheckHub()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer">Hub öffnen →</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+        <span style="font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-right:4px">Filter:</span>
+        ${ampChips} <span style="width:1px;height:14px;background:var(--border);margin:0 4px"></span> ${rollChips} ${vcResetBtn}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
-        ${kachel('Vorabchecks gesamt', String(vcTotal), '#1a3a5c', `${vcNK} Nebenk · ${vcAngebot} Angebot · ${vcWartung} Wartung`)}
+        ${kachel('Vorabchecks', String(vcTotal), '#1a3a5c', `${vcNK} Nebenk · ${vcAngebot} Angebot · ${vcWartung} Wartung`)}
         ${kachel('Sparpotenzial-Pool', _fmtEuro(vcSavings), '#0e6655', 'Summe geschätzter Ersparnisse')}
-        ${kachel('🟢 Grün', String(vcGruen), '#3d7a14', vcTotal ? Math.round(vcGruen*100/vcTotal) + ' %' : '0 %')}
-        ${kachel('🟡 Gelb', String(vcGelb),  '#a06a00', vcTotal ? Math.round(vcGelb*100/vcTotal)  + ' %' : '0 %')}
-        ${kachel('🔴 Rot',  String(vcRot),   '#a8312f', vcTotal ? Math.round(vcRot*100/vcTotal)   + ' %' : '0 %')}
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
-        ${kachel('Mieter',      String(vcMieter),      '#94a3b8')}
-        ${kachel('Eigentümer',  String(vcEigentuemer), '#7dc242')}
-        ${kachel('Verwalter',   String(vcVerwalter),   '#2d5f96')}
+        ${kachel('Mieter / Eig. / Verw.', `${vcMieter} / ${vcEigentuemer} / ${vcVerwalter}`, '#7dc242', 'Verteilung nach Rolle')}
+        ${kachel('🟢 / 🟡 / 🔴', `${vcGruen} / ${vcGelb} / ${vcRot}`, '#a06a00', 'Ampel-Verteilung')}
       </div>
       ${(function() {
-        // Letzte 5 Einträge als Mini-Liste
-        const latest = vorabchecks.slice().sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || '')).slice(0, 5);
-        if (!latest.length) return '';
+        const latest = vorabchecks.slice().sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || '')).slice(0, 8);
+        if (!latest.length) return '<div style="background:#fff;border:1px dashed var(--border);border-radius:8px;padding:18px;text-align:center;color:var(--muted);font-size:12.5px">Keine Treffer für den aktuellen Filter.</div>';
         const rows = latest.map(v => {
           const date = v.savedAt ? new Date(v.savedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '–';
-          const ampCol = v.ampel === 'gruen' ? '#3d7a14' : v.ampel === 'gelb' ? '#a06a00' : v.ampel === 'rot' ? '#a8312f' : '#94a3b8';
           const ampLab = v.ampel === 'gruen' ? '🟢' : v.ampel === 'gelb' ? '🟡' : v.ampel === 'rot' ? '🔴' : '⚪';
           const sav = Number(v.savings_estimate_eur || v.savings_total_eur || 0);
-          const summary = String(v.summary || '').slice(0, 80);
-          return `<div style="display:grid;grid-template-columns:60px 28px 90px 110px 1fr;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px">
+          const summary = String(v.summary || '').slice(0, 90).replace(/[<>"&]/g, '');
+          const cnEsc = (v.check_nr || '').replace(/'/g, "\\'");
+          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 90px 110px 1fr 14px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
             <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px">${date}</span>
             <span style="text-align:center">${ampLab}</span>
             <span style="color:var(--text);text-transform:capitalize">${v.check_type || '–'}</span>
             <span style="font-family:'DM Mono',monospace;color:#3d7a14;font-weight:700">${sav > 0 ? _fmtEuro(sav) : '–'}</span>
-            <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${summary.replace(/[<>"&]/g, '')}</span>
+            <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${summary}</span>
+            <span style="color:var(--muted);font-size:14px">›</span>
           </div>`;
         }).join('');
         return `
           <div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px">
-            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:8px 10px;background:var(--sky);border-bottom:1px solid var(--border)">Letzte ${latest.length}</div>
+            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;background:var(--sky);border-bottom:1px solid var(--border)">Letzte ${latest.length} · Klick für Details</div>
             ${rows}
           </div>`;
       })()}
+    </div>`);
+
+  // ── Light-Verträge-Stats ──
+  const lightAll = window._dashAllLightVertraege || [];
+  const lightWegsAll = window._dashAllLightWegs || [];
+  const lightAktiv = lightAll.filter(l => (l.status || 'entwurf') === 'aktiv').length;
+  const lightEntwurf = lightAll.filter(l => (l.status || 'entwurf') === 'entwurf').length;
+  const lightAufzSum = lightWegsAll.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
+  // Jahresumme: pro Light-Vertrag = anzahl_aufzuege aller WEGs × monatspreis × 12
+  const lightJahrSum = lightAll.reduce((s, l) => {
+    const preis = Number(l.monatspreis_je_aufzug_eur) || 45;
+    const wegs = lightWegsAll.filter(w => w.light_vertrag_id === l.id);
+    const auf = wegs.reduce((a, w) => a + (Number(w.anzahl_aufzuege) || 0), 0);
+    return s + (auf * preis * 12);
+  }, 0);
+
+  // Verträge-Block (Rahmen + Light parallel)
+  const vertraegeBlock = `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:6px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📑 Verträge</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        ${kachel('Rahmenverträge', vertraege.length, '#2d5f96', `${signedCount} unterschrieben · ${openCount} offen`)}
+        ${kachel('Light-Verträge', lightAll.length, '#7c3aed', `${lightAktiv} aktiv · ${lightEntwurf} Entwurf`)}
+        ${kachel('Light: Aufzüge', String(lightAufzSum), '#5b21b6', `${lightWegsAll.length} WEG${lightWegsAll.length===1?'':'s'} betreut`)}
+        ${kachel('Light: Jahresumsatz', _fmtEuro(lightJahrSum), '#0e6655', 'Pauschale jährlich vorab')}
+        ${aktiveVertraege.length ? kachel('Aktive Wartungs-Verträge', aktiveVertraege.length, '#0e6655', `${billingBuckets.overdue.length} überfällig · ${billingBuckets.due14.length} in 14 Tagen`) : ''}
+      </div>
     </div>`;
 
   content.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Filter:</span>
-      ${statusChipsHtml}
-      ${resetBtn}
-      <span style="margin-left:auto;font-size:11px;color:var(--muted)">${statusSet.size ? `Zeigt ${checks.length} von ${checksAll.length} Checks` : `Alle ${checksAll.length} Checks`}</span>
-    </div>
-
     ${vcBlock}
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
-      ${kachel('Verträge gesamt',   vertraege.length, '#2d5f96', `${signedCount} unterschrieben · ${openCount} offen`)}
-      ${kachel('Checks gesamt',     checks.length,    '#7dc242', `${checksReparatur} Reparatur · ${checksWartung} Vertrag`)}
-      ${kachel('Verknüpfte Checks', `${matched} <span style="font-size:14px;color:var(--muted);font-weight:400">/ ${checks.length}</span>`, '#1a3a5c', `${matchPct}% Vertragskunden-Treffer`)}
-      ${aktiveVertraege.length ? kachel('Aktive Verträge', aktiveVertraege.length, '#0e6655', `${billingBuckets.overdue.length} überfällig · ${billingBuckets.due14.length} in 14 Tagen`) : ''}
+    ${vertraegeBlock}
+
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">🔧 Reparatur- + Wartungs-Checks (Admin)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+          <span style="font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-right:2px">Filter:</span>
+          ${statusChipsHtml}
+          ${resetBtn}
+          <span style="font-size:11px;color:var(--muted);margin-left:4px">${statusSet.size ? `${checks.length}/${checksAll.length}` : `${checksAll.length}`}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        ${kachel('Checks gesamt',     checks.length,    '#7dc242', `${checksReparatur} Reparatur · ${checksWartung} Vertrag`)}
+        ${kachel('Verknüpfte Checks', `${matched} <span style="font-size:14px;color:var(--muted);font-weight:400">/ ${checks.length}</span>`, '#1a3a5c', `${matchPct}% Vertragskunden-Treffer`)}
+      </div>
     </div>
 
     ${billingBlock}
