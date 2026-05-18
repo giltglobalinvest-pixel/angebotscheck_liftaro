@@ -1292,26 +1292,42 @@ async function saveToAirtable(data: {
   const at = `https://api.airtable.com/v0/${base}`;
   const headers = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" };
 
+  // Robust POST: bei 'Unknown field name: X' wird X aus dem Body entfernt und retried.
+  // Damit ueberlebt der Save auch wenn die Airtable-Tabelle nicht alle Felder hat.
+  async function atPostSafe(tableUrl: string, fieldsIn: Record<string, any>) {
+    const fields = { ...fieldsIn };
+    for (let i = 0; i < 12; i++) {
+      try {
+        const r = await fetch(tableUrl, { method: 'POST', headers, body: JSON.stringify({ fields }) });
+        if (r.ok) return;
+        const txt = await r.text();
+        const m = txt.match(/Unknown field name:\s*"?([^"\\]+)"?/i);
+        if (m && m[1] && Object.prototype.hasOwnProperty.call(fields, m[1])) {
+          delete fields[m[1]];
+          console.warn('[Airtable] retry ohne unbekanntes Feld:', m[1]);
+          continue;
+        }
+        console.warn('[Airtable]', tableUrl.slice(-30), 'POST fehlgeschlagen:', txt.slice(0, 200));
+        return;
+      } catch (e: any) { console.warn('[Airtable]', tableUrl, e.message); return; }
+    }
+  }
+
   const totalEur = Number(data.result.savings_total_eur || data.result.savings_estimate_eur || 0);
   const indivEur = Number(data.result.savings_individual_eur || 0);
 
-  await fetch(`${at}/Vorabcheck-Leads`, {
-    method: "POST", headers,
-    body: JSON.stringify({
-      fields: {
-        check_nr: data.check_nr,
-        check_type: data.check_type,
-        role: data.role,
-        vorname: data.lead.vorname,
-        nachname: data.lead.nachname,
-        email: data.lead.email,
-        telefon: data.lead.telefon || "",
-        adresse: data.lead.adresse,
-        file_name: data.file_name,
-        savedAt: new Date().toISOString(),
-      },
-    }),
-  }).catch(e => console.warn("Lead-Save:", e.message));
+  await atPostSafe(`${at}/Vorabcheck-Leads`, {
+    check_nr: data.check_nr,
+    check_type: data.check_type,
+    role: data.role,
+    vorname: data.lead.vorname,
+    nachname: data.lead.nachname,
+    email: data.lead.email,
+    telefon: data.lead.telefon || "",
+    adresse: data.lead.adresse,
+    file_name: data.file_name,
+    savedAt: new Date().toISOString(),
+  });
 
   const aufzugPositionen = Array.isArray(data.result.aufzug_positionen) ? data.result.aufzug_positionen : [];
   const aufzugPositionenText = aufzugPositionen
@@ -1322,43 +1338,33 @@ async function saveToAirtable(data: {
     aufzugGesamtkosten = aufzugPositionen.reduce((s: number, p: any) => s + (Number(p.betrag_eur) || 0), 0);
   }
 
-  await fetch(`${at}/Vorab-Checks`, {
-    method: "POST", headers,
-    body: JSON.stringify({
-      fields: {
-        check_nr: data.check_nr,
-        check_type: data.check_type,
-        role: data.role,
-        ampel: data.result.ampel,
-        summary: data.result.summary,
-        savings_estimate_eur: totalEur,
-        savings_total_eur: totalEur,
-        savings_individual_eur: indivEur,
-        aufzug_count: Number(data.result.aufzug_count || 0),
-        parteien_count: Number(data.result.parteien_count || 0),
-        aufzug_gesamtkosten_eur: aufzugGesamtkosten,
-        aufzug_positionen_text: aufzugPositionenText,
-        aufzug_positionen_json: JSON.stringify(aufzugPositionen),
-        findings_json: JSON.stringify(data.result.findings || []),
-        anonymized_data_json: JSON.stringify(data.result.anonymized_data || {}),
-        savedAt: new Date().toISOString(),
-      },
-    }),
-  }).catch(e => console.warn("VorabCheck-Save:", e.message));
+  await atPostSafe(`${at}/Vorab-Checks`, {
+    check_nr: data.check_nr,
+    check_type: data.check_type,
+    role: data.role,
+    ampel: data.result.ampel,
+    summary: data.result.summary,
+    savings_estimate_eur: totalEur,
+    savings_total_eur: totalEur,
+    savings_individual_eur: indivEur,
+    aufzug_count: Number(data.result.aufzug_count || 0),
+    parteien_count: Number(data.result.parteien_count || 0),
+    aufzug_gesamtkosten_eur: aufzugGesamtkosten,
+    aufzug_positionen_text: aufzugPositionenText,
+    aufzug_positionen_json: JSON.stringify(aufzugPositionen),
+    findings_json: JSON.stringify(data.result.findings || []),
+    anonymized_data_json: JSON.stringify(data.result.anonymized_data || {}),
+    savedAt: new Date().toISOString(),
+  });
 
-  await fetch(`${at}/API-Cost-Log`, {
-    method: "POST", headers,
-    body: JSON.stringify({
-      fields: {
-        check_nr: data.check_nr,
-        endpoint: "vorabcheck",
-        model: data.model,
-        tokens_in: data.tokens_in,
-        tokens_out: data.tokens_out,
-        cost_eur: Math.round(data.cost_eur * 10000) / 10000,
-        duration_ms: data.duration_ms,
-        savedAt: new Date().toISOString(),
-      },
-    }),
-  }).catch(e => console.warn("Cost-Log:", e.message));
+  await atPostSafe(`${at}/API-Cost-Log`, {
+    check_nr: data.check_nr,
+    endpoint: "vorabcheck",
+    model: data.model,
+    tokens_in: data.tokens_in,
+    tokens_out: data.tokens_out,
+    cost_eur: Math.round(data.cost_eur * 10000) / 10000,
+    duration_ms: data.duration_ms,
+    savedAt: new Date().toISOString(),
+  });
 }
