@@ -906,6 +906,17 @@ export default async function (req: Request): Promise<Response> {
         model: MODEL,
       }, 200, corsHeaders);
     }
+    if (body.action === '__diag') {
+      return jsonResp({
+        backend_version: 'V9.48',
+        has_airtable_key: !!Deno.env.get("AIRTABLE_KEY"),
+        airtable_base_id: Deno.env.get("AIRTABLE_BASE_ID") || '',
+        has_anthropic_key: !!Deno.env.get("ANTHROPIC_KEY"),
+        has_turnstile_secret: !!Deno.env.get("TURNSTILE_SECRET_KEY"),
+        has_serper_key: !!Deno.env.get("SERPER_API_KEY"),
+        atpostsafe_compiled: typeof DEFAULT_SYSTEM_PROMPTS !== 'undefined',
+      }, 200, corsHeaders);
+    }
 
     if (body.action === 'correct') {
       const cn = String(body.check_nr || '').trim();
