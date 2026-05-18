@@ -1068,8 +1068,11 @@ export default async function (req: Request): Promise<Response> {
 
     if (body.action === 'submit_eigentuemer_cta') {
       const c = body.cta || {};
-      const hvName  = String(c.hv_name  || '').trim();
-      const hvEmail = String(c.hv_email || '').trim();
+      const hvName    = String(c.hv_name  || '').trim();
+      const hvEmail   = String(c.hv_email || '').trim();
+      const hvAddress = String(c.hv_address || '').trim();
+      const hvTelefon = String(c.hv_telefon || '').trim();
+      const hvWebsite = String(c.hv_website || '').trim();
       const userEmail = String(c.user_email || '').trim();
       const userName  = String(c.user_name  || '').trim() || userEmail || 'Anonym';
       const checkNr   = String(c.check_nr || '').trim() || '—';
@@ -1083,12 +1086,31 @@ export default async function (req: Request): Promise<Response> {
         let orgId: number | null = org?.id || null;
         let orgCreated = false;
         if (!orgId) {
+          // Bei neuer Org: Web-Adresse als Pipedrive-Address-Feld nutzen, Source 'ki_web' wenn aus Web-Suche
           const created = await createPipedriveOrgWithEmail({
             name: hvName,
             email: isGenericHvEmail(hvEmail) ? hvEmail : undefined,
-            source: 'user_verifiziert',
+            city: hvAddress || undefined,
+            source: hvAddress ? 'ki_web' : 'user_verifiziert',
           });
-          if (created.ok && created.org_id) { orgId = created.org_id; orgCreated = true; }
+          if (created.ok && created.org_id) {
+            orgId = created.org_id;
+            orgCreated = true;
+            // Telefon + Website als Note an die neue Org haengen (Pipedrive-Org-Update fuer custom fields umstaendlich)
+            if (hvTelefon || hvWebsite) {
+              const cfgN = await loadPipedriveConfig();
+              if (cfgN) {
+                const noteContent = '🔍 Aus Web-Suche extrahiert:\n' +
+                  (hvAddress ? 'Adresse: ' + hvAddress + '\n' : '') +
+                  (hvTelefon ? 'Telefon: ' + hvTelefon + '\n' : '') +
+                  (hvWebsite ? 'Website: ' + hvWebsite + '\n' : '');
+                await fetch('https://' + cfgN.domain + '/api/v1/notes?api_token=' + encodeURIComponent(cfgN.token), {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ content: noteContent, org_id: orgId }),
+                }).catch(() => { /* non-critical */ });
+              }
+            }
+          }
         }
 
         if (orgId && !orgCreated && hvEmail && isGenericHvEmail(hvEmail)) {
