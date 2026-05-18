@@ -988,6 +988,63 @@ export default async function (req: Request): Promise<Response> {
         } }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
+    if (body.action === 'enrich_property_manager') {
+      const name = String(body.name || '').trim();
+      const city = String(body.city || '').trim();
+      if (!name) return jsonResp({ ok: false, error: 'name required' }, 400, corsHeaders);
+      const atKey = Deno.env.get("AIRTABLE_KEY");
+      let serperKey = '';
+      try {
+        const url = 'https://api.airtable.com/v0/' + PIPEDRIVE_MASTER_BASE + '/Keys?filterByFormula=' +
+          encodeURIComponent("AND({project_id}='" + PIPEDRIVE_PROJECT_ID + "',{key_name}='serperApiKey')");
+        const r = await fetch(url, { headers: { Authorization: 'Bearer ' + atKey } });
+        const d = await r.json();
+        serperKey = String(d?.records?.[0]?.fields?.key_value || '').trim();
+      } catch (e) { /* */ }
+      if (!serperKey) return jsonResp({ ok: false, error: 'serperApiKey nicht konfiguriert (Master-Base Schluessel serperApiKey)' }, 500, corsHeaders);
+      const q = '"' + name + '"' + (city ? ' ' + city : '') + ' Hausverwaltung Impressum';
+      let snippets = '';
+      try {
+        const sr = await fetch('https://google.serper.dev/search', {
+          method: 'POST',
+          headers: { 'X-API-KEY': serperKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q, gl: 'de', hl: 'de', num: 5 }),
+        });
+        const sd = await sr.json();
+        const hits = Array.isArray(sd.organic) ? sd.organic.slice(0, 3) : [];
+        snippets = hits.map((h: any) => 'URL: ' + (h.link || '') + '\nTitel: ' + (h.title || '') + '\nSnippet: ' + (h.snippet || '')).join('\n\n');
+      } catch (e: any) { return jsonResp({ ok: false, error: 'Serper: ' + e.message }, 500, corsHeaders); }
+      if (!snippets) return jsonResp({ ok: false, error: 'Keine Suchergebnisse' }, 404, corsHeaders);
+      const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_KEY") });
+      const sys = 'Du extrahierst Stammdaten von Hausverwaltungen aus Google-Suchergebnis-Snippets. WICHTIG: Gib NUR Werte zurueck, die WORTWOERTLICH in den Snippets vorkommen. Wenn ein Feld nicht eindeutig im Text steht, setze es auf null. Erfinde NICHTS. Antworte ausschliesslich als JSON ohne Fliesstext und ohne Markdown-Code-Block.';
+      const userPrompt = 'Hausverwaltung: "' + name + '"' + (city ? ' in ' + city : '') + '\n\nExtrahiere die offiziellen Stammdaten.\n\nFormat:\n{\n  "strasse": "...",\n  "plz": "...",\n  "ort": "...",\n  "telefon": "...",\n  "email": "...",\n  "ustidnr": "DEXXXXXXXXX",\n  "steuernr": "...",\n  "website": "..."\n}\n\nSuchergebnisse:\n' + snippets;
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 600,
+          system: sys,
+          messages: [{ role: 'user', content: userPrompt }],
+        });
+        const txt = (msg.content[0] as any)?.type === 'text' ? (msg.content[0] as any).text : '';
+        const jm = txt.match(/\{[\s\S]*\}/);
+        if (!jm) return jsonResp({ ok: false, error: 'KI hat keine Daten geliefert' }, 200, corsHeaders);
+        const raw = JSON.parse(jm[0]);
+        const snipLow = snippets.toLowerCase();
+        const snipNoSpace = snipLow.replace(/\s+/g, '');
+        const data: any = {};
+        for (const k of ['strasse','plz','ort','telefon','email','ustidnr','steuernr','website']) {
+          const v = raw[k];
+          if (v && typeof v === 'string' && v !== 'null' && v.trim().length > 1) {
+            const vLow = String(v).toLowerCase();
+            const vNoSpace = vLow.replace(/\s+/g, '');
+            if (snipLow.includes(vLow) || snipNoSpace.includes(vNoSpace)) {
+              data[k] = String(v).trim();
+            }
+          }
+        }
+        return jsonResp({ ok: true, data, snippet_count: snippets.split('\n\n').length }, 200, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: 'Claude: ' + e.message }, 500, corsHeaders); }
+    }
     if (body.action === 'find_property_manager') {
       const q = String(body.query || '').trim();
       if (q.length < 3) return jsonResp({ ok: true, results: [] }, 200, corsHeaders);
