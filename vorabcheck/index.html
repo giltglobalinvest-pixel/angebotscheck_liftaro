@@ -842,6 +842,7 @@ html[data-theme="liftaro"] .liftaro-step-desc {
         <div id="dev-shortcut" style="display:none;background:#fff7e6;border:1.5px dashed #f0a020;border-radius:10px;padding:12px 14px;margin-bottom:18px;align-items:center;gap:10px;flex-wrap:wrap">
           <span style="font-size:13px;color:#7a4d00">🧪 <strong>Dev-Mode aktiv</strong> · Schritt mit Test-Daten überspringen?</span>
           <button type="button" id="dev-fill-submit" style="background:#f0a020;border:none;color:#fff;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer">Test-Daten + sofort starten →</button>
+          <button type="button" id="dev-disable" style="background:#fff;border:1.5px solid #f0a020;color:#7a4d00;border-radius:7px;padding:7px 12px;font-size:11.5px;font-weight:600;cursor:pointer;margin-left:auto">✕ Dev-Mode aus</button>
         </div>
         <h3>Wohin schicken wir die Check-Nummer?</h3>
         <p class="sub">Sie erhalten direkt nach der Analyse eine Check-Nummer angezeigt. Für Rückfragen oder eine ausführliche Beratung speichern wir Ihre Kontaktdaten verschlüsselt.</p>
@@ -1326,10 +1327,16 @@ const _DEV_DEFAULTS = {
         });
         const cons = document.getElementById('consent');
         if (cons) cons.checked = true;
-        // Turnstile im Dev-Mode überspringen
         _turnstileToken = _turnstileToken || 'dev-bypass-token';
-        // Direkt den regulären Submit-Knopf triggern
         document.getElementById('to-step-3').click();
+      });
+      // Deaktivieren-Button: localStorage löschen + Seite ohne Dev-Mode neu laden
+      const offBtn = document.getElementById('dev-disable');
+      if (offBtn) offBtn.addEventListener('click', () => {
+        try { localStorage.removeItem('liftaro-dev-mode'); } catch(e) {}
+        const u = new URL(location.href);
+        u.searchParams.delete('dev');
+        location.replace(u.toString());
       });
     });
   } catch (e) {}
