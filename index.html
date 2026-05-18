@@ -3293,7 +3293,8 @@ const pdfWorkerReady = Promise.resolve();</script>
     </div>
     <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button id="lv_btnPreview" disabled title="PDF-Generator kommt in der nächsten Phase mit dem finalen Wortlaut" style="background:#fff;border:1.5px dashed var(--border);color:var(--muted);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:not-allowed">👁 PDF-Vorschau (Phase 2)</button>
+        <button id="lv_btnPreview" onclick="previewLightVertrag()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">👁 Vorschau</button>
+        <button id="lv_btnDownload" onclick="downloadLightVertrag()" style="background:#fff;border:1.5px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">⬇ PDF herunterladen</button>
       </div>
       <div style="display:flex;gap:8px">
         <button id="lv_btnDelete" onclick="deleteLightVertragCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
@@ -3882,7 +3883,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.34';
+const APP_VERSION = 'V9.35';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -10534,6 +10535,248 @@ function _shortenZahlungsziel(s) {
   if (/\d{2}\.\d{2}\.\d{4}/.test(t) && !/Tag|Woche|Monat/i.test(t)) return '–';
   // Sonst auf 14 Zeichen kürzen
   return t.length > 14 ? t.slice(0, 12) + '…' : t;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LIGHT-RAHMENVEREINBARUNG — PDF nativ mit pdf-lib
+// Pro HV: §1 Vertragsgegenstand · §2 Leistungsumfang · §3 Mitwirkung
+//         §4 Vergütung (45 €/Aufzug/Mt, jährlich vorab pro WEG) · §5–§8
+// + Anlage: Vollmachts-Muster (eine pro WEG nachreichbar)
+// ═══════════════════════════════════════════════════════════════════
+async function buildLightVertragPDF() {
+  const d = getLightVertragForm();
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const doc = await PDFDocument.create();
+  const helv     = await doc.embedFont(StandardFonts.Helvetica);
+  const helvBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const today = formatDateDE(new Date());
+  const vollAdresse = [d.strasse, [d.plz, d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+
+  const PAGE_W = 595.28, PAGE_H = 841.89;
+  const MARGIN_X = 56, MARGIN_TOP = 60, MARGIN_BOT = 60;
+  const COLOR = rgb(0.05, 0.05, 0.05);
+  const MUTED = rgb(0.4, 0.4, 0.4);
+
+  let page = doc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN_TOP;
+  const newPage = () => { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN_TOP; };
+  const ensure = (h) => { if (y - h < MARGIN_BOT) newPage(); };
+
+  function wrap(text, font, size, maxW) {
+    const words = String(text).split(/\s+/);
+    const lines = []; let cur = '';
+    for (const w of words) {
+      const trial = cur ? cur + ' ' + w : w;
+      if (font.widthOfTextAtSize(trial, size) <= maxW) cur = trial;
+      else { if (cur) lines.push(cur); cur = w; }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+  function draw(text, opts) {
+    const { font = helv, size = 10.5, leading = 14, color = COLOR, indent = 0, bullet = null, after = 4 } = opts || {};
+    const x = MARGIN_X + indent;
+    const maxW = PAGE_W - MARGIN_X - x;
+    const safe = _safeWinAnsi(text);
+    const safeBul = bullet === null ? null : _safeWinAnsi(bullet);
+    const lines = wrap(safe, font, size, maxW - (bullet ? 10 : 0));
+    for (let i = 0; i < lines.length; i++) {
+      ensure(leading);
+      if (i === 0 && safeBul !== null) page.drawText(safeBul, { x: x - 10, y: y - size, size, font, color });
+      page.drawText(lines[i], { x, y: y - size, size, font, color });
+      y -= leading;
+    }
+    y -= after;
+  }
+  const head = (t, opts) => { y -= (opts?.before || 14); draw(t, { font: helvBold, size: 12, leading: 16, after: 6, ...(opts || {}) }); };
+  const title = t => draw(t, { font: helvBold, size: 16, leading: 22, after: 8 });
+  const bul = t => draw(t, { bullet: '•', indent: 14, after: 2 });
+  const spacer = h => { y -= h; };
+
+  // ── Header
+  page.drawText(_safeWinAnsi('Liftaro GmbH · Gustavburger Weg 6, 55116 Mainz'),
+    { x: MARGIN_X, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi('Light-ID: ' + (d.id || '–') + '  ·  Stand: ' + today),
+    { x: PAGE_W - MARGIN_X - 200, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
+
+  // ── Titel
+  title('Rahmenvereinbarung "Liftmanagement Light"');
+  spacer(4);
+
+  // ── Parteien
+  head('zwischen', { before: 2, size: 11 });
+  draw('Liftaro GmbH, Gustavburger Weg 6, 55116 Mainz', { font: helvBold });
+  draw('vertreten durch den Geschäftsführer Francesco Ricioppo', { after: 2 });
+  draw('— nachfolgend "Liftaro" —', { font: helv, color: MUTED, after: 8 });
+
+  head('und', { before: 2, size: 11 });
+  draw((d.firma || '[Firma der Hausverwaltung]') + (vollAdresse ? ', ' + vollAdresse : ''), { font: helvBold });
+  if (d.gf) draw('vertreten durch ' + d.gf, { after: 2 });
+  const stammLine = [d.tel ? 'Tel.: ' + d.tel : '', d.email ? 'E-Mail: ' + d.email : ''].filter(Boolean).join(' · ');
+  if (stammLine) draw(stammLine, { color: MUTED, size: 9.5, after: 2 });
+  const taxLine = [d.ustidnr ? 'USt-IdNr: ' + d.ustidnr : '', d.steuernr ? 'Steuernr: ' + d.steuernr : ''].filter(Boolean).join(' · ');
+  if (taxLine) draw(taxLine, { color: MUTED, size: 9.5, after: 2 });
+  draw('— nachfolgend "die Verwaltung" —', { font: helv, color: MUTED, after: 10 });
+
+  // ── Präambel
+  head('Präambel', { size: 12 });
+  draw('Liftaro bietet ein laufendes Verwaltungs- und Optimierungsservice für Aufzugsanlagen an. Die Verwaltung beauftragt Liftaro mit der laufenden technischen und wirtschaftlichen Betreuung von Aufzugsanlagen, die sie als Hausverwalter im Auftrag von Wohnungseigentümergemeinschaften (WEG) und/oder Vermietern verwaltet.');
+
+  // ── §1 Vertragsgegenstand
+  head('§ 1 Vertragsgegenstand');
+  draw('(1) Liftaro übernimmt das "Liftmanagement Light" für die von der Verwaltung benannten Aufzugsanlagen. Liftmanagement Light umfasst die laufende Prüfung, Nachverhandlung und administrative Betreuung von Aufzug-Verträgen und -Rechnungen im Namen und Auftrag der jeweiligen WEG.');
+  draw('(2) Die Verwaltung übermittelt nach Vertragsschluss eine Liste sämtlicher Aufzugsanlagen, die in die Betreuung aufgenommen werden sollen, je Anlage mit: WEG-Bezeichnung, Objekt-Adresse, Anzahl Aufzüge, aktueller Wartungsdienstleister, aktuelle jährliche Wartungs- und Notrufkosten.');
+
+  // ── §2 Leistungsumfang
+  head('§ 2 Leistungsumfang Liftaro');
+  draw('2.1 Vertragsprüfung und -optimierung', { font: helvBold, size: 10.5, after: 3 });
+  bul('Analyse bestehender Wartungs-, Notruf- und Servicevereinbarungen');
+  bul('Bewertung von Leistungsumfang, Konditionen und Vertragslaufzeiten');
+  bul('Marktvergleich und Identifikation von Optimierungspotenzialen');
+  bul('Nachverhandlung mit bestehenden Dienstleistern oder Einholung alternativer Angebote');
+  bul('Empfehlung von Vertragsanpassungen zur Genehmigung durch die WEG');
+  spacer(4);
+  draw('2.2 Rechnungsprüfung', { font: helvBold, size: 10.5, after: 3 });
+  bul('Laufende Prüfung aller Wartungs-, Reparatur- und Servicerechnungen auf Marktüblichkeit und sachliche Richtigkeit');
+  bul('Beanstandung auffälliger Positionen im Auftrag der WEG');
+  spacer(4);
+  draw('2.3 Reparatur- und Modernisierungsangebote', { font: helvBold, size: 10.5, after: 3 });
+  bul('Prüfung auf technische Plausibilität, Notwendigkeit und Marktüblichkeit');
+  bul('Einholung von Vergleichsangeboten bei größeren Maßnahmen');
+  bul('Freigabeempfehlung gegenüber der Verwaltung');
+  spacer(4);
+  draw('2.4 Betreiberpflichten-Begleitung', { font: helvBold, size: 10.5, after: 3 });
+  bul('Erinnerung an wiederkehrende Prüfpflichten (ZÜS, BetrSichV, TRBS)');
+  bul('Unterstützung bei Mängelbewertungen aus ZÜS-Berichten');
+  spacer(4);
+  draw('2.5 Reporting', { font: helvBold, size: 10.5, after: 3 });
+  bul('Halbjährliche Übersicht je WEG: betreute Anlagen, erbrachte Leistungen, identifizierte Einsparungen, offene Empfehlungen');
+
+  // ── §3 Mitwirkung
+  head('§ 3 Mitwirkungspflichten der Verwaltung');
+  const mindest = d.mindestabnahme_aufzuege || 10;
+  draw('(1) Die Verwaltung verpflichtet sich, mindestens ' + mindest + ' Aufzugsanlagen über die gesamte Vertragslaufzeit in die Betreuung von Liftaro zu geben. Wird diese Mindestabnahme dauerhaft unterschritten, sind beide Parteien berechtigt, den Vertrag mit einer Frist von einem Monat zum Monatsende zu kündigen.');
+  draw('(2) Die Verwaltung holt für jede in die Betreuung aufgenommene WEG eine Vollmacht ein (siehe Anlage "Vollmacht WEG"), mit der die WEG Liftaro zur Vertretung in Vertrags- und Rechnungsangelegenheiten gegenüber Wartungsdienstleistern bevollmächtigt. Liftaro stellt das Vollmachtsformular zur Verfügung.');
+  draw('(3) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern.');
+  draw('(4) Die Verwaltung benennt je WEG einen Ansprechpartner (in der Regel Verwaltungsbeirat) und teilt Liftaro die Rechnungsanschrift der WEG mit.');
+
+  // ── §4 Vergütung
+  head('§ 4 Vergütung');
+  const preis = Number(d.monatspreis_je_aufzug_eur || 45);
+  const jahr  = preis * 12;
+  const fmt = (n) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  draw('(1) Light-Pauschale: Liftaro berechnet ' + fmt(preis) + ' EUR netto pro Aufzug und Monat. Die Vergütung wird jährlich im Voraus für jeweils 12 Monate pro WEG abgerechnet — Jahrespauschale: ' + fmt(jahr) + ' EUR netto je Aufzug.');
+  draw('(2) Mindestabnahme: ' + mindest + ' Aufzüge gemäß § 3 Abs. 1.');
+  draw('(3) Rechnungsstellung erfolgt einzeln pro WEG an die jeweilige WEG-Adresse, die die Verwaltung Liftaro mitteilt. Zahlungsziel: 14 Tage nach Rechnungsdatum, ohne Abzug.');
+  draw('(4) Bei Beauftragung mitten im Vertragsjahr wird die Pauschale taggenau anteilig berechnet.');
+  draw('(5) Keine Erfolgsbeteiligung: Liftaro erhält im Rahmen dieser Vereinbarung keinen Anteil an erzielten Einsparungen. Identifizierte Einsparungen kommen vollständig der jeweiligen WEG zugute.');
+  draw('(6) Sonderleistungen (Reisekosten, Sondergutachten, Modernisierungs-Begleitung über reguläre Empfehlung hinaus) werden vorab gesondert angeboten und nur nach schriftlicher Beauftragung berechnet.');
+
+  // ── §5 Laufzeit
+  head('§ 5 Vertragslaufzeit und Kündigung');
+  const lf = d.mindestlaufzeit_monate || 12;
+  const kf = d.kuendigungsfrist_monate || 3;
+  draw('(1) Die Vereinbarung beginnt mit Unterzeichnung. Mindestlaufzeit: ' + lf + ' Monate.');
+  draw('(2) Sie verlängert sich automatisch um jeweils 12 weitere Monate, sofern sie nicht mit einer Frist von ' + kf + ' Monaten zum Vertragsjahresende schriftlich gekündigt wird.');
+  draw('(3) Das Recht zur außerordentlichen Kündigung aus wichtigem Grund bleibt unberührt.');
+  draw('(4) Bei vorzeitiger Beendigung wird bereits gezahlte Jahrespauschale anteilig (taggenau) zurückerstattet, sofern die Beendigung von Liftaro zu vertreten ist.');
+
+  // ── §6 Haftung
+  head('§ 6 Haftung');
+  const haft = d.haftungsgrenze_eur || 50000;
+  draw('(1) Liftaro haftet ausschließlich für Vorsatz und grobe Fahrlässigkeit.');
+  draw('(2) Die Haftung ist je Schadensfall auf ' + Number(haft).toLocaleString('de-DE') + ' EUR begrenzt.');
+  draw('(3) Eine Haftung für mittelbare Schäden, entgangenen Gewinn oder Folgeschäden ist ausgeschlossen.');
+  draw('(4) Liftaro erbringt keine Rechtsberatung im Sinne des RDG.');
+
+  // ── §7 Datenschutz
+  head('§ 7 Vertraulichkeit und Datenschutz');
+  draw('(1) Beide Parteien verpflichten sich zur vertraulichen Behandlung aller im Rahmen der Vertragsdurchführung bekannt gewordenen Informationen.');
+  draw('(2) Personenbezogene Daten werden ausschließlich zweckgebunden verarbeitet. Soweit Liftaro Daten im Auftrag der Verwaltung oder WEG verarbeitet, wird ergänzend eine Vereinbarung zur Auftragsverarbeitung nach Art. 28 DSGVO geschlossen.');
+
+  // ── §8 Schlussbestimmungen
+  head('§ 8 Schlussbestimmungen');
+  draw('(1) Änderungen und Ergänzungen dieser Vereinbarung bedürfen der Schriftform.');
+  draw('(2) Es bestehen keine mündlichen Nebenabreden.');
+  draw('(3) Sollten einzelne Bestimmungen unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen davon unberührt.');
+  draw('(4) Gerichtsstand — soweit gesetzlich zulässig — ist ' + (d.gerichtsstand || 'Mainz') + '.');
+
+  // ── Unterschriften
+  spacer(20); ensure(120);
+  const sigY = y;
+  page.drawLine({ start: { x: MARGIN_X, y: sigY }, end: { x: MARGIN_X + 200, y: sigY }, thickness: 0.5, color: COLOR });
+  page.drawLine({ start: { x: PAGE_W - MARGIN_X - 200, y: sigY }, end: { x: PAGE_W - MARGIN_X, y: sigY }, thickness: 0.5, color: COLOR });
+  y = sigY - 14;
+  page.drawText(_safeWinAnsi('Ort, Datum · für Liftaro GmbH'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi('Ort, Datum · für ' + (d.firma || 'die Verwaltung')), { x: PAGE_W - MARGIN_X - 200, y, size: 9, font: helv, color: MUTED });
+
+  // ── ANLAGE: Vollmacht-Muster (neue Seite)
+  newPage();
+  title('Anlage: Vollmacht (Muster — pro WEG)');
+  draw('Diese Vollmacht wird von der jeweiligen WEG (vertreten durch den Verwaltungsbeirat oder die Hausverwaltung) ausgestellt und gilt für sämtliche Aufzugsanlagen am bezeichneten Objekt.', { color: MUTED, after: 12 });
+
+  head('Vollmachtgeber');
+  draw('Name der WEG: ____________________________________________', { after: 2 });
+  draw('Objekt-Adresse: ___________________________________________', { after: 6 });
+  draw('vertreten durch:', { after: 2 });
+  draw('☐ den Verwaltungsbeirat: ________________________________', { after: 2 });
+  draw('☐ die Hausverwaltung ' + (d.firma || '____________________') + ' auf Grundlage des Verwaltungsmandats', { after: 8 });
+
+  head('Bevollmächtigter');
+  draw('Liftaro GmbH, Gustavburger Weg 6, 55116 Mainz');
+
+  head('Umfang der Vollmacht');
+  draw('Die WEG bevollmächtigt Liftaro für sämtliche Aufzugsanlagen am oben genannten Objekt zu:');
+  draw('1. Einholung von Auskünften, Verträgen, Rechnungen und Unterlagen bei aktuellen und potentiellen Wartungs-, Notruf- und Reparaturdienstleistern.', { after: 2 });
+  draw('2. Verhandlungen mit Wartungs-, Notruf- und Reparaturdienstleistern zu Konditionen, Vertragsanpassungen und Streitfällen.', { after: 2 });
+  draw('3. Beanstandung und Klärung von Rechnungspositionen im Namen der WEG.', { after: 2 });
+  draw('4. Vorbereitung und Empfehlung von Vertragsänderungen, -wechseln und -kündigungen.');
+
+  head('Nicht umfasst');
+  draw('Diese Vollmacht umfasst NICHT: rechtsverbindlicher Vertragsabschluss, Zahlungsverpflichtungen im Namen der WEG, gerichtliche Vertretung. Diese Handlungen bedürfen jeweils der gesonderten Zustimmung der WEG.');
+
+  head('Laufzeit');
+  draw('Diese Vollmacht gilt unbefristet, kann von der WEG jedoch jederzeit schriftlich widerrufen werden.');
+
+  spacer(28); ensure(60);
+  const sig2Y = y;
+  page.drawLine({ start: { x: MARGIN_X, y: sig2Y }, end: { x: MARGIN_X + 280, y: sig2Y }, thickness: 0.5, color: COLOR });
+  y = sig2Y - 14;
+  page.drawText(_safeWinAnsi('Ort, Datum · Unterschrift Vollmachtgeber'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
+
+  // Disclaimer
+  spacer(20);
+  draw('Hinweis: Dieser Vertragsentwurf wurde durch eine Fachkanzlei nicht abschließend geprüft. Eine anwaltliche Prüfung wird vor Abschluss empfohlen.', { color: MUTED, size: 8.5, after: 0 });
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const filename = 'Light-Rahmenvereinbarung_' + (d.id || 'Entwurf') + '_' + (d.firma || 'HV').replace(/[^a-zA-Z0-9_-]+/g, '_') + '.pdf';
+  return { blob, filename };
+}
+
+let _lightVertragPreviewBlob = null;
+
+async function previewLightVertrag() {
+  try {
+    const { blob, filename } = await buildLightVertragPDF();
+    _lightVertragPreviewBlob = blob;
+    openPreviewBlob(blob, '⚡ ' + filename);
+  } catch (e) {
+    console.error(e);
+    showToast('Vorschau fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+async function downloadLightVertrag() {
+  try {
+    const { blob, filename } = await buildLightVertragPDF();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast('PDF heruntergeladen', 'ok');
+  } catch (e) { showToast('Download fehlgeschlagen: ' + e.message, 'error'); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
