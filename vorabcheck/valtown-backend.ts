@@ -1,34 +1,11 @@
-// ---
-// LIFTARO VORABCHECK — val.town HTTP-Endpoint
-//
-// Setup-Anleitung:
-//   1. Auf val.town anmelden (kostenlos): https://www.val.town
-//   2. Neuen HTTP val anlegen (z.B. "liftaroVorabcheck")
-//   3. Diesen Code einfügen
-//   4. Im val.town Secrets-Tab folgende Variablen anlegen:
-//        - ANTHROPIC_KEY          (dein Anthropic API Key)
-//        - TURNSTILE_SECRET_KEY   (Cloudflare Turnstile Secret)
-//        - AIRTABLE_KEY           (dein Airtable Personal Access Token)
-//        - AIRTABLE_BASE_ID       (Base-ID der Liftaro-Base, z.B. appXXXX)
-//   5. Den Endpoint deployen
-//   6. Die HTTP-URL aus dem val (z.B. https://USERNAME-liftaroVorabcheck.web.val.run)
-//      ins Frontend bei LIFTARO_API_URL eintragen
-// ---
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 
-// ---
-// Konfiguration
-// ---
-const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
-const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
-const COST_PER_M_OUTPUT_TOKENS = 15.0; // $ pro 1M Output-Tokens
+const MODEL = "claude-sonnet-4-6";
+const COST_PER_M_INPUT_TOKENS = 3.0;
+const COST_PER_M_OUTPUT_TOKENS = 15.0;
 const USD_TO_EUR = 0.92;
 
-// ---
-// Prompt-Loader — liest Custom-Prompts aus Airtable mit 5-Min-Cache.
-// Fallback auf die hardcoded DEFAULT_SYSTEM_PROMPTS weiter unten.
-// ---
 let _promptCache: Record<string, string> | null = null;
 let _promptCacheTs = 0;
 const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -59,11 +36,6 @@ async function loadCustomPrompts(): Promise<Record<string, string>> {
   }
 }
 
-// ---
-// Pipedrive-Integration: Lead pro Vorabcheck + pro Kontaktformular.
-// Token & Domain liegen in der Liftaro-Master-Base als Keys
-// 'pipedriveDomain' und 'pipedriveApiToken'. 5-Min-Cache.
-// ---
 const PIPEDRIVE_MASTER_BASE = 'appzhNrhkLSTEaNFW';
 const PIPEDRIVE_PROJECT_ID  = 'p_1777239396379';
 let _pdCache: { domain: string, token: string } | null = null;
@@ -87,7 +59,7 @@ async function loadPipedriveConfig(): Promise<{ domain: string, token: string } 
     });
     _pdCacheTs = Date.now();
     if (!domain || !token) { _pdCache = null; return null; }
-    _pdCache = { domain: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), token };
+    _pdCache = { domain: domain.replace(/^https?:\/\
     return _pdCache;
   } catch (e) {
     console.warn('[Pipedrive] loadPipedriveConfig:', e);
@@ -103,19 +75,10 @@ async function createPipedriveLead(input: {
   title: string;
   note: string;
 }): Promise<{ ok: boolean; lead_id?: string; person_id?: number; reused?: boolean; error?: string }> {
-  // Legacy-Wrapper — leitet auf den neuen upsertPipedriveLead um (Dedup-fähig).
+
   return upsertPipedriveLead(input);
 }
 
-// ---
-// upsertPipedriveLead — Dedup per Email:
-//   1. Person via Email-Suche finden, sonst anlegen
-//   2. Vorhandenen offenen (nicht-archivierten) Lead der Person nutzen,
-//      sonst neuen anlegen
-//   3. Note in jedem Fall ANHÄNGEN (Verlauf bleibt erhalten)
-//
-// Resultat: 1 Pipedrive-Lead pro Kontakt, alle Touchpoints als Notes.
-// ---
 async function upsertPipedriveLead(input: {
   name: string;
   email?: string;
@@ -132,7 +95,6 @@ async function upsertPipedriveLead(input: {
     let personId: number | null = null;
     let personExisted = false;
 
-    // 1a) Person-Suche per Email
     if (input.email) {
       try {
         const searchUrl = base + '/persons/search?fields=email&exact_match=true&limit=5&term=' +
@@ -140,14 +102,13 @@ async function upsertPipedriveLead(input: {
         const sr = await fetch(searchUrl);
         const sd = await sr.json();
         if (sd?.success && sd.data?.items?.length) {
-          // Erstes exaktes Match
+
           personId = sd.data.items[0].item?.id || null;
           if (personId) personExisted = true;
         }
       } catch (e) {  }
     }
 
-    // 1b) Person anlegen, wenn nicht gefunden
     if (!personId) {
       const personBody: any = { name: input.name || 'Anonym' };
       if (input.email) personBody.email = [{ value: input.email, primary: true, label: 'work' }];
@@ -164,7 +125,6 @@ async function upsertPipedriveLead(input: {
       personId = personData.data.id;
     }
 
-    // 2) Organization (optional) — nur bei neuen Personen / neuen Leads
     let orgId: number | null = null;
     if (input.org && input.org.trim() && !personExisted) {
       try {
@@ -178,7 +138,6 @@ async function upsertPipedriveLead(input: {
       } catch (e) {  }
     }
 
-    // 3a) Existierenden, nicht-archivierten Lead der Person finden
     let leadId: string | null = null;
     let leadReused = false;
     try {
@@ -186,7 +145,7 @@ async function upsertPipedriveLead(input: {
       const lr = await fetch(leadsUrl);
       const ld = await lr.json();
       if (ld?.success && Array.isArray(ld.data) && ld.data.length > 0) {
-        // Neuesten offenen Lead nehmen (Pipedrive sortiert default ASC nach Erstelldatum)
+
         const sorted = ld.data.slice().sort((a: any, b: any) =>
           String(b.add_time || '').localeCompare(String(a.add_time || ''))
         );
@@ -195,7 +154,6 @@ async function upsertPipedriveLead(input: {
       }
     } catch (e) {  }
 
-    // 3b) Neuen Lead anlegen, wenn keiner offen ist
     if (!leadId) {
       const leadBody: any = { title: input.title, person_id: personId };
       if (orgId) leadBody.organization_id = orgId;
@@ -211,7 +169,6 @@ async function upsertPipedriveLead(input: {
       leadId = leadData.data.id;
     }
 
-    // 4) Note IMMER anhängen — egal ob neuer oder reused Lead
     if (input.note) {
       try {
         const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
@@ -232,11 +189,6 @@ async function upsertPipedriveLead(input: {
   }
 }
 
-// ---
-// HAUSVERWALTUNGS-SUCHE (Phase 1: Pipedrive-DB-Lookup, Phase 4: Serper+KI)
-// ---
-// Whitelist für allgemeine, nicht-personalisierte Geschäfts-Mails einer HV.
-// Nur diese Local-Parts gelten als "öffentlich" und werden auto-befüllt.
 const HV_GENERIC_EMAIL_PREFIXES = [
   'info', 'kontakt', 'service', 'mail', 'office',
   'verwaltung', 'hausverwaltung', 'team', 'kundenservice',
@@ -250,11 +202,10 @@ function isGenericHvEmail(email: string): boolean {
   const e = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false;
   const local = e.split('@')[0];
-  // Exakter Match: "info@…" → true. "info.maier@…" → false (zu spezifisch).
+
   return HV_GENERIC_EMAIL_PREFIXES.includes(local);
 }
 
-// Persons einer Organization → erste generische (allgemeine) Email zurückgeben.
 function pickGenericEmailFromPersons(persons: any[]): string | null {
   if (!Array.isArray(persons) || !persons.length) return null;
   for (const p of persons) {
@@ -267,8 +218,6 @@ function pickGenericEmailFromPersons(persons: any[]): string | null {
   return null;
 }
 
-// Pipedrive-Org-Suche nach Namen — strikt (case-insensitive Substring-Check)
-// + Score-Schwelle, damit Pipedrive's Fuzzy-Search keine zufälligen Treffer durchlässt.
 async function findPipedriveOrgsByName(name: string, limit = 3): Promise<any[]> {
   const cfg = await loadPipedriveConfig();
   if (!cfg) return [];
@@ -289,11 +238,11 @@ async function findPipedriveOrgsByName(name: string, limit = 3): Promise<any[]> 
       }))
       .filter((x: any) => {
         if (!x.item || !x.item.name) return false;
-        // Substring-Match: term muss case-insensitive im Namen vorkommen
+
         const nameLow = String(x.item.name).toLowerCase();
         if (!nameLow.includes(termLow)) return false;
-        // Score-Schwelle: 0.3 ist ein moderater Cut-Off, Pipedrive's Top-Match liegt typisch bei 0.5-1.0
-        return x.score >= 0.3 || term.length >= 5; // bei längerem Term Score-Toleranz lockern
+
+        return x.score >= 0.3 || term.length >= 5;
       })
       .sort((a: any, b: any) => b.score - a.score)
       .slice(0, limit)
@@ -302,13 +251,11 @@ async function findPipedriveOrgsByName(name: string, limit = 3): Promise<any[]> 
   } catch (e) { console.warn('[Pipedrive] findOrgsByName:', e); return []; }
 }
 
-// Single-Treffer-Wrapper für Submit-Pfad
 async function findPipedriveOrgByName(name: string): Promise<any | null> {
   const hits = await findPipedriveOrgsByName(name, 1);
   return hits.length ? hits[0] : null;
 }
 
-// Allgemeine Geschäfts-Email einer Org aus den verknüpften Persons holen.
 async function getOrgGenericEmail(orgId: number): Promise<string | null> {
   const cfg = await loadPipedriveConfig();
   if (!cfg || !orgId) return null;
@@ -322,13 +269,92 @@ async function getOrgGenericEmail(orgId: number): Promise<string | null> {
   } catch (e) { console.warn('[Pipedrive] getOrgGenericEmail:', e); return null; }
 }
 
-// Org in Pipedrive anlegen (für KI-Fallback, Phase 4).
+async function getOrgFullDetails(orgId: number): Promise<any | null> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg || !orgId) return null;
+  const base = 'https://' + cfg.domain + '/api/v1';
+  try {
+    const orgUrl = base + '/organizations/' + orgId + '?api_token=' + encodeURIComponent(cfg.token);
+    const orgRes = await fetch(orgUrl);
+    const orgData = await orgRes.json();
+    if (!orgData?.success || !orgData.data) return null;
+    const org = orgData.data;
+
+    const personsUrl = base + '/organizations/' + orgId + '/persons?api_token=' + encodeURIComponent(cfg.token);
+    const personsRes = await fetch(personsUrl);
+    const personsData = await personsRes.json();
+    const persons = Array.isArray(personsData?.data) ? personsData.data : [];
+
+    const genericEmail = pickGenericEmailFromPersons(persons);
+
+    let gfName = '', gfTel = '', gfEmail = '';
+    const personalP = persons.find((p: any) => {
+      const emails = Array.isArray(p?.email) ? p.email : [];
+      return emails.some((e: any) => e?.value && !isGenericHvEmail(String(e.value)));
+    });
+    const firstP = personalP || persons[0];
+    if (firstP) {
+      gfName = String(firstP.name || '').replace(/\s*\(Allgemein\)\s*$/i, '').trim();
+      const emails = Array.isArray(firstP.email) ? firstP.email : [];
+      const phones = Array.isArray(firstP.phone) ? firstP.phone : [];
+      const pEmail = emails.find((e: any) => e?.value)?.value || '';
+      const pPhone = phones.find((p: any) => p?.value)?.value || '';
+      gfEmail = String(pEmail || '');
+      gfTel = String(pPhone || '');
+    }
+
+    let strasse = '', plz = '', ort = '';
+    const addrFull = String(org.address || '').trim();
+    if (addrFull) {
+      const parts = addrFull.split(',').map((s: string) => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        strasse = parts[0];
+        const plzOrt = parts[1].match(/^(\d{4,5})\s+(.+)$/);
+        if (plzOrt) { plz = plzOrt[1]; ort = plzOrt[2]; }
+        else ort = parts[1];
+      } else { strasse = addrFull; }
+    }
+    return {
+      org_id: org.id,
+      firma: String(org.name || ''),
+      gf: gfName,
+      strasse, plz, ort,
+      email: genericEmail || gfEmail || '',
+      tel: gfTel,
+      website: '',
+      person_count: persons.length,
+    };
+  } catch (e) { console.warn('[Pipedrive] getOrgFullDetails:', e); return null; }
+}
+
+async function listAllOrgs(opts: { start?: number; limit?: number } = {}): Promise<any[]> {
+  const cfg = await loadPipedriveConfig();
+  if (!cfg) return [];
+  const base = 'https://' + cfg.domain + '/api/v1';
+  const start = opts.start || 0;
+  const limit = Math.min(opts.limit || 500, 500);
+  try {
+    const url = base + '/organizations?start=' + start + '&limit=' + limit +
+                '&api_token=' + encodeURIComponent(cfg.token);
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!d?.success || !Array.isArray(d.data)) return [];
+    return d.data.map((o: any) => ({
+      org_id: o.id,
+      name: o.name || '',
+      address: o.address || '',
+      person_count: Number(o.people_count || 0),
+      updated_at: o.update_time || o.add_time || '',
+    }));
+  } catch (e) { console.warn('[Pipedrive] listAllOrgs:', e); return []; }
+}
+
 async function createPipedriveOrgWithEmail(input: {
   name: string;
   email?: string;
   website?: string;
   city?: string;
-  source?: string;  // 'manuell' | 'ki_serper' | 'user_verifiziert'
+  source?: string;
 }): Promise<{ ok: boolean; org_id?: number; error?: string }> {
   const cfg = await loadPipedriveConfig();
   if (!cfg) return { ok: false, error: 'Pipedrive nicht konfiguriert' };
@@ -336,8 +362,7 @@ async function createPipedriveOrgWithEmail(input: {
   const auth = '?api_token=' + encodeURIComponent(cfg.token);
   try {
     const orgBody: any = { name: input.name };
-    // Custom-Field „Quelle" + Website können später hinzugefügt werden, sobald
-    // die Field-IDs in Pipedrive bekannt sind. Vorerst nur Name + optional Address.
+
     if (input.city) orgBody.address = input.city;
     const orgRes = await fetch(base + '/organizations' + auth, {
       method: 'POST',
@@ -347,7 +372,7 @@ async function createPipedriveOrgWithEmail(input: {
     const orgData = await orgRes.json();
     if (!orgData.success) return { ok: false, error: 'Org-Create: ' + JSON.stringify(orgData.error || {}).slice(0, 200) };
     const orgId = orgData.data.id;
-    // Wenn allgemeine Email vorhanden: als „Default-Person" der Org anlegen
+
     if (input.email && isGenericHvEmail(input.email)) {
       const personBody: any = {
         name: input.name + ' (Allgemein)',
@@ -366,7 +391,6 @@ async function createPipedriveOrgWithEmail(input: {
   }
 }
 
-// Person an Org linken (User → HV-Org).
 async function linkPersonToOrg(personId: number, orgId: number): Promise<boolean> {
   const cfg = await loadPipedriveConfig();
   if (!cfg || !personId || !orgId) return false;
@@ -383,8 +407,6 @@ async function linkPersonToOrg(personId: number, orgId: number): Promise<boolean
   } catch (e) { console.warn('[Pipedrive] linkPersonToOrg:', e); return false; }
 }
 
-// HV-Lead erzeugen — separater Lead aus B2B-Sicht.
-// Pipeline: orgId ist der „Eigentümer" des Leads (B2B-Pipeline).
 async function createHvLead(input: {
   orgId: number;
   userFullName: string;
@@ -399,7 +421,7 @@ async function createHvLead(input: {
   const base = 'https://' + cfg.domain + '/api/v1';
   const auth = '?api_token=' + encodeURIComponent(cfg.token);
   try {
-    // 1. Existierenden offenen HV-Lead suchen → Dedup pro Org
+
     let leadId: string | null = null;
     let reused = false;
     try {
@@ -414,7 +436,6 @@ async function createHvLead(input: {
       }
     } catch (e) {  }
 
-    // 2. Neuen HV-Lead anlegen wenn keiner offen
     if (!leadId) {
       const title = '[HV-Lead] ' + input.hvName + ' — via Vorabcheck ' + input.checkNr;
       const leadBody: any = { title, organization_id: input.orgId };
@@ -428,7 +449,6 @@ async function createHvLead(input: {
       leadId = ld.data.id;
     }
 
-    // 3. Note mit Vorabcheck-Kontext anhängen (jedes Mal)
     const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
     const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
     const roleLabel = input.role === 'eigentuemer' ? 'Eigentümer'
@@ -465,11 +485,6 @@ async function createHvLead(input: {
   }
 }
 
-// ---
-// Preisreferenzen — Marktmedian-Liste pro Angebots-Position.
-// Wird bei check_type=angebot der KI als Kontext mitgegeben.
-// 5-Min-Cache wie bei den Custom-Prompts.
-// ---
 let _preisrefCache: any[] | null = null;
 let _preisrefCacheTs = 0;
 const PREISREF_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -501,19 +516,12 @@ async function loadPreisreferenzen(): Promise<any[]> {
   }
 }
 
-// Deterministischer Pseudo-Random aus check_nr (für Fallback wenn KI nichts in Preisliste findet).
-// 30 % bis 60 % Ersparnis vom Angebotsbetrag — Wert pro check_nr stabil.
 function deterministicSavingsFactor(seed: string): number {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
-  return 0.30 + ((h >>> 0) % 1000) / 1000 * 0.30; // 0,30 – 0,60
+  return 0.30 + ((h >>> 0) % 1000) / 1000 * 0.30;
 }
 
-// ---
-// Rollen-spezifischer Kontext, der vor jeden Default-Prompt
-// gehängt wird. Sorgt für die korrekte rechtliche Einordnung
-// (Mieter vs. WEG-Eigentümer vs. Verwalter).
-// ---
 const ROLE_CONTEXTS: Record<string, string> = {
   mieter: `ROLLEN-KONTEXT: MIETER (Wohnraum-Mietvertrag)
 
@@ -562,24 +570,16 @@ SPRACHE: Professionell, knapp, kennzahlen-orientiert. Bezugnahme auf §§ wo rel
 };
 
 function buildSystemPrompt(checkType: string, role: string, customMap: Record<string, string>): string | null {
-  // 1. Custom-Prompt aus Airtable bevorzugen (Schlüssel "checkType.role" oder "checkType")
+
   if (customMap[checkType + '.' + role]) return customMap[checkType + '.' + role];
   if (customMap[checkType]) return customMap[checkType];
 
-  // 2. Default-Prompt + Rollen-Kontext vorne anhängen
   const base = DEFAULT_SYSTEM_PROMPTS[checkType];
   if (!base) return null;
   const roleCtx = ROLE_CONTEXTS[role] || ROLE_CONTEXTS.mieter;
   return roleCtx + '\n\n────────────────────────────────────────\n\n' + base;
 }
 
-// ---
-// DEFAULT-System-Prompts pro Check-Typ (Fallback, wenn nichts in
-// Airtable hinterlegt ist).
-//
-// HINWEIS: Diese Default-Prompts werden zur Laufzeit mit einem
-// rollen-spezifischen Vorspann (siehe ROLE_CONTEXTS) kombiniert.
-// ---
 const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
   nebenkosten: `Du bist Aufzug-Experte und Bau-/Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
 
@@ -876,11 +876,8 @@ ANTWORTE NUR MIT JSON:
 }`,
 };
 
-// ---
-// Hauptfunktion
-// ---
 export default async function (req: Request): Promise<Response> {
-  // CORS für GitHub-Pages-Frontend
+
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -892,7 +889,6 @@ export default async function (req: Request): Promise<Response> {
   try {
     const body = await req.json();
 
-    // ---
     if (body.action === 'contact') {
       const c = body.contact || {};
       const name = String(c.name || '').trim();
@@ -907,7 +903,6 @@ export default async function (req: Request): Promise<Response> {
                       : paket === 'light' ? 'Light (45 €/Monat je Aufzug)'
                       : 'Andere / unklar';
 
-      // 1) Airtable-Backup (best-effort)
       try {
         const atKey = Deno.env.get("AIRTABLE_KEY");
         const atBase = Deno.env.get("AIRTABLE_BASE_ID");
@@ -930,7 +925,6 @@ export default async function (req: Request): Promise<Response> {
         }
       } catch (e: any) { console.warn('[Kontakt] Airtable failed:', e.message); }
 
-      // 2) Pipedrive-Lead anlegen
       const noteLines = [
         'Quelle: Startseite Kontakt-Formular',
         'Paket-Interesse: ' + paketLabel,
@@ -952,8 +946,6 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
     }
 
-    // ---
-    // ---
     if (body.action === 'soft_capture') {
       const lead = body.lead || {};
       const ct = String(body.check_type || '').trim() || 'unbekannt';
@@ -979,7 +971,6 @@ export default async function (req: Request): Promise<Response> {
         fileMeta.size ? 'Dateigröße: ' + Math.round(fileMeta.size / 1024) + ' KB' : '',
       ].filter(Boolean);
 
-      // Async — Frontend muss nicht warten
       const pd = await upsertPipedriveLead({
         name,
         email,
@@ -991,8 +982,6 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
     }
 
-    // ---
-    // ---
     if (body.action === 'request_liftaro_callback') {
       const c = body.cta || {};
       const userEmail = String(c.user_email || '').trim();
@@ -1033,30 +1022,39 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: result }, 200, corsHeaders);
     }
 
-    // ---
-    //    Liefert Top-3 Treffer (Substring-Match) zum User-Auswählen — User sieht echte Org-Namen statt
-    // ---
+    if (body.action === 'list_property_managers') {
+      const start = parseInt(String(body.start || '0'), 10) || 0;
+      const limit = Math.min(parseInt(String(body.limit || '500'), 10) || 500, 500);
+      const orgs = await listAllOrgs({ start, limit });
+      return jsonResp({ ok: true, results: orgs }, 200, corsHeaders);
+    }
+
+    if (body.action === 'get_property_manager_details') {
+      const orgId = parseInt(String(body.org_id || '0'), 10);
+      if (!orgId) return jsonResp({ ok: false, error: 'org_id Pflichtfeld' }, 400, corsHeaders);
+      const details = await getOrgFullDetails(orgId);
+      if (!details) return jsonResp({ ok: false, error: 'Org nicht gefunden' }, 404, corsHeaders);
+      return jsonResp({ ok: true, details }, 200, corsHeaders);
+    }
     if (body.action === 'find_property_manager') {
       const q = String(body.query || '').trim();
       if (q.length < 3) return jsonResp({ ok: true, results: [] }, 200, corsHeaders);
       const orgs = await findPipedriveOrgsByName(q, 3);
       if (!orgs.length) return jsonResp({ ok: true, results: [], source: 'db' }, 200, corsHeaders);
-      // Pro Treffer: generische Email holen (parallel)
+
       const enriched = await Promise.all(orgs.map(async (org: any) => {
         const email = await getOrgGenericEmail(org.id);
         return {
           org_id: org.id,
           name: org.name,
-          email: email,                 // null wenn nur personalisierte Mails vorhanden
-          city: org.address || '',      // best-effort, Pipedrive-Adresse als Volltext
-          confidence: email ? 100 : 60, // mit Email = sichere DB-Quelle
+          email: email,
+          city: org.address || '',
+          confidence: email ? 100 : 60,
         };
       }));
       return jsonResp({ ok: true, source: 'db', results: enriched }, 200, corsHeaders);
     }
 
-    // ---
-    // ---
     if (body.action === 'submit_eigentuemer_cta') {
       const c = body.cta || {};
       const hvName  = String(c.hv_name  || '').trim();
@@ -1070,7 +1068,7 @@ export default async function (req: Request): Promise<Response> {
       if (!hvName) return jsonResp({ ok: false, error: 'hv_name Pflichtfeld' }, 400, corsHeaders);
 
       try {
-        // 1) HV-Org finden ODER anlegen
+
         let org = await findPipedriveOrgByName(hvName);
         let orgId: number | null = org?.id || null;
         let orgCreated = false;
@@ -1083,11 +1081,10 @@ export default async function (req: Request): Promise<Response> {
           if (created.ok && created.org_id) { orgId = created.org_id; orgCreated = true; }
         }
 
-        // 2) Wenn HV-Org existiert aber Email noch leer → user-übergebene Mail nachtragen (nur generisch)
         if (orgId && !orgCreated && hvEmail && isGenericHvEmail(hvEmail)) {
           const existingMail = await getOrgGenericEmail(orgId);
           if (!existingMail) {
-            // Anonyme Default-Person mit der Mail an die Org hängen
+
             const cfg = await loadPipedriveConfig();
             if (cfg) {
               const auth = '?api_token=' + encodeURIComponent(cfg.token);
@@ -1104,7 +1101,6 @@ export default async function (req: Request): Promise<Response> {
           }
         }
 
-        // 3) User-Lead via Email finden → an Org linken
         let userPersonId: number | null = null;
         if (orgId && userEmail) {
           const cfg = await loadPipedriveConfig();
@@ -1122,7 +1118,6 @@ export default async function (req: Request): Promise<Response> {
           if (userPersonId) await linkPersonToOrg(userPersonId, orgId);
         }
 
-        // 4) HV-Lead anlegen (separater B2B-Lead)
         let hvLead: any = { ok: false };
         if (orgId) {
           hvLead = await createHvLead({
@@ -1148,7 +1143,6 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // ---
     if (body.action === 'get_defaults') {
       return jsonResp({
         prompts: DEFAULT_SYSTEM_PROMPTS,
@@ -1157,7 +1151,6 @@ export default async function (req: Request): Promise<Response> {
       }, 200, corsHeaders);
     }
 
-    // ---
     if (body.action === 'correct') {
       const cn = String(body.check_nr || '').trim();
       if (!cn) return jsonResp({ error: 'check_nr fehlt' }, 400, corsHeaders);
@@ -1182,7 +1175,7 @@ export default async function (req: Request): Promise<Response> {
       });
       if (!records.length) return jsonResp({ ok: true, count: 0 }, 200, corsHeaders);
       try {
-        // Airtable: max 10 Records pro POST-Batch
+
         const url = `https://api.airtable.com/v0/${base}/Vorabcheck-Korrekturen`;
         for (let i = 0; i < records.length; i += 10) {
           const batch = records.slice(i, i + 10);
@@ -1199,30 +1192,25 @@ export default async function (req: Request): Promise<Response> {
     }
 
     const { check_type, file, lead, turnstile_token, consent_given } = body;
-    // Rolle normalisieren (Default = mieter, falls Frontend keinen Wert sendet)
+
     const role = ['mieter','eigentuemer','verwalter'].includes(body.role) ? body.role : 'mieter';
-    // Vom Nutzer bestätigte Aufzug-Anzahl (Frontend-Pflichtfeld). Default 1.
+
     const aufzugCountUser = Math.max(1, Math.min(50, parseInt(String(body.aufzug_count_user || '1'), 10) || 1));
-    // Optionaler User-Wert für die Wartungssumme. > 0 = User hat Wert eingetragen → Vorrang vor KI.
+
     const wartungBruttoUser = Math.max(0, parseFloat(String(body.wartung_brutto_user || '0').replace(',', '.')) || 0);
 
-    // 1. Turnstile validieren (wenn konfiguriert)
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
     if (turnstileSecret && turnstile_token) {
       const ok = await verifyTurnstile(turnstile_token, turnstileSecret);
       if (!ok) return jsonResp({ error: "Captcha ungültig" }, 403, corsHeaders);
     }
 
-    // 2. Consent prüfen
     if (!consent_given) return jsonResp({ error: "Einwilligung fehlt" }, 400, corsHeaders);
 
-    // 3. Check-Type validieren + Prompt zusammenbauen (Rolle-Kontext + Default)
     const custom = await loadCustomPrompts();
     let systemPrompt = buildSystemPrompt(check_type, role, custom);
     if (!systemPrompt) return jsonResp({ error: "Unbekannter Check-Typ" }, 400, corsHeaders);
 
-    // 3b. Bei Angebots-Checks: Preisreferenzen als Kontext anhängen, damit die KI
-    // jede Angebots-Position gegen den Marktmedian aus Airtable prüfen kann.
     let preisrefList: any[] = [];
     if (check_type === 'angebot') {
       preisrefList = await loadPreisreferenzen();
@@ -1247,7 +1235,6 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // 4. Anthropic-Call
     const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_KEY") });
     const t0 = Date.now();
 
@@ -1262,7 +1249,7 @@ export default async function (req: Request): Promise<Response> {
 
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 4096, // Erhöht von 2048 — komplexe Tabellen brauchen mehr Output-Spielraum
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
     });
@@ -1272,7 +1259,6 @@ export default async function (req: Request): Promise<Response> {
     const tokens_out = response.usage.output_tokens;
     const cost_eur = ((tokens_in * COST_PER_M_INPUT_TOKENS + tokens_out * COST_PER_M_OUTPUT_TOKENS) / 1_000_000) * USD_TO_EUR;
 
-    // 5. JSON parsen
     const textBlock = response.content.find((c: any) => c.type === "text");
     const rawText = textBlock?.text || "{}";
     const cleaned = rawText.replace(/^```json\s*|\s*```$/g, "").trim();
@@ -1280,11 +1266,9 @@ export default async function (req: Request): Promise<Response> {
     try { result = JSON.parse(cleaned); }
     catch { return jsonResp({ error: "KI-Antwort konnte nicht geparst werden", raw: rawText }, 500, corsHeaders); }
 
-    // 6. Check-Nummer erzeugen
     const checkNr = await generateCheckNr();
     result.check_nr = checkNr;
 
-    // 7. Lead + Vorab-Check in Airtable speichern
     await saveToAirtable({
       check_nr: checkNr,
       check_type,
@@ -1299,37 +1283,30 @@ export default async function (req: Request): Promise<Response> {
       duration_ms,
     });
 
-    // 8. Return — nur die Daten, die das Frontend braucht
-    // savings_total_eur ist die Gesamthaus-Ersparnis (Fallback: legacy savings_estimate_eur)
-    // savings_individual_eur ist die Ersparnis für die anfragende Partei
     let savingsTotal = Number(result.savings_total_eur || result.savings_estimate_eur || 0);
     const meaPool       = Number(result.mea_pool_total || 0);
     const meaEigentuemer = Number(result.mea_eigentuemer || 0);
 
-    // SICHERHEITSNETZ A: Markt-Ersparnis IMMER selbst rechnen — der KI-Rechnung wird NICHT mehr vertraut.
-    // Strategie: brutto-Wartungsbetrag erstmal aus anonymized_data lesen, sonst per Regex aus
-    // dem Klartext (summary + findings) extrahieren. Dann mit Median 980 €/Anlage/Jahr vergleichen.
     if (check_type === 'nebenkosten') {
-      // User-Angabe hat Vorrang vor KI-Schätzung (aus Dokument oft nicht eindeutig ableitbar)
+
       const aufzugCount = aufzugCountUser;
-      result.aufzug_count = aufzugCount; // Im Response konsistent halten
+      result.aufzug_count = aufzugCount;
       let aufzugBrutto = 0;
-      let bruttoSource = 'unknown'; // 'user' | 'ki' | 'regex' — für Transparenz
+      let bruttoSource = 'unknown';
 
       if (wartungBruttoUser > 0) {
-        // Höchste Priorität: User hat den Wert manuell eingetragen
+
         aufzugBrutto = wartungBruttoUser;
         bruttoSource = 'user';
-        // anonymized_data konsistent halten — User-Wert auch dort speichern
+
         if (!result.anonymized_data) result.anonymized_data = {};
         result.anonymized_data.betrag_aufzug_brutto = aufzugBrutto;
         console.log('[liftaro-vorabcheck] brutto vom User:', aufzugBrutto);
       } else {
-        // Fallback 1: KI-extrahierter Wert aus anonymized_data
+
         aufzugBrutto = Number(result.anonymized_data?.betrag_aufzug_brutto || 0);
         if (aufzugBrutto >= 500) bruttoSource = 'ki';
 
-        // Fallback 2: Regex aus Klartext, wenn KI-Wert fehlt oder verdächtig klein
         if (!aufzugBrutto || aufzugBrutto < 500) {
           const haystack = String(result.summary || '') + ' ' +
             (result.findings || []).map(f => (f.title||'') + ' ' + (f.description||'')).join(' ');
@@ -1347,38 +1324,31 @@ export default async function (req: Request): Promise<Response> {
 
       const proAnlage = aufzugCount > 0 ? aufzugBrutto / aufzugCount : 0;
 
-      // Authoritative Berechnung — überschreibt IMMER die KI-Werte, wenn der Markt-Vergleich greift
       if (proAnlage > 1200) {
-        // Ersparnis = exakte Differenz zwischen aktuellem Wartungspreis und Marktmedian.
-        // Kein "Verhandlungsfaktor" mehr — wenn neu ausgeschrieben wird, ist genau das die
-        // erreichbare Ersparnis.
+
         const correctTotal = Math.round((proAnlage - 980) * aufzugCount);
         const proAnlageStr = Math.round(proAnlage).toLocaleString('de-DE');
         const diffStr      = Math.round(proAnlage - 980).toLocaleString('de-DE');
-        // pctSavings = exakter prozentualer Anteil (Differenz/Brutto)
+
         const pctSavings = aufzugBrutto > 0 ? Math.round((correctTotal / aufzugBrutto) * 100) : 0;
 
-        // Authoritative-Override (savings + summary + finding + ampel)
         savingsTotal = correctTotal;
         result.savings_text = 'rund ' + pctSavings + ' % der bisherigen Wartungskosten durch marktgerechte Neuausschreibung';
 
-        // Summary überschreiben, wenn KI eine falsche/keine Marktposition genannt hat.
-        // Konkreten Median-Wert (980 €) NICHT erwähnen — nur generische Marktreferenz.
         const summaryHasMarketClaim = /markt|median/i.test(String(result.summary || ''));
         const summaryIsConsistent = summaryHasMarketClaim && /über|ueber|deutlich|teuer/i.test(String(result.summary || ''));
         if (!summaryIsConsistent) {
           result.summary = 'Ihre Wartung kostet ' + proAnlageStr + ' € pro Jahr je Aufzug — das ist rund ' + diffStr + ' € mehr als der übliche Marktpreis für Wartung und Notruf. Optimierungspotenzial vorhanden.';
         }
-        // Falls die KI selbst die konkrete 980-Zahl in summary geschrieben hat → entfernen
+
         if (result.summary) {
           result.summary = String(result.summary).replace(/\bvon\s+9\s?80\s*(€|EUR)\b/gi, '').replace(/\(?\b9\s?80\s*(€|EUR)\b\)?/gi, '').replace(/\s{2,}/g, ' ').trim();
         }
-        // Selbe Säuberung für savings_text
+
         if (result.savings_text) {
           result.savings_text = String(result.savings_text).replace(/\bvon\s+9\s?80\s*(€|EUR)\b/gi, '').replace(/\(?\b9\s?80\s*(€|EUR)\b\)?/gi, '').replace(/\s{2,}/g, ' ').trim();
         }
 
-        // Vorhandenes Markt-Finding ENTFERNEN (KI-Mathe ist meist falsch), durch authoritatives ersetzen
         let findings = result.findings || [];
         findings = findings.filter(f => !/markt|wartung.*(zu\s+(teuer|hoch)|ueber|über)|optimierung.*?wartung/i.test((f.title||'') + ' ' + (f.description||'')));
         findings.unshift({
@@ -1390,7 +1360,6 @@ export default async function (req: Request): Promise<Response> {
 
         result.findings = findings;
 
-        // Ampel anpassen: bei deutlich über Markt mindestens gelb
         if ((result.ampel === 'gruen' || result.ampel === 'grün') && proAnlage > 1500) {
           result.ampel = 'gelb';
         }
@@ -1398,9 +1367,6 @@ export default async function (req: Request): Promise<Response> {
         console.log('[liftaro-vorabcheck] Markt-Override: brutto=' + aufzugBrutto + ', anlagen=' + aufzugCount + ', proAnlage=' + proAnlage + ', diff=' + diffStr + ', ersparnis=' + correctTotal);
       }
 
-      // Zusatz-Hinweis für Eigentümer und Hausverwalter — IMMER (unabhängig davon, ob die Wartung
-      // überteuert ist). Das Sparpotenzial dieser Auswertung deckt nur Wartung + Notruf ab.
-      // Bei unterjährigen Reparaturen kann Liftaro im Einzelfall bis zu 8.000 € zusätzlich einsparen.
       if (role === 'eigentuemer' || role === 'verwalter') {
         const findings = result.findings || [];
         const hasRepairHint = findings.some(f => /reparatur.*(8\.?000|einsparen|liftaro.*pr[üu]f|zus[äa]tzlich)/i.test((f.title||'') + ' ' + (f.description||'')));
@@ -1416,12 +1382,10 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // ---
-    // Deterministisch 30–60 % vom Angebotsbetrag, basierend auf check_nr-Hash.
     if (check_type === 'angebot') {
       const angebotsumme = Number(result.anonymized_data?.angebotssumme_brutto || result.anonymized_data?.angebotssumme_netto || 0);
       const positionsLeer = !Array.isArray(result.positions_nicht_in_liste) ? 0 : result.positions_nicht_in_liste.length;
-      // Wenn KI keine Ersparnis liefert, aber wir kennen die Angebotssumme: schätzen
+
       if (!savingsTotal && angebotsumme > 100) {
         const factor = deterministicSavingsFactor(checkNr);
         savingsTotal = Math.round(angebotsumme * factor);
@@ -1436,7 +1400,7 @@ export default async function (req: Request): Promise<Response> {
         });
         result.findings = findings;
       } else if (positionsLeer && savingsTotal) {
-        // KI hat Ersparnis berechnet, aber einzelne Positionen waren nicht in der Liste — Hinweis
+
         const findings = result.findings || [];
         findings.push({
           severity: 'blue',
@@ -1447,7 +1411,6 @@ export default async function (req: Request): Promise<Response> {
         result.findings = findings;
       }
 
-      // Auch für Angebote: Reparatur-Hinweis bei Eigentümer/Verwalter
       if (role === 'eigentuemer' || role === 'verwalter') {
         const findings = result.findings || [];
         const hasRepairHint = findings.some(f => /reparatur.*(8\.?000|einsparen|liftaro.*pr[üu]f|zus[äa]tzlich)/i.test((f.title||'') + ' ' + (f.description||'')));
@@ -1463,17 +1426,11 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // Sicherheitsnetz B: Wenn MEA-Werte da sind und savings_individual_eur leer,
-    // rechnen wir selbst — verhindert "73 Parteien"-Fehler bei MEA-Verteilung
     let savingsIndividual = Number(result.savings_individual_eur || 0);
     if (!savingsIndividual && savingsTotal > 0 && meaPool > 0 && meaEigentuemer > 0) {
       savingsIndividual = Math.round(savingsTotal * meaEigentuemer / meaPool);
     }
 
-    // 7b. Pipedrive-Lead anlegen — best-effort, blockiert die Response nicht.
-    // Jeder Vorabcheck mit Kontaktdaten landet als Lead in der Sales-Pipeline.
-    // (Steht hier UNTERHALB der Savings-Berechnung, weil savingsTotal/savingsIndividual
-    // hier final feststehen — TDZ-Bug bei früherer Position behoben.)
     if (lead?.email) {
       const fullName = ((lead.vorname || '') + ' ' + (lead.nachname || '')).trim() || lead.email;
       const roleLabel = role === 'eigentuemer' ? 'Eigentümer'
@@ -1499,7 +1456,7 @@ export default async function (req: Request): Promise<Response> {
       ].filter(Boolean);
       const note = noteLines.join('\n');
       const title = '[Vorabcheck] ' + fullName + ' — ' + roleLabel + ' (' + checkNr + ')';
-      // Async, fehlerresistent — upsertPipedriveLead dedupliziert per Email
+
       createPipedriveLead({
         name: fullName,
         email: lead.email,
@@ -1509,7 +1466,6 @@ export default async function (req: Request): Promise<Response> {
       }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
     }
 
-    // Aufzug-Positionen + Gesamtkosten aus KI-Antwort durchreichen (defensiv normalisieren)
     const aufzugPositionen = Array.isArray(result.aufzug_positionen)
       ? result.aufzug_positionen
           .filter((p: any) => p && (p.text || p.betrag_eur))
@@ -1528,14 +1484,14 @@ export default async function (req: Request): Promise<Response> {
       aufzug_positionen: aufzugPositionen,
       aufzug_gesamtkosten_eur: aufzugGesamtkosten,
       wartung_brutto_used: Number(result.anonymized_data?.betrag_aufzug_brutto || wartungBruttoUser || 0),
-      wartung_brutto_source: wartungBruttoUser > 0 ? 'user' : 'ki', // Transparenz: woher kam der Wartungs-Wert?
+      wartung_brutto_source: wartungBruttoUser > 0 ? 'user' : 'ki',
       verteilerschluessel: String(result.verteilerschluessel || 'unbekannt'),
       parteien_count: Number(result.parteien_count || 0),
       mea_pool_total: meaPool,
       mea_eigentuemer: meaEigentuemer,
       savings_total_eur: savingsTotal,
       savings_individual_eur: savingsIndividual,
-      savings_estimate_eur: savingsTotal, // Legacy für altes Frontend
+      savings_estimate_eur: savingsTotal,
       savings_text: result.savings_text || "",
       check_nr: checkNr,
       role: role,
@@ -1547,9 +1503,6 @@ export default async function (req: Request): Promise<Response> {
   }
 }
 
-// ---
-// Helpers
-// ---
 function jsonResp(body: any, status: number, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -1568,7 +1521,7 @@ async function verifyTurnstile(token: string, secret: string): Promise<boolean> 
 }
 
 async function generateCheckNr(): Promise<string> {
-  // Fortlaufende Nummer aus Airtable (oder einfacher Zähler via val.town blob)
+
   const year = new Date().getFullYear();
   const random = Math.floor(Math.random() * 9000) + 1000;
   return `VC-${year}-${random}`;
@@ -1596,7 +1549,6 @@ async function saveToAirtable(data: {
   const totalEur = Number(data.result.savings_total_eur || data.result.savings_estimate_eur || 0);
   const indivEur = Number(data.result.savings_individual_eur || 0);
 
-  // Lead-Tabelle (mit PII)
   await fetch(`${at}/Vorabcheck-Leads`, {
     method: "POST", headers,
     body: JSON.stringify({
@@ -1615,7 +1567,6 @@ async function saveToAirtable(data: {
     }),
   }).catch(e => console.warn("Lead-Save:", e.message));
 
-  // Aufzug-Positionen + Gesamtkosten aus dem Result
   const aufzugPositionen = Array.isArray(data.result.aufzug_positionen) ? data.result.aufzug_positionen : [];
   const aufzugPositionenText = aufzugPositionen
     .map((p: any) => (p.text || '') + ': ' + (Number(p.betrag_eur || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + ' €')
@@ -1625,7 +1576,6 @@ async function saveToAirtable(data: {
     aufzugGesamtkosten = aufzugPositionen.reduce((s: number, p: any) => s + (Number(p.betrag_eur) || 0), 0);
   }
 
-  // Vorab-Check-Tabelle (anonymisiert für KI-Lernen)
   await fetch(`${at}/Vorab-Checks`, {
     method: "POST", headers,
     body: JSON.stringify({
@@ -1650,7 +1600,6 @@ async function saveToAirtable(data: {
     }),
   }).catch(e => console.warn("VorabCheck-Save:", e.message));
 
-  // Cost-Tracking
   await fetch(`${at}/API-Cost-Log`, {
     method: "POST", headers,
     body: JSON.stringify({
