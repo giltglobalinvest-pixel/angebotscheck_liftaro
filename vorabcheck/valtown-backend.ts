@@ -906,17 +906,6 @@ export default async function (req: Request): Promise<Response> {
         model: MODEL,
       }, 200, corsHeaders);
     }
-    if (body.action === '__diag') {
-      return jsonResp({
-        backend_version: 'V9.48',
-        has_airtable_key: !!Deno.env.get("AIRTABLE_KEY"),
-        airtable_base_id: Deno.env.get("AIRTABLE_BASE_ID") || '',
-        has_anthropic_key: !!Deno.env.get("ANTHROPIC_KEY"),
-        has_turnstile_secret: !!Deno.env.get("TURNSTILE_SECRET_KEY"),
-        has_serper_key: !!Deno.env.get("SERPER_API_KEY"),
-        atpostsafe_compiled: typeof DEFAULT_SYSTEM_PROMPTS !== 'undefined',
-      }, 200, corsHeaders);
-    }
 
     if (body.action === 'correct') {
       const cn = String(body.check_nr || '').trim();
@@ -1307,15 +1296,23 @@ async function saveToAirtable(data: {
   // Damit ueberlebt der Save auch wenn die Airtable-Tabelle nicht alle Felder hat.
   async function atPostSafe(tableUrl: string, fieldsIn: Record<string, any>) {
     const fields = { ...fieldsIn };
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 20; i++) {
       try {
         const r = await fetch(tableUrl, { method: 'POST', headers, body: JSON.stringify({ fields }) });
         if (r.ok) return;
         const txt = await r.text();
-        const m = txt.match(/Unknown field name:\s*"?([^"\\]+)"?/i);
-        if (m && m[1] && Object.prototype.hasOwnProperty.call(fields, m[1])) {
-          delete fields[m[1]];
-          console.warn('[Airtable] retry ohne unbekanntes Feld:', m[1]);
+        // Airtable returnt JSON wie {"error":{"type":"UNKNOWN_FIELD_NAME","message":"Unknown field name: \"role\""}}
+        // → parse JSON + extrahiere msg, dann match Feldname.
+        let badField = '';
+        try {
+          const j = JSON.parse(txt);
+          const msg = j?.error?.message || j?.error || '';
+          const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+          if (m) badField = m[1];
+        } catch (_) { /* nicht JSON */ }
+        if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
+          delete fields[badField];
+          console.warn('[Airtable] retry ohne unbekanntes Feld:', badField);
           continue;
         }
         console.warn('[Airtable]', tableUrl.slice(-30), 'POST fehlgeschlagen:', txt.slice(0, 200));
