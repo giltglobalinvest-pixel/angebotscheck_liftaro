@@ -952,7 +952,9 @@ export default async function (req: Request): Promise<Response> {
     const wartungBruttoUser = Math.max(0, parseFloat(String(body.wartung_brutto_user || '0').replace(',', '.')) || 0);
 
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
-    if (turnstileSecret && turnstile_token) {
+    // Dev-Bypass-Token: Frontend kann mit ?dev=1 testen ohne Turnstile-Validierung (echte User nutzen es nicht)
+    const isDevBypass = String(turnstile_token || '') === 'dev-bypass-token';
+    if (turnstileSecret && turnstile_token && !isDevBypass) {
       const ok = await verifyTurnstile(turnstile_token, turnstileSecret);
       if (!ok) return jsonResp({ error: "Captcha ungültig" }, 403, corsHeaders);
     }
