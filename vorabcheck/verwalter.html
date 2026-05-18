@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Liftaro — Vergleichsangebot anfordern</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0e2440">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:#0e2440;--navy-2:#1a3a5c;--brand:#7dc242;--brand-dark:#5fa028;--brand-deep:#3d7a14;
+  --ink:#0e2440;--ink-2:#2e3a55;--ink-3:#6b7280;--bg:#f4f7fa;--bg-soft:#eef2f7;
+  --line:#e0e6ee;--line-2:#d0d8e3;--card:#fff;--max:680px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Inter",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:var(--max);margin:0 auto;padding:24px 18px 80px}
+.nav{background:linear-gradient(180deg,var(--navy-2) 0%,var(--navy) 100%);padding:14px 24px;border-bottom:1px solid rgba(255,255,255,.08)}
+.nav img{height:30px;display:block;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:14px;box-shadow:0 2px 10px rgba(10,20,40,.04)}
+.hero{background:linear-gradient(135deg,var(--brand) 0%,var(--brand-dark) 60%,var(--brand-deep) 100%);color:#fff;border:none;padding:22px 22px}
+.hero h1{font-size:21px;font-weight:800;margin-bottom:10px;line-height:1.25;letter-spacing:-.01em}
+.hero p{color:rgba(255,255,255,.92);font-size:14px;line-height:1.55;margin-bottom:14px}
+.hero .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.hero .stat{background:rgba(255,255,255,.16);border-radius:9px;padding:9px 11px;font-size:12px;color:rgba(255,255,255,.92)}
+.hero .stat strong{color:#fff;font-size:15px;font-weight:700;display:block}
+h2{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:10px;letter-spacing:-.01em}
+label{font-size:12.5px;font-weight:600;color:var(--ink-2);display:block;margin-bottom:6px}
+label .opt{font-weight:400;color:var(--ink-3);font-size:11.5px}
+input[type=text],input[type=email],input[type=tel]{width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)}
+input:focus{border-color:var(--brand-dark)}
+.field{margin-bottom:12px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.row2{grid-template-columns:1fr}}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.tab{padding:14px 16px;border:1.5px solid var(--line-2);border-radius:10px;background:#fff;cursor:pointer;font-family:inherit;text-align:left;transition:all .15s}
+.tab.active{border-color:var(--brand);background:rgba(125,194,66,.08)}
+.tab .num{display:inline-block;width:22px;height:22px;background:var(--brand);color:#fff;border-radius:50%;font-size:12px;font-weight:700;line-height:22px;text-align:center;margin-bottom:6px}
+.tab.active .num{background:var(--brand-deep)}
+.tab strong{display:block;font-size:13.5px;color:var(--ink);font-weight:700;margin-bottom:2px}
+.tab span{font-size:11.5px;color:var(--ink-3)}
+.q-block{margin-bottom:14px}
+.q-block .qlabel{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opts label{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:500;color:var(--ink-2);cursor:pointer;margin:0;transition:all .15s}
+.opts label:has(input:checked){border-color:var(--brand);background:rgba(125,194,66,.08);color:var(--ink);font-weight:600}
+.opts input{accent-color:var(--brand);width:14px;height:14px;margin:0}
+.btn{background:linear-gradient(135deg,var(--brand) 0%,var(--brand-dark) 100%);color:#fff;border:none;border-radius:10px;padding:14px 22px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{background:linear-gradient(135deg,var(--brand-dark) 0%,var(--brand-deep) 100%)}
+.btn:disabled{opacity:.6;cursor:not-allowed}
+.drop{border:2px dashed var(--line-2);border-radius:10px;padding:24px 16px;text-align:center;background:var(--bg-soft);cursor:pointer;transition:all .15s}
+.drop.has-file{border-color:var(--brand);background:rgba(125,194,66,.08)}
+.drop.dragover{border-color:var(--brand);background:rgba(125,194,66,.15)}
+.drop .icon{font-size:30px;display:block;margin-bottom:6px}
+.drop .hint{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+.success{background:linear-gradient(135deg,#f3faea,#fff);border:1.5px solid #c9e6a8;border-radius:14px;padding:24px 22px;text-align:center}
+.success .ico{font-size:48px;margin-bottom:8px}
+.success h2{color:var(--brand-deep);margin-bottom:8px}
+.success p{color:var(--ink-2);font-size:14px;line-height:1.6;margin-bottom:6px}
+.err{background:#fff7e6;border:1px solid #f0d4a8;border-radius:8px;padding:10px 12px;color:#7a4d00;font-size:13px;margin-bottom:14px}
+.loader{display:inline-block;width:20px;height:20px;border:3px solid #ddd;border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skel{height:14px;background:linear-gradient(90deg,#e0e6ee 25%,#eef2f7 50%,#e0e6ee 75%);background-size:200% 100%;animation:shimmer 1.4s linear infinite;border-radius:4px;margin:6px 0}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.footer{text-align:center;font-size:11.5px;color:var(--ink-3);margin-top:20px;line-height:1.6}
+.footer a{color:var(--ink-3);text-decoration:underline}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <img src="https://liftaro.de/wp-content/uploads/2026/01/liftaro-logo-white-scaled.png" alt="Liftaro">
+</header>
+
+<div class="wrap">
+  <!-- Loading-Skelett -->
+  <div id="loading" class="card">
+    <div class="skel" style="width:60%;height:18px"></div>
+    <div class="skel" style="width:90%"></div>
+    <div class="skel" style="width:80%"></div>
+    <div class="skel" style="width:50%"></div>
+  </div>
+
+  <!-- Fehlerbox -->
+  <div id="errBox" class="card" style="display:none;border-color:#e0a09a;background:#fff7f5">
+    <h2 style="color:#a8312f">⚠ Vorabcheck nicht gefunden</h2>
+    <p style="color:var(--ink-2);font-size:13.5px;margin-top:6px" id="errMsg">Der Link ist ungültig oder der Eintrag wurde gelöscht.</p>
+  </div>
+
+  <!-- Hauptinhalt -->
+  <div id="main" style="display:none">
+    <!-- Hero mit Kontext -->
+    <div class="card hero">
+      <h1>Vergleichsangebot für Aufzug-Wartung anfordern</h1>
+      <p id="introText">Ein Eigentümer der von Ihnen verwalteten Immobilie hat einen Liftaro-Vorabcheck durchführen lassen und auf Sie verwiesen.</p>
+      <div class="stats">
+        <div class="stat">Objekt<strong id="statObjekt">–</strong></div>
+        <div class="stat">Geschätztes Sparpotenzial<strong id="statSavings">–</strong></div>
+      </div>
+    </div>
+
+    <!-- Verwalter-Kontaktdaten -->
+    <div class="card">
+      <h2>Ihre Kontaktdaten</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Name, Vorname <span class="opt">·  Pflicht</span></label>
+          <input type="text" id="vw_name" placeholder="Max Mustermann" autocomplete="name">
+        </div>
+        <div class="field">
+          <label>Telefon <span class="opt">· optional</span></label>
+          <input type="tel" id="vw_tel" placeholder="+49 …" autocomplete="tel">
+        </div>
+      </div>
+      <div class="field">
+        <label>E-Mail-Adresse <span class="opt">· Pflicht — für die Angebotszusendung</span></label>
+        <input type="email" id="vw_email" placeholder="info@verwaltung.de" autocomplete="email">
+      </div>
+    </div>
+
+    <!-- Variante-Tabs -->
+    <div class="card">
+      <h2>Wie möchten Sie das Vergleichsangebot anstoßen?</h2>
+      <div class="tabs">
+        <button type="button" class="tab active" data-mode="fragen" onclick="setMode('fragen')">
+          <span class="num">1</span>
+          <strong>Fragen beantworten</strong>
+          <span>Schnell — 5 Klicks</span>
+        </button>
+        <button type="button" class="tab" data-mode="upload" onclick="setMode('upload')">
+          <span class="num">2</span>
+          <strong>Vertrag hochladen</strong>
+          <span>KI liest alle Details aus</span>
+        </button>
+      </div>
+
+      <!-- Variante 1: Fragen -->
+      <div id="mode-fragen">
+        <div class="q-block">
+          <div class="qlabel">1. Wartungen pro Jahr</div>
+          <div class="opts">
+            <label><input type="radio" name="wartungen" value="1"> 1 ×</label>
+            <label><input type="radio" name="wartungen" value="2" checked> 2 ×</label>
+            <label><input type="radio" name="wartungen" value="3"> 3 ×</label>
+            <label><input type="radio" name="wartungen" value="4"> 4 ×</label>
+          </div>
+        </div>
+        <div class="q-block">
+          <div class="qlabel">2. Vertragsart</div>
+          <div class="opts">
+            <label><input type="radio" name="vertragsart" value="system" checked> Systemwartung <span style="color:var(--ink-3);font-size:11px">· nur Schmierung, Reparaturen extra</span></label>
+            <label><input type="radio" name="vertragsart" value="voll"> Vollwartung <span style="color:var(--ink-3);font-size:11px">· inkl. Verschleißteile</span></label>
+          </div>
+        </div>
+        <div class="q-block">
+          <div class="qlabel">3. TÜV-Begleitung <span style="color:var(--ink-3);font-size:11.5px;font-weight:400">(Anwesenheit Techniker bei Prüfung)</span></div>
+          <div class="opts">
+            <label><input type="radio" name="tuev_begl" value="inkl" checked> inklusive</label>
+            <label><input type="radio" name="tuev_begl" value="sep"> separat berechnet</label>
+          </div>
+        </div>
+        <div class="q-block">
+          <div class="qlabel">4. TÜV-Prüfung & Organisation <span style="color:var(--ink-3);font-size:11.5px;font-weight:400">(Gebühren + Abwicklung)</span></div>
+          <div class="opts">
+            <label><input type="radio" name="tuev_pruef" value="inkl" checked> inklusive</label>
+            <label><input type="radio" name="tuev_pruef" value="sep"> separat berechnet</label>
+          </div>
+        </div>
+        <div class="q-block">
+          <div class="qlabel">5. Notrufservice</div>
+          <div class="opts">
+            <label><input type="radio" name="notruf" value="inkl" checked> inklusive <span style="color:var(--ink-3);font-size:11px">· inkl. Personenbefreiung</span></label>
+            <label><input type="radio" name="notruf" value="sep"> nicht inklusive</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Variante 2: Upload -->
+      <div id="mode-upload" style="display:none">
+        <div class="drop" id="dropZone" onclick="document.getElementById('pdfFile').click()">
+          <span class="icon">📑</span>
+          <strong style="font-size:14px;color:var(--ink)">Wartungsvertrag hochladen</strong>
+          <div class="hint">PDF, JPG oder PNG · max. 10 MB · KI liest alle Vertragsdetails aus</div>
+          <div id="fileName" style="display:none;margin-top:10px;font-size:12.5px;color:var(--brand-deep);font-weight:600"></div>
+        </div>
+        <input type="file" id="pdfFile" accept=".pdf,image/*" style="display:none" onchange="handleFile()">
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div id="errInline" class="err" style="display:none"></div>
+    <button type="button" class="btn" id="submitBtn" onclick="submitResponse()">
+      <span id="submitIcon">→</span>
+      <span id="submitLabel">Vergleichsangebot anfordern</span>
+    </button>
+    <p class="footer">
+      Mit Klick stimmen Sie der einmaligen Datenverarbeitung gemäß <a href="https://check.liftaro.de/start/datenschutz.html" target="_blank" rel="noopener">Datenschutz</a> zu.
+      Wir antworten i. d. R. innerhalb von 24 h.
+    </p>
+  </div>
+
+  <!-- Erfolg -->
+  <div id="successBox" class="card success" style="display:none">
+    <div class="ico">✅</div>
+    <h2>Vielen Dank für Ihre Anfrage!</h2>
+    <p>Wir prüfen Ihre Angaben und melden uns innerhalb von <strong>24 Stunden</strong> mit einem konkreten Vergleichsangebot bei der angegebenen E-Mail-Adresse.</p>
+    <p style="font-size:12.5px;color:var(--ink-3);margin-top:10px">Check-Nr: <span id="successCheckNr" style="font-family:'DM Mono',monospace"></span></p>
+  </div>
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────
+let LIFTARO_API_URL = null;
+const _MB = (function() {
+  const k1 = 'patu8KWM';
+  const k2 = '8aWByxCGL';
+  const k3 = '.69fae5d9fa4b94c266b42';
+  const k4 = '6dadd71a51f574945d840b33569058ab5e9d89ebef3';
+  return { base: 'appzhNrhkLSTEaNFW', project: 'p_1777239396379', k: k1 + k2 + k3 + k4 };
+})();
+
+async function loadProxyUrl() {
+  try {
+    const url = 'https://api.airtable.com/v0/' + _MB.base + '/Keys?filterByFormula=' +
+      encodeURIComponent("AND({project_id}='" + _MB.project + "',{key_name}='vorabcheckProxyUrl')");
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + _MB.k }, cache: 'no-store' });
+    const d = await res.json();
+    LIFTARO_API_URL = (d?.records?.[0]?.fields?.key_value || '').replace(/\/+$/, '');
+  } catch (e) { console.warn('Proxy-URL-Load fail:', e); }
+}
+
+let _ctx = null;
+let _mode = 'fragen';
+let _file = null;
+let _pdfBase64 = null;
+
+function getCheckNr() {
+  const url = new URL(location.href);
+  return url.searchParams.get('id') || '';
+}
+
+function fmt(n) { return Number(n || 0).toLocaleString('de-DE'); }
+
+async function init() {
+  const cn = getCheckNr();
+  if (!cn) {
+    showError('Kein Vorabcheck-Identifier im Link. Bitte den vollständigen Link aus der ursprünglichen E-Mail aufrufen.');
+    return;
+  }
+  await loadProxyUrl();
+  if (!LIFTARO_API_URL) {
+    showError('Backend-URL konnte nicht ermittelt werden. Bitte später erneut versuchen.');
+    return;
+  }
+  try {
+    const res = await fetch(LIFTARO_API_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_verwalter_context', check_nr: cn }),
+    });
+    const d = await res.json();
+    if (!d.ok) { showError('Vorabcheck "' + cn + '" wurde nicht gefunden. ' + (d.error || '')); return; }
+    _ctx = d.ctx;
+    renderContext();
+  } catch (e) { showError('Fehler beim Laden: ' + (e.message || 'unbekannt')); }
+}
+
+function renderContext() {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+  const eName = _ctx.eigentuemer_name || 'Ein Eigentümer';
+  const obj = _ctx.objekt_adresse || 'der Immobilie';
+  const sav = Number(_ctx.savings_total_eur || 0);
+  document.getElementById('introText').textContent =
+    eName + ' (Eigentümer am Objekt ' + obj + ') hat über Liftaro einen kostenlosen Vorabcheck durchführen lassen. Das Ergebnis zeigt erhebliches Optimierungs-Potenzial bei den Aufzug-Wartungskosten.';
+  document.getElementById('statObjekt').textContent = obj || '–';
+  document.getElementById('statSavings').textContent = sav > 0 ? '€ ' + fmt(sav) + ' / Jahr' : 'siehe Auswertung';
+  // Wenn schon eine Antwort vorhanden ist → Success direkt zeigen
+  if (_ctx.verwalter_status === 'antwort_erhalten') {
+    document.getElementById('main').style.display = 'none';
+    const sb = document.getElementById('successBox');
+    sb.querySelector('h2').textContent = 'Sie haben bereits geantwortet';
+    sb.querySelector('p').innerHTML = 'Eingegangen am <strong>' + (new Date(_ctx.verwalter_response_at).toLocaleDateString('de-DE')) +
+      '</strong>. Wir bearbeiten Ihre Anfrage und melden uns binnen 24 h.';
+    document.getElementById('successCheckNr').textContent = _ctx.check_nr;
+    sb.style.display = 'block';
+  }
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('errBox').style.display = 'block';
+  document.getElementById('errMsg').textContent = msg;
+}
+
+function setMode(m) {
+  _mode = m;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.mode === m));
+  document.getElementById('mode-fragen').style.display = m === 'fragen' ? 'block' : 'none';
+  document.getElementById('mode-upload').style.display = m === 'upload' ? 'block' : 'none';
+}
+
+function handleFile() {
+  const fi = document.getElementById('pdfFile');
+  if (!fi.files || !fi.files[0]) return;
+  const f = fi.files[0];
+  if (f.size > 10 * 1024 * 1024) { showInline('Datei zu groß (max. 10 MB).'); return; }
+  _file = f;
+  const dropZone = document.getElementById('dropZone');
+  dropZone.classList.add('has-file');
+  const fn = document.getElementById('fileName');
+  fn.textContent = '✓ ' + f.name + ' (' + Math.round(f.size / 1024) + ' KB)';
+  fn.style.display = 'block';
+  // base64 lesen
+  const r = new FileReader();
+  r.onload = () => { _pdfBase64 = String(r.result).split(',')[1] || ''; };
+  r.readAsDataURL(f);
+}
+
+function showInline(msg) {
+  const e = document.getElementById('errInline');
+  e.textContent = '⚠ ' + msg;
+  e.style.display = 'block';
+  setTimeout(() => { e.style.display = 'none'; }, 5500);
+}
+
+async function submitResponse() {
+  const name  = document.getElementById('vw_name').value.trim();
+  const email = document.getElementById('vw_email').value.trim();
+  const tel   = document.getElementById('vw_tel').value.trim();
+  if (!name)  { showInline('Bitte Namen eintragen.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showInline('Bitte gültige E-Mail-Adresse eintragen.'); return; }
+  if (_mode === 'upload' && !_file) { showInline('Bitte einen Vertrag hochladen oder zu Variante 1 wechseln.'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  document.getElementById('submitIcon').innerHTML = '<span class="loader" style="width:14px;height:14px;border-width:2px"></span>';
+  document.getElementById('submitLabel').textContent = 'wird gesendet …';
+
+  let responses = null;
+  if (_mode === 'fragen') {
+    responses = {
+      wartungen:  document.querySelector('input[name=wartungen]:checked')?.value || '',
+      vertragsart: document.querySelector('input[name=vertragsart]:checked')?.value || '',
+      tuev_begl:   document.querySelector('input[name=tuev_begl]:checked')?.value || '',
+      tuev_pruef:  document.querySelector('input[name=tuev_pruef]:checked')?.value || '',
+      notruf:      document.querySelector('input[name=notruf]:checked')?.value || '',
+    };
+  }
+  try {
+    const payload = {
+      action: 'submit_verwalter_response',
+      check_nr: _ctx.check_nr,
+      verwalter: { name, email, telefon: tel },
+      mode: _mode,
+      responses,
+    };
+    if (_mode === 'upload' && _pdfBase64) {
+      payload.pdf_base64 = _pdfBase64;
+      payload.pdf_name = _file.name;
+      payload.pdf_mime = _file.type || 'application/pdf';
+    }
+    const res = await fetch(LIFTARO_API_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'Server-Fehler');
+    // Success
+    document.getElementById('main').style.display = 'none';
+    document.getElementById('successCheckNr').textContent = _ctx.check_nr;
+    document.getElementById('successBox').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    showInline('Fehler beim Senden: ' + (e.message || 'unbekannt'));
+    btn.disabled = false;
+    document.getElementById('submitIcon').textContent = '→';
+    document.getElementById('submitLabel').textContent = 'Vergleichsangebot anfordern';
+  }
+}
+
+// Drag-and-drop
+(function() {
+  const dz = document.getElementById('dropZone');
+  if (!dz) return;
+  ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+  dz.addEventListener('drop', e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) { document.getElementById('pdfFile').files = e.dataTransfer.files; handleFile(); }
+  });
+})();
+
+init();
+</script>
+
+</body>
+</html>
