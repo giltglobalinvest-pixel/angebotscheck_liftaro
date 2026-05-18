@@ -2379,7 +2379,6 @@ function _pickHvSuggestion(idx) {
     address: hit.city || hit.address || '',
     org_id: hit.org_id || null,
   };
-  // Auswahl-Bestätigungs-Box füllen
   var selBox  = document.getElementById('cta-hv-selected');
   var selName = document.getElementById('cta-hv-selected-name');
   var selAddr = document.getElementById('cta-hv-selected-addr');
@@ -2387,9 +2386,72 @@ function _pickHvSuggestion(idx) {
   if (selBox) selBox.style.display = 'block';
   if (selName) selName.textContent = hit.name || '';
   if (selAddr) selAddr.textContent = (hit.city || hit.address) ? '📍 ' + (hit.city || hit.address) : '⚠ Keine Adresse hinterlegt';
-  if (selMail) selMail.textContent = hit.email ? '✉ ' + hit.email : 'Keine allgemeine E-Mail hinterlegt — Auswertung geht an Ihre eigene Adresse';
   if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '✓ ausgewählt'; }
+  // Wenn DB-Treffer KEINE Email hat → automatisch im Web ergänzen (statt User auf eigene Adresse verweisen)
+  if (!hit.email) {
+    if (selMail) selMail.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #ccc;border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span> sucht E-Mail im Internet …';
+    _enrichPickedHvFromWeb(hit.name || '');
+  } else {
+    if (selMail) selMail.textContent = '✉ ' + hit.email;
+  }
   _hideHvSuggestions();
+}
+
+// Wenn DB-Treffer ohne E-Mail: Web-Anreicherung im Hintergrund + UI-Update
+function _enrichPickedHvFromWeb(name) {
+  if (!LIFTARO_API_URL || !name) return;
+  var city = '';
+  var adresseRaw = (document.getElementById('adresse')?.value || '').trim();
+  var cityMatch = adresseRaw.match(/\b\d{4,5}\s+([A-ZÄÖÜ][\wäöüßÄÖÜ-]+)/);
+  if (cityMatch) city = cityMatch[1];
+  fetch(LIFTARO_API_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'enrich_property_manager', name: name, city: city }),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var selMail = document.getElementById('cta-hv-selected-mail');
+      var selAddr = document.getElementById('cta-hv-selected-addr');
+      if (!d || !d.ok) {
+        if (selMail) selMail.textContent = 'Keine generische E-Mail im Web gefunden — Auswertung geht an Ihre eigene Adresse';
+        return;
+      }
+      var found = d.data || {};
+      // _eigCtaPicked mergen (nur ergänzen, nicht überschreiben)
+      var picked = window._eigCtaPicked;
+      if (picked && picked.name === name) {
+        if (found.email && !picked.email) picked.email = found.email;
+        if (found.strasse && !picked.strasse) picked.strasse = found.strasse;
+        if (found.plz && !picked.plz) picked.plz = found.plz;
+        if (found.ort && !picked.ort) picked.ort = found.ort;
+        if (found.telefon && !picked.telefon) picked.telefon = found.telefon;
+        if (found.website && !picked.website) picked.website = found.website;
+        // Adress-Volltext zusammenbauen für Pipedrive-Anreicherung beim Submit
+        if (!picked.address) {
+          var addr = [found.strasse, [found.plz, found.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+          if (addr) picked.address = addr;
+        }
+        // source-Tag: jetzt ist es ein Hybrid db+web
+        picked.source = 'db_web_enriched';
+      }
+      // UI updaten
+      if (selMail) {
+        if (found.email) {
+          selMail.innerHTML = '✉ <strong>' + found.email.replace(/[<>"&]/g, '') + '</strong> <span style="color:#7a4d00;font-size:10.5px;font-weight:500;background:#fff7e6;padding:1px 6px;border-radius:8px;margin-left:4px">aus Web ergänzt</span>';
+        } else {
+          selMail.textContent = 'Keine generische E-Mail im Web gefunden — Auswertung geht an Ihre eigene Adresse';
+        }
+      }
+      // Adresse anreichern wenn DB keine hatte
+      if (selAddr && found.strasse && (selAddr.textContent || '').indexOf('Keine Adresse') !== -1) {
+        var fullAddr = [found.strasse, [found.plz, found.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        if (fullAddr) selAddr.textContent = '📍 ' + fullAddr;
+      }
+    })
+    .catch(function() {
+      var selMail = document.getElementById('cta-hv-selected-mail');
+      if (selMail) selMail.textContent = 'Web-Suche fehlgeschlagen — Auswertung geht an Ihre eigene Adresse';
+    });
 }
 
 // Auswahl zurücksetzen → User kann neu tippen / wählen
