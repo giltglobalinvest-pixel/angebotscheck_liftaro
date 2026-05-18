@@ -2328,37 +2328,63 @@ function _renderHvSuggestions(results) {
   var sug = document.getElementById('cta-hv-suggestions');
   if (!sug) return;
   if (!results || !results.length) { sug.style.display = 'none'; return; }
-  // Sortieren: Treffer mit Adresse zuerst (eher die richtige Org)
-  results.sort(function(a, b) {
-    var ha = (a.city || a.address || '') ? 1 : 0;
-    var hb = (b.city || b.address || '') ? 1 : 0;
-    return hb - ha;
+  // Duplikate nach normiertem Namen mergen (Pipedrive hat manchmal 2× selbe HV mit Adress-Fragmenten)
+  var byKey = {};
+  var order = [];
+  results.forEach(function(r) {
+    var key = String(r.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!key) return;
+    if (!byKey[key]) {
+      byKey[key] = {
+        name: r.name || '',
+        email: r.email || '',
+        address: r.city || r.address || '',
+        org_id: r.org_id || null,
+      };
+      order.push(key);
+    } else {
+      // Mergen: Werte ergänzen, ohne zu überschreiben
+      var merged = byKey[key];
+      if (!merged.email && r.email) merged.email = r.email;
+      if (!merged.address && (r.city || r.address)) merged.address = r.city || r.address;
+      else if (merged.address && (r.city || r.address) && merged.address !== (r.city || r.address)) {
+        // Beide Fragmente unterschiedlich → kombinieren
+        var both = [merged.address, r.city || r.address].filter(Boolean).join(', ');
+        if (both.length <= 80) merged.address = both;
+      }
+      if (!merged.org_id && r.org_id) merged.org_id = r.org_id;
+    }
   });
-  var header = '<div style="padding:8px 13px;background:var(--bg-soft);border-bottom:1px solid var(--line);font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.3px">' +
-    results.length + ' Treffer — bitte richtige Hausverwaltung wählen' +
-    '</div>';
-  var html = results.map(function(r, idx) {
+  // Merged-Liste in _hvLastResults speichern (für _pickHvSuggestion-Zugriff)
+  _hvLastResults = order.map(function(k) { return byKey[k]; });
+  // Sortieren: Treffer mit Adresse zuerst (eher die richtige Org)
+  _hvLastResults.sort(function(a, b) { return (b.address ? 1 : 0) - (a.address ? 1 : 0); });
+
+  var headerText = _hvLastResults.length === 1
+    ? 'Diese Hausverwaltung gefunden — bitte bestätigen'
+    : _hvLastResults.length + ' Treffer — bitte richtige Hausverwaltung wählen';
+  var header = '<div style="padding:8px 13px;background:var(--bg-soft);border-bottom:1px solid var(--line);font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.3px">' + headerText + '</div>';
+  var html = _hvLastResults.map(function(r, idx) {
     var nameHtml = escapeHtml(r.name || '—');
-    var addr = escapeHtml(r.city || r.address || '');
+    var addr = escapeHtml(r.address || '');
+    var addrLine = addr ? '<div style="color:var(--ink-2);font-size:12px;margin-top:2px">📍 ' + addr + '</div>' : '';
     var mailLine = r.email
       ? '<div style="color:var(--brand);font-size:11.5px;margin-top:3px;font-weight:600">✉ ' + escapeHtml(r.email) + '</div>'
-      : '<div style="color:var(--ink-3);font-size:11px;margin-top:3px;font-style:italic">keine allgemeine E-Mail in DB</div>';
+      : '';
     return '<button type="button" onclick="_pickHvSuggestion(' + idx + ')" ' +
            'style="display:block;width:100%;padding:11px 13px;background:#fff;border:none;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;font-family:inherit;color:var(--ink);font-size:13.5px;line-height:1.4" ' +
            'onmouseover="this.style.background=\'var(--bg-soft)\'" onmouseout="this.style.background=\'#fff\'">' +
              '<div style="font-weight:700;color:var(--ink)">' + nameHtml + '</div>' +
-             (addr ? '<div style="color:var(--ink-2);font-size:12px;margin-top:2px">📍 ' + addr + '</div>'
-                   : '<div style="color:#a86b00;font-size:11.5px;margin-top:2px;font-style:italic">⚠ keine Adresse hinterlegt</div>') +
-             mailLine +
+             addrLine + mailLine +
            '</button>';
   }).join('');
-  // Footer-Button für "Keine der oben — andere suchen"
+  // Footer-Button für "Keine der oben — manuell weitersuchen"
   var safeQ = (_hvSearchLastQ || '').replace(/[&<>"']/g, function(c) {
     return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
   });
   var footer = '<div style="padding:9px 13px;background:#fff;text-align:center;border-top:1px solid var(--line)">' +
     '<button type="button" onclick="_runWebSearchForHv()" style="background:none;border:none;color:var(--brand);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0">' +
-      'Keine passt? → Im Internet nach „' + safeQ + '" suchen' +
+      'Keine passt? → Weitere Daten zu „' + safeQ + '" holen' +
     '</button>' +
   '</div>';
   sug.innerHTML = header + html + footer;
@@ -2371,12 +2397,12 @@ function _pickHvSuggestion(idx) {
   var nameEl  = document.getElementById('cta-hv-name');
   var statusEl = document.getElementById('cta-hv-status');
   if (nameEl) nameEl.value = hit.name || '';
-  // Selection-State setzen (wird beim Submit gelesen)
+  // Selection-State (wird beim Submit gelesen) — Quelle wird intern getrackt aber nicht im UI gezeigt
   window._eigCtaPicked = {
     source: 'db',
     name: hit.name || '',
     email: hit.email || '',
-    address: hit.city || hit.address || '',
+    address: hit.address || hit.city || '',
     org_id: hit.org_id || null,
   };
   var selBox  = document.getElementById('cta-hv-selected');
@@ -2385,19 +2411,21 @@ function _pickHvSuggestion(idx) {
   var selMail = document.getElementById('cta-hv-selected-mail');
   if (selBox) selBox.style.display = 'block';
   if (selName) selName.textContent = hit.name || '';
-  if (selAddr) selAddr.textContent = (hit.city || hit.address) ? '📍 ' + (hit.city || hit.address) : '⚠ Keine Adresse hinterlegt';
+  // Adresse: wenn vorhanden anzeigen, sonst Zeile leer (kein "Keine Adresse"-Warning)
+  if (selAddr) selAddr.textContent = (hit.address || hit.city) ? '📍 ' + (hit.address || hit.city) : '';
   if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '✓ ausgewählt'; }
-  // Wenn DB-Treffer KEINE Email hat → automatisch im Web ergänzen (statt User auf eigene Adresse verweisen)
-  if (!hit.email) {
-    if (selMail) selMail.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #ccc;border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span> sucht E-Mail im Internet …';
-    _enrichPickedHvFromWeb(hit.name || '');
-  } else {
+  // Initial: wenn Email da, zeigen. Sonst Spinner und still im Hintergrund anreichern.
+  if (hit.email) {
     if (selMail) selMail.textContent = '✉ ' + hit.email;
+  } else {
+    if (selMail) selMail.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #ccc;border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span> sucht weitere Kontaktdaten …';
   }
+  // Daten immer mit Web-Suche anreichern (stille Background-Aktion, kein "aus Web"-Badge mehr)
+  _enrichPickedHvFromWeb(hit.name || '');
   _hideHvSuggestions();
 }
 
-// Wenn DB-Treffer ohne E-Mail: Web-Anreicherung im Hintergrund + UI-Update
+// Stille Web-Anreicherung: ergänzt fehlende Daten (Adresse, Email) ohne UI-Hinweis auf Quelle.
 function _enrichPickedHvFromWeb(name) {
   if (!LIFTARO_API_URL || !name) return;
   var city = '';
@@ -2410,47 +2438,36 @@ function _enrichPickedHvFromWeb(name) {
   })
     .then(function(r) { return r.json(); })
     .then(function(d) {
+      var picked = window._eigCtaPicked;
       var selMail = document.getElementById('cta-hv-selected-mail');
       var selAddr = document.getElementById('cta-hv-selected-addr');
-      if (!d || !d.ok) {
-        if (selMail) selMail.textContent = 'Keine generische E-Mail im Web gefunden — Auswertung geht an Ihre eigene Adresse';
-        return;
-      }
-      var found = d.data || {};
-      // _eigCtaPicked mergen (nur ergänzen, nicht überschreiben)
-      var picked = window._eigCtaPicked;
+      var found = (d && d.ok && d.data) ? d.data : {};
+      // _eigCtaPicked still mergen (Web ergänzt nur fehlende Felder)
       if (picked && picked.name === name) {
-        if (found.email && !picked.email) picked.email = found.email;
+        if (found.email   && !picked.email)   picked.email   = found.email;
         if (found.strasse && !picked.strasse) picked.strasse = found.strasse;
-        if (found.plz && !picked.plz) picked.plz = found.plz;
-        if (found.ort && !picked.ort) picked.ort = found.ort;
+        if (found.plz     && !picked.plz)     picked.plz     = found.plz;
+        if (found.ort     && !picked.ort)     picked.ort     = found.ort;
         if (found.telefon && !picked.telefon) picked.telefon = found.telefon;
         if (found.website && !picked.website) picked.website = found.website;
-        // Adress-Volltext zusammenbauen für Pipedrive-Anreicherung beim Submit
         if (!picked.address) {
           var addr = [found.strasse, [found.plz, found.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
           if (addr) picked.address = addr;
         }
-        // source-Tag: jetzt ist es ein Hybrid db+web
-        picked.source = 'db_web_enriched';
       }
-      // UI updaten
+      // UI still updaten (ohne Quelle-Tag)
       if (selMail) {
-        if (found.email) {
-          selMail.innerHTML = '✉ <strong>' + found.email.replace(/[<>"&]/g, '') + '</strong> <span style="color:#7a4d00;font-size:10.5px;font-weight:500;background:#fff7e6;padding:1px 6px;border-radius:8px;margin-left:4px">aus Web ergänzt</span>';
-        } else {
-          selMail.textContent = 'Keine generische E-Mail im Web gefunden — Auswertung geht an Ihre eigene Adresse';
-        }
+        if (picked && picked.email) selMail.textContent = '✉ ' + picked.email;
+        else selMail.textContent = ''; // einfach leer lassen wenn nichts da
       }
-      // Adresse anreichern wenn DB keine hatte
-      if (selAddr && found.strasse && (selAddr.textContent || '').indexOf('Keine Adresse') !== -1) {
-        var fullAddr = [found.strasse, [found.plz, found.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-        if (fullAddr) selAddr.textContent = '📍 ' + fullAddr;
+      if (selAddr && picked && picked.address && !(selAddr.textContent || '').trim()) {
+        selAddr.textContent = '📍 ' + picked.address;
       }
     })
     .catch(function() {
+      // Stiller Fehler — keine User-Meldung
       var selMail = document.getElementById('cta-hv-selected-mail');
-      if (selMail) selMail.textContent = 'Web-Suche fehlgeschlagen — Auswertung geht an Ihre eigene Adresse';
+      if (selMail && !(window._eigCtaPicked && window._eigCtaPicked.email)) selMail.textContent = '';
     });
 }
 
