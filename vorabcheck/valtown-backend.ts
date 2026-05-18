@@ -1459,27 +1459,30 @@ export default async function (req: Request): Promise<Response> {
       const ampelLabel = result.ampel === 'rot' ? '🔴 Rot' : result.ampel === 'gelb' ? '🟡 Gelb' : result.ampel === 'gruen' ? '🟢 Grün' : '–';
       const fmt = (n: number) => Math.round(n).toLocaleString('de-DE');
       const noteLines = [
-        '✅ ANALYSE ABGESCHLOSSEN — Check-Nr ' + checkNr,
-        '',
-        'Rolle: ' + roleLabel,
-        'Check-Typ: ' + checkTypeLabel,
-        'Ampel: ' + ampelLabel,
-        savingsTotal ? 'Geschätzte Gesamtersparnis (Haus): ' + fmt(savingsTotal) + ' €/Jahr' : 'Geschätzte Gesamtersparnis: –',
-        savingsIndividual ? 'Geschätzte individuelle Ersparnis: ' + fmt(savingsIndividual) + ' €/Jahr' : '',
-        'Adresse Objekt: ' + (lead.adresse || '–'),
-        '',
-        '— Zusammenfassung —',
-        result.summary || '(keine)',
+        '✅ ANALYSE ' + checkNr,
+        '', 'Rolle: ' + roleLabel, 'Check-Typ: ' + checkTypeLabel, 'Ampel: ' + ampelLabel,
+        savingsTotal ? 'Ersparnis Haus: ' + fmt(savingsTotal) + ' €/Jahr' : '',
+        savingsIndividual ? 'Anteil indiv.: ' + fmt(savingsIndividual) + ' €/Jahr' : '',
+        'Adresse: ' + (lead.adresse || '–'), '',
+        '— Zusammenfassung —', result.summary || '(keine)',
       ].filter(Boolean);
-      const note = noteLines.join('\n');
       const title = '[Vorabcheck] ' + fullName + ' — ' + roleLabel + ' (' + checkNr + ')';
-      createPipedriveLead({
-        name: fullName,
-        email: lead.email,
-        phone: lead.telefon || undefined,
-        title,
-        note,
-      }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
+      upsertPipedriveLead({ name: fullName, email: lead.email, phone: lead.telefon || undefined, title, note: noteLines.join('\n') })
+        .then(async (pd: any) => {
+          if (!pd.ok || !pd.lead_id) return;
+          const k = Deno.env.get("AIRTABLE_KEY"); const b = Deno.env.get("AIRTABLE_BASE_ID");
+          if (!k || !b) return;
+          try {
+            const fr = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + encodeURIComponent("{check_nr}='" + checkNr + "'"),
+              { headers: { Authorization: 'Bearer ' + k } });
+            const rec = (await fr.json())?.records?.[0]?.id;
+            if (!rec) return;
+            await fetch('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + rec, {
+              method: 'PATCH', headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields: { pipedrive_lead_id: pd.lead_id, pipedrive_person_id: String(pd.person_id || '') } }),
+            });
+          } catch (e) { /* */ }
+        }).catch(e => console.warn('[Pipedrive] Vorabcheck failed:', e?.message || e));
     }
 
     const aufzugPositionen = Array.isArray(result.aufzug_positionen)
