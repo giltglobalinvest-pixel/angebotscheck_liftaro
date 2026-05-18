@@ -1,6 +1,6 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
-import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS } from "https://giltglobalinvest-pixel.github.io/angebotscheck_liftaro/vorabcheck/prompts.js?v=1";
+import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS } from "https://check.liftaro.de/vorabcheck/prompts.js?v=2";
 
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
