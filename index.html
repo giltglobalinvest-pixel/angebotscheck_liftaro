@@ -3883,7 +3883,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.49';
+const APP_VERSION = 'V9.50';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -12453,17 +12453,41 @@ async function openVorabcheckDetail(checkNr) {
           <div style="font-size:18px;font-weight:700;color:var(--navy)">${_fmtEuro(sav)} <span style="font-size:13px;font-weight:400;color:var(--muted)">/ Jahr (Gesamt)</span></div>
           ${savInd > 0 ? `<div style="font-size:12.5px;color:var(--ink-2);margin-top:2px">Anteil individuell: <strong>${_fmtEuro(savInd)}</strong></div>` : ''}
         </div>
+        <!-- 🛗 Aufzug-Daten (Hard-Facts aus KI-Analyse) -->
         <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
-          <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">👤 Kontaktdaten (aus Vorabcheck-Leads)</div>
+          <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">🛗 Aufzug-Daten</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:13px;color:var(--text);line-height:1.5">
+            <div>Anzahl Aufzüge: <strong>${vc.aufzug_count || '–'}</strong></div>
+            <div>Parteien im Haus: <strong>${vc.parteien_count || '–'}</strong></div>
+            <div>Gesamtkosten / Jahr: <strong>${vc.aufzug_gesamtkosten_eur ? _fmtEuro(vc.aufzug_gesamtkosten_eur) : '–'}</strong></div>
+            <div>Pro Aufzug / Jahr: <strong>${vc.kosten_pro_aufzug_eur ? _fmtEuro(vc.kosten_pro_aufzug_eur) : (vc.aufzug_count > 0 && vc.aufzug_gesamtkosten_eur ? _fmtEuro(Math.round(vc.aufzug_gesamtkosten_eur / vc.aufzug_count * 100) / 100) : '–')}</strong></div>
+            ${vc.objekt_adresse ? `<div style="grid-column:1/-1">📍 Standort: <strong>${String(vc.objekt_adresse).replace(/[<>"&]/g,'')}</strong></div>` : ''}
+          </div>
+        </div>
+        <!-- 👤 Kontaktdaten: Auftraggeber -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+          <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">👤 Auftraggeber des Vorabchecks</div>
           ${ld ? `
             <div style="font-size:13px;color:var(--text);line-height:1.6">
-              <div><strong>${fullName.replace(/[<>"&]/g,'')}</strong></div>
+              <div><strong>${fullName.replace(/[<>"&]/g,'')}</strong> <span style="background:#eef2f7;color:var(--muted);font-size:11px;font-weight:600;padding:1px 7px;border-radius:8px;margin-left:4px;text-transform:capitalize">${vc.role || '–'}</span></div>
               <div>${ld.email ? `✉ <a href="mailto:${ld.email}" style="color:var(--blue-mid)">${ld.email}</a>` : 'keine E-Mail'}</div>
               ${ld.telefon ? `<div>📞 <a href="tel:${ld.telefon}" style="color:var(--blue-mid)">${ld.telefon}</a></div>` : ''}
               ${ld.adresse ? `<div>📍 ${String(ld.adresse).replace(/[<>"&]/g,'')}</div>` : ''}
             </div>
-          ` : '<div style="color:var(--muted);font-style:italic;font-size:12px">Keine Lead-Daten gefunden (Tabelle Vorabcheck-Leads).</div>'}
+          ` : '<div style="color:var(--muted);font-style:italic;font-size:12px">Keine Lead-Daten in Vorabcheck-Leads.</div>'}
         </div>
+        <!-- 🏢 Hausverwaltung: nur wenn Daten vorhanden -->
+        ${(vc.hv_name || vc.hv_email || vc.hv_telefon || vc.hv_adresse) ? `
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🏢 Hausverwaltung (vom Eigentümer angegeben)</div>
+            <div style="font-size:13px;color:var(--text);line-height:1.6">
+              ${vc.hv_name ? `<div><strong>${String(vc.hv_name).replace(/[<>"&]/g,'')}</strong></div>` : ''}
+              ${vc.hv_email ? `<div>✉ <a href="mailto:${vc.hv_email}" style="color:var(--blue-mid)">${vc.hv_email}</a></div>` : ''}
+              ${vc.hv_telefon ? `<div>📞 <a href="tel:${vc.hv_telefon}" style="color:var(--blue-mid)">${vc.hv_telefon}</a></div>` : ''}
+              ${vc.hv_adresse ? `<div>📍 ${String(vc.hv_adresse).replace(/[<>"&]/g,'')}</div>` : ''}
+              ${vc.hv_website ? `<div>🌐 <a href="${vc.hv_website.startsWith('http') ? vc.hv_website : 'https://'+vc.hv_website}" target="_blank" rel="noopener" style="color:var(--blue-mid)">${vc.hv_website}</a></div>` : ''}
+            </div>
+          </div>` : ''}
         ${pipedriveBlock}
         ${vc.summary ? `
           <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
