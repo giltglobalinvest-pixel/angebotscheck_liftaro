@@ -3883,7 +3883,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.38';
+const APP_VERSION = 'V9.39';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -12340,7 +12340,7 @@ async function openDashboardData() {
   if (!content) return;
   content.innerHTML = '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite"></div> Daten werden geladen …</div>';
 
-  let checks = [], vertraege = [];
+  let checks = [], vertraege = [], vorabchecks = [];
   try {
     [checks, vertraege] = await Promise.all([
       loadChecksFromAirtable(),
@@ -12348,8 +12348,18 @@ async function openDashboardData() {
     ]);
   } catch(e) { console.warn('Dashboard load:', e.message); }
 
+  // Vorabchecks separat (toleriert NOT_FOUND wenn Tabelle noch nicht angelegt ist)
+  try {
+    const recs = await atRead('Vorab-Checks', null, { sort: false });
+    vorabchecks = (recs || []).map(r => r.fields);
+  } catch(e) {
+    console.warn('Vorabchecks load:', e.message);
+    vorabchecks = [];
+  }
+
   window._dashAllChecks = checks;
   window._dashAllVertraege = vertraege;
+  window._dashAllVorabchecks = vorabchecks;
   renderDashboard();
 }
 
@@ -13134,6 +13144,73 @@ function renderDashboard() {
     ? `<button type="button" onclick="window._dashStatusFilter.clear();renderDashboard()" style="padding:5px 11px;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif">✕ Filter zurücksetzen</button>`
     : '';
 
+  // ── Vorabcheck-Stats (öffentliche Landing) ──
+  const vorabchecks = window._dashAllVorabchecks || [];
+  const vcTotal = vorabchecks.length;
+  const vcGruen = vorabchecks.filter(v => v.ampel === 'gruen').length;
+  const vcGelb  = vorabchecks.filter(v => v.ampel === 'gelb').length;
+  const vcRot   = vorabchecks.filter(v => v.ampel === 'rot').length;
+  const vcSavings = vorabchecks.reduce((s, v) => s + (Number(v.savings_estimate_eur || v.savings_total_eur) || 0), 0);
+  // Letzte 7 Tage
+  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const vcLast7 = vorabchecks.filter(v => v.savedAt && new Date(v.savedAt) > sevenDaysAgo).length;
+  // Aufschlüsselung nach Rolle
+  const vcMieter      = vorabchecks.filter(v => v.role === 'mieter').length;
+  const vcEigentuemer = vorabchecks.filter(v => v.role === 'eigentuemer').length;
+  const vcVerwalter   = vorabchecks.filter(v => v.role === 'verwalter').length;
+  // Aufschlüsselung nach Check-Typ
+  const vcNK      = vorabchecks.filter(v => v.check_type === 'nebenkosten').length;
+  const vcAngebot = vorabchecks.filter(v => v.check_type === 'angebot').length;
+  const vcWartung = vorabchecks.filter(v => v.check_type === 'wartung').length;
+
+  // Vorabcheck-Block-HTML (nur rendern wenn Daten da)
+  const vcBlock = vcTotal === 0 ? '' : `
+    <div style="background:linear-gradient(135deg,#f8faff,#fff);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="background:#0e2440;color:#fff;border-radius:4px;padding:3px 9px;font-size:11px;font-weight:700;letter-spacing:.3px">🛡️ VORABCHECKS</span>
+          <span style="font-size:12px;color:var(--muted)">Öffentliche Landing · ${vcLast7 > 0 ? `<strong style="color:#3d7a14">+${vcLast7} in 7 Tagen</strong>` : 'kein neuer Eintrag in 7 Tagen'}</span>
+        </div>
+        <button onclick="openVorabcheckHub()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer">Übersicht öffnen →</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
+        ${kachel('Vorabchecks gesamt', String(vcTotal), '#1a3a5c', `${vcNK} Nebenk · ${vcAngebot} Angebot · ${vcWartung} Wartung`)}
+        ${kachel('Sparpotenzial-Pool', _fmtEuro(vcSavings), '#0e6655', 'Summe geschätzter Ersparnisse')}
+        ${kachel('🟢 Grün', String(vcGruen), '#3d7a14', vcTotal ? Math.round(vcGruen*100/vcTotal) + ' %' : '0 %')}
+        ${kachel('🟡 Gelb', String(vcGelb),  '#a06a00', vcTotal ? Math.round(vcGelb*100/vcTotal)  + ' %' : '0 %')}
+        ${kachel('🔴 Rot',  String(vcRot),   '#a8312f', vcTotal ? Math.round(vcRot*100/vcTotal)   + ' %' : '0 %')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
+        ${kachel('Mieter',      String(vcMieter),      '#94a3b8')}
+        ${kachel('Eigentümer',  String(vcEigentuemer), '#7dc242')}
+        ${kachel('Verwalter',   String(vcVerwalter),   '#2d5f96')}
+      </div>
+      ${(function() {
+        // Letzte 5 Einträge als Mini-Liste
+        const latest = vorabchecks.slice().sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || '')).slice(0, 5);
+        if (!latest.length) return '';
+        const rows = latest.map(v => {
+          const date = v.savedAt ? new Date(v.savedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '–';
+          const ampCol = v.ampel === 'gruen' ? '#3d7a14' : v.ampel === 'gelb' ? '#a06a00' : v.ampel === 'rot' ? '#a8312f' : '#94a3b8';
+          const ampLab = v.ampel === 'gruen' ? '🟢' : v.ampel === 'gelb' ? '🟡' : v.ampel === 'rot' ? '🔴' : '⚪';
+          const sav = Number(v.savings_estimate_eur || v.savings_total_eur || 0);
+          const summary = String(v.summary || '').slice(0, 80);
+          return `<div style="display:grid;grid-template-columns:60px 28px 90px 110px 1fr;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px">
+            <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px">${date}</span>
+            <span style="text-align:center">${ampLab}</span>
+            <span style="color:var(--text);text-transform:capitalize">${v.check_type || '–'}</span>
+            <span style="font-family:'DM Mono',monospace;color:#3d7a14;font-weight:700">${sav > 0 ? _fmtEuro(sav) : '–'}</span>
+            <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${summary.replace(/[<>"&]/g, '')}</span>
+          </div>`;
+        }).join('');
+        return `
+          <div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px">
+            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:8px 10px;background:var(--sky);border-bottom:1px solid var(--border)">Letzte ${latest.length}</div>
+            ${rows}
+          </div>`;
+      })()}
+    </div>`;
+
   content.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)">
       <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Filter:</span>
@@ -13141,6 +13218,8 @@ function renderDashboard() {
       ${resetBtn}
       <span style="margin-left:auto;font-size:11px;color:var(--muted)">${statusSet.size ? `Zeigt ${checks.length} von ${checksAll.length} Checks` : `Alle ${checksAll.length} Checks`}</span>
     </div>
+
+    ${vcBlock}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
       ${kachel('Verträge gesamt',   vertraege.length, '#2d5f96', `${signedCount} unterschrieben · ${openCount} offen`)}
