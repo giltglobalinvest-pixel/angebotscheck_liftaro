@@ -992,16 +992,19 @@ export default async function (req: Request): Promise<Response> {
       const name = String(body.name || '').trim();
       const city = String(body.city || '').trim();
       if (!name) return jsonResp({ ok: false, error: 'name required' }, 400, corsHeaders);
-      const atKey = Deno.env.get("AIRTABLE_KEY");
-      let serperKey = '';
-      try {
-        const url = 'https://api.airtable.com/v0/' + PIPEDRIVE_MASTER_BASE + '/Keys?filterByFormula=' +
-          encodeURIComponent("AND({project_id}='" + PIPEDRIVE_PROJECT_ID + "',{key_name}='serperApiKey')");
-        const r = await fetch(url, { headers: { Authorization: 'Bearer ' + atKey } });
-        const d = await r.json();
-        serperKey = String(d?.records?.[0]?.fields?.key_value || '').trim();
-      } catch (e) { /* */ }
-      if (!serperKey) return jsonResp({ ok: false, error: 'serperApiKey nicht konfiguriert (Master-Base Schluessel serperApiKey)' }, 500, corsHeaders);
+      // Erst Env-Var (schnell, kein Airtable-Roundtrip), dann Master-Base als Fallback
+      let serperKey = String(Deno.env.get("SERPER_API_KEY") || '').trim();
+      if (!serperKey) {
+        const atKey = Deno.env.get("AIRTABLE_KEY");
+        try {
+          const url = 'https://api.airtable.com/v0/' + PIPEDRIVE_MASTER_BASE + '/Keys?filterByFormula=' +
+            encodeURIComponent("AND({project_id}='" + PIPEDRIVE_PROJECT_ID + "',{key_name}='serperApiKey')");
+          const r = await fetch(url, { headers: { Authorization: 'Bearer ' + atKey } });
+          const d = await r.json();
+          serperKey = String(d?.records?.[0]?.fields?.key_value || '').trim();
+        } catch (e) { /* */ }
+      }
+      if (!serperKey) return jsonResp({ ok: false, error: 'SERPER_API_KEY nicht konfiguriert (Env-Var oder Master-Base)' }, 500, corsHeaders);
       const q = '"' + name + '"' + (city ? ' ' + city : '') + ' Hausverwaltung Impressum';
       let snippets = '';
       try {
