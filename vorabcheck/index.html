@@ -866,9 +866,9 @@ html[data-theme="liftaro"] .liftaro-step-desc {
             <span class="hint">Optional — nur für Rückfragen.</span>
           </div>
           <div class="field full">
-            <label for="adresse">Adresse der Immobilie<span class="req">*</span></label>
+            <label for="adresse">Adresse der Immobilie <span style="font-weight:400;color:var(--ink-3);font-size:12px">(optional)</span></label>
             <input type="text" id="adresse" placeholder="Straße Hausnummer, PLZ Ort" autocomplete="street-address">
-            <span class="hint">Für regionale Vergleichswerte.</span>
+            <span class="hint">Lassen Sie das Feld leer — wir lesen die Adresse aus Ihrem Dokument.</span>
           </div>
         </div>
 
@@ -1480,7 +1480,7 @@ document.getElementById('to-step-2').addEventListener('click', () => {
 document.getElementById('to-step-1').addEventListener('click', () => goToStep(1));
 
 document.getElementById('to-step-3').addEventListener('click', async () => {
-  const required = ['vorname', 'nachname', 'email', 'adresse'];
+  const required = ['vorname', 'nachname', 'email'];
   let allFilled = true;
   required.forEach(id => {
     const el = document.getElementById(id);
@@ -1626,6 +1626,16 @@ async function runAnalysis() {
 // Result-Rendering
 function renderResult(r) {
   goToStep(4);
+
+  // Adress-Fallback: wenn User in Schritt 2 keine Adresse eingegeben hat, aber die KI eine im
+  // Dokument gefunden hat → ins Adress-Feld nachtragen, damit alle Folge-Logiken sie nutzen
+  // können (CTA-Mail, Web-Suche-Stadt-Extraktion, Pipedrive-Lead-Note).
+  try {
+    var addrEl = document.getElementById('adresse');
+    if (addrEl && !addrEl.value.trim() && r && r.objekt_adresse && String(r.objekt_adresse).trim().length > 5) {
+      addrEl.value = String(r.objekt_adresse).trim();
+    }
+  } catch (e) { /* non-critical */ }
 
   // Für Korrektur-Panel: aktuelles Result merken; Original nur beim ersten Aufruf festhalten
   window._lastResult = JSON.parse(JSON.stringify(r));
