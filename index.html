@@ -3669,6 +3669,29 @@ const pdfWorkerReady = Promise.resolve();</script>
           </div>
         </div>
 
+        <!-- SERPER-INTEGRATION -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            <div>
+              <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🔍 Serper.dev — Web-Anreicherung</h4>
+              <div style="font-size:12px;color:var(--muted);line-height:1.5">Holt HV-Stammdaten (Adresse, USt-IdNr, Steuernr) per Google-Suche + Claude-Haiku-Extraktion. Wird im Vertragseditor über den Button „🔍 Web-Daten holen" genutzt.</div>
+            </div>
+            <span id="vch-serper-status" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">–</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px">
+            <div class="field" style="display:flex;flex-direction:column;gap:6px">
+              <label for="vchSerperKey" style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Serper API-Key</label>
+              <input type="password" id="vchSerperKey" placeholder="••••••••••••" autocomplete="off" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
+              <span style="font-size:11.5px;color:var(--muted)">Hol den Key kostenlos unter <a href="https://serper.dev" target="_blank" style="color:var(--blue-mid);text-decoration:underline">serper.dev</a> (2.500 freie Anfragen) · wird bei „Proxy aktualisieren" auch als val.town Env-Var <code>SERPER_API_KEY</code> gesetzt</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+            <button onclick="saveSerperConfig()" style="background:var(--green);border:none;color:#fff;border-radius:7px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer">💾 Speichern</button>
+            <button onclick="testSerperConfig()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer">✓ Verbindung testen</button>
+            <div id="vch-serper-feedback" style="font-size:12px;color:var(--muted);align-self:center;margin-left:6px"></div>
+          </div>
+        </div>
+
         <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">
           <h4 style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">📡 Eigene Domain via CNAME (optional)</h4>
           <ol style="font-size:13px;color:var(--text);line-height:1.7;padding-left:18px;margin-bottom:10px">
@@ -3836,7 +3859,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.31';
+const APP_VERSION = 'V9.32';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4293,6 +4316,7 @@ async function valtownVorabcheckAutoSetup({ token, anthropicKey, airtableKey, ai
     { k: 'AIRTABLE_BASE_ID',   v: airtableBaseId,  d: 'App-Base-ID' },
   ];
   if (turnstileSecret) envs.push({ k: 'TURNSTILE_SECRET_KEY', v: turnstileSecret, d: 'Cloudflare-Turnstile-Secret' });
+  if (APP_KEYS.serperApiKey) envs.push({ k: 'SERPER_API_KEY', v: APP_KEYS.serperApiKey, d: 'Serper.dev Web-Suche für HV-Anreicherung' });
   for (const env of envs) {
     log('Setze ENV ' + env.k + ' …');
     try { await valtownSetEnvVar(token, valId, env.k, env.v, env.d); log('OK: ' + env.k, 'ok'); }
@@ -14627,6 +14651,7 @@ function renderVchPublicTab() {
   renderLandingThemeSelection();
   renderStartVariantSelection();
   renderPipedriveConfig();
+  renderSerperConfig();
 }
 function vchPublicUrl() {
   // Aktuelle GitHub-Pages-URL (oder Custom Domain, wenn gesetzt)
@@ -14790,6 +14815,63 @@ async function testPipedriveConfig() {
     } else {
       if (fb) { fb.textContent = '⚠ Token/Domain ungültig — bitte prüfen'; fb.style.color = '#a8312f'; }
     }
+  } catch (e) {
+    if (fb) { fb.textContent = '⚠ Fehler: ' + e.message; fb.style.color = '#a8312f'; }
+  }
+}
+
+// ── Serper.dev-Konfiguration ────────────────────────────────────
+function renderSerperConfig() {
+  const kEl = document.getElementById('vchSerperKey');
+  const status = document.getElementById('vch-serper-status');
+  if (!kEl) return;
+  kEl.value = APP_KEYS.serperApiKey ? '••••••••••••' : '';
+  if (status) {
+    const ok = !!APP_KEYS.serperApiKey;
+    status.innerHTML = ok
+      ? '<span style="background:#f3faea;color:#3d7a14;border:1px solid #d1ecb1;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700">✓ AKTIV</span>'
+      : '<span style="background:#fff7e6;color:#7a4d00;border:1px solid #f0d4a8;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700">⚠ NICHT KONFIGURIERT</span>';
+  }
+}
+
+async function saveSerperConfig() {
+  if (!isAdmin()) { showToast('Nur Admins.', 'error'); return; }
+  const fb = document.getElementById('vch-serper-feedback');
+  const keyRaw = (document.getElementById('vchSerperKey')?.value || '').trim();
+  const useExisting = keyRaw === '' || /^•+$/.test(keyRaw);
+  const key = useExisting ? (APP_KEYS.serperApiKey || '') : keyRaw;
+  if (!key) { if (fb) { fb.textContent = '⚠ API-Key ist Pflichtfeld'; fb.style.color = '#a8312f'; } return; }
+  try {
+    const records = await fetchMasterBaseKeys();
+    const existing = (records || []).find(r => r.fields.key_name === 'serperApiKey');
+    await writeMasterBaseKey('serperApiKey', key, existing?.id);
+    APP_KEYS.serperApiKey = key;
+    renderSerperConfig();
+    if (fb) { fb.textContent = '✓ In Master-Base gespeichert. Klick „Proxy aktualisieren" um auch val.town Env-Var zu setzen.'; fb.style.color = '#3d7a14'; }
+    showToast('Serper-API-Key gespeichert ✓', 'ok');
+  } catch (e) {
+    if (fb) { fb.textContent = '⚠ Fehler: ' + e.message; fb.style.color = '#a8312f'; }
+  }
+}
+
+async function testSerperConfig() {
+  const fb = document.getElementById('vch-serper-feedback');
+  const key = APP_KEYS.serperApiKey;
+  if (!key) { if (fb) { fb.textContent = '⚠ Erst speichern, dann testen'; fb.style.color = '#a8312f'; } return; }
+  if (fb) { fb.textContent = '… teste Verbindung …'; fb.style.color = 'var(--muted)'; }
+  try {
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: 'Hausverwaltung Mainz test', gl: 'de', hl: 'de', num: 1 }),
+    });
+    if (res.status === 401 || res.status === 403) {
+      if (fb) { fb.textContent = '⚠ Key ungültig (HTTP ' + res.status + ')'; fb.style.color = '#a8312f'; }
+      return;
+    }
+    const data = await res.json();
+    const hits = Array.isArray(data.organic) ? data.organic.length : 0;
+    if (fb) { fb.textContent = '✓ Verbunden — ' + hits + ' Test-Treffer · Credits werden in deinem Serper-Dashboard angezeigt'; fb.style.color = '#3d7a14'; }
   } catch (e) {
     if (fb) { fb.textContent = '⚠ Fehler: ' + e.message; fb.style.color = '#a8312f'; }
   }
