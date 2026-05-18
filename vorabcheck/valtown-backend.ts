@@ -1271,7 +1271,7 @@ export default async function (req: Request): Promise<Response> {
         type: isPdf ? "document" : "image",
         source: { type: "base64", media_type: file.mime, data: file.base64 },
       },
-      { type: "text", text: "Prüfe das beigefügte Dokument gemäß den Vorgaben und antworte ausschließlich mit dem geforderten JSON." },
+      { type: "text", text: "Prüfe das beigefügte Dokument gemäß den Vorgaben und antworte ausschließlich mit dem geforderten JSON. Falls im Dokument eine Objekt-, Liegenschafts- oder Gebäudeadresse erkennbar ist (z.B. 'Beispielstr. 12, 55116 Mainz'), gib sie zusätzlich als Top-Level-Feld 'objekt_adresse' (String, Format: 'Straße Hausnr., PLZ Ort') zurück. Wenn nicht eindeutig erkennbar, setze 'objekt_adresse' auf einen leeren String." },
     ];
 
     const response = await anthropic.messages.create({
@@ -1511,6 +1511,7 @@ export default async function (req: Request): Promise<Response> {
       savings_text: result.savings_text || "",
       check_nr: checkNr,
       role: role,
+      objekt_adresse: String(result.objekt_adresse || result.anonymized_data?.objekt_adresse || result.anonymized_data?.gebaeude_adresse || result.anonymized_data?.liegenschaft_adresse || '').trim(),
     }, 200, corsHeaders);
 
   } catch (e: any) {
