@@ -887,6 +887,40 @@ export default async function (req: Request): Promise<Response> {
           });
         }
 
+        // HV-Daten zusaetzlich in Vorab-Checks-Row patchen (damit alles an EINER Stelle steht)
+        try {
+          const ak = Deno.env.get("AIRTABLE_KEY"); const ab = Deno.env.get("AIRTABLE_BASE_ID");
+          if (ak && ab && checkNr && checkNr !== '—') {
+            const fr = await fetch('https://api.airtable.com/v0/' + ab + "/Vorab-Checks?filterByFormula=" + encodeURIComponent("{check_nr}='" + checkNr + "'") + '&maxRecords=1', { headers: { Authorization: 'Bearer ' + ak } });
+            const rId = (await fr.json())?.records?.[0]?.id;
+            if (rId) {
+              const hvFields: any = {};
+              if (hvName)    hvFields.hv_name    = hvName;
+              if (hvEmail)   hvFields.hv_email   = hvEmail;
+              if (hvTelefon) hvFields.hv_telefon = hvTelefon;
+              if (hvAddress) hvFields.hv_adresse = hvAddress;
+              if (hvWebsite) hvFields.hv_website = hvWebsite;
+              if (orgId)     hvFields.hv_pipedrive_org_id = String(orgId);
+              if (Object.keys(hvFields).length) {
+                // PATCH mit Retry-on-Unknown-Field
+                let fields: any = { ...hvFields };
+                for (let i = 0; i < 12; i++) {
+                  const pr = await fetch('https://api.airtable.com/v0/' + ab + '/Vorab-Checks/' + rId, {
+                    method: 'PATCH',
+                    headers: { Authorization: 'Bearer ' + ak, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fields }),
+                  });
+                  if (pr.ok) break;
+                  const txt = await pr.text();
+                  let bad = '';
+                  try { const j = JSON.parse(txt); const msg = j?.error?.message || ''; const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i); if (m) bad = m[1]; } catch (_) {}
+                  if (bad && Object.prototype.hasOwnProperty.call(fields, bad)) { delete fields[bad]; continue; }
+                  break;
+                }
+              }
+            }
+          }
+        } catch (e) { /* HV-Patch non-critical */ }
         return jsonResp({
           ok: true,
           org_id: orgId,
@@ -1345,6 +1379,19 @@ async function saveToAirtable(data: {
   if (!aufzugGesamtkosten && aufzugPositionen.length) {
     aufzugGesamtkosten = aufzugPositionen.reduce((s: number, p: any) => s + (Number(p.betrag_eur) || 0), 0);
   }
+  const aufzugCount = Number(data.result.aufzug_count || 0);
+  // Kosten pro Aufzug pro Jahr (berechnet aus Gesamtkosten / Anzahl)
+  const kostenProAufzugEur = aufzugCount > 0
+    ? Math.round((aufzugGesamtkosten / aufzugCount) * 100) / 100
+    : 0;
+  // Objekt-Standort: KI extrahiert (objekt_adresse), Fallback auf User-eingegebene lead.adresse
+  const objektAdresse = String(
+    data.result.objekt_adresse ||
+    data.result.anonymized_data?.objekt_adresse ||
+    data.result.anonymized_data?.gebaeude_adresse ||
+    data.result.anonymized_data?.liegenschaft_adresse ||
+    data.lead?.adresse || ''
+  ).trim();
 
   await atPostSafe(`${at}/Vorab-Checks`, {
     check_nr: data.check_nr,
@@ -1355,11 +1402,13 @@ async function saveToAirtable(data: {
     savings_estimate_eur: totalEur,
     savings_total_eur: totalEur,
     savings_individual_eur: indivEur,
-    aufzug_count: Number(data.result.aufzug_count || 0),
+    aufzug_count: aufzugCount,
     parteien_count: Number(data.result.parteien_count || 0),
     aufzug_gesamtkosten_eur: aufzugGesamtkosten,
+    kosten_pro_aufzug_eur: kostenProAufzugEur,
     aufzug_positionen_text: aufzugPositionenText,
     aufzug_positionen_json: JSON.stringify(aufzugPositionen),
+    objekt_adresse: objektAdresse,
     findings_json: JSON.stringify(data.result.findings || []),
     anonymized_data_json: JSON.stringify(data.result.anonymized_data || {}),
     savedAt: new Date().toISOString(),
