@@ -1,4 +1,4 @@
-// ════════════════════════════════════════════════════════════════════
+// ---
 // LIFTARO VORABCHECK — val.town HTTP-Endpoint
 //
 // Setup-Anleitung:
@@ -13,22 +13,22 @@
 //   5. Den Endpoint deployen
 //   6. Die HTTP-URL aus dem val (z.B. https://USERNAME-liftaroVorabcheck.web.val.run)
 //      ins Frontend bei LIFTARO_API_URL eintragen
-// ════════════════════════════════════════════════════════════════════
+// ---
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Konfiguration
-// ───────────────────────────────────────────────────────────────
+// ---
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
 const COST_PER_M_OUTPUT_TOKENS = 15.0; // $ pro 1M Output-Tokens
 const USD_TO_EUR = 0.92;
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Prompt-Loader — liest Custom-Prompts aus Airtable mit 5-Min-Cache.
 // Fallback auf die hardcoded DEFAULT_SYSTEM_PROMPTS weiter unten.
-// ───────────────────────────────────────────────────────────────
+// ---
 let _promptCache: Record<string, string> | null = null;
 let _promptCacheTs = 0;
 const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -59,11 +59,11 @@ async function loadCustomPrompts(): Promise<Record<string, string>> {
   }
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Pipedrive-Integration: Lead pro Vorabcheck + pro Kontaktformular.
 // Token & Domain liegen in der Liftaro-Master-Base als Keys
 // 'pipedriveDomain' und 'pipedriveApiToken'. 5-Min-Cache.
-// ───────────────────────────────────────────────────────────────
+// ---
 const PIPEDRIVE_MASTER_BASE = 'appzhNrhkLSTEaNFW';
 const PIPEDRIVE_PROJECT_ID  = 'p_1777239396379';
 let _pdCache: { domain: string, token: string } | null = null;
@@ -107,7 +107,7 @@ async function createPipedriveLead(input: {
   return upsertPipedriveLead(input);
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // upsertPipedriveLead — Dedup per Email:
 //   1. Person via Email-Suche finden, sonst anlegen
 //   2. Vorhandenen offenen (nicht-archivierten) Lead der Person nutzen,
@@ -115,7 +115,7 @@ async function createPipedriveLead(input: {
 //   3. Note in jedem Fall ANHÄNGEN (Verlauf bleibt erhalten)
 //
 // Resultat: 1 Pipedrive-Lead pro Kontakt, alle Touchpoints als Notes.
-// ───────────────────────────────────────────────────────────────
+// ---
 async function upsertPipedriveLead(input: {
   name: string;
   email?: string;
@@ -144,7 +144,7 @@ async function upsertPipedriveLead(input: {
           personId = sd.data.items[0].item?.id || null;
           if (personId) personExisted = true;
         }
-      } catch (e) { /* fallthrough zur Anlage */ }
+      } catch (e) {  }
     }
 
     // 1b) Person anlegen, wenn nicht gefunden
@@ -175,7 +175,7 @@ async function upsertPipedriveLead(input: {
         });
         const orgData = await orgRes.json();
         if (orgData.success) orgId = orgData.data.id;
-      } catch (e) { /* ok */ }
+      } catch (e) {  }
     }
 
     // 3a) Existierenden, nicht-archivierten Lead der Person finden
@@ -193,7 +193,7 @@ async function upsertPipedriveLead(input: {
         leadId = sorted[0].id;
         leadReused = true;
       }
-    } catch (e) { /* fallthrough zur Neuanlage */ }
+    } catch (e) {  }
 
     // 3b) Neuen Lead anlegen, wenn keiner offen ist
     if (!leadId) {
@@ -221,7 +221,7 @@ async function upsertPipedriveLead(input: {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: noteWithStamp, lead_id: leadId }),
         });
-      } catch (e) { /* lead exists, note is non-critical */ }
+      } catch (e) {  }
     }
 
     console.log('[Pipedrive] ' + (leadReused ? 'Lead reused' : 'Lead created') + ':', leadId,
@@ -232,9 +232,9 @@ async function upsertPipedriveLead(input: {
   }
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // HAUSVERWALTUNGS-SUCHE (Phase 1: Pipedrive-DB-Lookup, Phase 4: Serper+KI)
-// ───────────────────────────────────────────────────────────────
+// ---
 // Whitelist für allgemeine, nicht-personalisierte Geschäfts-Mails einer HV.
 // Nur diese Local-Parts gelten als "öffentlich" und werden auto-befüllt.
 const HV_GENERIC_EMAIL_PREFIXES = [
@@ -358,7 +358,7 @@ async function createPipedriveOrgWithEmail(input: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(personBody),
-      }).catch(() => { /* non-critical */ });
+      }).catch(() => {  });
     }
     return { ok: true, org_id: orgId };
   } catch (e: any) {
@@ -412,7 +412,7 @@ async function createHvLead(input: {
         leadId = sorted[0].id;
         reused = true;
       }
-    } catch (e) { /* fallthrough */ }
+    } catch (e) {  }
 
     // 2. Neuen HV-Lead anlegen wenn keiner offen
     if (!leadId) {
@@ -456,7 +456,7 @@ async function createHvLead(input: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: noteLines.join('\n'), lead_id: leadId }),
       });
-    } catch (e) { /* non-critical */ }
+    } catch (e) {  }
 
     console.log('[Pipedrive] HV-Lead ' + (reused ? 'reused' : 'created') + ':', leadId, 'org=' + input.orgId);
     return { ok: true, lead_id: leadId };
@@ -465,11 +465,11 @@ async function createHvLead(input: {
   }
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Preisreferenzen — Marktmedian-Liste pro Angebots-Position.
 // Wird bei check_type=angebot der KI als Kontext mitgegeben.
 // 5-Min-Cache wie bei den Custom-Prompts.
-// ───────────────────────────────────────────────────────────────
+// ---
 let _preisrefCache: any[] | null = null;
 let _preisrefCacheTs = 0;
 const PREISREF_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -509,11 +509,11 @@ function deterministicSavingsFactor(seed: string): number {
   return 0.30 + ((h >>> 0) % 1000) / 1000 * 0.30; // 0,30 – 0,60
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Rollen-spezifischer Kontext, der vor jeden Default-Prompt
 // gehängt wird. Sorgt für die korrekte rechtliche Einordnung
 // (Mieter vs. WEG-Eigentümer vs. Verwalter).
-// ───────────────────────────────────────────────────────────────
+// ---
 const ROLE_CONTEXTS: Record<string, string> = {
   mieter: `ROLLEN-KONTEXT: MIETER (Wohnraum-Mietvertrag)
 
@@ -573,13 +573,13 @@ function buildSystemPrompt(checkType: string, role: string, customMap: Record<st
   return roleCtx + '\n\n────────────────────────────────────────\n\n' + base;
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // DEFAULT-System-Prompts pro Check-Typ (Fallback, wenn nichts in
 // Airtable hinterlegt ist).
 //
 // HINWEIS: Diese Default-Prompts werden zur Laufzeit mit einem
 // rollen-spezifischen Vorspann (siehe ROLE_CONTEXTS) kombiniert.
-// ───────────────────────────────────────────────────────────────
+// ---
 const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
   nebenkosten: `Du bist Aufzug-Experte und Bau-/Mietrechts-Analyst bei Liftaro. Du prüfst Nebenkostenabrechnungen auf die Aufzug-Position.
 
@@ -876,9 +876,9 @@ ANTWORTE NUR MIT JSON:
 }`,
 };
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Hauptfunktion
-// ───────────────────────────────────────────────────────────────
+// ---
 export default async function (req: Request): Promise<Response> {
   // CORS für GitHub-Pages-Frontend
   const corsHeaders = {
@@ -892,7 +892,7 @@ export default async function (req: Request): Promise<Response> {
   try {
     const body = await req.json();
 
-    // ── Action-Routing: action="contact" empfängt das Kontakt-Formular der Startseite ──
+    // ---
     if (body.action === 'contact') {
       const c = body.contact || {};
       const name = String(c.name || '').trim();
@@ -952,8 +952,8 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
     }
 
-    // ── Action-Routing: action="soft_capture" — Lead-Auffangnetz, wenn User
-    // die Analyse startet aber sie scheitert / abgebrochen wird ──
+    // ---
+    // ---
     if (body.action === 'soft_capture') {
       const lead = body.lead || {};
       const ct = String(body.check_type || '').trim() || 'unbekannt';
@@ -991,8 +991,8 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: pd }, 200, corsHeaders);
     }
 
-    // ── Action-Routing: action="request_liftaro_callback" — User wünscht Direktkontakt durch Liftaro.
-    //    Markiert den existierenden User-Lead in Pipedrive als HOT mit Note + Titel-Prefix. ──
+    // ---
+    // ---
     if (body.action === 'request_liftaro_callback') {
       const c = body.cta || {};
       const userEmail = String(c.user_email || '').trim();
@@ -1033,9 +1033,9 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, pipedrive: result }, 200, corsHeaders);
     }
 
-    // ── Action-Routing: action="find_property_manager" — Live-Suche in Pipedrive nach HV-Name.
+    // ---
     //    Liefert Top-3 Treffer (Substring-Match) zum User-Auswählen — User sieht echte Org-Namen statt
-    //    generischem "HV bekannt". Phase 4 ergänzt Serper+Claude-Fallback. ──
+    // ---
     if (body.action === 'find_property_manager') {
       const q = String(body.query || '').trim();
       if (q.length < 3) return jsonResp({ ok: true, results: [] }, 200, corsHeaders);
@@ -1055,8 +1055,8 @@ export default async function (req: Request): Promise<Response> {
       return jsonResp({ ok: true, source: 'db', results: enriched }, 200, corsHeaders);
     }
 
-    // ── Action-Routing: action="submit_eigentuemer_cta" — Eigentümer reicht Sparpotenzial ein.
-    //    Erzeugt/aktualisiert HV-Org in Pipedrive, linkt User-Person an Org und legt B2B-HV-Lead an. ──
+    // ---
+    // ---
     if (body.action === 'submit_eigentuemer_cta') {
       const c = body.cta || {};
       const hvName  = String(c.hv_name  || '').trim();
@@ -1099,7 +1099,7 @@ export default async function (req: Request): Promise<Response> {
                   email: [{ value: hvEmail, primary: true, label: 'work' }],
                   org_id: orgId,
                 }),
-              }).catch(() => { /* non-critical */ });
+              }).catch(() => {  });
             }
           }
         }
@@ -1117,7 +1117,7 @@ export default async function (req: Request): Promise<Response> {
               if (sd?.success && sd.data?.items?.length) {
                 userPersonId = sd.data.items[0].item?.id || null;
               }
-            } catch (e) { /* ignore */ }
+            } catch (e) {  }
           }
           if (userPersonId) await linkPersonToOrg(userPersonId, orgId);
         }
@@ -1148,7 +1148,7 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // ── Action-Routing: action="get_defaults" liefert die Backend-Default-Prompts ans Admin-UI ──
+    // ---
     if (body.action === 'get_defaults') {
       return jsonResp({
         prompts: DEFAULT_SYSTEM_PROMPTS,
@@ -1157,7 +1157,7 @@ export default async function (req: Request): Promise<Response> {
       }, 200, corsHeaders);
     }
 
-    // ── Action-Routing: action="correct" speichert User-Korrekturen für Lern-Datenbasis ──
+    // ---
     if (body.action === 'correct') {
       const cn = String(body.check_nr || '').trim();
       if (!cn) return jsonResp({ error: 'check_nr fehlt' }, 400, corsHeaders);
@@ -1416,7 +1416,7 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // ── ANGEBOT-FALLBACK: Wenn KI keine Ersparnis berechnet hat oder Positionen nicht in Preisliste ──
+    // ---
     // Deterministisch 30–60 % vom Angebotsbetrag, basierend auf check_nr-Hash.
     if (check_type === 'angebot') {
       const angebotsumme = Number(result.anonymized_data?.angebotssumme_brutto || result.anonymized_data?.angebotssumme_netto || 0);
@@ -1547,9 +1547,9 @@ export default async function (req: Request): Promise<Response> {
   }
 }
 
-// ───────────────────────────────────────────────────────────────
+// ---
 // Helpers
-// ───────────────────────────────────────────────────────────────
+// ---
 function jsonResp(body: any, status: number, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
