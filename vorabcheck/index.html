@@ -2363,8 +2363,9 @@ function _searchHvName() {
         var results = (d.results && d.results.length) ? d.results : [];
         _hvLastResults = results;
         if (!results.length) {
+          // Kein Pipedrive-Treffer → Web-Suche als Fallback anbieten
           if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '— neu —'; }
-          _hideHvSuggestions();
+          _renderWebSearchOffer(q);
           return;
         }
         // Mehrere Treffer? Liste anzeigen. Status: Anzahl.
@@ -2376,6 +2377,102 @@ function _searchHvName() {
       })
       .catch(function() { if (statusEl) statusEl.style.display = 'none'; _hideHvSuggestions(); });
   }, 400);
+}
+
+// Fallback: HV nicht in Pipedrive → Web-Suche-Button anbieten
+function _renderWebSearchOffer(query) {
+  var sug = document.getElementById('cta-hv-suggestions');
+  if (!sug) return;
+  var safeQ = String(query).replace(/[&<>"']/g, function(c) {
+    return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+  });
+  sug.innerHTML =
+    '<div style="padding:12px 14px;background:linear-gradient(135deg,#f7f3ff,#fff);border-bottom:1px solid var(--line)">' +
+      '<div style="font-size:12.5px;color:var(--ink-2);margin-bottom:8px;line-height:1.4">' +
+        '<strong>"' + safeQ + '"</strong> ist noch nicht in unserer Datenbank.' +
+      '</div>' +
+      '<button type="button" onclick="_runWebSearchForHv()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;width:100%;font-family:inherit">' +
+        '🔍 Im Internet nach Kontaktdaten suchen' +
+      '</button>' +
+      '<div style="font-size:10.5px;color:var(--ink-3);margin-top:6px;line-height:1.4">' +
+        'Sucht Adresse + E-Mail via Google + KI-Extraktion. Dauert ~5&nbsp;Sek.' +
+      '</div>' +
+    '</div>';
+  sug.style.display = 'block';
+}
+
+// Web-Suche triggern (action=enrich_property_manager) und Felder befüllen
+function _runWebSearchForHv() {
+  var nameEl = document.getElementById('cta-hv-name');
+  var emailEl = document.getElementById('cta-hv-email');
+  var statusEl = document.getElementById('cta-hv-status');
+  var sug = document.getElementById('cta-hv-suggestions');
+  var name = (nameEl && nameEl.value ? nameEl.value : '').trim();
+  if (!name || !LIFTARO_API_URL) return;
+  if (sug) sug.innerHTML = '<div style="padding:14px;text-align:center;font-size:12.5px;color:var(--ink-2)"><span style="display:inline-block;width:14px;height:14px;border:2px solid #e0e6ee;border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></span> Suche im Web …</div>';
+  if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '🔎 Web …'; }
+  // Stadt aus Adresse extrahieren wenn vorhanden (Schritt 2)
+  var adresseRaw = (document.getElementById('adresse')?.value || '').trim();
+  var city = '';
+  var cityMatch = adresseRaw.match(/\b\d{4,5}\s+([A-ZÄÖÜ][\wäöüßÄÖÜ-]+)/);
+  if (cityMatch) city = cityMatch[1];
+  fetch(LIFTARO_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'enrich_property_manager', name: name, city: city }),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d || !d.ok) {
+        var msg = (d && d.error) ? d.error : 'Web-Suche fehlgeschlagen';
+        if (sug) sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#b91c1c">' +
+          '⚠ ' + msg + '<div style="font-size:11px;color:var(--ink-3);margin-top:4px">Bitte E-Mail unten manuell eintragen.</div></div>';
+        if (statusEl) statusEl.textContent = '— neu —';
+        return;
+      }
+      var data = d.data || {};
+      var found = [];
+      // Email vorbefüllen (Whitelist sorgt im Backend dafür, dass nur generische Mails kommen)
+      if (data.email && emailEl && !emailEl.value.trim()) {
+        emailEl.value = data.email;
+        _hvUserEditedEmail = true;
+        found.push('E-Mail');
+      }
+      // Cache für Submit: Stadt + Adresse, damit beim "Sparpotenzial einreichen" die Org-Anlage
+      // in Pipedrive mit echtem Standort passiert
+      window._eigCtaWebFind = {
+        name: name,
+        email: data.email || '',
+        strasse: data.strasse || '',
+        plz: data.plz || '',
+        ort: data.ort || '',
+        telefon: data.telefon || '',
+        website: data.website || '',
+      };
+      if (data.strasse || data.plz || data.ort) found.push('Adresse');
+      if (data.telefon) found.push('Telefon');
+      if (sug) {
+        if (found.length) {
+          var addrStr = [data.strasse, [data.plz, data.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+          sug.innerHTML =
+            '<div style="padding:12px 14px;background:#f3faea;border-bottom:1px solid var(--line)">' +
+              '<div style="font-size:12.5px;font-weight:600;color:#3d7a14;margin-bottom:4px">✓ Gefunden im Web</div>' +
+              (addrStr ? '<div style="font-size:11.5px;color:var(--ink-2);margin-bottom:4px">📍 ' + addrStr + '</div>' : '') +
+              (data.email ? '<div style="font-size:11.5px;color:var(--ink-2)">✉ ' + data.email + '</div>' : '') +
+              '<div style="font-size:10.5px;color:var(--ink-3);margin-top:6px">Wird beim Einreichen in unsere Datenbank übernommen.</div>' +
+            '</div>';
+          setTimeout(function() { sug.style.display = 'none'; }, 4500);
+        } else {
+          sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:var(--ink-3)">— im Web nicht eindeutig gefunden. Bitte E-Mail manuell eintragen.</div>';
+          setTimeout(function() { sug.style.display = 'none'; }, 4500);
+        }
+      }
+      if (statusEl) statusEl.textContent = found.length ? '✓ aus Web' : '— neu —';
+    })
+    .catch(function(e) {
+      if (sug) sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#b91c1c">⚠ ' + (e.message || 'Fehler') + '</div>';
+      if (statusEl) statusEl.textContent = '— neu —';
+    });
 }
 
 // Suggestion-Dropdown bei Klick außerhalb schließen
@@ -2406,19 +2503,26 @@ function submitEigentuemerCta() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'submit_eigentuemer_cta',
-          cta: {
-            hv_name: hvName,
-            hv_email: hvMail,
-            user_email: ctx.userEmail || '',
-            user_name: (function() {
-              var vn = (document.getElementById('vorname')?.value || '').trim();
-              var nn = (document.getElementById('nachname')?.value || '').trim();
-              return (vn + ' ' + nn).trim();
-            })(),
-            check_nr: (window._lastResult && window._lastResult.check_nr) || '',
-            role: 'eigentuemer',
-            savings_total_eur: (window._lastResult && Number(window._lastResult.savings_total_eur || window._lastResult.savings_estimate_eur || 0)) || 0,
-          },
+          cta: (function() {
+            var web = (window._eigCtaWebFind && window._eigCtaWebFind.name === hvName) ? window._eigCtaWebFind : null;
+            var addr = web ? [web.strasse, [web.plz, web.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
+            return {
+              hv_name: hvName,
+              hv_email: hvMail || (web ? web.email : ''),
+              hv_address: addr,
+              hv_telefon: web ? web.telefon : '',
+              hv_website: web ? web.website : '',
+              user_email: ctx.userEmail || '',
+              user_name: (function() {
+                var vn = (document.getElementById('vorname')?.value || '').trim();
+                var nn = (document.getElementById('nachname')?.value || '').trim();
+                return (vn + ' ' + nn).trim();
+              })(),
+              check_nr: (window._lastResult && window._lastResult.check_nr) || '',
+              role: 'eigentuemer',
+              savings_total_eur: (window._lastResult && Number(window._lastResult.savings_total_eur || window._lastResult.savings_estimate_eur || 0)) || 0,
+            };
+          })(),
         }),
       }).catch(function() { /* non-critical */ });
     } catch (e) { /* non-critical */ }
