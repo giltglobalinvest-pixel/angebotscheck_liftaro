@@ -2194,11 +2194,12 @@ function renderResultCta(role, r) {
       'Auswertung in Kurzform:\n' + summary + '\n\n' +
       'Geschätzte jährliche Gesamtersparnis für das Haus: ' + savingsTotalStr +
       (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-      'Ich bitte Sie, bei Liftaro (check@liftaro.de) eine konkrete Einsparungsberechnung anzufragen. ' +
-      'Liftaro ist auf Aufzug-Wartungsverträge spezialisiert und bietet zusätzlich eine laufende ' +
-      'Begleitung an, durch die unterjährige Reparaturkosten im Einzelfall um bis zu 80 % reduziert ' +
-      'werden können.\n\n' +
-      'Weitere Informationen: ' + landingUrl + '\n\n' +
+      'Ich bitte Sie, das Vergleichsangebot direkt bei Liftaro anzufordern — über die folgende ' +
+      'Schnell-Anfrage-Seite. Die wichtigsten Eckdaten Ihrer Verwaltung (Vertragsdetails oder ' +
+      'Vertrags-Upload) genügen — wir erhalten dann zeitnah ein verbindliches Vergleichsangebot.\n\n' +
+      '   👉  ' + location.origin + '/vorabcheck/verwalter.html?id=' + checkNr + '\n\n' +
+      'Liftaro ist auf Aufzug-Wartungsverträge spezialisiert. Über die laufende Betreuung lassen sich ' +
+      'unterjährige Reparaturkosten im Einzelfall um bis zu 80 % reduzieren.\n\n' +
       'Vielen Dank für Ihre Mühe.\n\n' +
       'Mit freundlichen Grüßen\n' + fullName;
 
@@ -2719,8 +2720,8 @@ function _renderInlineCtaInSavingsCard(role, r) {
     'Auswertung in Kurzform:\n' + summary + '\n\n' +
     'Geschätzte jährliche Gesamtersparnis für das Haus: ' + savingsTotalStr +
     (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-    'Ich bitte Sie, bei Liftaro (check@liftaro.de) eine konkrete Einsparungsberechnung anzufragen. ' +
-    'Weitere Informationen: ' + landingUrl + '\n\n' +
+    'Bitte fordern Sie das Vergleichsangebot direkt über die folgende Schnell-Seite an — wenige Klicks genügen:\n' +
+    '   👉  ' + location.origin + '/vorabcheck/verwalter.html?id=' + checkNr + '\n\n' +
     'Vielen Dank.\nMit freundlichen Grüßen\n' + fullName;
   var bodySelf = 'Hallo ' + fullName + ',\n\n' +
     'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
