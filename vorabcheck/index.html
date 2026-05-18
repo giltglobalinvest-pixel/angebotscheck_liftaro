@@ -2211,19 +2211,26 @@ function renderResultCta(role, r) {
 
     actionsEl.innerHTML =
       '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
-        // HV-Name (mit Live-Suche)
+        // HV-Name (mit Live-Suche + Adresse-Verifikation in Suggestions)
         '<div style="display:flex;flex-direction:column;gap:6px">' +
           '<label for="cta-hv-name" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Name Ihrer Hausverwaltung <span style="font-weight:400;color:var(--ink-3)">(z.B. Müller Immobilien GmbH)</span></label>' +
           '<div style="position:relative">' +
-            '<input type="text" id="cta-hv-name" placeholder="Hausverwaltung eingeben — wir suchen automatisch die Kontaktdaten" autocomplete="off" oninput="_searchHvName()" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+            '<input type="text" id="cta-hv-name" placeholder="Hausverwaltung eingeben — wir suchen Adresse und Kontaktdaten" autocomplete="off" oninput="_searchHvName()" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
             '<div id="cta-hv-status" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--ink-3);display:none"></div>' +
-            '<div id="cta-hv-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:50;max-height:240px;overflow-y:auto"></div>' +
+            '<div id="cta-hv-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:50;max-height:320px;overflow-y:auto"></div>' +
           '</div>' +
-        '</div>' +
-        // HV-Email
-        '<div style="display:flex;flex-direction:column;gap:6px">' +
-          '<label for="cta-hv-email" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">E-Mail-Adresse <span style="font-weight:400;color:var(--ink-3)">(optional — leer lassen, dann erhalten Sie die Auswertung selbst)</span></label>' +
-          '<input type="email" id="cta-hv-email" placeholder="hausverwaltung@beispiel.de" autocomplete="off" style="width:100%;padding:11px 13px;background:#fff;border:1.5px solid var(--line-2);border-radius:8px;font-size:14px;outline:none;font-family:inherit;color:var(--ink)">' +
+          // Auswahl-Bestätigung wenn HV gewählt
+          '<div id="cta-hv-selected" style="display:none;background:#f3faea;border:1.5px solid #c9e6a8;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.45">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="color:#3d7a14;font-weight:600;margin-bottom:2px">✓ Ausgewählt</div>' +
+                '<div id="cta-hv-selected-name" style="color:var(--ink);font-weight:600"></div>' +
+                '<div id="cta-hv-selected-addr" style="color:var(--ink-2);font-size:11.5px;margin-top:1px"></div>' +
+                '<div id="cta-hv-selected-mail" style="color:var(--ink-3);font-size:11px;margin-top:1px"></div>' +
+              '</div>' +
+              '<button type="button" onclick="_resetHvSelection()" style="background:none;border:1px solid var(--line-2);color:var(--ink-3);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit">✕ ändern</button>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
         '<div id="cta-hv-feedback" style="display:none;font-size:12px;margin-top:2px"></div>' +
         '<div style="margin-top:6px">' +
@@ -2243,7 +2250,7 @@ function renderResultCta(role, r) {
         '</div>' +
       '</div>';
     hintEl.style.display = 'block';
-    hintEl.textContent = 'Wir versenden keine E-Mail in Ihrem Namen — Sie sehen den Entwurf in Ihrem Mail-Programm und schicken ihn selbst ab.';
+    hintEl.textContent = 'Sie sehen den Entwurf vor dem Versand in Ihrem Mail-Programm und schicken ihn selbst ab. Wenn keine Hausverwaltung gewählt ist, erhalten Sie die Auswertung an Ihre eigene Adresse zum Weiterleiten.';
     return;
   }
 
@@ -2280,7 +2287,6 @@ function renderResultCta(role, r) {
 // ── Hausverwaltungs-Suche: Live-Lookup in Pipedrive während User tippt (Debounced) ──
 var _hvSearchTimer = null;
 var _hvSearchLastQ = '';
-var _hvUserEditedEmail = false;
 var _hvLastResults = [];
 
 function _hideHvSuggestions() {
@@ -2292,22 +2298,40 @@ function _renderHvSuggestions(results) {
   var sug = document.getElementById('cta-hv-suggestions');
   if (!sug) return;
   if (!results || !results.length) { sug.style.display = 'none'; return; }
+  // Sortieren: Treffer mit Adresse zuerst (eher die richtige Org)
+  results.sort(function(a, b) {
+    var ha = (a.city || a.address || '') ? 1 : 0;
+    var hb = (b.city || b.address || '') ? 1 : 0;
+    return hb - ha;
+  });
+  var header = '<div style="padding:8px 13px;background:var(--bg-soft);border-bottom:1px solid var(--line);font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.3px">' +
+    results.length + ' Treffer — bitte richtige Hausverwaltung wählen' +
+    '</div>';
   var html = results.map(function(r, idx) {
     var nameHtml = escapeHtml(r.name || '—');
-    var cityHtml = r.city ? '<span style="color:var(--ink-3);font-size:12px"> · ' + escapeHtml(r.city) + '</span>' : '';
-    var mailIcon = r.email
-      ? '<span style="color:var(--brand);font-size:11px;font-weight:600">✉ Mail vorhanden</span>'
-      : '<span style="color:var(--ink-3);font-size:11px">keine allgemeine Mail</span>';
+    var addr = escapeHtml(r.city || r.address || '');
+    var mailLine = r.email
+      ? '<div style="color:var(--brand);font-size:11.5px;margin-top:3px;font-weight:600">✉ ' + escapeHtml(r.email) + '</div>'
+      : '<div style="color:var(--ink-3);font-size:11px;margin-top:3px;font-style:italic">keine allgemeine E-Mail in DB</div>';
     return '<button type="button" onclick="_pickHvSuggestion(' + idx + ')" ' +
-           'style="display:block;width:100%;padding:10px 13px;background:#fff;border:none;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;font-family:inherit;color:var(--ink);font-size:13.5px;line-height:1.4" ' +
+           'style="display:block;width:100%;padding:11px 13px;background:#fff;border:none;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;font-family:inherit;color:var(--ink);font-size:13.5px;line-height:1.4" ' +
            'onmouseover="this.style.background=\'var(--bg-soft)\'" onmouseout="this.style.background=\'#fff\'">' +
-             '<div style="font-weight:600">' + nameHtml + cityHtml + '</div>' +
-             '<div style="margin-top:2px">' + mailIcon + '</div>' +
+             '<div style="font-weight:700;color:var(--ink)">' + nameHtml + '</div>' +
+             (addr ? '<div style="color:var(--ink-2);font-size:12px;margin-top:2px">📍 ' + addr + '</div>'
+                   : '<div style="color:#a86b00;font-size:11.5px;margin-top:2px;font-style:italic">⚠ keine Adresse hinterlegt</div>') +
+             mailLine +
            '</button>';
   }).join('');
-  // Letzte Reihe bündig
-  html = html.replace(/border-bottom:1px solid var\(--line\);([^"]*)"(?=[^<]*$)/, 'border-bottom:none;$1"');
-  sug.innerHTML = html;
+  // Footer-Button für "Keine der oben — andere suchen"
+  var safeQ = (_hvSearchLastQ || '').replace(/[&<>"']/g, function(c) {
+    return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+  });
+  var footer = '<div style="padding:9px 13px;background:#fff;text-align:center;border-top:1px solid var(--line)">' +
+    '<button type="button" onclick="_runWebSearchForHv()" style="background:none;border:none;color:var(--brand);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0">' +
+      'Keine passt? → Im Internet nach „' + safeQ + '" suchen' +
+    '</button>' +
+  '</div>';
+  sug.innerHTML = header + html + footer;
   sug.style.display = 'block';
 }
 
@@ -2315,20 +2339,44 @@ function _pickHvSuggestion(idx) {
   var hit = _hvLastResults[idx];
   if (!hit) return;
   var nameEl  = document.getElementById('cta-hv-name');
-  var emailEl = document.getElementById('cta-hv-email');
   var statusEl = document.getElementById('cta-hv-status');
   if (nameEl) nameEl.value = hit.name || '';
-  if (emailEl && hit.email) {
-    emailEl.value = hit.email;
-    _hvUserEditedEmail = true; // wurde jetzt gesetzt — keine Auto-Überschreibung mehr
-  }
-  if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '✓ übernommen'; }
+  // Selection-State setzen (wird beim Submit gelesen)
+  window._eigCtaPicked = {
+    source: 'db',
+    name: hit.name || '',
+    email: hit.email || '',
+    address: hit.city || hit.address || '',
+    org_id: hit.org_id || null,
+  };
+  // Auswahl-Bestätigungs-Box füllen
+  var selBox  = document.getElementById('cta-hv-selected');
+  var selName = document.getElementById('cta-hv-selected-name');
+  var selAddr = document.getElementById('cta-hv-selected-addr');
+  var selMail = document.getElementById('cta-hv-selected-mail');
+  if (selBox) selBox.style.display = 'block';
+  if (selName) selName.textContent = hit.name || '';
+  if (selAddr) selAddr.textContent = (hit.city || hit.address) ? '📍 ' + (hit.city || hit.address) : '⚠ Keine Adresse hinterlegt';
+  if (selMail) selMail.textContent = hit.email ? '✉ ' + hit.email : 'Keine allgemeine E-Mail hinterlegt — Auswertung geht an Ihre eigene Adresse';
+  if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.textContent = '✓ ausgewählt'; }
   _hideHvSuggestions();
+}
+
+// Auswahl zurücksetzen → User kann neu tippen / wählen
+function _resetHvSelection() {
+  window._eigCtaPicked = null;
+  window._eigCtaWebFind = null;
+  var selBox = document.getElementById('cta-hv-selected');
+  if (selBox) selBox.style.display = 'none';
+  var statusEl = document.getElementById('cta-hv-status');
+  if (statusEl) statusEl.style.display = 'none';
+  var nameEl = document.getElementById('cta-hv-name');
+  if (nameEl) { nameEl.value = ''; nameEl.focus(); }
+  _hvSearchLastQ = '';
 }
 
 function _searchHvName() {
   var nameEl   = document.getElementById('cta-hv-name');
-  var emailEl  = document.getElementById('cta-hv-email');
   var statusEl = document.getElementById('cta-hv-status');
   var q = (nameEl && nameEl.value ? nameEl.value : '').trim();
   if (q.length < 3) {
@@ -2336,14 +2384,13 @@ function _searchHvName() {
     _hideHvSuggestions();
     return;
   }
-  if (q === _hvSearchLastQ) return;
-  // User-Edits an der Email-Adresse merken — nur überschreiben wenn unverändert
-  if (emailEl && !_hvUserEditedEmail) {
-    emailEl.addEventListener('input', function _flag() {
-      _hvUserEditedEmail = true;
-      emailEl.removeEventListener('input', _flag);
-    });
+  // Wenn User wieder tippt nachdem schon eine Auswahl da war → Auswahl löschen
+  if (window._eigCtaPicked) {
+    window._eigCtaPicked = null;
+    var sb = document.getElementById('cta-hv-selected');
+    if (sb) sb.style.display = 'none';
   }
+  if (q === _hvSearchLastQ) return;
   clearTimeout(_hvSearchTimer);
   _hvSearchTimer = setTimeout(function() {
     if (!LIFTARO_API_URL) return;
@@ -2401,10 +2448,9 @@ function _renderWebSearchOffer(query) {
   sug.style.display = 'block';
 }
 
-// Web-Suche triggern (action=enrich_property_manager) und Felder befüllen
+// Web-Suche triggern (action=enrich_property_manager) und Auswahl-Box füllen
 function _runWebSearchForHv() {
   var nameEl = document.getElementById('cta-hv-name');
-  var emailEl = document.getElementById('cta-hv-email');
   var statusEl = document.getElementById('cta-hv-status');
   var sug = document.getElementById('cta-hv-suggestions');
   var name = (nameEl && nameEl.value ? nameEl.value : '').trim();
@@ -2425,54 +2471,68 @@ function _runWebSearchForHv() {
     .then(function(d) {
       if (!d || !d.ok) {
         var msg = (d && d.error) ? d.error : 'Web-Suche fehlgeschlagen';
-        if (sug) sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#b91c1c">' +
-          '⚠ ' + msg + '<div style="font-size:11px;color:var(--ink-3);margin-top:4px">Bitte E-Mail unten manuell eintragen.</div></div>';
+        if (sug) sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#b91c1c">⚠ ' + msg + '</div>';
         if (statusEl) statusEl.textContent = '— neu —';
         return;
       }
       var data = d.data || {};
-      var found = [];
-      // Email vorbefüllen (Whitelist sorgt im Backend dafür, dass nur generische Mails kommen)
-      if (data.email && emailEl && !emailEl.value.trim()) {
-        emailEl.value = data.email;
-        _hvUserEditedEmail = true;
-        found.push('E-Mail');
+      var addrStr = [data.strasse, [data.plz, data.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      if (!addrStr && !data.email) {
+        // Nichts Verwertbares gefunden
+        if (sug) sug.innerHTML =
+          '<div style="padding:12px 14px;font-size:12px;color:var(--ink-3)">' +
+            'Im Web nicht eindeutig gefunden für "<strong>' + escapeHtml(name) + '</strong>".' +
+            '<div style="margin-top:6px">Sie können trotzdem fortfahren — die Auswertung geht dann an Ihre eigene E-Mail-Adresse zum Weiterleiten an die Hausverwaltung.</div>' +
+            '<button type="button" onclick="_pickWebFallback(\'' + name.replace(/'/g, "\\'") + '\')" style="margin-top:8px;background:var(--brand);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer">' +
+              'Trotzdem mit "' + escapeHtml(name) + '" weitermachen' +
+            '</button>' +
+          '</div>';
+        return;
       }
-      // Cache für Submit: Stadt + Adresse, damit beim "Sparpotenzial einreichen" die Org-Anlage
-      // in Pipedrive mit echtem Standort passiert
-      window._eigCtaWebFind = {
+      // Selection-State setzen (Submit liest das)
+      window._eigCtaPicked = {
+        source: 'web',
         name: name,
         email: data.email || '',
+        address: addrStr,
         strasse: data.strasse || '',
         plz: data.plz || '',
         ort: data.ort || '',
         telefon: data.telefon || '',
         website: data.website || '',
       };
-      if (data.strasse || data.plz || data.ort) found.push('Adresse');
-      if (data.telefon) found.push('Telefon');
-      if (sug) {
-        if (found.length) {
-          var addrStr = [data.strasse, [data.plz, data.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-          sug.innerHTML =
-            '<div style="padding:12px 14px;background:#f3faea;border-bottom:1px solid var(--line)">' +
-              '<div style="font-size:12.5px;font-weight:600;color:#3d7a14;margin-bottom:4px">✓ Gefunden im Web</div>' +
-              (addrStr ? '<div style="font-size:11.5px;color:var(--ink-2);margin-bottom:4px">📍 ' + addrStr + '</div>' : '') +
-              (data.email ? '<div style="font-size:11.5px;color:var(--ink-2)">✉ ' + data.email + '</div>' : '') +
-              '<div style="font-size:10.5px;color:var(--ink-3);margin-top:6px">Wird beim Einreichen in unsere Datenbank übernommen.</div>' +
-            '</div>';
-          setTimeout(function() { sug.style.display = 'none'; }, 4500);
-        } else {
-          sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:var(--ink-3)">— im Web nicht eindeutig gefunden. Bitte E-Mail manuell eintragen.</div>';
-          setTimeout(function() { sug.style.display = 'none'; }, 4500);
-        }
-      }
-      if (statusEl) statusEl.textContent = found.length ? '✓ aus Web' : '— neu —';
+      // Auswahl-Bestätigungs-Box füllen
+      var selBox  = document.getElementById('cta-hv-selected');
+      var selName = document.getElementById('cta-hv-selected-name');
+      var selAddr = document.getElementById('cta-hv-selected-addr');
+      var selMail = document.getElementById('cta-hv-selected-mail');
+      if (selBox) selBox.style.display = 'block';
+      if (selName) selName.textContent = name + ' (aus dem Web)';
+      if (selAddr) selAddr.textContent = addrStr ? '📍 ' + addrStr : '⚠ Keine Adresse gefunden';
+      if (selMail) selMail.textContent = data.email ? '✉ ' + data.email : 'Keine generische E-Mail — Auswertung geht an Ihre eigene Adresse';
+      if (statusEl) statusEl.textContent = '✓ aus Web';
+      if (sug) sug.style.display = 'none';
     })
     .catch(function(e) {
       if (sug) sug.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#b91c1c">⚠ ' + (e.message || 'Fehler') + '</div>';
       if (statusEl) statusEl.textContent = '— neu —';
     });
+}
+
+// Fallback wenn Web nichts findet: User trotzdem mit dem Namen weitermachen lassen
+function _pickWebFallback(name) {
+  window._eigCtaPicked = { source: 'manual', name: name, email: '', address: '' };
+  var selBox  = document.getElementById('cta-hv-selected');
+  var selName = document.getElementById('cta-hv-selected-name');
+  var selAddr = document.getElementById('cta-hv-selected-addr');
+  var selMail = document.getElementById('cta-hv-selected-mail');
+  if (selBox) selBox.style.display = 'block';
+  if (selName) selName.textContent = name;
+  if (selAddr) selAddr.textContent = '⚠ Keine Adresse verfügbar — manuell eingegeben';
+  if (selMail) selMail.textContent = 'Auswertung geht an Ihre eigene E-Mail zum Weiterleiten';
+  var statusEl = document.getElementById('cta-hv-status');
+  if (statusEl) statusEl.textContent = '✓ manuell';
+  _hideHvSuggestions();
 }
 
 // Suggestion-Dropdown bei Klick außerhalb schließen
@@ -2487,15 +2547,19 @@ document.addEventListener('click', function(e) {
 // ── Eigentümer-CTA: Sparpotenzial einreichen (an HV oder als Selbst-Sicherung) ──
 function submitEigentuemerCta() {
   var ctx = window._eigCtaCtx || {};
-  var input = document.getElementById('cta-hv-email');
   var feedback = document.getElementById('cta-hv-feedback');
-  var hvMail = (input && input.value ? input.value : '').trim();
   var nameInput = document.getElementById('cta-hv-name');
   var hvName = (nameInput && nameInput.value ? nameInput.value : '').trim();
+  var picked = window._eigCtaPicked || null;
   var isValidMail = function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); };
+  // HV-Mail aus der Auswahl (DB-Treffer oder Web-Treffer); kein eigenes Eingabefeld mehr
+  var hvMail = (picked && picked.email && isValidMail(picked.email)) ? picked.email : '';
+  // Wenn der User keine HV ausgewählt hat aber einen Namen getippt → behandeln wie manuell ohne Mail
+  if (!picked && hvName) {
+    picked = { source: 'manual', name: hvName, email: '', address: '' };
+  }
 
-  // HV als B2B-Lead in Pipedrive einspielen (best-effort, fire-and-forget) —
-  // läuft parallel zum mailto: und blockiert die User-UX nicht.
+  // HV als B2B-Lead in Pipedrive einspielen (best-effort, fire-and-forget)
   if (hvName && LIFTARO_API_URL) {
     try {
       fetch(LIFTARO_API_URL, {
@@ -2503,26 +2567,24 @@ function submitEigentuemerCta() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'submit_eigentuemer_cta',
-          cta: (function() {
-            var web = (window._eigCtaWebFind && window._eigCtaWebFind.name === hvName) ? window._eigCtaWebFind : null;
-            var addr = web ? [web.strasse, [web.plz, web.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
-            return {
-              hv_name: hvName,
-              hv_email: hvMail || (web ? web.email : ''),
-              hv_address: addr,
-              hv_telefon: web ? web.telefon : '',
-              hv_website: web ? web.website : '',
-              user_email: ctx.userEmail || '',
-              user_name: (function() {
-                var vn = (document.getElementById('vorname')?.value || '').trim();
-                var nn = (document.getElementById('nachname')?.value || '').trim();
-                return (vn + ' ' + nn).trim();
-              })(),
-              check_nr: (window._lastResult && window._lastResult.check_nr) || '',
-              role: 'eigentuemer',
-              savings_total_eur: (window._lastResult && Number(window._lastResult.savings_total_eur || window._lastResult.savings_estimate_eur || 0)) || 0,
-            };
-          })(),
+          cta: {
+            hv_name: hvName,
+            hv_email: hvMail,
+            hv_address: (picked && picked.address) || '',
+            hv_telefon: (picked && picked.telefon) || '',
+            hv_website: (picked && picked.website) || '',
+            hv_source:  (picked && picked.source)  || 'manual',
+            hv_org_id:  (picked && picked.org_id)  || null,
+            user_email: ctx.userEmail || '',
+            user_name: (function() {
+              var vn = (document.getElementById('vorname')?.value || '').trim();
+              var nn = (document.getElementById('nachname')?.value || '').trim();
+              return (vn + ' ' + nn).trim();
+            })(),
+            check_nr: (window._lastResult && window._lastResult.check_nr) || '',
+            role: 'eigentuemer',
+            savings_total_eur: (window._lastResult && Number(window._lastResult.savings_total_eur || window._lastResult.savings_estimate_eur || 0)) || 0,
+          },
         }),
       }).catch(function() { /* non-critical */ });
     } catch (e) { /* non-critical */ }
@@ -2530,37 +2592,28 @@ function submitEigentuemerCta() {
 
   var toAddr, subj, body, feedbackTxt, feedbackColor;
   if (hvMail) {
-    // Validierung
-    if (!isValidMail(hvMail)) {
-      if (feedback) {
-        feedback.style.display = 'block';
-        feedback.style.color = '#b91c1c';
-        feedback.textContent = 'Bitte eine gültige E-Mail-Adresse eingeben — oder das Feld leer lassen, dann erhalten Sie die Auswertung selbst.';
-      }
-      input.focus();
-      return;
-    }
     toAddr = hvMail;
     subj = ctx.subjHV || '';
     body = ctx.bodyHV || '';
     feedbackTxt = 'Entwurf wird in Ihrem Mail-Programm geöffnet — bitte prüfen und absenden.';
     feedbackColor = 'var(--ink-3)';
   } else {
-    // Fallback: an User selbst (Hausverwaltung-Mail später nachreichen)
+    // Fallback: Auswertung an User selbst → leiten an HV weiter
     var userMail = (ctx.userEmail || '').trim();
     if (!userMail || !isValidMail(userMail)) {
       if (feedback) {
         feedback.style.display = 'block';
         feedback.style.color = '#b91c1c';
-        feedback.textContent = 'Bitte tragen Sie oben eine gültige E-Mail-Adresse ein — entweder die Ihrer Hausverwaltung oder Ihre eigene (Schritt 2).';
+        feedback.textContent = 'Bitte tragen Sie in Schritt 2 eine gültige E-Mail-Adresse ein.';
       }
-      if (input) input.focus();
       return;
     }
     toAddr = userMail;
     subj = ctx.subjSelf || '';
     body = ctx.bodySelf || '';
-    feedbackTxt = 'Sie erhalten die Auswertung an Ihre eigene E-Mail-Adresse — bitte leiten Sie sie an Ihre Hausverwaltung weiter.';
+    feedbackTxt = hvName
+      ? 'Keine E-Mail von "' + hvName + '" verfügbar — Sie erhalten die Auswertung an Ihre eigene Adresse zum Weiterleiten.'
+      : 'Sie erhalten die Auswertung an Ihre eigene E-Mail-Adresse zum Weiterleiten an die Hausverwaltung.';
     feedbackColor = 'var(--ink-3)';
   }
 
