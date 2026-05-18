@@ -3119,7 +3119,9 @@ const pdfWorkerReady = Promise.resolve();</script>
       <input type="hidden" id="v_id">
       <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field" style="position:relative">
-          <label>Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· tippe Name → Pipedrive-Vorschläge</span></label>
+          <label>Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· tippe Name → Pipedrive-Vorschläge</span>
+            <button type="button" onclick="enrichHvFromWeb('v')" title="Adresse, USt-IdNr und Steuernr per Web-Suche ergänzen" style="float:right;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">🔍 Web-Daten holen</button>
+          </label>
           <input type="text" id="v_firma" placeholder="Firmenname" autocomplete="off" oninput="_hvPickerSearch('v')">
           <div id="v_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
         </div>
@@ -3212,7 +3214,9 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Hausverwaltung</div>
       <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field" style="position:relative">
-          <label>Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· tippe Name → Pipedrive-Vorschläge</span></label>
+          <label>Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· tippe Name → Pipedrive-Vorschläge</span>
+            <button type="button" onclick="enrichHvFromWeb('lv')" title="Adresse, USt-IdNr und Steuernr per Web-Suche ergänzen" style="float:right;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">🔍 Web-Daten holen</button>
+          </label>
           <input type="text" id="lv_firma" placeholder="Firmenname" autocomplete="off" oninput="_hvPickerSearch('lv')">
           <div id="lv_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
         </div>
@@ -3226,6 +3230,10 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field"><label>Telefon</label><input type="tel" id="lv_tel" placeholder="+49 …"></div>
         <div class="field"><label>E-Mail</label><input type="email" id="lv_email" placeholder="info@firma.de"></div>
+      </div>
+      <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
+        <div class="field"><label>USt-IdNr</label><input type="text" id="lv_ustidnr" placeholder="DE123456789"></div>
+        <div class="field"><label>Steuernummer</label><input type="text" id="lv_steuernr" placeholder="z.B. 123/456/78901"></div>
       </div>
       <!-- Konditionen -->
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Konditionen</div>
@@ -3828,7 +3836,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.30';
+const APP_VERSION = 'V9.31';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -9269,6 +9277,62 @@ async function _pickHvForEditor(idx, editor) {
   showToast('✓ Daten aus Pipedrive übernommen', 'ok', 2500);
 }
 
+// Web-Anreicherung: Adresse, USt-IdNr, Steuernr per Serper + Claude Haiku
+async function enrichHvFromWeb(editor) {
+  const nameEl = document.getElementById(editor + '_firma');
+  const name = (nameEl?.value || '').trim();
+  if (!name || name.length < 3) {
+    showToast('Bitte erst den Firmennamen eintragen', 'error');
+    return;
+  }
+  const city = (document.getElementById(editor + '_ort')?.value || '').trim();
+  const proxyUrl = APP_KEYS.vorabcheckProxyUrl || '';
+  if (!proxyUrl) { showToast('Pipedrive-Proxy nicht konfiguriert', 'error'); return; }
+  // Button-Loading-State
+  const btns = document.querySelectorAll('button[onclick="enrichHvFromWeb(\'' + editor + '\')"]');
+  btns.forEach(b => { b._origText = b.innerHTML; b.innerHTML = '⏳ sucht …'; b.disabled = true; });
+  try {
+    const r = await fetch(proxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'enrich_property_manager', name, city }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      showToast('Web-Anreicherung fehlgeschlagen: ' + (d.error || 'unbekannt'), 'error', 4500);
+      return;
+    }
+    const data = d.data || {};
+    const updated = [];
+    const setIfNew = (id, val, label) => {
+      if (!val) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      const cur = (el.value || '').trim();
+      if (cur && cur !== val) {
+        if (!confirm(label + ' aus Web: "' + val + '"\nBestehender Wert: "' + cur + '"\n\nÜberschreiben?')) return;
+      }
+      el.value = val;
+      updated.push(label);
+    };
+    setIfNew(editor + '_strasse', data.strasse, 'Straße');
+    setIfNew(editor + '_plz',     data.plz,     'PLZ');
+    setIfNew(editor + '_ort',     data.ort,     'Ort');
+    setIfNew(editor + '_tel',     data.telefon, 'Telefon');
+    setIfNew(editor + '_email',   data.email,   'E-Mail');
+    setIfNew(editor + '_ustidnr', data.ustidnr, 'USt-IdNr');
+    setIfNew(editor + '_steuernr',data.steuernr,'Steuernr');
+    if (updated.length === 0) {
+      showToast('Keine neuen Daten gefunden (' + (d.snippet_count || 0) + ' Snippets analysiert)', 'info', 4500);
+    } else {
+      showToast('✓ ' + updated.length + ' Felder aktualisiert: ' + updated.join(', '), 'ok', 4500);
+    }
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  } finally {
+    btns.forEach(b => { b.innerHTML = b._origText || '🔍 Web-Daten holen'; b.disabled = false; });
+  }
+}
+
 // Dropdown bei Klick außerhalb schließen (für beide Editoren)
 document.addEventListener('click', function(e) {
   ['lv_firma_sug', 'v_firma_sug'].forEach(id => {
@@ -11639,7 +11703,7 @@ function closeLightVertragEditor() {
 
 function clearLightVertragForm() {
   ['lv_recordId','lv_id','lv_firma','lv_gf','lv_strasse','lv_plz','lv_ort','lv_tel','lv_email',
-   'lv_beginn','lv_link_v','lv_kommentar'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+   'lv_ustidnr','lv_steuernr','lv_beginn','lv_link_v','lv_kommentar'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('lv_preis').value = LIGHT_DEFAULTS.monatspreis;
   document.getElementById('lv_mindest').value = LIGHT_DEFAULTS.mindest;
   document.getElementById('lv_laufzeit').value = LIGHT_DEFAULTS.laufzeit;
@@ -11662,6 +11726,8 @@ function setLightVertragForm(d) {
   set('lv_ort', d.ort);
   set('lv_tel', d.tel);
   set('lv_email', d.email);
+  set('lv_ustidnr', d.ustidnr);
+  set('lv_steuernr', d.steuernr);
   set('lv_beginn', d.vertragsbeginn);
   set('lv_preis', d.monatspreis_je_aufzug_eur || LIGHT_DEFAULTS.monatspreis);
   set('lv_mindest', d.mindestabnahme_aufzuege || LIGHT_DEFAULTS.mindest);
@@ -11687,6 +11753,8 @@ function getLightVertragForm() {
     ort: g('lv_ort'),
     tel: g('lv_tel'),
     email: g('lv_email'),
+    ustidnr: g('lv_ustidnr'),
+    steuernr: g('lv_steuernr'),
     vertragsbeginn: g('lv_beginn'),
     monatspreis_je_aufzug_eur: num('lv_preis') || LIGHT_DEFAULTS.monatspreis,
     mindestabnahme_aufzuege: parseInt(g('lv_mindest'), 10) || LIGHT_DEFAULTS.mindest,
@@ -11708,7 +11776,9 @@ async function saveLightVertrag() {
   const fields = {
     id: lvId,
     firma: d.firma, gf: d.gf, strasse: d.strasse, plz: d.plz, ort: d.ort,
-    tel: d.tel, email: d.email, vertragsbeginn: d.vertragsbeginn,
+    tel: d.tel, email: d.email,
+    ustidnr: d.ustidnr, steuernr: d.steuernr,
+    vertragsbeginn: d.vertragsbeginn,
     monatspreis_je_aufzug_eur: d.monatspreis_je_aufzug_eur,
     mindestabnahme_aufzuege: d.mindestabnahme_aufzuege,
     mindestlaufzeit_monate: d.mindestlaufzeit_monate,
