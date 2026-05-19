@@ -697,6 +697,19 @@ export default async function (req: Request): Promise<Response> {
           verwalter_status: 'antwort_erhalten',
         };
         if (body.responses) fields.verwalter_response_json = JSON.stringify(body.responses);
+        // ── Strukturierte Vertrag-Felder aus den 5 Konfig-Antworten ableiten ──
+        // Werden im Folge-Check (Vertragscheck) als wv_*-Vergleichsspalte automatisch eingelesen.
+        if (mode === 'fragen' && body.responses && typeof body.responses === 'object') {
+          const r: any = body.responses;
+          if (r.wartungen)   fields.vertrag_wartungen_pro_jahr = String(r.wartungen);
+          if (r.vertragsart === 'voll')   fields.vertrag_wartungstyp = 'Vollwartung';
+          if (r.vertragsart === 'system') fields.vertrag_wartungstyp = 'Systemwartung';
+          if (r.tuev_begl)  fields.vertrag_tuev_begleitung = (r.tuev_begl === 'inkl');
+          if (r.tuev_pruef) fields.vertrag_tuev_pruefung   = (r.tuev_pruef === 'inkl');
+          if (r.notruf)     fields.vertrag_notruf          = (r.notruf === 'inkl');
+          fields.vertrag_extracted_at     = new Date().toISOString();
+          fields.vertrag_extracted_source = 'konfig';
+        }
         if (body.pdf_base64 && body.pdf_base64.length > 100) {
           try {
             const up = await fetch('https://content.airtable.com/v0/' + b + '/' + recId + '/verwalter_response_pdf/uploadAttachment', {
@@ -706,11 +719,30 @@ export default async function (req: Request): Promise<Response> {
             if (!up.ok) fields.verwalter_response_pdf_name = String(body.pdf_name || 'vertrag.pdf') + ' (Upload fehlgeschlagen)';
           } catch (e) { fields.verwalter_response_pdf_name = String(body.pdf_name || 'vertrag.pdf'); }
         }
-        await fetch('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, {
-          method: 'PATCH', headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fields }),
-        });
-        return jsonResp({ ok: true }, 200, corsHeaders);
+        // Retry-on-Unknown-Field: wenn die strukturierten vertrag_*-Felder
+        // in Airtable noch nicht existieren, einzeln droppen und nochmal versuchen.
+        const patchUrl = 'https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId;
+        const patchHeaders = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
+        let attempt = 0;
+        while (attempt++ < 25) {
+          const pr = await fetch(patchUrl, { method: 'PATCH', headers: patchHeaders, body: JSON.stringify({ fields }) });
+          if (pr.ok) break;
+          const txt = await pr.text();
+          let badField = '';
+          try {
+            const j = JSON.parse(txt);
+            const msg = j?.error?.message || j?.error || '';
+            const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+            if (m) badField = m[1];
+          } catch (_) {}
+          if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
+            delete fields[badField];
+            continue;
+          }
+          // andere Fehler → abbrechen
+          break;
+        }
+        return jsonResp({ ok: true, applied_fields: Object.keys(fields) }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
     // Bearbeiter-Inbox: Status setzen (offen / in_bearbeitung / erledigt)
