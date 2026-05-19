@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.56';
+const APP_VERSION = 'V9.57';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -12550,6 +12550,35 @@ async function openVorabcheckDetail(checkNr) {
               ${vc.hv_website ? `<div>🌐 <a href="${vc.hv_website.startsWith('http') ? vc.hv_website : 'https://'+vc.hv_website}" target="_blank" rel="noopener" style="color:var(--blue-mid)">${vc.hv_website}</a></div>` : ''}
             </div>
           </div>` : ''}
+        <!-- 🔗 Hausverwalter-Landingpage (Test-Link für interne Bearbeiter) -->
+        ${(function() {
+          // Repo-Root aus Admin-URL ableiten — funktioniert für check.liftaro.de UND github.io/angebotscheck_liftaro/
+          const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+          const verwalterUrl = base + 'vorabcheck/verwalter.html?id=' + encodeURIComponent(checkNr);
+          const vstat = String(vc.verwalter_status || '').trim();
+          const statusBadge = vstat === 'antwort_erhalten'
+            ? '<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:8px;font-size:10.5px;font-weight:700;margin-left:4px">✅ Antwort erhalten</span>'
+            : '<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:8px;font-size:10.5px;font-weight:700;margin-left:4px">⏳ Noch keine Antwort</span>';
+          return `
+          <div style="background:#fff;border:1.5px solid #2d5f96;border-radius:10px;padding:12px 14px">
+            <div style="font-size:10.5px;font-weight:700;color:#2d5f96;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">
+              🔗 Hausverwalter-Landingpage ${statusBadge}
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Link, mit dem der Hausverwalter mit wenigen Klicks Daten oder ein PDF nachreicht. Zum Selbst-Testen oder manuell verschicken.</div>
+            <div style="display:flex;gap:6px;align-items:center;background:var(--sky);border-radius:7px;padding:7px 10px;margin-bottom:8px">
+              <code style="flex:1;font-size:11.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'DM Mono',monospace">${verwalterUrl}</code>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <a href="${verwalterUrl}" target="_blank" rel="noopener" style="background:#2d5f96;color:#fff;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px">▶ In neuem Tab öffnen</a>
+              <button onclick="navigator.clipboard.writeText('${verwalterUrl}').then(()=>showToast('Verwalter-Link kopiert','success')).catch(()=>showToast('Kopieren fehlgeschlagen','error'))" style="background:#fff;border:1.5px solid #2d5f96;color:#2d5f96;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📋 Link kopieren</button>
+              ${vc.hv_email ? `<a href="mailto:${vc.hv_email}?subject=${encodeURIComponent('Schnell-Anfrage zu Vorabcheck ' + checkNr)}&body=${encodeURIComponent('Hallo,\n\nbitte beantworten Sie 5 kurze Fragen zu Ihrem Wartungsvertrag oder laden Sie das aktuelle Dokument hoch:\n\n' + verwalterUrl + '\n\nVielen Dank!\nLiftaro')}" style="background:#fff;border:1.5px solid #2d5f96;color:#2d5f96;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px">✉ HV-Mail erneut senden</a>` : ''}
+            </div>
+            ${vstat === 'antwort_erhalten' && vc.verwalter_response_at ? `
+              <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+                Antwort eingegangen am <strong>${new Date(vc.verwalter_response_at).toLocaleString('de-DE')}</strong>${vc.verwalter_response_mode ? ' · Modus: <strong>' + (vc.verwalter_response_mode === 'pdf' ? '📎 PDF-Upload' : vc.verwalter_response_mode === 'konfig' ? '📋 5-Fragen-Konfig' : vc.verwalter_response_mode) + '</strong>' : ''}${vc.verwalter_name ? ' · von <strong>' + String(vc.verwalter_name).replace(/[<>"&]/g,'') + '</strong>' : ''}
+              </div>` : ''}
+          </div>`;
+        })()}
         ${pipedriveBlock}
         <!-- 📋 Folge-Check (Vertragscheck/Reparaturcheck) -->
         ${vc.linked_check_requestid ? `
