@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.60';
+const APP_VERSION = 'V9.61';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14717,14 +14717,18 @@ async function createCheckFromVorabcheck(checkNr, type) {
   // Vorabcheck-Verknüpfung global merken (collectFormData liest die ein)
   window._vorabcheckRefForNewCheck = vc.check_nr || '';
   window._vorabcheckRefForNewCheckSavedAt = new Date().toISOString();
-  // Felder vorausfüllen (nur wenn leer)
-  const setIfEmpty = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = val; };
+  // Felder vorausfüllen (nur wenn leer) — Counter für UX-Feedback
+  let _filledCount = 0;
+  const setIfEmpty = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && !el.value && val) { el.value = val; _filledCount++; }
+  };
   // Checkbox setzen (nur wenn Wert eindeutig — Airtable liefert true/false/'true'/'false')
   const setCbFromVorabcheck = (id, val) => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (val === true || val === 'true')  el.checked = true;
-    if (val === false || val === 'false') el.checked = false;
+    if (val === true || val === 'true')  { el.checked = true;  _filledCount++; }
+    if (val === false || val === 'false') { el.checked = false; _filledCount++; }
   };
   // ── Datenquellen ────────────────────────────────────────────
   // Auftraggeber (Person, die den Vorabcheck angestoßen hat — aus Vorabcheck-Leads)
@@ -14849,7 +14853,19 @@ async function createCheckFromVorabcheck(checkNr, type) {
   const hubM = document.getElementById('vorabcheckHubModal'); if (hubM) hubM.style.display = 'none';
   const detM = document.getElementById('vchDetailModal');     if (detM) detM.remove();
   const vDet = document.getElementById('vorabcheckDetailModal'); if (vDet) vDet.style.display = 'none';
-  showToast('Vertragscheck-Entwurf bereit — bitte ergänzen und speichern (📥 Speichern).', 'success', 6000);
+  // UX-Feedback: wie viele Vertragsdaten lagen vor, wie viele Felder wurden befüllt?
+  const hasVertragData = !!(vc.vertrag_extracted_source || vc.vertrag_wartungen_pro_jahr || vc.vertrag_wartungstyp || vc.vertrag_vertragsbeginn || vc.vertrag_jahresbeitrag_eur);
+  const hasVerwAnswer  = vc.verwalter_status === 'antwort_erhalten';
+  if (hasVertragData) {
+    const src = vc.vertrag_extracted_source === 'konfig' ? '5-Fragen-Konfig' : vc.vertrag_extracted_source === 'pdf' ? 'PDF-Extraktion' : 'HV-Antwort';
+    showToast('✅ ' + _filledCount + ' Felder aus ' + src + ' vorbefüllt — bitte ergänzen und speichern.', 'success', 7000);
+  } else if (hasVerwAnswer && vc.verwalter_response_mode === 'pdf') {
+    showToast('⚠️ HV hat PDF hochgeladen, aber Vertragsdaten wurden noch nicht KI-extrahiert. Vergleichstabelle bleibt leer — bitte manuell ausfüllen oder Phase 2 (PDF-KI) abwarten.', 'warning', 9000);
+  } else if (hasVerwAnswer) {
+    showToast('ℹ️ HV hat zwar geantwortet, aber keine strukturierten Vertragsdaten verfügbar. Felder können manuell ausgefüllt werden.', 'info', 8000);
+  } else {
+    showToast('ℹ️ Hausverwalter hat noch nicht geantwortet — Vergleichstabelle bleibt leer. Du kannst die Felder manuell ausfüllen oder erst die HV-Antwort abwarten (Link in der HV-Box im Detail-Modal).', 'info', 9000);
+  }
 }
 
 // Banner oberhalb der Check-Maske, der die Vorabcheck-Verknüpfung anzeigt
