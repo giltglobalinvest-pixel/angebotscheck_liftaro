@@ -1,6 +1,6 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
-import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS } from "https://check.liftaro.de/vorabcheck/prompts.js?v=2";
+import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS, VERTRAG_EXTRACT_PROMPT } from "https://check.liftaro.de/vorabcheck/prompts.js?v=3";
 
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
@@ -695,7 +695,6 @@ export default async function (req: Request): Promise<Response> {
         } }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-    // Verwalter-Landing: Antwort speichern (Variante 1 = Fragen, Variante 2 = PDF-Upload)
     if (body.action === 'submit_verwalter_response') {
       const cn = String(body.check_nr || '').trim();
       const v = body.verwalter || {};
@@ -717,8 +716,6 @@ export default async function (req: Request): Promise<Response> {
           verwalter_status: 'antwort_erhalten',
         };
         if (body.responses) fields.verwalter_response_json = JSON.stringify(body.responses);
-        // ── Strukturierte Vertrag-Felder aus den 5 Konfig-Antworten ableiten ──
-        // Werden im Folge-Check (Vertragscheck) als wv_*-Vergleichsspalte automatisch eingelesen.
         if (mode === 'fragen' && body.responses && typeof body.responses === 'object') {
           const r: any = body.responses;
           if (r.wartungen)   fields.vertrag_wartungen_pro_jahr = String(r.wartungen);
@@ -731,13 +728,34 @@ export default async function (req: Request): Promise<Response> {
           fields.vertrag_extracted_source = 'konfig';
         }
         if (body.pdf_base64 && body.pdf_base64.length > 100) {
+          const mime = String(body.pdf_mime || 'application/pdf');
+          const fname = String(body.pdf_name || 'vertrag.pdf');
           try {
             const up = await fetch('https://content.airtable.com/v0/' + b + '/' + recId + '/verwalter_response_pdf/uploadAttachment', {
               method: 'POST', headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contentType: String(body.pdf_mime || 'application/pdf'), filename: String(body.pdf_name || 'vertrag.pdf'), file: body.pdf_base64 }),
+              body: JSON.stringify({ contentType: mime, filename: fname, file: body.pdf_base64 }),
             });
-            if (!up.ok) fields.verwalter_response_pdf_name = String(body.pdf_name || 'vertrag.pdf') + ' (Upload fehlgeschlagen)';
-          } catch (e) { fields.verwalter_response_pdf_name = String(body.pdf_name || 'vertrag.pdf'); }
+            if (!up.ok) fields.verwalter_response_pdf_name = fname + ' (Upload fehlgeschlagen)';
+          } catch (e) { fields.verwalter_response_pdf_name = fname; }
+          try {
+            const claudeMsg = await new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_KEY") }).messages.create({
+              model: MODEL, max_tokens: 1500, system: VERTRAG_EXTRACT_PROMPT,
+              messages: [{ role: "user", content: [
+                { type: "document", source: { type: "base64", media_type: mime, data: body.pdf_base64 } },
+                { type: "text", text: "Extrahiere die Vertragsdaten als JSON gemäß Schema." },
+              ]}],
+            });
+            const txt = claudeMsg.content.find((c: any) => c.type === "text")?.text || "{}";
+            const r: any = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, "").trim());
+            const STR_KEYS = new Set(['vertragsbeginn', 'wartungen_pro_jahr', 'wartungstyp']);
+            for (const k of Object.keys(r)) {
+              const v = r[k]; if (v == null || v === '') continue;
+              fields['vertrag_' + k] = typeof v === 'boolean' ? v : STR_KEYS.has(k) ? String(v) : (typeof v === 'number' ? v : String(v));
+            }
+            fields.vertrag_extracted_at = new Date().toISOString();
+            fields.vertrag_extracted_source = 'pdf';
+            fields.vertrag_raw_json = JSON.stringify(r);
+          } catch (e) { console.error('PDF-Extraktion fehlgeschlagen:', (e as any)?.message); }
         }
         await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, fields, 25);
         return jsonResp({ ok: true, applied_fields: Object.keys(fields) }, 200, corsHeaders);
@@ -1014,24 +1032,21 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.66',
-        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema'],
+        backend_version: 'V9.67',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'vertrag_pdf_extract'],
       }, 200, corsHeaders);
     }
-    // Fehlende Airtable-Felder in Vorab-Checks per Meta-API automatisch anlegen
     if (body.action === 'ensure_vorabcheck_schema') {
-      const k = Deno.env.get("AIRTABLE_KEY");
-      const b = Deno.env.get("AIRTABLE_BASE_ID");
+      const k = Deno.env.get("AIRTABLE_KEY"); const b = Deno.env.get("AIRTABLE_BASE_ID");
       if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
-      // Shared options + Helper für kompakte Field-Definitionen
       const DT = { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' };
       const CB = { icon: 'check', color: 'greenBright' };
-      const T = (name: string) => ({ name, type: 'singleLineText' });
-      const M = (name: string) => ({ name, type: 'multilineText' });
-      const D = (name: string) => ({ name, type: 'dateTime', options: DT });
-      const C = (name: string) => ({ name, type: 'checkbox', options: CB });
-      const N = (name: string, p: number) => ({ name, type: 'number', options: { precision: p } });
-      const S = (name: string, choices: string[]) => ({ name, type: 'singleSelect', options: { choices: choices.map(c => ({ name: c })) } });
+      const T = (n: string) => ({ name: n, type: 'singleLineText' });
+      const M = (n: string) => ({ name: n, type: 'multilineText' });
+      const D = (n: string) => ({ name: n, type: 'dateTime', options: DT });
+      const C = (n: string) => ({ name: n, type: 'checkbox', options: CB });
+      const N = (n: string, p: number) => ({ name: n, type: 'number', options: { precision: p } });
+      const S = (n: string, c: string[]) => ({ name: n, type: 'singleSelect', options: { choices: c.map(x => ({ name: x })) } });
       const TARGET_FIELDS: any[] = [
         S('verwalter_status', ['offen', 'antwort_erhalten']),
         T('verwalter_name'), T('verwalter_email'), T('verwalter_telefon'),
@@ -1100,8 +1115,8 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.66',
-        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema'],
+        backend_version: 'V9.67',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'vertrag_pdf_extract'],
         model: MODEL,
       }, 200, corsHeaders);
     }
