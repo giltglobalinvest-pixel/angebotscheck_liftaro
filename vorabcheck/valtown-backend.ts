@@ -1054,6 +1054,17 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
+        backend_version: 'V9.64',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field'],
+      }, 200, corsHeaders);
+    }
+    // Schneller Health-/Version-Check ohne Side-Effects
+    if (body.action === 'ping') {
+      return jsonResp({
+        ok: true,
+        backend_version: 'V9.64',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field'],
+        model: MODEL,
       }, 200, corsHeaders);
     }
 
