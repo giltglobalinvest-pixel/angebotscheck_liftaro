@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.57';
+const APP_VERSION = 'V9.58';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14761,14 +14761,18 @@ async function createCheckFromVorabcheck(checkNr, type) {
 
 // Banner oberhalb der Check-Maske, der die Vorabcheck-Verknüpfung anzeigt
 function _showVorabcheckLinkBanner(checkNr, vc) {
-  const host = document.querySelector('main') || document.getElementById('appContent') || document.body;
-  if (!host) return;
+  // #appContent ist ein 2-spaltiges Grid (Form-Spalte + Sidebar).
+  // Banner gehört IN die linke Form-Spalte (erstes Kind), NICHT ins Grid selbst,
+  // sonst zerstört er die Grid-Spalten-Verteilung.
+  const appContent = document.getElementById('appContent');
+  const leftCol = appContent && appContent.firstElementChild;
+  if (!leftCol) return;
   let banner = document.getElementById('vorabcheckLinkBanner');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'vorabcheckLinkBanner';
-    banner.style.cssText = 'background:linear-gradient(135deg,#fef3c7,#fff7ed);border:1.5px solid #f59e0b;border-radius:10px;padding:10px 16px;margin:10px 22px 0;display:flex;align-items:center;gap:10px;font-size:13px;color:#78350f';
-    host.insertBefore(banner, host.firstChild);
+    banner.style.cssText = 'background:linear-gradient(135deg,#fef3c7,#fff7ed);border:1.5px solid #f59e0b;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:10px;font-size:13px;color:#78350f;flex-wrap:wrap';
+    leftCol.insertBefore(banner, leftCol.firstChild);
   }
   const savings  = Number(vc?.savings_estimate_eur || 0);
   const ampelTxt = vc?.ampel === 'rot' ? '🔴 Rot' : vc?.ampel === 'gelb' ? '🟡 Gelb' : vc?.ampel === 'gruen' ? '🟢 Grün' : '';
