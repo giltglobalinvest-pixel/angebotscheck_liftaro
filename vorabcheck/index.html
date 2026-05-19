@@ -2212,6 +2212,7 @@ function renderResultCta(role, r) {
 
     // E-Mail "an mich selbst sichern" (wenn HV-Mail leer)
     const subjSelf = 'Ihr Liftaro-Vorabcheck — Auswertung ' + checkNr;
+    const verwalterUrl = location.origin + '/vorabcheck/verwalter.html?id=' + checkNr;
     const bodySelf =
       'Hallo ' + fullName + ',\n\n' +
       'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
@@ -2221,8 +2222,10 @@ function renderResultCta(role, r) {
       'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
       (savingsIndividualStr ? '\nIhr anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
       'Ihre nächsten Schritte:\n' +
-      '• Diese E-Mail an Ihre Hausverwaltung weiterleiten\n' +
-      '• Oder direkt eine konkrete Einsparungsberechnung bei Liftaro anfragen: check@liftaro.de\n' +
+      '• Diese E-Mail an Ihre Hausverwaltung weiterleiten — die folgende Schnell-Anfrage-Seite ' +
+      'ermöglicht der Verwaltung mit wenigen Klicks ein konkretes Vergleichsangebot anzufordern:\n' +
+      '   👉  ' + verwalterUrl + '\n' +
+      '• Oder direkt mit Liftaro sprechen: check@liftaro.de\n' +
       '• Webseite: ' + landingUrl + '\n\n' +
       'Beste Grüße\nLiftaro';
 
@@ -2730,6 +2733,7 @@ function _renderInlineCtaInSavingsCard(role, r) {
     'Bitte fordern Sie das Vergleichsangebot direkt über die folgende Schnell-Seite an — wenige Klicks genügen:\n' +
     '   👉  ' + location.origin + '/vorabcheck/verwalter.html?id=' + checkNr + '\n\n' +
     'Vielen Dank.\nMit freundlichen Grüßen\n' + fullName;
+  var verwalterUrl = location.origin + '/vorabcheck/verwalter.html?id=' + checkNr;
   var bodySelf = 'Hallo ' + fullName + ',\n\n' +
     'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
     'Check-Nr: ' + checkNr + '\n' +
@@ -2738,8 +2742,10 @@ function _renderInlineCtaInSavingsCard(role, r) {
     'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
     (savingsIndividualStr ? '\nIhr anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
     'Ihre nächsten Schritte:\n' +
-    '• Diese E-Mail an Ihre Hausverwaltung weiterleiten\n' +
-    '• Oder direkt eine konkrete Einsparungsberechnung bei Liftaro anfragen: check@liftaro.de\n' +
+    '• Diese E-Mail an Ihre Hausverwaltung weiterleiten — die folgende Schnell-Anfrage-Seite ' +
+    'ermöglicht der Verwaltung mit wenigen Klicks ein konkretes Vergleichsangebot anzufordern:\n' +
+    '   👉  ' + verwalterUrl + '\n' +
+    '• Oder direkt mit Liftaro sprechen: check@liftaro.de\n' +
     '• Webseite: ' + landingUrl + '\n\n' +
     'Beste Grüße\nLiftaro';
   window._eigCtaCtx = {
