@@ -755,6 +755,48 @@ export default async function (req: Request): Promise<Response> {
         return jsonResp({ ok: false, error: 'too many retries' }, 500, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
+    // Folge-Check (z.B. Vertragscheck) mit Vorabcheck verknüpfen
+    if (body.action === 'link_followup_check') {
+      const cn = String(body.check_nr || '').trim();
+      if (!cn) return jsonResp({ ok: false, error: 'check_nr missing' }, 400, corsHeaders);
+      const k = Deno.env.get("AIRTABLE_KEY"); const b = Deno.env.get("AIRTABLE_BASE_ID");
+      if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
+      try {
+        const fr = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + encodeURIComponent("{check_nr}='" + cn + "'") + '&maxRecords=1', { headers: { Authorization: 'Bearer ' + k } });
+        const recId = (await fr.json())?.records?.[0]?.id;
+        if (!recId) return jsonResp({ ok: false, error: 'check not found' }, 404, corsHeaders);
+        const fields: any = {
+          linked_check_id:         String(body.linked_check_id || '').trim(),
+          linked_check_requestid:  String(body.linked_check_requestid || '').trim(),
+          linked_check_type:       String(body.linked_check_type || '').trim(),
+          linked_check_ersparnis:  String(body.linked_check_ersparnis || '').trim(),
+          linked_check_at:         new Date().toISOString(),
+          bearbeiter_status:       'in_bearbeitung',
+          bearbeiter_status_at:    new Date().toISOString(),
+        };
+        const url = 'https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId;
+        const headers = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
+        let attempt = 0;
+        while (attempt++ < 15) {
+          const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
+          if (r.ok) return jsonResp({ ok: true, linked: fields.linked_check_requestid }, 200, corsHeaders);
+          const txt = await r.text();
+          let badField = '';
+          try {
+            const j = JSON.parse(txt);
+            const msg = j?.error?.message || j?.error || '';
+            const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+            if (m) badField = m[1];
+          } catch (_) {}
+          if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
+            delete fields[badField];
+            continue;
+          }
+          return jsonResp({ ok: false, error: 'airtable rejected: ' + txt.slice(0, 200) }, 500, corsHeaders);
+        }
+        return jsonResp({ ok: false, error: 'too many retries' }, 500, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
+    }
     if (body.action === 'enrich_property_manager') {
       const name = String(body.name || '').trim();
       const city = String(body.city || '').trim();
