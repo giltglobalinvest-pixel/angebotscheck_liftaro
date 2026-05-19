@@ -3534,6 +3534,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div style="display:flex;gap:0;flex-wrap:wrap">
         <button class="vch-tab active" data-tab="overview" onclick="switchVchTab('overview')" style="background:transparent;border:none;color:#fff;padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">📊 Übersicht</button>
+        <button class="vch-tab" data-tab="inbox" onclick="switchVchTab('inbox')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;display:inline-flex;align-items:center;gap:6px">🎯 Inbox <span id="vchInboxCountBadge" style="background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10.5px;font-weight:700;display:none;min-width:18px;text-align:center">0</span></button>
         <button class="vch-tab" data-tab="prompts" onclick="switchVchTab('prompts')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">✏️ Prompts</button>
         <button class="vch-tab" data-tab="public" onclick="switchVchTab('public')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🌐 Mieter-Seite</button>
         <button class="vch-tab" data-tab="preise" onclick="switchVchTab('preise')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">💰 Preisliste</button>
@@ -3555,6 +3556,22 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div id="vch-overview-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px"></div>
         <div id="vch-overview-list" style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
           <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Daten werden geladen …</div>
+        </div>
+      </div>
+
+      <!-- TAB: INBOX (Bearbeiter-Aufgaben) -->
+      <div id="vch-pane-inbox" class="vch-pane" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div style="font-size:13px;color:var(--muted)">Checks, die einen <strong>Bearbeiter</strong> brauchen — nach Vorabcheck kommt hier der echte Check.</div>
+          <button onclick="loadInbox()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Neu laden
+          </button>
+        </div>
+        <div id="vch-inbox-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px"></div>
+        <div id="vch-inbox-filterbar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:10px"></div>
+        <div id="vch-inbox-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px">
+          <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Daten werden geladen …</div>
         </div>
       </div>
 
@@ -3883,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.53';
+const APP_VERSION = 'V9.54';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14382,6 +14399,7 @@ function switchVchTab(tab) {
     p.style.display = p.id === 'vch-pane-' + tab ? 'block' : 'none';
   });
   if (tab === 'overview') loadVorabchecksList();
+  if (tab === 'inbox')    loadInbox();
   if (tab === 'prompts')  loadVorabcheckPrompts();
   if (tab === 'public')   renderVchPublicTab();
   if (tab === 'preise')   loadPreisreferenzen();
@@ -14416,6 +14434,8 @@ async function loadVorabchecksList() {
   // CSS einmalig injizieren
   _injectVchHubStyles();
   renderVchHubList();
+  // Inbox-Badge mit auffrischen (auch wenn User aktuell auf Übersicht ist)
+  try { renderInbox(); } catch (_) {}
 }
 
 function _injectVchHubStyles() {
@@ -14540,6 +14560,219 @@ function renderVchHubList() {
   }).join('') : '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Keine Treffer für den aktuellen Filter.</div>';
   list.innerHTML = filterBar + headerRow + rowsHtml;
 }
+// ── TAB: INBOX (Bearbeiter-Aufgaben) ───────────────────────────────
+window._inboxFilter = window._inboxFilter || 'bereit'; // bereit | warte_hv | in_bearbeitung | erledigt | alle
+
+async function loadInbox() {
+  const list = document.getElementById('vch-inbox-list');
+  if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Daten werden geladen …</div>';
+  // Daten ggf. nachladen (sonst aus Hub-Cache wiederverwenden)
+  if (!window._vchHubAllRows) {
+    try {
+      const records = await atRead('Vorab-Checks', null, { sort: false });
+      window._vchHubAllRows = records.map(r => r.fields).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    } catch (e) {
+      if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Tabelle „Vorab-Checks" noch nicht angelegt.</div>';
+      return;
+    }
+  }
+  _injectVchHubStyles(); // für die Ampel-Pills im Kachel-Layout
+  renderInbox();
+}
+
+function _deriveBearbeiterStatus(r) {
+  const bs = String(r.bearbeiter_status || '').trim();
+  if (bs === 'erledigt')       return 'erledigt';
+  if (bs === 'in_bearbeitung') return 'in_bearbeitung';
+  // sonst aus Workflow ableiten:
+  const role = String(r.role || '').trim();
+  const vst  = String(r.verwalter_status || '').trim();
+  if (vst === 'antwort_erhalten')        return 'bereit'; // HV hat über Verwalter-Landing geantwortet
+  if (role === 'verwalter')              return 'bereit'; // HV selbst hat den Check ausgeführt
+  if (role === 'eigentuemer' && r.hv_email) return 'warte_hv'; // HV-Mail raus, warten
+  if (role === 'eigentuemer')            return 'bereit'; // Eigentümer hat direkt alle Daten
+  return 'warte_hv'; // Default: Mieter-Checks landen nicht in der Inbox (siehe Filter unten)
+}
+
+function _inboxSetFilter(v) { window._inboxFilter = v; renderInbox(); }
+
+async function inboxTakeOver(checkNr) {
+  if (!confirm('Check ' + checkNr + ' übernehmen?\nStatus wird auf „in Bearbeitung" gesetzt.')) return;
+  await _inboxPatchStatus(checkNr, 'in_bearbeitung');
+}
+async function inboxMarkDone(checkNr) {
+  if (!confirm('Check ' + checkNr + ' als erledigt markieren?')) return;
+  await _inboxPatchStatus(checkNr, 'erledigt');
+}
+async function inboxReopen(checkNr) {
+  await _inboxPatchStatus(checkNr, 'offen');
+}
+async function _inboxPatchStatus(checkNr, status) {
+  if (!APP_KEYS.vorabcheckProxyUrl) { showToast('Proxy-URL fehlt — Setup ausführen.', 'error'); return; }
+  try {
+    const res = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_bearbeiter_status', check_nr: checkNr, status: status }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'unknown');
+    // Cache lokal updaten, damit Re-Render direkt korrekt aussieht
+    const row = (window._vchHubAllRows || []).find(r => r.check_nr === checkNr);
+    if (row) { row.bearbeiter_status = status; row.bearbeiter_status_at = new Date().toISOString(); }
+    showToast('Status: ' + (status === 'in_bearbeitung' ? '👤 In Bearbeitung' : status === 'erledigt' ? '✅ Erledigt' : '↩ Wieder offen'), 'success');
+    renderInbox();
+  } catch (e) {
+    showToast('Status konnte nicht gesetzt werden: ' + e.message, 'error');
+  }
+}
+
+function renderInbox() {
+  const statsEl  = document.getElementById('vch-inbox-stats');
+  const filterEl = document.getElementById('vch-inbox-filterbar');
+  const listEl   = document.getElementById('vch-inbox-list');
+  if (!statsEl || !listEl || !filterEl) return;
+  const all = window._vchHubAllRows || [];
+  // Nur Eigentümer- und Verwalter-Rollen kommen in die Inbox (Mieter-Checks brauchen keinen Bearbeiter)
+  const relevant = all.filter(r => r.role === 'eigentuemer' || r.role === 'verwalter');
+  // Status je Record ableiten
+  const annotated = relevant.map(r => ({ r, st: _deriveBearbeiterStatus(r) }));
+  const cnt = {
+    bereit:         annotated.filter(a => a.st === 'bereit').length,
+    warte_hv:       annotated.filter(a => a.st === 'warte_hv').length,
+    in_bearbeitung: annotated.filter(a => a.st === 'in_bearbeitung').length,
+    erledigt:       annotated.filter(a => a.st === 'erledigt').length,
+  };
+  // Top-Stats
+  statsEl.innerHTML =
+    statCard('🔥 Bereit',         String(cnt.bereit),         '#a8312f', 'HV hat geantwortet · jetzt bearbeiten') +
+    statCard('⏳ Warte auf HV',   String(cnt.warte_hv),       '#a06a00', 'Eigentümer-Mail raus · Antwort offen') +
+    statCard('👤 In Bearbeitung', String(cnt.in_bearbeitung), '#2d5f96', 'Du arbeitest gerade dran') +
+    statCard('✅ Erledigt',       String(cnt.erledigt),       '#3d7a14', 'Check abgeschlossen');
+  // Top-Badge auf dem Tab-Button (Bereit + In Bearbeitung)
+  const badge = document.getElementById('vchInboxCountBadge');
+  if (badge) {
+    const open = cnt.bereit + cnt.in_bearbeitung;
+    badge.textContent = String(open);
+    badge.style.display = open ? 'inline-block' : 'none';
+  }
+  // Filter-Chips
+  const chip = (v, l, col, n) => {
+    const active = window._inboxFilter === v;
+    return '<button type="button" onclick="_inboxSetFilter(\'' + v + '\')" style="padding:6px 12px;border-radius:16px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ' + col + ';background:' + (active ? col : '#fff') + ';color:' + (active ? '#fff' : col) + ';font-family:\'DM Sans\',sans-serif;display:inline-flex;align-items:center;gap:6px">' + l + '<span style="background:' + (active ? 'rgba(255,255,255,.25)' : col + '22') + ';color:' + (active ? '#fff' : col) + ';border-radius:8px;padding:0 6px;font-size:11px;font-weight:700">' + n + '</span></button>';
+  };
+  filterEl.innerHTML =
+    '<span style="font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Status:</span>' +
+    chip('bereit',         '🔥 Bereit',         '#a8312f', cnt.bereit) +
+    chip('warte_hv',       '⏳ Warte auf HV',   '#a06a00', cnt.warte_hv) +
+    chip('in_bearbeitung', '👤 In Bearbeitung', '#2d5f96', cnt.in_bearbeitung) +
+    chip('erledigt',       '✅ Erledigt',       '#3d7a14', cnt.erledigt) +
+    '<span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>' +
+    chip('alle',           '🗂 Alle',           '#1a3a5c', annotated.length);
+  // Liste filtern
+  const filt = window._inboxFilter || 'bereit';
+  const rows = filt === 'alle' ? annotated : annotated.filter(a => a.st === filt);
+  if (!rows.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;grid-column:1/-1;background:#fff;border:1px dashed var(--border);border-radius:10px">' +
+      (filt === 'bereit' ? '🎉 Aktuell nichts zu bearbeiten — alle bereiten Checks sind durch.' :
+       filt === 'warte_hv' ? 'Keine offenen HV-Anfragen.' :
+       filt === 'in_bearbeitung' ? 'Aktuell hast du nichts in Bearbeitung.' :
+       filt === 'erledigt' ? 'Noch keine Checks abgeschlossen.' :
+       'Keine Einträge in dieser Inbox.') +
+      '</div>';
+    return;
+  }
+  // Sortierung: Bereit zuerst, dann nach Datum (neueste zuerst), bei gleichem Datum nach Sparpotenzial absteigend
+  rows.sort((a, b) => {
+    const dA = a.r.verwalter_response_at || a.r.savedAt || '';
+    const dB = b.r.verwalter_response_at || b.r.savedAt || '';
+    if (dA !== dB) return dB.localeCompare(dA);
+    return Number(b.r.savings_estimate_eur || 0) - Number(a.r.savings_estimate_eur || 0);
+  });
+  listEl.innerHTML = rows.map(a => _renderInboxCard(a.r, a.st)).join('');
+}
+
+function _renderInboxCard(r, st) {
+  const ampelBg  = r.ampel === 'rot' ? '#a8312f' : r.ampel === 'gelb' ? '#a06a00' : r.ampel === 'gruen' ? '#3d7a14' : '#94a3b8';
+  const ampelTxt = r.ampel === 'rot' ? '🔴 Rot' : r.ampel === 'gelb' ? '🟡 Gelb' : r.ampel === 'gruen' ? '🟢 Grün' : '⚪️';
+  const role     = r.role === 'verwalter' ? '🏢 Verwalter' : r.role === 'eigentuemer' ? '🏠 Eigentümer' : (r.role || '–');
+  const savings  = Number(r.savings_estimate_eur || 0);
+  const aufz     = r.aufzug_count || '–';
+  const part     = r.parteien_count || r.anzahl_parteien || '';
+  const objekt   = r.objekt_adresse || r.hv_name || '';
+  const cnEsc    = (r.check_nr || '').replace(/'/g, "\\'");
+  // Datum (HV-Antwort oder savedAt) + Tage-her
+  const eventTs = r.verwalter_response_at || r.savedAt || '';
+  let agoTxt = '';
+  if (eventTs) {
+    const days = Math.floor((Date.now() - new Date(eventTs).getTime()) / 86400000);
+    agoTxt = days <= 0 ? 'heute' : days === 1 ? 'gestern' : 'vor ' + days + ' T.';
+  }
+  // Status-Tags (untere Sektion)
+  const tags = [];
+  if (st === 'bereit' && r.verwalter_status === 'antwort_erhalten') {
+    tags.push('<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">✅ HV hat geantwortet' + (r.verwalter_response_mode === 'pdf' ? ' (PDF)' : r.verwalter_response_mode === 'konfig' ? ' (Konfig)' : '') + '</span>');
+  }
+  if (st === 'bereit' && r.role === 'verwalter') {
+    tags.push('<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">🏢 HV-Direkt-Check</span>');
+  }
+  if (st === 'bereit' && r.role === 'eigentuemer' && !r.hv_email) {
+    tags.push('<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">📋 Daten direkt vom Eigentümer</span>');
+  }
+  if (st === 'warte_hv') {
+    tags.push('<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">📧 HV-Anfrage versendet</span>');
+  }
+  if (r.hv_name) {
+    tags.push('<span style="background:var(--sky);color:var(--text);padding:2px 8px;border-radius:10px;font-size:11px">🏢 ' + escapeHtmlSafe(r.hv_name) + '</span>');
+  }
+  // Aktions-Buttons je nach Status
+  let actions = '';
+  const btnDetail = '<button onclick="event.stopPropagation();openVorabcheckDetail(\'' + cnEsc + '\')" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">🔍 Detail</button>';
+  if (st === 'bereit') {
+    actions = '<button onclick="event.stopPropagation();inboxTakeOver(\'' + cnEsc + '\')" style="background:#a8312f;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Übernehmen →</button>' + btnDetail;
+  } else if (st === 'in_bearbeitung') {
+    actions = '<button onclick="event.stopPropagation();inboxMarkDone(\'' + cnEsc + '\')" style="background:#3d7a14;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">✅ Erledigt</button>' + btnDetail;
+  } else if (st === 'erledigt') {
+    actions = '<button onclick="event.stopPropagation();inboxReopen(\'' + cnEsc + '\')" style="background:#fff;border:1.5px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">↩ Wieder öffnen</button>' + btnDetail;
+  } else {
+    actions = btnDetail;
+  }
+  // Header-Strip-Farbe je nach Status
+  const stripCol = st === 'bereit' ? '#a8312f' : st === 'in_bearbeitung' ? '#2d5f96' : st === 'erledigt' ? '#3d7a14' : '#a06a00';
+  return '' +
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.04);cursor:pointer;transition:transform .12s,box-shadow .12s" onmouseover="this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.08)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(0,0,0,.04)\'" onclick="openVorabcheckDetail(\'' + cnEsc + '\')">' +
+      // Header-Strip
+      '<div style="background:' + stripCol + ';height:4px"></div>' +
+      // Body
+      '<div style="padding:14px;flex:1;display:flex;flex-direction:column;gap:10px">' +
+        // Zeile 1: Check-Nr · Ampel · Rolle · Zeit
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<span style="font-family:\'DM Mono\',monospace;font-weight:700;color:var(--text);font-size:13px">' + escapeHtmlSafe(r.check_nr || '–') + '</span>' +
+            '<span style="background:' + ampelBg + ';color:#fff;border-radius:8px;padding:2px 7px;font-size:10.5px;font-weight:700">' + ampelTxt + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' + role + (agoTxt ? ' · ' + agoTxt : '') + '</div>' +
+        '</div>' +
+        // Zeile 2: Sparpotenzial (groß)
+        '<div style="background:#f4f9ec;border-radius:8px;padding:8px 12px">' +
+          '<div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:700">💚 Sparpotenzial / Jahr</div>' +
+          '<div style="font-family:\'DM Mono\',monospace;font-weight:800;color:#3d7a14;font-size:20px;margin-top:2px">' + savings.toLocaleString('de-DE') + ' €</div>' +
+        '</div>' +
+        // Zeile 3: Aufzug-Daten
+        '<div style="font-size:12px;color:var(--text);line-height:1.5">' +
+          '🛗 ' + aufz + ' Aufzug' + (Number(aufz) !== 1 ? 'e' : '') + (part ? ' · 👥 ' + part + ' Parteien' : '') +
+          (objekt ? '<br>📍 ' + escapeHtmlSafe(objekt) : '') +
+        '</div>' +
+        // Tags
+        (tags.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px">' + tags.join('') + '</div>' : '') +
+        // Spacer
+        '<div style="flex:1"></div>' +
+        // Actions
+        '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">' + actions + '</div>' +
+      '</div>' +
+    '</div>';
+}
+
 function statCard(label, value, color, subText) {
   return '<div style="background:#fff;border:1px solid var(--border);border-left:4px solid ' + color + ';border-radius:10px;padding:12px 14px">' +
     '<div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600">' + label + '</div>' +
