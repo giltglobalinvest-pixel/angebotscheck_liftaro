@@ -1,7 +1,7 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
-import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS, VERTRAG_EXTRACT_PROMPT } from "https://check.liftaro.de/vorabcheck/prompts.js?v=3";
-import { VORABCHECK_TARGET_FIELDS, VERTRAG_EXTRACT_STRING_KEYS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=1";
+import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS } from "https://check.liftaro.de/vorabcheck/prompts.js?v=3";
+import { VORABCHECK_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=2";
 
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
@@ -729,34 +729,16 @@ export default async function (req: Request): Promise<Response> {
           fields.vertrag_extracted_source = 'konfig';
         }
         if (body.pdf_base64 && body.pdf_base64.length > 100) {
-          const mime = String(body.pdf_mime || 'application/pdf');
+          // PDF nur als Attachment speichern — KI-Analyse läuft später im Vertragscheck-Frontend
+          // über die bereits existierende handleFile()→extractFromPDF()-Pipeline.
           const fname = String(body.pdf_name || 'vertrag.pdf');
           try {
             const up = await fetch('https://content.airtable.com/v0/' + b + '/' + recId + '/verwalter_response_pdf/uploadAttachment', {
               method: 'POST', headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contentType: mime, filename: fname, file: body.pdf_base64 }),
+              body: JSON.stringify({ contentType: String(body.pdf_mime || 'application/pdf'), filename: fname, file: body.pdf_base64 }),
             });
             if (!up.ok) fields.verwalter_response_pdf_name = fname + ' (Upload fehlgeschlagen)';
           } catch (e) { fields.verwalter_response_pdf_name = fname; }
-          try {
-            const claudeMsg = await new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_KEY") }).messages.create({
-              model: MODEL, max_tokens: 1500, system: VERTRAG_EXTRACT_PROMPT,
-              messages: [{ role: "user", content: [
-                { type: "document", source: { type: "base64", media_type: mime, data: body.pdf_base64 } },
-                { type: "text", text: "Extrahiere die Vertragsdaten als JSON gemäß Schema." },
-              ]}],
-            });
-            const txt = claudeMsg.content.find((c: any) => c.type === "text")?.text || "{}";
-            const r: any = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, "").trim());
-            const STR = new Set(VERTRAG_EXTRACT_STRING_KEYS);
-            for (const k of Object.keys(r)) {
-              const v = r[k]; if (v == null || v === '') continue;
-              fields['vertrag_' + k] = typeof v === 'boolean' ? v : STR.has(k) ? String(v) : (typeof v === 'number' ? v : String(v));
-            }
-            fields.vertrag_extracted_at = new Date().toISOString();
-            fields.vertrag_extracted_source = 'pdf';
-            fields.vertrag_raw_json = JSON.stringify(r);
-          } catch (e) { console.error('PDF-Extraktion fehlgeschlagen:', (e as any)?.message); }
         }
         await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, fields, 25);
         return jsonResp({ ok: true, applied_fields: Object.keys(fields) }, 200, corsHeaders);
@@ -1033,8 +1015,8 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.68',
-        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'vertrag_pdf_extract'],
+        backend_version: 'V9.69',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
     if (body.action === 'ensure_vorabcheck_schema') {
@@ -1092,8 +1074,8 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.68',
-        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'vertrag_pdf_extract'],
+        backend_version: 'V9.69',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
     }
