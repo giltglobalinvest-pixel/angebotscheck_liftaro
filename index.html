@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.64';
+const APP_VERSION = 'V9.65';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14680,6 +14680,52 @@ function renderVchHubList() {
 // ── TAB: INBOX (Bearbeiter-Aufgaben) ───────────────────────────────
 window._inboxFilter = window._inboxFilter || 'bereit'; // bereit | warte_hv | in_bearbeitung | erledigt | alle
 
+// ── Schema-Setup: fehlende Airtable-Felder per Meta-API automatisch anlegen ──
+async function ensureVorabcheckSchema(dryRun) {
+  if (!APP_KEYS.vorabcheckProxyUrl) { showToast('Proxy-URL fehlt — Setup ausführen.', 'error'); return; }
+  if (!dryRun && !confirm(
+    'Es werden alle für Vorabcheck / Inbox / Verwalter-Antwort / Folge-Check benötigten Felder automatisch in der Tabelle „Vorab-Checks" angelegt.\n\n' +
+    'Voraussetzung: Dein Airtable-PAT muss die Scopes\n' +
+    '  • schema.bases:read\n  • schema.bases:write\n' +
+    'enthalten. Wenn nicht: PAT bei airtable.com/create/tokens erweitern.\n\nFortfahren?'
+  )) return;
+  const btn = document.getElementById('vchSchemaBtn');
+  if (btn) { btn.disabled = true; btn.textContent = dryRun ? '⏳ Prüfe …' : '⏳ Lege Felder an …'; }
+  try {
+    const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ensure_vorabcheck_schema', dry_run: !!dryRun }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      showToast('Schema-Setup fehlgeschlagen: ' + (d.error || 'unbekannter Fehler'), 'error', 12000);
+      console.warn('ensure_vorabcheck_schema fail:', d);
+      if (btn) { btn.disabled = false; btn.textContent = '🛠 Fehlende Felder automatisch anlegen'; }
+      return;
+    }
+    if (dryRun) {
+      const would = d.would_create || [];
+      const exist = d.already_exists || [];
+      alert('Vorschau:\n\n' + would.length + ' Felder würden angelegt:\n  ' + would.join('\n  ') +
+            '\n\n' + exist.length + ' Felder existieren bereits:\n  ' + exist.join('\n  '));
+      if (btn) { btn.disabled = false; btn.textContent = '🛠 Fehlende Felder automatisch anlegen'; }
+      return;
+    }
+    const created = d.created || [];
+    const failed  = d.failed  || [];
+    const skipped = d.skipped || [];
+    let msg = '✅ ' + created.length + ' Felder neu angelegt';
+    if (skipped.length) msg += ' · ' + skipped.length + ' existierten bereits';
+    if (failed.length)  msg += ' · ⚠️ ' + failed.length + ' fehlgeschlagen (Console für Details)';
+    showToast(msg, failed.length ? 'warning' : 'success', 10000);
+    if (failed.length) console.warn('ensure_vorabcheck_schema fehlgeschlagene Felder:', failed);
+    if (btn) { btn.disabled = false; btn.textContent = '✅ ' + created.length + ' Felder angelegt'; }
+  } catch (e) {
+    showToast('Schema-Setup fehlgeschlagen: ' + e.message, 'error', 10000);
+    if (btn) { btn.disabled = false; btn.textContent = '🛠 Fehlende Felder automatisch anlegen'; }
+  }
+}
+
 // ── Diagnose: zeigt für einen Vorabcheck alle relevanten Daten ────
 async function diagnoseVorabcheck(checkNr) {
   let vc = null;
@@ -14753,9 +14799,21 @@ async function diagnoseVorabcheck(checkNr) {
         '<div style="margin-top:18px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:12px;color:#78350f;line-height:1.5">' +
           '<strong>Wie deutet man das?</strong><br>' +
           '• Wenn <code>vertrag_*</code> leer: entweder Airtable-Felder fehlen ODER Backend ist alte Version (Proxy aktualisieren).<br>' +
-          '• Wenn <code>verwalter_*</code> leer: HV hat noch nicht über die Landing geantwortet.<br>' +
+          '• Wenn <code>verwalter_*</code> leer: HV hat noch nicht über die Landing geantwortet — ODER die verwalter_*-Felder existieren nicht in Airtable.<br>' +
           '• Wenn alles da, aber Form trotzdem leer: dann ist es ein Frontend-Mapping-Bug.' +
         '</div>' +
+        // Schema-Setup-Button: legt alle benötigten Airtable-Felder per Meta-API an
+        (vertragKeys.length === 0 || verwKeys.length === 0 ? (
+          '<div style="margin-top:14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #2d5f96;border-radius:8px">' +
+            '<div style="font-size:12.5px;color:#1e3a8a;font-weight:700;margin-bottom:6px">🛠 Schema-Reparatur</div>' +
+            '<div style="font-size:11.5px;color:#1e40af;margin-bottom:8px;line-height:1.5">Du hast wahrscheinlich die benötigten Felder noch nicht in der <code>Vorab-Checks</code>-Tabelle angelegt. Klick anlegen, dann nochmal HV-Submit testen.</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+              '<button id="vchSchemaBtn" onclick="ensureVorabcheckSchema(false)" style="background:#2d5f96;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">🛠 Fehlende Felder automatisch anlegen</button>' +
+              '<button onclick="ensureVorabcheckSchema(true)" style="background:#fff;color:#1e3a8a;border:1.5px solid #2d5f96;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">👁 Vorschau (dry-run)</button>' +
+            '</div>' +
+            '<div style="font-size:10.5px;color:#1e40af;margin-top:8px;font-style:italic">PAT muss schema.bases:read + schema.bases:write können.</div>' +
+          '</div>'
+        ) : '') +
       '</div>' +
     '</div>';
   m.onclick = (e) => { if (e.target === m) m.remove(); };
