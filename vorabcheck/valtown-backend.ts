@@ -1,6 +1,7 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS, VERTRAG_EXTRACT_PROMPT } from "https://check.liftaro.de/vorabcheck/prompts.js?v=3";
+import { VORABCHECK_TARGET_FIELDS, VERTRAG_EXTRACT_STRING_KEYS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=1";
 
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
@@ -747,10 +748,10 @@ export default async function (req: Request): Promise<Response> {
             });
             const txt = claudeMsg.content.find((c: any) => c.type === "text")?.text || "{}";
             const r: any = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, "").trim());
-            const STR_KEYS = new Set(['vertragsbeginn', 'wartungen_pro_jahr', 'wartungstyp']);
+            const STR = new Set(VERTRAG_EXTRACT_STRING_KEYS);
             for (const k of Object.keys(r)) {
               const v = r[k]; if (v == null || v === '') continue;
-              fields['vertrag_' + k] = typeof v === 'boolean' ? v : STR_KEYS.has(k) ? String(v) : (typeof v === 'number' ? v : String(v));
+              fields['vertrag_' + k] = typeof v === 'boolean' ? v : STR.has(k) ? String(v) : (typeof v === 'number' ? v : String(v));
             }
             fields.vertrag_extracted_at = new Date().toISOString();
             fields.vertrag_extracted_source = 'pdf';
@@ -1032,38 +1033,14 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.67',
+        backend_version: 'V9.68',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'vertrag_pdf_extract'],
       }, 200, corsHeaders);
     }
     if (body.action === 'ensure_vorabcheck_schema') {
       const k = Deno.env.get("AIRTABLE_KEY"); const b = Deno.env.get("AIRTABLE_BASE_ID");
       if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
-      const DT = { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' };
-      const CB = { icon: 'check', color: 'greenBright' };
-      const T = (n: string) => ({ name: n, type: 'singleLineText' });
-      const M = (n: string) => ({ name: n, type: 'multilineText' });
-      const D = (n: string) => ({ name: n, type: 'dateTime', options: DT });
-      const C = (n: string) => ({ name: n, type: 'checkbox', options: CB });
-      const N = (n: string, p: number) => ({ name: n, type: 'number', options: { precision: p } });
-      const S = (n: string, c: string[]) => ({ name: n, type: 'singleSelect', options: { choices: c.map(x => ({ name: x })) } });
-      const TARGET_FIELDS: any[] = [
-        S('verwalter_status', ['offen', 'antwort_erhalten']),
-        T('verwalter_name'), T('verwalter_email'), T('verwalter_telefon'),
-        T('verwalter_response_mode'), D('verwalter_response_at'), M('verwalter_response_json'),
-        { name: 'verwalter_response_pdf', type: 'multipleAttachments' },
-        T('verwalter_response_pdf_name'),
-        T('vertrag_wartungen_pro_jahr'), T('vertrag_wartungstyp'),
-        C('vertrag_tuev_begleitung'), C('vertrag_tuev_pruefung'), C('vertrag_notruf'), C('vertrag_entstoerung'),
-        T('vertrag_vertragsbeginn'),
-        N('vertrag_kuendigungsfrist_monate', 0), N('vertrag_jahresbeitrag_eur', 2),
-        N('vertrag_anzahl_aufzuege', 0), N('vertrag_mindestlaufzeit_jahre', 1),
-        D('vertrag_extracted_at'), T('vertrag_extracted_source'), M('vertrag_raw_json'),
-        S('bearbeiter_status', ['offen', 'in_bearbeitung', 'erledigt']),
-        D('bearbeiter_status_at'), T('bearbeiter_name'),
-        T('linked_check_id'), T('linked_check_requestid'), T('linked_check_type'),
-        T('linked_check_ersparnis'), D('linked_check_at'),
-      ];
+      const TARGET_FIELDS: any[] = VORABCHECK_TARGET_FIELDS;
       try {
         // Schema lesen
         const schemaRes = await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables', {
@@ -1115,7 +1092,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.67',
+        backend_version: 'V9.68',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'vertrag_pdf_extract'],
         model: MODEL,
       }, 200, corsHeaders);
