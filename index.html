@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.54';
+const APP_VERSION = 'V9.55';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -13390,14 +13390,34 @@ function renderDashboard() {
           const objekt = String(v.objekt_adresse || v.hv_name || '–').slice(0, 80).replace(/[<>"&]/g, '');
           const aufz = Number(v.aufzug_count || 0);
           const cnEsc = (v.check_nr || '').replace(/'/g, "\\'");
-          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 85px 90px 50px 1fr 14px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
+          // Bearbeiter-Status ableiten (siehe Inbox-Logik)
+          const bst = (typeof _deriveBearbeiterStatus === 'function') ? _deriveBearbeiterStatus(v) : '';
+          let statusBadge = '';
+          let actionCell  = '<span style="color:var(--muted);font-size:14px">›</span>';
+          if (bst === 'bereit') {
+            const subTxt = v.verwalter_status === 'antwort_erhalten'
+              ? 'HV hat geantwortet' + (v.verwalter_response_mode === 'pdf' ? ' (PDF)' : v.verwalter_response_mode === 'konfig' ? ' (Konfig)' : '')
+              : v.role === 'verwalter' ? 'HV-Direkt-Check'
+              : 'Daten direkt vom Eigentümer';
+            statusBadge = `<span title="${subTxt}" style="background:#fee2e2;color:#a8312f;padding:2px 7px;border-radius:9px;font-size:10.5px;font-weight:700;white-space:nowrap">🔥 Bereit</span>`;
+            actionCell  = `<button onclick="event.stopPropagation();openInInbox('${cnEsc}')" style="background:#a8312f;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">Bearbeiten →</button>`;
+          } else if (bst === 'warte_hv') {
+            statusBadge = `<span title="HV-Anfrage versendet · warten auf Antwort" style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:9px;font-size:10.5px;font-weight:700;white-space:nowrap">⏳ Warte HV</span>`;
+          } else if (bst === 'in_bearbeitung') {
+            statusBadge = `<span style="background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:9px;font-size:10.5px;font-weight:700;white-space:nowrap">👤 In Bearb.</span>`;
+            actionCell  = `<button onclick="event.stopPropagation();openInInbox('${cnEsc}')" style="background:#2d5f96;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">Bearbeiten →</button>`;
+          } else if (bst === 'erledigt') {
+            statusBadge = `<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:9px;font-size:10.5px;font-weight:700;white-space:nowrap">✅ Erledigt</span>`;
+          }
+          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 85px 90px 40px minmax(120px,1fr) auto auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
             <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px">${date}</span>
             <span style="text-align:center">${ampLab}</span>
             <span style="color:var(--text);text-transform:capitalize">${v.check_type || '–'}</span>
             <span style="font-family:'DM Mono',monospace;color:#3d7a14;font-weight:700">${sav > 0 ? _fmtEuro(sav) : '–'}</span>
             <span style="font-family:'DM Mono',monospace;color:var(--text);text-align:center" title="Aufzüge">${aufz || '–'}</span>
             <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${objekt}</span>
-            <span style="color:var(--muted);font-size:14px">›</span>
+            <span>${statusBadge}</span>
+            <span style="justify-self:end">${actionCell}</span>
           </div>`;
         }).join('');
         return `
@@ -14562,6 +14582,36 @@ function renderVchHubList() {
 }
 // ── TAB: INBOX (Bearbeiter-Aufgaben) ───────────────────────────────
 window._inboxFilter = window._inboxFilter || 'bereit'; // bereit | warte_hv | in_bearbeitung | erledigt | alle
+
+// Sprung aus Dashboard / Hub-Liste direkt in die Inbox + scrollt zur Kachel
+function openInInbox(checkNr) {
+  // 1) Hub-Modal öffnen
+  if (typeof openVorabcheckHub === 'function') {
+    openVorabcheckHub();
+  } else {
+    const m = document.getElementById('vorabcheckHubModal');
+    if (m) m.style.display = 'flex';
+  }
+  // 2) Auf Inbox-Tab umschalten
+  try { switchVchTab('inbox'); } catch (_) {}
+  // 3) Filter auf "Alle" — sonst sieht User die Karte ggf. nicht (z.B. wenn Filter auf "Bereit" aber Check ist "Erledigt")
+  window._inboxFilter = 'alle';
+  // 4) Re-render + scrollen zur Karte
+  setTimeout(() => {
+    try { renderInbox(); } catch (_) {}
+    setTimeout(() => {
+      const cards = document.querySelectorAll('#vch-inbox-list > div');
+      let target = null;
+      cards.forEach(c => { if (c.textContent.indexOf(checkNr) !== -1 && !target) target = c; });
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.style.transition = 'box-shadow .3s';
+        target.style.boxShadow = '0 0 0 3px #a8312f';
+        setTimeout(() => { target.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)'; }, 2000);
+      }
+    }, 120);
+  }, 60);
+}
 
 async function loadInbox() {
   const list = document.getElementById('vch-inbox-list');
