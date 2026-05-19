@@ -713,6 +713,48 @@ export default async function (req: Request): Promise<Response> {
         return jsonResp({ ok: true }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
+    // Bearbeiter-Inbox: Status setzen (offen / in_bearbeitung / erledigt)
+    if (body.action === 'set_bearbeiter_status') {
+      const cn = String(body.check_nr || '').trim();
+      const st = String(body.status || '').trim();
+      const allowed = new Set(['offen', 'in_bearbeitung', 'erledigt']);
+      if (!cn) return jsonResp({ ok: false, error: 'check_nr missing' }, 400, corsHeaders);
+      if (!allowed.has(st)) return jsonResp({ ok: false, error: 'status invalid' }, 400, corsHeaders);
+      const k = Deno.env.get("AIRTABLE_KEY"); const b = Deno.env.get("AIRTABLE_BASE_ID");
+      if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
+      try {
+        const fr = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + encodeURIComponent("{check_nr}='" + cn + "'") + '&maxRecords=1', { headers: { Authorization: 'Bearer ' + k } });
+        const recId = (await fr.json())?.records?.[0]?.id;
+        if (!recId) return jsonResp({ ok: false, error: 'check not found' }, 404, corsHeaders);
+        // Felder mit Retry-on-Unknown-Field (analog atPostSafe in saveToAirtable)
+        const fields: any = {
+          bearbeiter_status: st,
+          bearbeiter_status_at: new Date().toISOString(),
+        };
+        if (body.bearbeiter_name) fields.bearbeiter_name = String(body.bearbeiter_name).trim();
+        const url = 'https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId;
+        const headers = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
+        let attempt = 0;
+        while (attempt++ < 10) {
+          const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
+          if (r.ok) return jsonResp({ ok: true, status: st }, 200, corsHeaders);
+          const txt = await r.text();
+          let badField = '';
+          try {
+            const j = JSON.parse(txt);
+            const msg = j?.error?.message || j?.error || '';
+            const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+            if (m) badField = m[1];
+          } catch (_) {}
+          if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
+            delete fields[badField];
+            continue;
+          }
+          return jsonResp({ ok: false, error: 'airtable rejected: ' + txt.slice(0, 200) }, 500, corsHeaders);
+        }
+        return jsonResp({ ok: false, error: 'too many retries' }, 500, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
+    }
     if (body.action === 'enrich_property_manager') {
       const name = String(body.name || '').trim();
       const city = String(body.city || '').trim();
