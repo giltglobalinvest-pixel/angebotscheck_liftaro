@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.58';
+const APP_VERSION = 'V9.59';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14699,6 +14699,17 @@ async function createCheckFromVorabcheck(checkNr, type) {
   // Vorabcheck-Antwort-JSON parsen (falls vorhanden)
   let resp = {};
   try { if (vc.verwalter_response_json) resp = JSON.parse(vc.verwalter_response_json); } catch (_) {}
+  // Lead-Daten holen (Auftraggeber: Name, Tel, E-Mail, Adresse) — falls Hub nicht offen, on-demand nachladen
+  let leads = window._dashAllVorabcheckLeads || [];
+  if (!leads.length) {
+    try {
+      const lr = await atRead('Vorabcheck-Leads', "{check_nr}='" + checkNr + "'");
+      leads = (lr || []).map(x => x.fields);
+      // Auch im Hub-/Dashboard-Cache merken, damit Detail-Modals etc. die Daten haben
+      window._dashAllVorabcheckLeads = (window._dashAllVorabcheckLeads || []).concat(leads);
+    } catch (_) {}
+  }
+  const ld = leads.find(l => l.check_nr === checkNr) || {};
   // Form-Reset + Maske auf den gewünschten Typ schalten
   try { resetForm(); } catch (_) {}
   try { switchTab(type); } catch (_) {}
@@ -14708,36 +14719,93 @@ async function createCheckFromVorabcheck(checkNr, type) {
   window._vorabcheckRefForNewCheckSavedAt = new Date().toISOString();
   // Felder vorausfüllen (nur wenn leer)
   const setIfEmpty = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = val; };
-  // Vorabcheck-Daten extrahieren
-  const hvName    = vc.hv_name || vc.verwalter_name || '';
-  const hvAnschr  = vc.hv_adresse || '';
-  const hvEmail   = vc.verwalter_email || vc.hv_email || '';
-  const hvTel     = vc.verwalter_telefon || vc.hv_telefon || '';
-  const objekt    = vc.objekt_adresse || '';
+  // ── Datenquellen ────────────────────────────────────────────
+  // Auftraggeber (Person, die den Vorabcheck angestoßen hat — aus Vorabcheck-Leads)
+  const auftraggeberName    = [ld.vorname, ld.nachname].filter(Boolean).join(' ').trim();
+  const auftraggeberTel     = String(ld.telefon || '').trim();
+  const auftraggeberEmail   = String(ld.email || '').trim();
+  const auftraggeberAdresse = String(ld.adresse || '').trim();
+  // Hausverwalter (aus Eigentümer-Angabe oder Verwalter-Antwort)
+  const hvName    = String(vc.hv_name || vc.verwalter_name || '').trim();
+  const hvAnschr  = String(vc.hv_adresse || '').trim();
+  const hvEmail   = String(vc.verwalter_email || vc.hv_email || '').trim();
+  const hvTel     = String(vc.verwalter_telefon || vc.hv_telefon || '').trim();
+  // Standort & Aufzug-Daten
+  const objekt    = String(vc.objekt_adresse || auftraggeberAdresse || '').trim();
   const aufzAnz   = vc.aufzug_count || '';
-  const jahrPreis = vc.kosten_pro_aufzug_eur && aufzAnz
-    ? String(Number(vc.kosten_pro_aufzug_eur) * Number(aufzAnz))
-    : (vc.kosten_pro_aufzug_eur || '');
-  // Hauptformular-Felder (allgemein)
+  const gesamtKost = Number(vc.aufzug_gesamtkosten_eur || 0);
+  const proAufzug  = Number(vc.kosten_pro_aufzug_eur   || 0);
+  const jahrPreis = gesamtKost > 0
+    ? String(gesamtKost)
+    : (proAufzug > 0 && aufzAnz ? String(proAufzug * Number(aufzAnz)) : (proAufzug > 0 ? String(proAufzug) : ''));
+  // ── Hauptformular: Allgemeine Daten ─────────────────────────
+  // f_firma = HV-Name falls bekannt (wenn role=verwalter direkt, sonst aus Eigentümer-Angabe)
   setIfEmpty('f_firma',    hvName);
   setIfEmpty('f_standort', objekt);
-  setIfEmpty('f_name',     vc.verwalter_name || '');
-  setIfEmpty('f_tel',      hvTel);
+  // Ansprechpartner: HV-Name bevorzugt, sonst Auftraggeber als Fallback (kann manuell überschrieben werden)
+  setIfEmpty('f_name',     vc.verwalter_name || auftraggeberName);
+  setIfEmpty('f_tel',      hvTel || auftraggeberTel);
+  // ── Vertragscheck-spezifisch (wt_*) ─────────────────────────
   if (type === 'wartung') {
-    // Vertragsspezifische Felder
     setIfEmpty('wt_firma',            hvName);
     setIfEmpty('wt_anschrift',        hvAnschr);
     setIfEmpty('wt_email',            hvEmail);
     setIfEmpty('wt_tel',              hvTel);
     setIfEmpty('wt_standort',         objekt);
-    setIfEmpty('wt_ansprechpartner',  vc.verwalter_name || '');
+    setIfEmpty('wt_ansprechpartner',  vc.verwalter_name || auftraggeberName);
     setIfEmpty('wt_anzahl_aufzuege',  aufzAnz);
     setIfEmpty('wt_jahresbeitrag',    jahrPreis);
-    // 5-Frage-Konfig-Antworten als Zusatz-Text
-    if (resp && Object.keys(resp).length) {
-      const ergList = Object.entries(resp).map(([k, v]) => '• ' + k.replace(/_/g, ' ') + ': ' + v).join('\n');
-      const ergEl = document.getElementById('wt_ergaenzungen');
-      if (ergEl && !ergEl.value) ergEl.value = 'Aus Vorabcheck ' + checkNr + ':\n' + ergList;
+  }
+  // ── Ergänzungen / Bemerkungen: alles, was wir wissen, kompakt zusammenfassen ──
+  // Wartung → wt_ergaenzungen, Rechnung → rc_bemerkungen, Reparatur → f_empfehlung
+  const ergParts = [];
+  ergParts.push('━━━ Aus Vorabcheck ' + checkNr + ' ━━━');
+  if (auftraggeberName) {
+    ergParts.push('AUFTRAGGEBER: ' + auftraggeberName + (vc.role ? ' (' + vc.role + ')' : ''));
+    if (auftraggeberEmail) ergParts.push('  ✉  ' + auftraggeberEmail);
+    if (auftraggeberTel)   ergParts.push('  ☎  ' + auftraggeberTel);
+    if (auftraggeberAdresse && auftraggeberAdresse !== objekt) ergParts.push('  📍 ' + auftraggeberAdresse);
+  }
+  if (hvName || hvEmail || hvTel) {
+    ergParts.push('');
+    ergParts.push('HAUSVERWALTUNG:');
+    if (hvName)   ergParts.push('  ' + hvName);
+    if (hvAnschr) ergParts.push('  📍 ' + hvAnschr);
+    if (hvEmail)  ergParts.push('  ✉  ' + hvEmail);
+    if (hvTel)    ergParts.push('  ☎  ' + hvTel);
+  }
+  if (resp && Object.keys(resp).length) {
+    ergParts.push('');
+    ergParts.push('ANTWORTEN HAUSVERWALTUNG (5-Fragen-Konfig):');
+    Object.entries(resp).forEach(([k, v]) => ergParts.push('  • ' + k.replace(/_/g, ' ') + ': ' + v));
+  }
+  if (vc.summary) {
+    ergParts.push('');
+    ergParts.push('KI-ZUSAMMENFASSUNG:');
+    ergParts.push(String(vc.summary));
+  }
+  if (vc.savings_estimate_eur) {
+    ergParts.push('');
+    ergParts.push('GESCHÄTZTES SPARPOTENZIAL: ' + Number(vc.savings_estimate_eur).toLocaleString('de-DE') + ' € / Jahr');
+  }
+  if (vc.aufzug_positionen_text) {
+    ergParts.push('');
+    ergParts.push('AUFZUG-POSITIONEN aus Dokument:');
+    ergParts.push(String(vc.aufzug_positionen_text));
+  }
+  const ergText = ergParts.join('\n');
+  if (type === 'wartung') {
+    const ergEl = document.getElementById('wt_ergaenzungen');
+    if (ergEl && !ergEl.value) ergEl.value = ergText;
+  } else if (type === 'rechnung') {
+    const rcEl = document.getElementById('rc_bemerkungen');
+    if (rcEl && !rcEl.value) rcEl.value = ergText;
+  } else {
+    // Reparaturcheck: in das Empfehlungs-Textfeld (contenteditable div)
+    const empEl = document.getElementById('f_empfehlung');
+    if (empEl && (empEl.textContent.trim() === '' || empEl.textContent === empEl.dataset.placeholder)) {
+      empEl.textContent = ergText;
+      empEl.style.color = 'var(--text)';
     }
   }
   // Banner: Vorabcheck-Verknüpfung sichtbar machen
