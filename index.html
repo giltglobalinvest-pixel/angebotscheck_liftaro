@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.68';
+const APP_VERSION = 'V9.69';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -15012,18 +15012,51 @@ async function createCheckFromVorabcheck(checkNr, type) {
   const hubM = document.getElementById('vorabcheckHubModal'); if (hubM) hubM.style.display = 'none';
   const detM = document.getElementById('vchDetailModal');     if (detM) detM.remove();
   const vDet = document.getElementById('vorabcheckDetailModal'); if (vDet) vDet.style.display = 'none';
-  // UX-Feedback: wie viele Vertragsdaten lagen vor, wie viele Felder wurden befüllt?
-  const hasVertragData = !!(vc.vertrag_extracted_source || vc.vertrag_wartungen_pro_jahr || vc.vertrag_wartungstyp || vc.vertrag_vertragsbeginn || vc.vertrag_jahresbeitrag_eur);
+  // ── Verwalter-PDF in den Vorliegendes-Angebot-Slot übertragen ──
+  // Wenn die HV ein PDF hochgeladen hat (statt der 5-Fragen-Konfig), holen wir das aus
+  // dem Vorab-Check-Attachment und legen es als uploadedFiles[1] ab. Die bereits
+  // existierende Wartungscheck-KI (handleFile → extractFromPDF) übernimmt die Analyse.
+  const verwPdfAtt = Array.isArray(vc.verwalter_response_pdf) ? vc.verwalter_response_pdf[0] : null;
+  if (verwPdfAtt && verwPdfAtt.url) {
+    try {
+      const resp = await fetch(verwPdfAtt.url);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const fname = verwPdfAtt.filename || ('verwalter-vertrag-' + checkNr + '.pdf');
+        const fileObj = new File([blob], fname, { type: blob.type || 'application/pdf' });
+        if (typeof uploadedFiles !== 'undefined') {
+          uploadedFiles[1] = fileObj;
+          const zone1 = document.getElementById('zone1');
+          if (zone1) zone1.classList.add('has-file');
+          const fname1 = document.getElementById('fname1');
+          if (fname1) fname1.textContent = '✓ ' + fname;
+          const pb1 = document.getElementById('previewBtn1');
+          if (pb1) pb1.classList.add('visible');
+          if (typeof updateStatus === 'function') updateStatus();
+          // KI-Extraktion automatisch starten (nur wenn Anthropic-API-Key konfiguriert)
+          if (typeof extractFromPDF === 'function' && typeof requireApiKey === 'function') {
+            requireApiKey(() => extractFromPDF(1, fileObj));
+          }
+          _filledCount++;
+        }
+      }
+    } catch (e) { console.warn('Verwalter-PDF konnte nicht ins Vertragscheck-Formular übertragen werden:', e.message); }
+  }
+  // UX-Feedback je nach Datenquelle
+  const hasVertragData = !!(vc.vertrag_extracted_source || vc.vertrag_wartungen_pro_jahr || vc.vertrag_wartungstyp);
   const hasVerwAnswer  = vc.verwalter_status === 'antwort_erhalten';
-  if (hasVertragData) {
-    const src = vc.vertrag_extracted_source === 'konfig' ? '5-Fragen-Konfig' : vc.vertrag_extracted_source === 'pdf' ? 'PDF-Extraktion' : 'HV-Antwort';
+  const hasPdf         = !!verwPdfAtt;
+  if (hasPdf && hasVertragData) {
+    showToast('✅ ' + _filledCount + ' Felder aus HV-Konfig vorbefüllt + Wartungsvertrag-PDF übertragen — KI analysiert es jetzt im Vertragscheck.', 'success', 8000);
+  } else if (hasPdf) {
+    showToast('📄 Wartungsvertrag-PDF von HV in Vertragscheck übertragen — KI analysiert es jetzt automatisch und füllt die Vergleichstabelle.', 'success', 8000);
+  } else if (hasVertragData) {
+    const src = vc.vertrag_extracted_source === 'konfig' ? '5-Fragen-Konfig' : 'HV-Antwort';
     showToast('✅ ' + _filledCount + ' Felder aus ' + src + ' vorbefüllt — bitte ergänzen und speichern.', 'success', 7000);
-  } else if (hasVerwAnswer && vc.verwalter_response_mode === 'pdf') {
-    showToast('⚠️ HV hat PDF hochgeladen, aber Vertragsdaten wurden noch nicht KI-extrahiert. Vergleichstabelle bleibt leer — bitte manuell ausfüllen oder Phase 2 (PDF-KI) abwarten.', 'warning', 9000);
   } else if (hasVerwAnswer) {
-    showToast('ℹ️ HV hat zwar geantwortet, aber keine strukturierten Vertragsdaten verfügbar. Felder können manuell ausgefüllt werden.', 'info', 8000);
+    showToast('ℹ️ HV hat geantwortet, aber keine strukturierten Vertragsdaten verfügbar. Felder bitte manuell ausfüllen.', 'info', 8000);
   } else {
-    showToast('ℹ️ Hausverwalter hat noch nicht geantwortet — Vergleichstabelle bleibt leer. Du kannst die Felder manuell ausfüllen oder erst die HV-Antwort abwarten (Link in der HV-Box im Detail-Modal).', 'info', 9000);
+    showToast('ℹ️ Hausverwalter hat noch nicht geantwortet — Vergleichstabelle bleibt leer. Du kannst die Felder manuell ausfüllen oder erst die HV-Antwort abwarten.', 'info', 9000);
   }
 }
 
