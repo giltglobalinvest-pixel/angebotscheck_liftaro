@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.63';
+const APP_VERSION = 'V9.64';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14688,17 +14688,30 @@ async function diagnoseVorabcheck(checkNr) {
     if (fresh && fresh.length) vc = fresh[0].fields;
   } catch (e) { showToast('Airtable-Lesefehler: ' + e.message, 'error'); return; }
   if (!vc) { showToast('Vorabcheck nicht gefunden', 'error'); return; }
-  // Backend-Health checken
+  // Backend-Health checken (inkl. Version + Feature-Flags)
   let backendInfo = '⚠️ Proxy nicht erreichbar';
+  let backendVersionWarning = '';
   if (APP_KEYS.vorabcheckProxyUrl) {
     try {
       const t0 = Date.now();
       const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_defaults' }),
+        body: JSON.stringify({ action: 'ping' }),
       });
       const ms = Date.now() - t0;
-      backendInfo = r.ok ? ('✅ erreichbar (' + ms + 'ms, HTTP ' + r.status + ')') : ('⚠️ HTTP ' + r.status);
+      if (r.ok) {
+        const d = await r.json();
+        const bv = d.backend_version || '(alt — kein backend_version-Feld)';
+        const feats = Array.isArray(d.backend_features) ? d.backend_features : [];
+        backendInfo = '✅ ' + bv + ' (' + ms + 'ms · HTTP 200)';
+        // Warnung wenn Backend < APP_VERSION
+        const ageOk = d.backend_features && d.backend_features.includes('vertrag_mapping_konfig');
+        if (!ageOk) {
+          backendVersionWarning = '<div style="background:#fee2e2;border-left:3px solid #a8312f;padding:8px 12px;margin-top:6px;border-radius:6px;font-size:12px;color:#7f1d1d;line-height:1.5"><strong>⚠️ Backend ist veraltet!</strong> Die val.town-Instanz kennt die neue <code>vertrag_mapping_konfig</code>-Logik nicht. <br>→ <strong>„Proxy aktualisieren"</strong> im Vorabcheck-Hub → Einstellungen klicken, dann HV-Submit nochmal probieren.</div>';
+        }
+      } else {
+        backendInfo = '⚠️ HTTP ' + r.status;
+      }
     } catch (e) { backendInfo = '❌ ' + e.message; }
   } else {
     backendInfo = '⚠️ vorabcheckProxyUrl nicht in Master-Base gesetzt';
@@ -14732,6 +14745,7 @@ async function diagnoseVorabcheck(checkNr) {
       '</div>' +
       '<div style="flex:1;overflow-y:auto;padding:18px;font-family:Inter,sans-serif">' +
         '<div style="font-size:12px;color:#6b7280;margin-bottom:6px">App-Version: <strong style="color:#0e2440">' + APP_VERSION + '</strong> · Backend: ' + backendInfo + '</div>' +
+        backendVersionWarning +
         '<div style="font-size:11.5px;color:#0e2440;background:#f4f7fa;padding:8px 12px;border-radius:6px;margin-bottom:6px"><strong>Record-Felder gesamt:</strong> ' + allKeys.length + ' · vertrag_*: ' + vertragKeys.length + ' · verwalter_*: ' + verwKeys.length + ' · linked_check_*: ' + linkedKeys.length + '</div>' +
         block('🧾 vertrag_* (was die App ins Vertragscheck-Form mappen würde)', vertragKeys) +
         block('🏢 verwalter_* (HV-Antwort-Daten)', verwKeys) +
