@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.55';
+const APP_VERSION = 'V9.56';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4812,6 +4812,11 @@ let pendingAfterKey = null;
 // Wichtig: KEIN confirm() — Reset soll instant ausführen, damit man sofort
 // einen neuen Check beginnen kann, ohne den aktiven Tab zu verlassen.
 function resetForm() {
+  // Vorabcheck-Verknüpfung zurücksetzen (gesetzt von createCheckFromVorabcheck)
+  window._vorabcheckRefForNewCheck = null;
+  window._vorabcheckRefForNewCheckSavedAt = null;
+  const linkBanner = document.getElementById('vorabcheckLinkBanner');
+  if (linkBanner) linkBanner.remove();
 
   // Clear all inputs
   const ids = ['f_requestid','f_anfrageNr','f_datum','f_fabrik','f_standort','f_firma','f_name','f_tel',
@@ -4994,6 +4999,8 @@ function collectFormData() {
     rc_ergebnis:           g('rc_ergebnis'),
     rc_empfehlung:         g('rc_empfehlung'),
     rc_show_ansprechpartner: document.getElementById('rc_show_ansprechpartner')?.checked ? 'true' : 'false',
+    // Verknüpfung zu Vorabcheck (gesetzt durch createCheckFromVorabcheck)
+    vorabcheck_ref: window._vorabcheckRefForNewCheck || '',
   };
 }
 
@@ -5066,6 +5073,7 @@ async function saveCheck(reporter) {
     beauftragt_wie: data.beauftragt_wie || '',
     auftrag_ausgefuehrt: data.auftrag_ausgefuehrt || '',
     status: data.status || '1',
+    vorabcheck_ref: data.vorabcheck_ref || '',
     formData: JSON.stringify(data),
   };
   const filledCount = Object.values(data).filter(v => v !== '' && v !== null && v !== false && v !== undefined).length;
@@ -5119,6 +5127,43 @@ async function saveCheck(reporter) {
       if (_pendingErgebnisPdfBlob) {
         _pendingErgebnisPdfBlob = null;
         _pendingErgebnisPdfName = null;
+      }
+    }
+
+    // ── Backlink: wenn dieser Check aus einem Vorabcheck erstellt wurde, Vorab-Check-Record verlinken
+    if (data.vorabcheck_ref && APP_KEYS.vorabcheckProxyUrl) {
+      r.step('backlink', 'Vorabcheck ' + data.vorabcheck_ref + ' verknüpfen');
+      try {
+        const blr = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'link_followup_check',
+            check_nr: data.vorabcheck_ref,
+            linked_check_id: data.id || '',
+            linked_check_requestid: data.requestId || '',
+            linked_check_type: data.checkType || '',
+            linked_check_ersparnis: data.ersparnis || '',
+          }),
+        });
+        const bld = await blr.json();
+        if (bld.ok) {
+          r.done('backlink', 'Vorabcheck ist jetzt mit Check ' + (data.requestId || '–') + ' verknüpft');
+          // lokal cachen
+          const allVc = window._vchHubAllRows || window._dashAllVorabchecks || [];
+          const vcRow = allVc.find(x => x.check_nr === data.vorabcheck_ref);
+          if (vcRow) {
+            vcRow.linked_check_id = data.id;
+            vcRow.linked_check_requestid = data.requestId;
+            vcRow.linked_check_type = data.checkType;
+            vcRow.bearbeiter_status = 'in_bearbeitung';
+            vcRow.bearbeiter_status_at = new Date().toISOString();
+          }
+        } else {
+          r.error('backlink', bld.error || 'unbekannt');
+        }
+      } catch (e) {
+        console.warn('link_followup_check failed:', e.message);
+        r.error('backlink', e.message);
       }
     }
 
@@ -12506,6 +12551,29 @@ async function openVorabcheckDetail(checkNr) {
             </div>
           </div>` : ''}
         ${pipedriveBlock}
+        <!-- 📋 Folge-Check (Vertragscheck/Reparaturcheck) -->
+        ${vc.linked_check_requestid ? `
+          <div style="background:#e8f6f1;border:1.5px solid #0e6655;border-radius:10px;padding:12px 14px">
+            <div style="font-size:10.5px;font-weight:700;color:#0e6655;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📋 Verknüpfter Folge-Check</div>
+            <div style="font-size:13px;color:var(--text);margin-bottom:8px">
+              <strong>${String(vc.linked_check_requestid).replace(/[<>"&]/g, '')}</strong>
+              ${vc.linked_check_type ? `<span style="background:#0e6655;color:#fff;border-radius:4px;padding:1px 7px;font-size:10.5px;margin-left:6px">${vc.linked_check_type === 'wartung' ? '🔄 Vertragscheck' : vc.linked_check_type === 'rechnung' ? '🧾 Rechnungscheck' : '🔧 Reparaturcheck'}</span>` : ''}
+              ${vc.linked_check_ersparnis ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">Realisierte Ersparnis: <strong style="color:#3d7a14">${vc.linked_check_ersparnis}</strong></div>` : ''}
+              ${vc.linked_check_at ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Verknüpft am ${new Date(vc.linked_check_at).toLocaleString('de-DE')}</div>` : ''}
+            </div>
+            <button onclick="loadCheckByRequestId('${String(vc.linked_check_requestid).replace(/'/g, "\\'")}')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer">📋 Check öffnen →</button>
+          </div>
+        ` : `
+          <div style="background:#fff;border:1.5px dashed var(--border);border-radius:10px;padding:12px 14px">
+            <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📋 Folge-Check erstellen</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Aus diesem Vorabcheck einen detaillierten Check erstellen — Daten werden vorausgefüllt und beide Checks bleiben verknüpft.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="createCheckFromVorabcheck('${checkNr}','wartung')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer">🔄 Vertragscheck</button>
+              <button onclick="createCheckFromVorabcheck('${checkNr}','reparatur')" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer">🔧 Reparaturcheck</button>
+              <button onclick="createCheckFromVorabcheck('${checkNr}','rechnung')" style="background:#6b3eb8;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer">🧾 Rechnungscheck</button>
+            </div>
+          </div>
+        `}
         ${vc.summary ? `
           <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
             <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📝 KI-Zusammenfassung</div>
@@ -14583,6 +14651,132 @@ function renderVchHubList() {
 // ── TAB: INBOX (Bearbeiter-Aufgaben) ───────────────────────────────
 window._inboxFilter = window._inboxFilter || 'bereit'; // bereit | warte_hv | in_bearbeitung | erledigt | alle
 
+// ── Folge-Check aus Vorabcheck erstellen ──────────────────────────
+// Öffnet die Check-Maske (Vertragscheck = wartung / Reparaturcheck = reparatur / Rechnungscheck = rechnung),
+// füllt sie mit den Vorabcheck-Daten vor, setzt eine globale Verknüpfungs-ID (vorabcheck_ref) und
+// markiert den Vorabcheck als "in Bearbeitung".
+async function createCheckFromVorabcheck(checkNr, type) {
+  type = type || 'wartung';
+  const all = window._vchHubAllRows || window._dashAllVorabchecks || [];
+  const vc  = all.find(r => r.check_nr === checkNr);
+  if (!vc) { showToast('Vorabcheck nicht gefunden: ' + checkNr, 'error'); return; }
+  // Wenn bereits ein verknüpfter Check existiert → fragen statt automatisch neu erstellen
+  if (vc.linked_check_requestid) {
+    if (!confirm('Dieser Vorabcheck ist bereits mit dem Check „' + vc.linked_check_requestid + '" verknüpft. Neuen Check trotzdem anlegen?')) {
+      try { loadCheckByRequestId(vc.linked_check_requestid); } catch (_) {}
+      return;
+    }
+  }
+  // Vorabcheck-Antwort-JSON parsen (falls vorhanden)
+  let resp = {};
+  try { if (vc.verwalter_response_json) resp = JSON.parse(vc.verwalter_response_json); } catch (_) {}
+  // Form-Reset + Maske auf den gewünschten Typ schalten
+  try { resetForm(); } catch (_) {}
+  try { switchTab(type); } catch (_) {}
+  try { showCheckView(); } catch (_) {}
+  // Vorabcheck-Verknüpfung global merken (collectFormData liest die ein)
+  window._vorabcheckRefForNewCheck = vc.check_nr || '';
+  window._vorabcheckRefForNewCheckSavedAt = new Date().toISOString();
+  // Felder vorausfüllen (nur wenn leer)
+  const setIfEmpty = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = val; };
+  // Vorabcheck-Daten extrahieren
+  const hvName    = vc.hv_name || vc.verwalter_name || '';
+  const hvAnschr  = vc.hv_adresse || '';
+  const hvEmail   = vc.verwalter_email || vc.hv_email || '';
+  const hvTel     = vc.verwalter_telefon || vc.hv_telefon || '';
+  const objekt    = vc.objekt_adresse || '';
+  const aufzAnz   = vc.aufzug_count || '';
+  const jahrPreis = vc.kosten_pro_aufzug_eur && aufzAnz
+    ? String(Number(vc.kosten_pro_aufzug_eur) * Number(aufzAnz))
+    : (vc.kosten_pro_aufzug_eur || '');
+  // Hauptformular-Felder (allgemein)
+  setIfEmpty('f_firma',    hvName);
+  setIfEmpty('f_standort', objekt);
+  setIfEmpty('f_name',     vc.verwalter_name || '');
+  setIfEmpty('f_tel',      hvTel);
+  if (type === 'wartung') {
+    // Vertragsspezifische Felder
+    setIfEmpty('wt_firma',            hvName);
+    setIfEmpty('wt_anschrift',        hvAnschr);
+    setIfEmpty('wt_email',            hvEmail);
+    setIfEmpty('wt_tel',              hvTel);
+    setIfEmpty('wt_standort',         objekt);
+    setIfEmpty('wt_ansprechpartner',  vc.verwalter_name || '');
+    setIfEmpty('wt_anzahl_aufzuege',  aufzAnz);
+    setIfEmpty('wt_jahresbeitrag',    jahrPreis);
+    // 5-Frage-Konfig-Antworten als Zusatz-Text
+    if (resp && Object.keys(resp).length) {
+      const ergList = Object.entries(resp).map(([k, v]) => '• ' + k.replace(/_/g, ' ') + ': ' + v).join('\n');
+      const ergEl = document.getElementById('wt_ergaenzungen');
+      if (ergEl && !ergEl.value) ergEl.value = 'Aus Vorabcheck ' + checkNr + ':\n' + ergList;
+    }
+  }
+  // Banner: Vorabcheck-Verknüpfung sichtbar machen
+  _showVorabcheckLinkBanner(checkNr, vc);
+  // Bearbeiter-Status auf "in Bearbeitung" setzen (Best-Effort, nicht blocking)
+  try {
+    if (APP_KEYS.vorabcheckProxyUrl) {
+      await fetch(APP_KEYS.vorabcheckProxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_bearbeiter_status', check_nr: checkNr, status: 'in_bearbeitung' }),
+      });
+      if (vc) { vc.bearbeiter_status = 'in_bearbeitung'; vc.bearbeiter_status_at = new Date().toISOString(); }
+    }
+  } catch (e) { console.warn('set_bearbeiter_status failed:', e.message); }
+  // Hub-Modal schließen, damit die Maske sichtbar ist
+  const hubM = document.getElementById('vorabcheckHubModal'); if (hubM) hubM.style.display = 'none';
+  const detM = document.getElementById('vchDetailModal');     if (detM) detM.remove();
+  const vDet = document.getElementById('vorabcheckDetailModal'); if (vDet) vDet.style.display = 'none';
+  showToast('Vertragscheck-Entwurf bereit — bitte ergänzen und speichern (📥 Speichern).', 'success', 6000);
+}
+
+// Banner oberhalb der Check-Maske, der die Vorabcheck-Verknüpfung anzeigt
+function _showVorabcheckLinkBanner(checkNr, vc) {
+  const host = document.querySelector('main') || document.getElementById('appContent') || document.body;
+  if (!host) return;
+  let banner = document.getElementById('vorabcheckLinkBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'vorabcheckLinkBanner';
+    banner.style.cssText = 'background:linear-gradient(135deg,#fef3c7,#fff7ed);border:1.5px solid #f59e0b;border-radius:10px;padding:10px 16px;margin:10px 22px 0;display:flex;align-items:center;gap:10px;font-size:13px;color:#78350f';
+    host.insertBefore(banner, host.firstChild);
+  }
+  const savings  = Number(vc?.savings_estimate_eur || 0);
+  const ampelTxt = vc?.ampel === 'rot' ? '🔴 Rot' : vc?.ampel === 'gelb' ? '🟡 Gelb' : vc?.ampel === 'gruen' ? '🟢 Grün' : '';
+  banner.innerHTML =
+    '<span style="font-size:16px">🔗</span>' +
+    '<div style="flex:1">' +
+      '<strong>Aus Vorabcheck ' + escapeHtmlSafe(checkNr) + '</strong> ' +
+      (ampelTxt ? '· ' + ampelTxt + ' ' : '') +
+      (savings ? '· geschätzte Ersparnis ' + savings.toLocaleString('de-DE') + ' €/J' : '') +
+      '<div style="font-size:11.5px;color:#92400e;margin-top:2px">Beim Speichern wird der Vorabcheck automatisch mit diesem Check verlinkt.</div>' +
+    '</div>' +
+    '<button onclick="window._vorabcheckRefForNewCheck=null;this.parentElement.remove()" style="background:transparent;border:1px solid #f59e0b;color:#78350f;border-radius:6px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit">Verknüpfung trennen</button>';
+}
+
+// Lädt einen bestehenden Check anhand der requestId (z.B. um aus dem Vorabcheck den verlinkten Check zu öffnen)
+async function loadCheckByRequestId(requestId) {
+  if (!requestId) return;
+  try {
+    const rows = await atRead('Checks', "{requestId}='" + requestId + "'");
+    if (!rows.length) { showToast('Verknüpfter Check nicht gefunden: ' + requestId, 'error'); return; }
+    const c = rows[0].fields;
+    let formData = {};
+    try { formData = JSON.parse(c.formData || '{}'); } catch (_) {}
+    if (typeof showCheckView === 'function') showCheckView();
+    if (typeof switchTab === 'function') switchTab(c.checkType || 'reparatur');
+    // Daten ins Formular füllen (loadCheck akzeptiert das gespeicherte data-Objekt)
+    if (typeof loadCheck === 'function') {
+      await loadCheck(formData);
+    }
+    // Hub/Detail-Modals schließen
+    const hubM = document.getElementById('vorabcheckHubModal'); if (hubM) hubM.style.display = 'none';
+    const detM = document.getElementById('vchDetailModal');     if (detM) detM.remove();
+    const vDet = document.getElementById('vorabcheckDetailModal'); if (vDet) vDet.style.display = 'none';
+    showToast('Check ' + requestId + ' geöffnet.', 'success');
+  } catch (e) { showToast('Check konnte nicht geladen werden: ' + e.message, 'error'); }
+}
+
 // Sprung aus Dashboard / Hub-Liste direkt in die Inbox + scrollt zur Kachel
 function openInInbox(checkNr) {
   // 1) Hub-Modal öffnen
@@ -14778,12 +14972,20 @@ function _renderInboxCard(r, st) {
   // Aktions-Buttons je nach Status
   let actions = '';
   const btnDetail = '<button onclick="event.stopPropagation();openVorabcheckDetail(\'' + cnEsc + '\')" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">🔍 Detail</button>';
+  // Vertragscheck-Button: bei "bereit" (egal welche Datenquelle) oder "in_bearbeitung" anzeigen
+  const btnVertrag = (st === 'bereit' || st === 'in_bearbeitung') && !r.linked_check_requestid
+    ? '<button onclick="event.stopPropagation();createCheckFromVorabcheck(\'' + cnEsc + '\',\'wartung\')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">📋 Vertragscheck</button>'
+    : '';
+  // Verknüpfter Check öffnen
+  const btnOpenLinked = r.linked_check_requestid
+    ? '<button onclick="event.stopPropagation();loadCheckByRequestId(\'' + String(r.linked_check_requestid).replace(/'/g, "\\'") + '\')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">📋 ' + escapeHtmlSafe(r.linked_check_requestid) + ' öffnen</button>'
+    : '';
   if (st === 'bereit') {
-    actions = '<button onclick="event.stopPropagation();inboxTakeOver(\'' + cnEsc + '\')" style="background:#a8312f;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Übernehmen →</button>' + btnDetail;
+    actions = (btnVertrag || '<button onclick="event.stopPropagation();inboxTakeOver(\'' + cnEsc + '\')" style="background:#a8312f;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">Übernehmen →</button>') + btnOpenLinked + btnDetail;
   } else if (st === 'in_bearbeitung') {
-    actions = '<button onclick="event.stopPropagation();inboxMarkDone(\'' + cnEsc + '\')" style="background:#3d7a14;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">✅ Erledigt</button>' + btnDetail;
+    actions = btnOpenLinked + btnVertrag + '<button onclick="event.stopPropagation();inboxMarkDone(\'' + cnEsc + '\')" style="background:#3d7a14;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">✅ Erledigt</button>' + btnDetail;
   } else if (st === 'erledigt') {
-    actions = '<button onclick="event.stopPropagation();inboxReopen(\'' + cnEsc + '\')" style="background:#fff;border:1.5px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">↩ Wieder öffnen</button>' + btnDetail;
+    actions = btnOpenLinked + '<button onclick="event.stopPropagation();inboxReopen(\'' + cnEsc + '\')" style="background:#fff;border:1.5px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">↩ Wieder öffnen</button>' + btnDetail;
   } else {
     actions = btnDetail;
   }
