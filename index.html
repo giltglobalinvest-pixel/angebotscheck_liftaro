@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.61';
+const APP_VERSION = 'V9.62';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14686,8 +14686,27 @@ window._inboxFilter = window._inboxFilter || 'bereit'; // bereit | warte_hv | in
 // markiert den Vorabcheck als "in Bearbeitung".
 async function createCheckFromVorabcheck(checkNr, type) {
   type = type || 'wartung';
-  const all = window._vchHubAllRows || window._dashAllVorabchecks || [];
-  const vc  = all.find(r => r.check_nr === checkNr);
+  // IMMER frisch aus Airtable holen — der lokale Cache könnte 5 Min alt sein
+  // und gerade hinzugekommene Daten (HV-Antwort, vertrag_*-Felder) nicht enthalten.
+  let vc = null;
+  try {
+    const fresh = await atRead('Vorab-Checks', "{check_nr}='" + checkNr + "'");
+    if (fresh && fresh.length) {
+      vc = fresh[0].fields;
+      // Cache aktualisieren, damit andere Views konsistent bleiben
+      const updateCache = (arr) => {
+        if (!arr) return;
+        const i = arr.findIndex(r => r.check_nr === checkNr);
+        if (i >= 0) arr[i] = vc; else arr.unshift(vc);
+      };
+      updateCache(window._vchHubAllRows);
+      updateCache(window._dashAllVorabchecks);
+    }
+  } catch (_) { /* tolerant — Fallback auf Cache unten */ }
+  if (!vc) {
+    const all = window._vchHubAllRows || window._dashAllVorabchecks || [];
+    vc = all.find(r => r.check_nr === checkNr);
+  }
   if (!vc) { showToast('Vorabcheck nicht gefunden: ' + checkNr, 'error'); return; }
   // Wenn bereits ein verknüpfter Check existiert → fragen statt automatisch neu erstellen
   if (vc.linked_check_requestid) {
@@ -14952,16 +14971,22 @@ function openInInbox(checkNr) {
 async function loadInbox() {
   const list = document.getElementById('vch-inbox-list');
   if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Daten werden geladen …</div>';
-  // Daten ggf. nachladen (sonst aus Hub-Cache wiederverwenden)
-  if (!window._vchHubAllRows) {
-    try {
-      const records = await atRead('Vorab-Checks', null, { sort: false });
-      window._vchHubAllRows = records.map(r => r.fields).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
-    } catch (e) {
-      if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Tabelle „Vorab-Checks" noch nicht angelegt.</div>';
-      return;
-    }
+  // IMMER frisch laden — User klickt Inbox an, um aktuellen Stand zu sehen
+  // (verwalter_status='antwort_erhalten' soll sofort sichtbar werden, nicht erst nach Hub-Reload)
+  try {
+    const records = await atRead('Vorab-Checks', null, { sort: false });
+    window._vchHubAllRows = records.map(r => r.fields).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    // Auch Dashboard-Cache mit aktualisieren, damit Status-Badges überall konsistent sind
+    window._dashAllVorabchecks = window._vchHubAllRows;
+  } catch (e) {
+    if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Tabelle „Vorab-Checks" konnte nicht geladen werden: ' + escapeHtmlSafe(e.message) + '</div>';
+    return;
   }
+  // Vorabcheck-Leads parallel nachladen (für Detail-Modal und createCheckFromVorabcheck)
+  try {
+    const leadRecs = await atRead('Vorabcheck-Leads', null, { sort: false });
+    window._dashAllVorabcheckLeads = leadRecs.map(r => r.fields);
+  } catch (_) { /* tolerant */ }
   _injectVchHubStyles(); // für die Ampel-Pills im Kachel-Layout
   renderInbox();
 }
@@ -15019,8 +15044,19 @@ function renderInbox() {
   const listEl   = document.getElementById('vch-inbox-list');
   if (!statsEl || !listEl || !filterEl) return;
   const all = window._vchHubAllRows || [];
-  // Nur Eigentümer- und Verwalter-Rollen kommen in die Inbox (Mieter-Checks brauchen keinen Bearbeiter)
-  const relevant = all.filter(r => r.role === 'eigentuemer' || r.role === 'verwalter');
+  // Inbox-Filter: Check ist relevant wenn …
+  //   • role = eigentuemer/verwalter (klassischer Workflow), ODER
+  //   • HV hat über die Verwalter-Landing geantwortet, ODER
+  //   • es gibt bereits einen verknüpften Folge-Check, ODER
+  //   • Bearbeiter-Status wurde schon gesetzt (in_bearbeitung / erledigt)
+  //   → so fallen auch alte Test-Checks ohne role in die Inbox, sobald sie HV-Antworten haben.
+  const relevant = all.filter(r =>
+    r.role === 'eigentuemer' ||
+    r.role === 'verwalter' ||
+    r.verwalter_status === 'antwort_erhalten' ||
+    !!r.linked_check_requestid ||
+    !!String(r.bearbeiter_status || '').trim()
+  );
   // Status je Record ableiten
   const annotated = relevant.map(r => ({ r, st: _deriveBearbeiterStatus(r) }));
   const cnt = {
