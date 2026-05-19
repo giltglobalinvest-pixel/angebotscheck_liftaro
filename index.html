@@ -3900,7 +3900,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.59';
+const APP_VERSION = 'V9.60';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14719,6 +14719,13 @@ async function createCheckFromVorabcheck(checkNr, type) {
   window._vorabcheckRefForNewCheckSavedAt = new Date().toISOString();
   // Felder vorausfüllen (nur wenn leer)
   const setIfEmpty = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = val; };
+  // Checkbox setzen (nur wenn Wert eindeutig — Airtable liefert true/false/'true'/'false')
+  const setCbFromVorabcheck = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (val === true || val === 'true')  el.checked = true;
+    if (val === false || val === 'false') el.checked = false;
+  };
   // ── Datenquellen ────────────────────────────────────────────
   // Auftraggeber (Person, die den Vorabcheck angestoßen hat — aus Vorabcheck-Leads)
   const auftraggeberName    = [ld.vorname, ld.nachname].filter(Boolean).join(' ').trim();
@@ -14745,8 +14752,9 @@ async function createCheckFromVorabcheck(checkNr, type) {
   // Ansprechpartner: HV-Name bevorzugt, sonst Auftraggeber als Fallback (kann manuell überschrieben werden)
   setIfEmpty('f_name',     vc.verwalter_name || auftraggeberName);
   setIfEmpty('f_tel',      hvTel || auftraggeberTel);
-  // ── Vertragscheck-spezifisch (wt_*) ─────────────────────────
+  // ── Vertragscheck-spezifisch (wt_* = AHW-Block, wv_* = Vergleichstabelle Bestandsvertrag) ──
   if (type === 'wartung') {
+    // AHW-Block (Aufzugshandwerk)
     setIfEmpty('wt_firma',            hvName);
     setIfEmpty('wt_anschrift',        hvAnschr);
     setIfEmpty('wt_email',            hvEmail);
@@ -14755,6 +14763,23 @@ async function createCheckFromVorabcheck(checkNr, type) {
     setIfEmpty('wt_ansprechpartner',  vc.verwalter_name || auftraggeberName);
     setIfEmpty('wt_anzahl_aufzuege',  aufzAnz);
     setIfEmpty('wt_jahresbeitrag',    jahrPreis);
+    // Vertragsvergleich "Ihr Bestandsvertrag" (wv_*) aus strukturierten Vorabcheck-Daten
+    // Diese Felder werden vom Backend gesetzt:
+    //   - aus Konfig-Antworten (mode='fragen') → vertrag_wartungen_pro_jahr, vertrag_wartungstyp, vertrag_tuev_*, vertrag_notruf
+    //   - später aus PDF-KI-Extraktion (Phase 2) → zusätzlich vertrag_vertragsbeginn, vertrag_kuendigungsfrist_monate, vertrag_jahresbeitrag_eur, ...
+    setIfEmpty('wv_vertragsbeginn', vc.vertrag_vertragsbeginn || '');
+    setIfEmpty('wv_kuendfrist',     vc.vertrag_kuendigungsfrist_monate ? String(vc.vertrag_kuendigungsfrist_monate) + ' Monate' : '');
+    setIfEmpty('wv_laufzeit',       vc.vertrag_mindestlaufzeit_jahre ? String(vc.vertrag_mindestlaufzeit_jahre) + ' Jahre' : '');
+    setIfEmpty('wv_anzahl',         vc.vertrag_wartungen_pro_jahr ? String(vc.vertrag_wartungen_pro_jahr) + ' / Jahr' : '');
+    setIfEmpty('wv_typ',            vc.vertrag_wartungstyp || '');
+    // Kosten Bestandsvertrag — aus KI extrahierter Gesamtkosten oder vertrag_jahresbeitrag_eur (PDF-Phase)
+    const wvKosten = vc.vertrag_jahresbeitrag_eur || gesamtKost || jahrPreis;
+    setIfEmpty('wv_kosten',         wvKosten ? Number(wvKosten).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '');
+    // Checkbox-Felder (Bestandsvertrag)
+    setCbFromVorabcheck('wv_tuev_begl',  vc.vertrag_tuev_begleitung);
+    setCbFromVorabcheck('wv_tuev_pruef', vc.vertrag_tuev_pruefung);
+    setCbFromVorabcheck('wv_entstoer',   vc.vertrag_entstoerung);
+    setCbFromVorabcheck('wv_notruf',     vc.vertrag_notruf);
   }
   // ── Ergänzungen / Bemerkungen: alles, was wir wissen, kompakt zusammenfassen ──
   // Wartung → wt_ergaenzungen, Rechnung → rc_bemerkungen, Reparatur → f_empfehlung
