@@ -1054,16 +1054,106 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.64',
-        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field'],
+        backend_version: 'V9.65',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema'],
       }, 200, corsHeaders);
+    }
+    // Fehlende Airtable-Felder in Vorab-Checks per Meta-API automatisch anlegen
+    if (body.action === 'ensure_vorabcheck_schema') {
+      const k = Deno.env.get("AIRTABLE_KEY");
+      const b = Deno.env.get("AIRTABLE_BASE_ID");
+      if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
+      // ── Ziel-Schema: alle Felder die der Vorabcheck/Inbox/Verwalter/Folge-Check-Workflow braucht
+      const TARGET_FIELDS: any[] = [
+        // HV-Antwort
+        { name: 'verwalter_status',         type: 'singleSelect',       options: { choices: [{ name: 'offen' }, { name: 'antwort_erhalten' }] } },
+        { name: 'verwalter_name',           type: 'singleLineText' },
+        { name: 'verwalter_email',          type: 'singleLineText' },
+        { name: 'verwalter_telefon',        type: 'singleLineText' },
+        { name: 'verwalter_response_mode',  type: 'singleLineText' },
+        { name: 'verwalter_response_at',    type: 'dateTime',           options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
+        { name: 'verwalter_response_json',  type: 'multilineText' },
+        { name: 'verwalter_response_pdf',   type: 'multipleAttachments' },
+        { name: 'verwalter_response_pdf_name', type: 'singleLineText' },
+        // Strukturierte Vertrags-Daten (aus Konfig oder PDF-KI)
+        { name: 'vertrag_wartungen_pro_jahr',    type: 'singleLineText' },
+        { name: 'vertrag_wartungstyp',           type: 'singleLineText' },
+        { name: 'vertrag_tuev_begleitung',       type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
+        { name: 'vertrag_tuev_pruefung',         type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
+        { name: 'vertrag_notruf',                type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
+        { name: 'vertrag_entstoerung',           type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
+        { name: 'vertrag_vertragsbeginn',        type: 'singleLineText' },
+        { name: 'vertrag_kuendigungsfrist_monate', type: 'number',         options: { precision: 0 } },
+        { name: 'vertrag_jahresbeitrag_eur',     type: 'number',           options: { precision: 2 } },
+        { name: 'vertrag_anzahl_aufzuege',       type: 'number',           options: { precision: 0 } },
+        { name: 'vertrag_mindestlaufzeit_jahre', type: 'number',           options: { precision: 1 } },
+        { name: 'vertrag_extracted_at',          type: 'dateTime',         options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
+        { name: 'vertrag_extracted_source',      type: 'singleLineText' },
+        { name: 'vertrag_raw_json',              type: 'multilineText' },
+        // Bearbeiter-Inbox
+        { name: 'bearbeiter_status',         type: 'singleSelect',       options: { choices: [{ name: 'offen' }, { name: 'in_bearbeitung' }, { name: 'erledigt' }] } },
+        { name: 'bearbeiter_status_at',      type: 'dateTime',           options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
+        { name: 'bearbeiter_name',           type: 'singleLineText' },
+        // Folge-Check-Verknüpfung
+        { name: 'linked_check_id',           type: 'singleLineText' },
+        { name: 'linked_check_requestid',    type: 'singleLineText' },
+        { name: 'linked_check_type',         type: 'singleLineText' },
+        { name: 'linked_check_ersparnis',    type: 'singleLineText' },
+        { name: 'linked_check_at',           type: 'dateTime',           options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
+      ];
+      try {
+        // Schema lesen
+        const schemaRes = await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables', {
+          headers: { Authorization: 'Bearer ' + k },
+        });
+        if (!schemaRes.ok) {
+          const txt = await schemaRes.text();
+          let hint = '';
+          if (schemaRes.status === 403 || schemaRes.status === 401) {
+            hint = ' — Dein Airtable-PAT braucht den Scope schema.bases:read und schema.bases:write. Erweitere ihn unter airtable.com/create/tokens.';
+          }
+          return jsonResp({ ok: false, error: 'Schema lesen fehlgeschlagen (HTTP ' + schemaRes.status + ')' + hint, raw: txt.slice(0, 300) }, schemaRes.status, corsHeaders);
+        }
+        const schema = await schemaRes.json();
+        const tbl = schema.tables?.find((t: any) => t.name === 'Vorab-Checks');
+        if (!tbl) return jsonResp({ ok: false, error: 'Tabelle „Vorab-Checks" nicht gefunden' }, 404, corsHeaders);
+        const existingNames = new Set(tbl.fields.map((f: any) => f.name));
+        const created: string[] = [];
+        const skipped: string[] = [];
+        const failed: any[] = [];
+        if (body.dry_run) {
+          for (const field of TARGET_FIELDS) {
+            if (existingNames.has(field.name)) skipped.push(field.name);
+            else created.push(field.name);
+          }
+          return jsonResp({ ok: true, dry_run: true, would_create: created, already_exists: skipped, total_target: TARGET_FIELDS.length, table_id: tbl.id }, 200, corsHeaders);
+        }
+        // Felder einzeln anlegen
+        for (const field of TARGET_FIELDS) {
+          if (existingNames.has(field.name)) { skipped.push(field.name); continue; }
+          const createRes = await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables/' + tbl.id + '/fields', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
+            body: JSON.stringify(field),
+          });
+          if (createRes.ok) {
+            created.push(field.name);
+          } else {
+            const txt = await createRes.text();
+            failed.push({ name: field.name, status: createRes.status, error: txt.slice(0, 200) });
+          }
+        }
+        return jsonResp({ ok: true, created, skipped, failed, total_target: TARGET_FIELDS.length, table_id: tbl.id }, 200, corsHeaders);
+      } catch (e: any) {
+        return jsonResp({ ok: false, error: e.message }, 500, corsHeaders);
+      }
     }
     // Schneller Health-/Version-Check ohne Side-Effects
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.64',
-        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field'],
+        backend_version: 'V9.65',
+        backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema'],
         model: MODEL,
       }, 200, corsHeaders);
     }
