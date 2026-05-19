@@ -11,6 +11,26 @@ let _promptCache: Record<string, string> | null = null;
 let _promptCacheTs = 0;
 const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
 
+// Airtable PATCH mit Retry-on-Unknown-Field: dropt unbekannte Felder einzeln und probiert nochmal
+async function atPatchRetry(url: string, k: string, fields: any, max = 15): Promise<{ ok: boolean, error?: string }> {
+  const headers = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
+  let a = 0;
+  while (a++ < max) {
+    const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
+    if (r.ok) return { ok: true };
+    const txt = await r.text();
+    let bad = '';
+    try {
+      const j = JSON.parse(txt);
+      const m = String(j?.error?.message || j?.error || '').match(/Unknown field name:\s*"([^"]+)"/i);
+      if (m) bad = m[1];
+    } catch (_) {}
+    if (bad && Object.prototype.hasOwnProperty.call(fields, bad)) { delete fields[bad]; continue; }
+    return { ok: false, error: txt.slice(0, 200) };
+  }
+  return { ok: false, error: 'too many retries' };
+}
+
 async function loadCustomPrompts(): Promise<Record<string, string>> {
   if (_promptCache && Date.now() - _promptCacheTs < PROMPT_CACHE_TTL_MS) return _promptCache;
   const key = Deno.env.get("AIRTABLE_KEY");
@@ -719,29 +739,7 @@ export default async function (req: Request): Promise<Response> {
             if (!up.ok) fields.verwalter_response_pdf_name = String(body.pdf_name || 'vertrag.pdf') + ' (Upload fehlgeschlagen)';
           } catch (e) { fields.verwalter_response_pdf_name = String(body.pdf_name || 'vertrag.pdf'); }
         }
-        // Retry-on-Unknown-Field: wenn die strukturierten vertrag_*-Felder
-        // in Airtable noch nicht existieren, einzeln droppen und nochmal versuchen.
-        const patchUrl = 'https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId;
-        const patchHeaders = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
-        let attempt = 0;
-        while (attempt++ < 25) {
-          const pr = await fetch(patchUrl, { method: 'PATCH', headers: patchHeaders, body: JSON.stringify({ fields }) });
-          if (pr.ok) break;
-          const txt = await pr.text();
-          let badField = '';
-          try {
-            const j = JSON.parse(txt);
-            const msg = j?.error?.message || j?.error || '';
-            const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
-            if (m) badField = m[1];
-          } catch (_) {}
-          if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
-            delete fields[badField];
-            continue;
-          }
-          // andere Fehler → abbrechen
-          break;
-        }
+        await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, fields, 25);
         return jsonResp({ ok: true, applied_fields: Object.keys(fields) }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
@@ -764,27 +762,8 @@ export default async function (req: Request): Promise<Response> {
           bearbeiter_status_at: new Date().toISOString(),
         };
         if (body.bearbeiter_name) fields.bearbeiter_name = String(body.bearbeiter_name).trim();
-        const url = 'https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId;
-        const headers = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
-        let attempt = 0;
-        while (attempt++ < 10) {
-          const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
-          if (r.ok) return jsonResp({ ok: true, status: st }, 200, corsHeaders);
-          const txt = await r.text();
-          let badField = '';
-          try {
-            const j = JSON.parse(txt);
-            const msg = j?.error?.message || j?.error || '';
-            const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
-            if (m) badField = m[1];
-          } catch (_) {}
-          if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
-            delete fields[badField];
-            continue;
-          }
-          return jsonResp({ ok: false, error: 'airtable rejected: ' + txt.slice(0, 200) }, 500, corsHeaders);
-        }
-        return jsonResp({ ok: false, error: 'too many retries' }, 500, corsHeaders);
+        const res = await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, fields, 10);
+        return res.ok ? jsonResp({ ok: true, status: st }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
     // Folge-Check (z.B. Vertragscheck) mit Vorabcheck verknüpfen
@@ -806,27 +785,8 @@ export default async function (req: Request): Promise<Response> {
           bearbeiter_status:       'in_bearbeitung',
           bearbeiter_status_at:    new Date().toISOString(),
         };
-        const url = 'https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId;
-        const headers = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
-        let attempt = 0;
-        while (attempt++ < 15) {
-          const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
-          if (r.ok) return jsonResp({ ok: true, linked: fields.linked_check_requestid }, 200, corsHeaders);
-          const txt = await r.text();
-          let badField = '';
-          try {
-            const j = JSON.parse(txt);
-            const msg = j?.error?.message || j?.error || '';
-            const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
-            if (m) badField = m[1];
-          } catch (_) {}
-          if (badField && Object.prototype.hasOwnProperty.call(fields, badField)) {
-            delete fields[badField];
-            continue;
-          }
-          return jsonResp({ ok: false, error: 'airtable rejected: ' + txt.slice(0, 200) }, 500, corsHeaders);
-        }
-        return jsonResp({ ok: false, error: 'too many retries' }, 500, corsHeaders);
+        const res = await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, fields, 15);
+        return res.ok ? jsonResp({ ok: true, linked: fields.linked_check_requestid }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
     if (body.action === 'enrich_property_manager') {
@@ -1054,7 +1014,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.65',
+        backend_version: 'V9.66',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema'],
       }, 200, corsHeaders);
     }
@@ -1063,43 +1023,31 @@ export default async function (req: Request): Promise<Response> {
       const k = Deno.env.get("AIRTABLE_KEY");
       const b = Deno.env.get("AIRTABLE_BASE_ID");
       if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
-      // ── Ziel-Schema: alle Felder die der Vorabcheck/Inbox/Verwalter/Folge-Check-Workflow braucht
+      // Shared options + Helper für kompakte Field-Definitionen
+      const DT = { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' };
+      const CB = { icon: 'check', color: 'greenBright' };
+      const T = (name: string) => ({ name, type: 'singleLineText' });
+      const M = (name: string) => ({ name, type: 'multilineText' });
+      const D = (name: string) => ({ name, type: 'dateTime', options: DT });
+      const C = (name: string) => ({ name, type: 'checkbox', options: CB });
+      const N = (name: string, p: number) => ({ name, type: 'number', options: { precision: p } });
+      const S = (name: string, choices: string[]) => ({ name, type: 'singleSelect', options: { choices: choices.map(c => ({ name: c })) } });
       const TARGET_FIELDS: any[] = [
-        // HV-Antwort
-        { name: 'verwalter_status',         type: 'singleSelect',       options: { choices: [{ name: 'offen' }, { name: 'antwort_erhalten' }] } },
-        { name: 'verwalter_name',           type: 'singleLineText' },
-        { name: 'verwalter_email',          type: 'singleLineText' },
-        { name: 'verwalter_telefon',        type: 'singleLineText' },
-        { name: 'verwalter_response_mode',  type: 'singleLineText' },
-        { name: 'verwalter_response_at',    type: 'dateTime',           options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
-        { name: 'verwalter_response_json',  type: 'multilineText' },
-        { name: 'verwalter_response_pdf',   type: 'multipleAttachments' },
-        { name: 'verwalter_response_pdf_name', type: 'singleLineText' },
-        // Strukturierte Vertrags-Daten (aus Konfig oder PDF-KI)
-        { name: 'vertrag_wartungen_pro_jahr',    type: 'singleLineText' },
-        { name: 'vertrag_wartungstyp',           type: 'singleLineText' },
-        { name: 'vertrag_tuev_begleitung',       type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
-        { name: 'vertrag_tuev_pruefung',         type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
-        { name: 'vertrag_notruf',                type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
-        { name: 'vertrag_entstoerung',           type: 'checkbox',         options: { icon: 'check', color: 'greenBright' } },
-        { name: 'vertrag_vertragsbeginn',        type: 'singleLineText' },
-        { name: 'vertrag_kuendigungsfrist_monate', type: 'number',         options: { precision: 0 } },
-        { name: 'vertrag_jahresbeitrag_eur',     type: 'number',           options: { precision: 2 } },
-        { name: 'vertrag_anzahl_aufzuege',       type: 'number',           options: { precision: 0 } },
-        { name: 'vertrag_mindestlaufzeit_jahre', type: 'number',           options: { precision: 1 } },
-        { name: 'vertrag_extracted_at',          type: 'dateTime',         options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
-        { name: 'vertrag_extracted_source',      type: 'singleLineText' },
-        { name: 'vertrag_raw_json',              type: 'multilineText' },
-        // Bearbeiter-Inbox
-        { name: 'bearbeiter_status',         type: 'singleSelect',       options: { choices: [{ name: 'offen' }, { name: 'in_bearbeitung' }, { name: 'erledigt' }] } },
-        { name: 'bearbeiter_status_at',      type: 'dateTime',           options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
-        { name: 'bearbeiter_name',           type: 'singleLineText' },
-        // Folge-Check-Verknüpfung
-        { name: 'linked_check_id',           type: 'singleLineText' },
-        { name: 'linked_check_requestid',    type: 'singleLineText' },
-        { name: 'linked_check_type',         type: 'singleLineText' },
-        { name: 'linked_check_ersparnis',    type: 'singleLineText' },
-        { name: 'linked_check_at',           type: 'dateTime',           options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Berlin' } },
+        S('verwalter_status', ['offen', 'antwort_erhalten']),
+        T('verwalter_name'), T('verwalter_email'), T('verwalter_telefon'),
+        T('verwalter_response_mode'), D('verwalter_response_at'), M('verwalter_response_json'),
+        { name: 'verwalter_response_pdf', type: 'multipleAttachments' },
+        T('verwalter_response_pdf_name'),
+        T('vertrag_wartungen_pro_jahr'), T('vertrag_wartungstyp'),
+        C('vertrag_tuev_begleitung'), C('vertrag_tuev_pruefung'), C('vertrag_notruf'), C('vertrag_entstoerung'),
+        T('vertrag_vertragsbeginn'),
+        N('vertrag_kuendigungsfrist_monate', 0), N('vertrag_jahresbeitrag_eur', 2),
+        N('vertrag_anzahl_aufzuege', 0), N('vertrag_mindestlaufzeit_jahre', 1),
+        D('vertrag_extracted_at'), T('vertrag_extracted_source'), M('vertrag_raw_json'),
+        S('bearbeiter_status', ['offen', 'in_bearbeitung', 'erledigt']),
+        D('bearbeiter_status_at'), T('bearbeiter_name'),
+        T('linked_check_id'), T('linked_check_requestid'), T('linked_check_type'),
+        T('linked_check_ersparnis'), D('linked_check_at'),
       ];
       try {
         // Schema lesen
@@ -1152,7 +1100,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.65',
+        backend_version: 'V9.66',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema'],
         model: MODEL,
       }, 200, corsHeaders);
