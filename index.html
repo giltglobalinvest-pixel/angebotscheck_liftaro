@@ -3883,7 +3883,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.50';
+const APP_VERSION = 'V9.51';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -13370,14 +13370,16 @@ function renderDashboard() {
           const date = v.savedAt ? new Date(v.savedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '–';
           const ampLab = v.ampel === 'gruen' ? '🟢' : v.ampel === 'gelb' ? '🟡' : v.ampel === 'rot' ? '🔴' : '⚪';
           const sav = Number(v.savings_estimate_eur || v.savings_total_eur || 0);
-          const summary = String(v.summary || '').slice(0, 90).replace(/[<>"&]/g, '');
+          const objekt = String(v.objekt_adresse || v.hv_name || '–').slice(0, 80).replace(/[<>"&]/g, '');
+          const aufz = Number(v.aufzug_count || 0);
           const cnEsc = (v.check_nr || '').replace(/'/g, "\\'");
-          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 90px 110px 1fr 14px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
+          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 85px 90px 50px 1fr 14px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
             <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px">${date}</span>
             <span style="text-align:center">${ampLab}</span>
             <span style="color:var(--text);text-transform:capitalize">${v.check_type || '–'}</span>
             <span style="font-family:'DM Mono',monospace;color:#3d7a14;font-weight:700">${sav > 0 ? _fmtEuro(sav) : '–'}</span>
-            <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${summary}</span>
+            <span style="font-family:'DM Mono',monospace;color:var(--text);text-align:center" title="Aufzüge">${aufz || '–'}</span>
+            <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${objekt}</span>
             <span style="color:var(--muted);font-size:14px">›</span>
           </div>`;
         }).join('');
@@ -14408,10 +14410,10 @@ async function loadVorabchecksList() {
   const sumSavings = rows.reduce((s, r) => s + (Number(r.savings_estimate_eur) || 0), 0);
   stats.innerHTML =
     statCard('Gesamt', String(total), '#1a3a5c') +
-    statCard('🟢 Grün',  String(gruen),  '#3d7a14') +
-    statCard('🟡 Gelb',  String(gelb),   '#a06a00') +
-    statCard('🔴 Rot',   String(rot),    '#a8312f') +
-    statCard('Ersparnis-Pool', _fmtEuro ? _fmtEuro(sumSavings) : (sumSavings.toLocaleString('de-DE') + ' €'), '#0e6655');
+    statCard('🟢 Grün',  String(gruen),  '#3d7a14', 'Marktüblich · kein Handlungsbedarf') +
+    statCard('🟡 Gelb',  String(gelb),   '#a06a00', 'Optimierungs-Potenzial · Prüfung empfohlen') +
+    statCard('🔴 Rot',   String(rot),    '#a8312f', 'Eindeutige Fehler / Übertreuerung · Handlungsbedarf') +
+    statCard('Ersparnis-Pool', _fmtEuro ? _fmtEuro(sumSavings) : (sumSavings.toLocaleString('de-DE') + ' €'), '#0e6655', 'Summe geschätzter Jahres-Ersparnisse');
   // Badge im Nav
   const badge = document.getElementById('vorabcheckCountBadge');
   if (badge) { badge.textContent = String(total); badge.style.display = total ? 'inline-block' : 'none'; }
@@ -14425,17 +14427,19 @@ async function loadVorabchecksList() {
     const st = document.createElement('style');
     st.id = 'vch-overview-styles';
     st.textContent =
-      '.vch-list-header,.vch-row{display:grid;grid-template-columns:110px 80px 110px 120px 1fr 110px;gap:0;align-items:center}' +
+      '.vch-list-header,.vch-row{display:grid;grid-template-columns:110px 70px 95px 110px 60px 1fr 110px;gap:0;align-items:center}' +
       '.vch-list-header{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;background:var(--sky);padding:10px 14px;border-bottom:1px solid var(--border)}' +
       '.vch-row{font-size:12.5px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}' +
       '.vch-row:hover{background:var(--sky)}' +
       '.vch-c-nr{font-family:"DM Mono",monospace;color:var(--text);font-weight:600}' +
       '.vch-c-typ{color:var(--text);text-transform:capitalize}' +
+      '.vch-c-rolle{color:var(--muted);text-transform:capitalize;font-size:11.5px}' +
       '.vch-c-savings{font-family:"DM Mono",monospace;font-weight:700;color:#3d7a14}' +
-      '.vch-c-summary{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px}' +
+      '.vch-c-aufz{font-family:"DM Mono",monospace;color:var(--text);text-align:center}' +
+      '.vch-c-objekt{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px;font-size:12px}' +
       '.vch-c-datum{color:var(--muted);text-align:right;font-size:11.5px}' +
       '.vch-c-ampel-pill{display:inline-block;border-radius:10px;padding:2px 9px;font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap}' +
-      // ── MOBILE: Card-Layout statt 6-Spalten-Grid ──
+      // ── MOBILE: Card-Layout ──
       '@media (max-width:720px){' +
         '.vch-list-header{display:none}' +
         '.vch-row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:12px 14px}' +
@@ -14443,9 +14447,14 @@ async function loadVorabchecksList() {
         '.vch-c-ampel{grid-column:2/3;justify-self:end}' +
         '.vch-c-typ{grid-column:1/2;color:var(--muted);font-size:12px}' +
         '.vch-c-typ::before{content:"Typ: "}' +
+        '.vch-c-rolle{grid-column:1/2;color:var(--muted);font-size:11.5px}' +
+        '.vch-c-rolle::before{content:"Rolle: "}' +
         '.vch-c-savings{grid-column:2/3;justify-self:end;font-size:14px;align-self:center}' +
         '.vch-c-savings::after{content:" / Jahr";color:var(--muted);font-weight:500;font-size:11px}' +
-        '.vch-c-summary{grid-column:1/-1;color:var(--muted);font-size:12px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;padding-right:0;margin-top:4px}' +
+        '.vch-c-aufz{grid-column:2/3;justify-self:end;font-size:11.5px;color:var(--muted)}' +
+        '.vch-c-aufz::before{content:"🛗 "}' +
+        '.vch-c-objekt{grid-column:1/-1;color:var(--muted);font-size:11.5px;white-space:normal;padding-right:0;margin-top:2px}' +
+        '.vch-c-objekt::before{content:"📍 "}' +
         '.vch-c-datum{grid-column:1/-1;text-align:left;font-size:11px;color:var(--muted);margin-top:2px}' +
         '.vch-c-datum::before{content:"📅 "}' +
       '}';
@@ -14454,27 +14463,31 @@ async function loadVorabchecksList() {
 
   list.innerHTML =
     '<div class="vch-list-header">' +
-      '<div>Check-Nr</div><div>Ampel</div><div>Typ</div><div>Ersparnis €/J</div><div>Summary</div><div style="text-align:right">Datum</div>' +
+      '<div>Check-Nr</div><div>Ampel</div><div>Typ</div><div>Ersparnis €/J</div><div style="text-align:center">Aufz.</div><div>Objekt / Rolle</div><div style="text-align:right">Datum</div>' +
     '</div>' +
     rows.map(r => {
       const ampelBg = r.ampel === 'rot' ? '#a8312f' : r.ampel === 'gelb' ? '#a06a00' : r.ampel === 'gruen' ? '#3d7a14' : '#94a3b8';
       const ampelTxt = r.ampel === 'rot' ? 'Rot' : r.ampel === 'gelb' ? 'Gelb' : r.ampel === 'gruen' ? 'Grün' : '–';
       const datum = r.savedAt ? new Date(r.savedAt).toLocaleDateString('de-DE') : '–';
       const rJson = JSON.stringify(JSON.stringify(r)).replace(/"/g, '&quot;');
+      const objekt = r.objekt_adresse || r.hv_name || '';
+      const rolle = r.role ? '· ' + r.role : '';
       return '<div class="vch-row" onclick="showVorabcheckDetail(' + rJson + ')">' +
         '<div class="vch-c-nr">' + (r.check_nr || '–') + '</div>' +
         '<div class="vch-c-ampel"><span class="vch-c-ampel-pill" style="background:' + ampelBg + '">' + ampelTxt + '</span></div>' +
         '<div class="vch-c-typ">' + (r.check_type || '–') + '</div>' +
         '<div class="vch-c-savings">' + Number(r.savings_estimate_eur || 0).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €</div>' +
-        '<div class="vch-c-summary">' + escapeHtmlSafe(r.summary || '') + '</div>' +
+        '<div class="vch-c-aufz">' + (r.aufzug_count || '–') + '</div>' +
+        '<div class="vch-c-objekt">' + escapeHtmlSafe(objekt) + ' <span style="color:var(--muted);font-size:11px">' + escapeHtmlSafe(rolle) + '</span></div>' +
         '<div class="vch-c-datum">' + datum + '</div>' +
       '</div>';
     }).join('');
 }
-function statCard(label, value, color) {
+function statCard(label, value, color, subText) {
   return '<div style="background:#fff;border:1px solid var(--border);border-left:4px solid ' + color + ';border-radius:10px;padding:12px 14px">' +
     '<div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600">' + label + '</div>' +
     '<div style="font-size:20px;font-weight:800;color:var(--text);margin-top:3px">' + value + '</div>' +
+    (subText ? '<div style="font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.35">' + subText + '</div>' : '') +
     '</div>';
 }
 function escapeHtmlSafe(s) {
