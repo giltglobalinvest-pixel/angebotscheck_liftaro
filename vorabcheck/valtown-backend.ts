@@ -1030,7 +1030,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.72',
+        backend_version: 'V9.73',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
@@ -1089,7 +1089,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.72',
+        backend_version: 'V9.73',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
