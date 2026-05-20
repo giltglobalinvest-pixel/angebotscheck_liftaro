@@ -689,7 +689,14 @@ export default async function (req: Request): Promise<Response> {
           parteien_count: Number(vc.parteien_count || 0),
           role: vc.role || '',
           eigentuemer_name: [lead.vorname, lead.nachname].filter(Boolean).join(' '),
-          objekt_adresse: String(lead.adresse || vc.objekt_adresse || ''),
+          // Objekt-Adresse: KI-extrahiert > Step-4-bestätigt > Lead-Adresse (Reihenfolge umgedreht zu V9.85)
+          objekt_adresse: String(vc.objekt_adresse || lead.adresse || ''),
+          // HV-Daten aus Eigentümer-CTA → die Verwalter-Landing füllt sie vor, HV bestätigt nur
+          hv_name:    vc.hv_name    || '',
+          hv_email:   vc.hv_email   || '',
+          hv_telefon: vc.hv_telefon || '',
+          hv_adresse: vc.hv_adresse || '',
+          hv_website: vc.hv_website || '',
           verwalter_status: vc.verwalter_status || 'offen',
           verwalter_name: vc.verwalter_name || '',
           verwalter_response_at: vc.verwalter_response_at || '',
@@ -1040,7 +1047,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.86',
+        backend_version: 'V9.87',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
@@ -1099,7 +1106,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.86',
+        backend_version: 'V9.87',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
