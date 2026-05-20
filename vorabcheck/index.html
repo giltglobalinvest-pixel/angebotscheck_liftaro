@@ -1679,10 +1679,21 @@ function _renderAdresseConfirm(r) {
       if (!cn) throw new Error('Keine Check-Nummer verfügbar');
       const res = await fetch(LIFTARO_API_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'patch_objekt_adresse', check_nr: cn, objekt_adresse: val }),
+        // consent_given: true als Safety-Net — falls val.town ein altes Backend
+        // ohne patch_objekt_adresse-Action laufen hat, fällt der Request bis zum
+        // globalen Consent-Check durch (sonst 'Einwilligung fehlt'-Fehler).
+        body: JSON.stringify({ action: 'patch_objekt_adresse', check_nr: cn, objekt_adresse: val, consent_given: true }),
       });
       const d = await res.json();
-      if (!d.ok) throw new Error(d.error || 'Speichern fehlgeschlagen');
+      if (!d.ok) {
+        // Wenn 'Einwilligung fehlt' trotzdem ankommt → Backend kennt die Action nicht (alte val.town-Version)
+        const isOldBackend = String(d.error || '').toLowerCase().includes('einwilligung') ||
+                             String(d.error || '').toLowerCase().includes('check_type') ||
+                             String(d.error || '').toLowerCase().includes('unbekannter check');
+        throw new Error(isOldBackend
+          ? 'Server-Update nötig: Bitte den Admin „⚙️ Proxy aktualisieren" klicken lassen (val.town-Backend ist noch nicht auf der neuesten Version).'
+          : (d.error || 'Speichern fehlgeschlagen'));
+      }
       // Erfolg → Block grün
       block.style.background = 'linear-gradient(135deg,#f0f9ec,#fff)';
       block.style.borderColor = '#3d7a14';
