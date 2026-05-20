@@ -2666,10 +2666,10 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Leistungen</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
-            <input type="checkbox" id="wt_systemwartung" class="w-check"> Systemwartung (DIN 13015)
+            <input type="checkbox" id="wt_systemwartung" class="w-check" checked> Systemwartung (DIN 13015)
           </label>
           <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
-            <input type="checkbox" id="wt_vollwartung" class="w-check" checked> Vollwartung
+            <input type="checkbox" id="wt_vollwartung" class="w-check"> Vollwartung
           </label>
           <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
             <input type="checkbox" id="wt_notruf" class="w-check" checked> Notruf &amp; GSM
@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.82';
+const APP_VERSION = 'V9.83';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4857,10 +4857,11 @@ function resetForm() {
     'rc_netto','rc_mwst_satz','rc_mwst','rc_brutto','rc_zahlungsziel',
     'rc_bemerkungen','rc_ergebnis','rc_empfehlung'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  // Wartungs-Checkboxes auf Default zurücksetzen (Vollwartung + Notruf an, sonst aus)
+  // Wartungs-Checkboxes auf Default zurücksetzen
+  // Default-AHW-Leistungen: Systemwartung (DIN 13015) + Notruf & GSM
   const cbReset = [
-    { id: 'wt_systemwartung', checked: false },
-    { id: 'wt_vollwartung',   checked: true },
+    { id: 'wt_systemwartung', checked: true },
+    { id: 'wt_vollwartung',   checked: false },
     { id: 'wt_notruf',        checked: true },
     { id: 'wv_tuev_begl',     checked: false }, { id: 'wa_tuev_begl',  checked: false },
     { id: 'wv_tuev_pruef',    checked: false }, { id: 'wa_tuev_pruef', checked: false },
@@ -15062,11 +15063,12 @@ const DEFAULT_VERTRAG_MAPPING = [
   { id:'m_wv_begin',    active:true, source:'vc.vertrag_vertragsbeginn',           target:'wv_vertragsbeginn', transform:'direct',         default:'Unbekannt',     description:'Vertragsbeginn (Default: Unbekannt)' },
   { id:'m_wv_kuend',    active:true, source:'vc.vertrag_kuendigungsfrist_monate',  target:'wv_kuendfrist',     transform:'template',       template:'{v} Monate', default:'siehe Vertrag', description:'Kündigungsfrist (Default: siehe Vertrag)' },
   { id:'m_wv_laufz',    active:true, source:'vc.vertrag_mindestlaufzeit_jahre',    target:'wv_laufzeit',       transform:'template',       template:'{v} Jahre',  default:'siehe Vertrag', description:'Mindestlaufzeit (Default: siehe Vertrag)' },
-  { id:'m_wv_anz',      active:true, source:'vc.vertrag_wartungen_pro_jahr',       target:'wv_anzahl',         transform:'template',       template:'{v} / Jahr', description:'Wartungen pro Jahr' },
+  { id:'m_wv_anz',      active:true, source:'vc.vertrag_wartungen_pro_jahr',       target:'wv_anzahl',         transform:'template',       template:'{v} / Jahr', default:'1 / Jahr', description:'Wartungen pro Jahr (Default: 1 / Jahr)' },
   { id:'m_wv_typ',      active:true, source:'vc.vertrag_wartungstyp',              target:'wv_typ',            transform:'direct',         description:'Wartungstyp (Voll/System)' },
   { id:'m_wv_kost',     active:true, source:'compute.kostenProJahr',               target:'wv_kosten',         transform:'eur',            default:'siehe Vertrag', description:'Kosten pro Jahr (Vertrag → Gesamtkosten → ProAufzug×Anzahl)' },
-  // Aufzugshandwerk-Block (wt_*): Jahresbeitrag aus demselben Compute-Feld
-  { id:'m_wt_jahres',   active:true, source:'compute.kostenProJahr',               target:'wt_jahresbeitrag',  transform:'eur',            description:'Jahresbeitrag (Wartung) aus Vorabcheck-Kosten' },
+  // Aufzugshandwerk-Block (wt_*): Defaults für AHW-Wartungsangebot
+  { id:'m_wt_wart',     active:true, source:'vc.vertrag_wartungen_pro_jahr',       target:'wt_wartungen_pro_jahr', transform:'direct',     default:'1',          description:'AHW-Wartungen pro Jahr (Default: 1)' },
+  { id:'m_wt_jahres',   active:true, source:'compute.kostenProJahr',               target:'wt_jahresbeitrag',  transform:'eur',            default:'1.200,00 €', description:'AHW-Jahresbeitrag (Default: 1.200,00 €)' },
   { id:'m_wv_tuevb',    active:true, source:'vc.vertrag_tuev_begleitung',          target:'wv_tuev_begl',      transform:'bool_checkbox',  description:'TÜV-Begleitung inkl.' },
   { id:'m_wv_tuevp',    active:true, source:'vc.vertrag_tuev_pruefung',            target:'wv_tuev_pruef',     transform:'bool_checkbox',  description:'TÜV-Prüfung inkl.' },
   { id:'m_wv_entst',    active:true, source:'vc.vertrag_entstoerung',              target:'wv_entstoer',       transform:'bool_checkbox',  description:'Entstörung inkl.' },
