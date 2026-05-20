@@ -105,6 +105,10 @@ input:focus{border-color:var(--brand-dark)}
     <!-- Verwalter-Kontaktdaten -->
     <div class="card">
       <h2>Ihre Kontaktdaten</h2>
+      <div class="field">
+        <label>Firma Ihrer Hausverwaltung <span class="opt">· Pflicht</span></label>
+        <input type="text" id="vw_firma" placeholder="z.B. Müller Immobilien GmbH" autocomplete="organization">
+      </div>
       <div class="row2">
         <div class="field">
           <label>Name, Vorname <span class="opt">·  Pflicht</span></label>
@@ -118,6 +122,10 @@ input:focus{border-color:var(--brand-dark)}
       <div class="field">
         <label>E-Mail-Adresse <span class="opt">· Pflicht — für die Angebotszusendung</span></label>
         <input type="email" id="vw_email" placeholder="info@verwaltung.de" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Standort der Aufzugsanlage <span class="opt">· bitte bestätigen oder anpassen</span></label>
+        <input type="text" id="vw_objekt_adresse" placeholder="Straße, Hausnr., PLZ Ort" autocomplete="street-address">
       </div>
     </div>
 
@@ -286,6 +294,9 @@ function renderContext() {
   // Anzahl Aufzüge aus dem Vorabcheck vorbefüllen (HV kann ggf. korrigieren)
   const anzAufEl = document.getElementById('anzahl_aufzuege');
   if (anzAufEl && Number(_ctx.aufzug_count) > 0) anzAufEl.value = String(_ctx.aufzug_count);
+  // Objekt-Adresse aus dem Vorabcheck vorbefüllen (HV kann bestätigen/anpassen)
+  const objAdrEl = document.getElementById('vw_objekt_adresse');
+  if (objAdrEl && _ctx.objekt_adresse) objAdrEl.value = String(_ctx.objekt_adresse);
   // Wenn schon eine Antwort vorhanden ist → Success direkt zeigen
   if (_ctx.verwalter_status === 'antwort_erhalten') {
     document.getElementById('main').style.display = 'none';
@@ -336,9 +347,12 @@ function showInline(msg) {
 }
 
 async function submitResponse() {
+  const firma = document.getElementById('vw_firma').value.trim();
   const name  = document.getElementById('vw_name').value.trim();
   const email = document.getElementById('vw_email').value.trim();
   const tel   = document.getElementById('vw_tel').value.trim();
+  const objAdr = document.getElementById('vw_objekt_adresse').value.trim();
+  if (!firma) { showInline('Bitte Firma der Hausverwaltung eintragen.'); return; }
   if (!name)  { showInline('Bitte Namen eintragen.'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showInline('Bitte gültige E-Mail-Adresse eintragen.'); return; }
   if (_mode === 'upload' && !_file) { showInline('Bitte einen Vertrag hochladen oder zu Variante 1 wechseln.'); return; }
@@ -364,7 +378,7 @@ async function submitResponse() {
     const payload = {
       action: 'submit_verwalter_response',
       check_nr: _ctx.check_nr,
-      verwalter: { name, email, telefon: tel },
+      verwalter: { name, email, telefon: tel, firma: firma, objekt_adresse: objAdr },
       mode: _mode,
       responses,
     };
