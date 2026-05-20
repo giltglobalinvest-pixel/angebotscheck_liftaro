@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.76';
+const APP_VERSION = 'V9.77';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7629,6 +7629,7 @@ async function previewErgebnis() {
       document.getElementById('btnSyncRep'),
       document.getElementById('btnSyncWart'),
       document.getElementById('invoiceBtnRow'),
+      document.getElementById('vorabcheckLinkBanner'),
     ];
     const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
@@ -8302,6 +8303,7 @@ async function generatePDF() {
       document.getElementById('btnSyncRep'),
       document.getElementById('btnSyncWart'),
       document.getElementById('invoiceBtnRow'),
+      document.getElementById('vorabcheckLinkBanner'),
     ];
     const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
@@ -14015,6 +14017,7 @@ async function buildCheckCoverBlob() {
     document.getElementById('btnSyncRep'),
     document.getElementById('btnSyncWart'),
     document.getElementById('invoiceBtnRow'),
+    document.getElementById('vorabcheckLinkBanner'),
   ];
   const prev = hideForPdf.map(el => el ? el.style.display : null);
   hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
