@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.79';
+const APP_VERSION = 'V9.80';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -8265,17 +8265,32 @@ async function generateRechnungscheckPDF() {
   }
 }
 
-// PDF-Layout-Helper: forciert mehrspaltige Field-Rows VOR html2canvas, damit
+// PDF-Layout-Helper: forciert eine breite Rendering-Fläche VOR html2canvas, damit
 // keine @media (max-width:768px)-Mobile-CSS-Regeln das Grid zerquetschen.
-// Gibt eine Restore-Funktion zurück, die nach html2canvas aufgerufen werden muss.
+// Ursache war: printArea.scrollWidth war im Live-Layout zu klein (~430-580px),
+// dadurch greifen die Mobile-CSS-Regeln und field-rows kollabieren auf 1 Spalte.
+// Fix: printArea + form-card explizit auf 1200px Width zwingen.
 function _forcePdfLayout() {
   const printArea = document.getElementById('print-area');
   if (!printArea) return () => {};
+  const formCard = printArea.closest('.form-card');
+  const prevPrintCss = printArea.style.cssText;
+  const prevFormCss  = formCard ? formCard.style.cssText : null;
+  // Element-Breiten zwingen — überschreibt jede Container-Constraint
+  if (formCard) {
+    formCard.style.setProperty('width', '1200px', 'important');
+    formCard.style.setProperty('max-width', '1200px', 'important');
+    formCard.style.setProperty('min-width', '1200px', 'important');
+    formCard.style.setProperty('overflow', 'visible', 'important');
+  }
+  printArea.style.setProperty('width', '1200px', 'important');
+  printArea.style.setProperty('max-width', '1200px', 'important');
+  printArea.style.setProperty('min-width', '1200px', 'important');
+  // Field-rows mit !important — Safety-Net falls @media noch greift
   const rows = printArea.querySelectorAll('.field-row');
-  const restore = [];
+  const rowsRestore = [];
   rows.forEach(fr => {
-    const prevCssText = fr.style.cssText;
-    restore.push({ el: fr, css: prevCssText });
+    rowsRestore.push({ el: fr, css: fr.style.cssText });
     fr.style.setProperty('display', 'grid', 'important');
     if (fr.classList.contains('r4')) {
       fr.style.setProperty('grid-template-columns', 'repeat(auto-fit,minmax(220px,1fr))', 'important');
@@ -8285,15 +8300,14 @@ function _forcePdfLayout() {
       fr.style.setProperty('gap', '14px', 'important');
     }
   });
-  // Banner mit Check-Nr (Vertragscheck-Nummer + Anfragenummer) zwingend mehrspaltig
+  // Check-Nr-Banner zwingend horizontal
   const banner = document.getElementById('checkNrBanner');
-  let bannerRestore = null;
-  if (banner) {
-    bannerRestore = banner.style.cssText;
-    banner.style.setProperty('flex-direction', 'row', 'important');
-  }
+  const bannerRestore = banner ? banner.style.cssText : null;
+  if (banner) banner.style.setProperty('flex-direction', 'row', 'important');
   return () => {
-    restore.forEach(({ el, css }) => { el.style.cssText = css; });
+    printArea.style.cssText = prevPrintCss;
+    if (formCard) formCard.style.cssText = prevFormCss;
+    rowsRestore.forEach(({ el, css }) => { el.style.cssText = css; });
     if (banner) banner.style.cssText = bannerRestore || '';
   };
 }
