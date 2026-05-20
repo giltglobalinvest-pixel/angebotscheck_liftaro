@@ -294,9 +294,23 @@ function renderContext() {
   // Anzahl Aufzüge aus dem Vorabcheck vorbefüllen (HV kann ggf. korrigieren)
   const anzAufEl = document.getElementById('anzahl_aufzuege');
   if (anzAufEl && Number(_ctx.aufzug_count) > 0) anzAufEl.value = String(_ctx.aufzug_count);
-  // Objekt-Adresse aus dem Vorabcheck vorbefüllen (HV kann bestätigen/anpassen)
-  const objAdrEl = document.getElementById('vw_objekt_adresse');
-  if (objAdrEl && _ctx.objekt_adresse) objAdrEl.value = String(_ctx.objekt_adresse);
+  // HV-Daten vom Eigentümer-CTA vorbefüllen — Verwalter muss sie nur bestätigen
+  const setIfEmpty = (id, val) => { const el = document.getElementById(id); if (el && !el.value && val) el.value = String(val); };
+  setIfEmpty('vw_firma',          _ctx.hv_name);
+  setIfEmpty('vw_email',          _ctx.hv_email);
+  setIfEmpty('vw_tel',            _ctx.hv_telefon);
+  setIfEmpty('vw_objekt_adresse', _ctx.objekt_adresse);
+  // Hinweis-Badge wenn Daten vom Eigentümer-CTA übernommen wurden
+  if (_ctx.hv_name || _ctx.hv_adresse) {
+    const hint = document.querySelector('.card h2');
+    if (hint && !document.getElementById('vw_prefill_hint')) {
+      const b = document.createElement('span');
+      b.id = 'vw_prefill_hint';
+      b.style.cssText = 'display:inline-block;margin-left:10px;background:#e0f2e3;color:#2a5c3a;border:1px solid #b8dfaa;border-radius:10px;padding:2px 9px;font-size:11.5px;font-weight:600';
+      b.textContent = '✓ vom Eigentümer vorausgefüllt — bitte prüfen';
+      hint.appendChild(b);
+    }
+  }
   // Wenn schon eine Antwort vorhanden ist → Success direkt zeigen
   if (_ctx.verwalter_status === 'antwort_erhalten') {
     document.getElementById('main').style.display = 'none';
