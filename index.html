@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.80';
+const APP_VERSION = 'V9.81';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -15047,21 +15047,31 @@ const DEFAULT_VERTRAG_MAPPING = [
   { id:'m_wv_laufz',    active:true, source:'vc.vertrag_mindestlaufzeit_jahre',    target:'wv_laufzeit',       transform:'template',       template:'{v} Jahre',  default:'siehe Vertrag', description:'Mindestlaufzeit (Default: siehe Vertrag)' },
   { id:'m_wv_anz',      active:true, source:'vc.vertrag_wartungen_pro_jahr',       target:'wv_anzahl',         transform:'template',       template:'{v} / Jahr', description:'Wartungen pro Jahr' },
   { id:'m_wv_typ',      active:true, source:'vc.vertrag_wartungstyp',              target:'wv_typ',            transform:'direct',         description:'Wartungstyp (Voll/System)' },
-  { id:'m_wv_kost',     active:true, source:'compute.kostenProJahr',               target:'wv_kosten',         transform:'eur',            description:'Kosten pro Jahr (Vertrag oder Vorabcheck-Gesamtkosten)' },
+  { id:'m_wv_kost',     active:true, source:'compute.kostenProJahr',               target:'wv_kosten',         transform:'eur',            default:'siehe Vertrag', description:'Kosten pro Jahr (Vertrag → Gesamtkosten → ProAufzug×Anzahl)' },
+  // Aufzugshandwerk-Block (wt_*): Jahresbeitrag aus demselben Compute-Feld
+  { id:'m_wt_jahres',   active:true, source:'compute.kostenProJahr',               target:'wt_jahresbeitrag',  transform:'eur',            description:'Jahresbeitrag (Wartung) aus Vorabcheck-Kosten' },
   { id:'m_wv_tuevb',    active:true, source:'vc.vertrag_tuev_begleitung',          target:'wv_tuev_begl',      transform:'bool_checkbox',  description:'TÜV-Begleitung inkl.' },
   { id:'m_wv_tuevp',    active:true, source:'vc.vertrag_tuev_pruefung',            target:'wv_tuev_pruef',     transform:'bool_checkbox',  description:'TÜV-Prüfung inkl.' },
   { id:'m_wv_entst',    active:true, source:'vc.vertrag_entstoerung',              target:'wv_entstoer',       transform:'bool_checkbox',  description:'Entstörung inkl.' },
   { id:'m_wv_notr',     active:true, source:'vc.vertrag_notruf',                   target:'wv_notruf',         transform:'bool_checkbox',  description:'Notruf inkl.' },
 ];
 
-// Mapping aus Master-Base laden (Fallback: Default)
+// Mapping aus Master-Base laden (Fallback: Default).
+// Auto-Migration: neue Default-Einträge die in der gespeicherten Version fehlen werden ergänzt.
 function getVertragMapping() {
   const raw = APP_KEYS.vorabcheckMappingVertrag;
   if (!raw) return DEFAULT_VERTRAG_MAPPING;
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed?.mapping)) return parsed.mapping;
-    if (Array.isArray(parsed)) return parsed;
+    const saved = Array.isArray(parsed?.mapping) ? parsed.mapping : Array.isArray(parsed) ? parsed : null;
+    if (!saved) return DEFAULT_VERTRAG_MAPPING;
+    // Auto-Migration: Default-Einträge, deren id in der gespeicherten Version fehlt, hinten anhängen
+    const savedIds = new Set(saved.map(m => m && m.id).filter(Boolean));
+    const merged = saved.slice();
+    for (const d of DEFAULT_VERTRAG_MAPPING) {
+      if (d.id && !savedIds.has(d.id)) merged.push(d);
+    }
+    return merged;
   } catch (e) { console.warn('Mapping in Master-Base ungültig — Default wird verwendet:', e.message); }
   return DEFAULT_VERTRAG_MAPPING;
 }
