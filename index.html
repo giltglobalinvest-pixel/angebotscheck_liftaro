@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.88';
+const APP_VERSION = 'V9.89';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4885,6 +4885,9 @@ function resetForm() {
   document.getElementById('ahw_email').value = 'check@liftaro.de';
   document.getElementById('ahw_tel').value = '015888634515';
   document.getElementById('ahw_einsatz').value = '0,00 €';
+  // Default für wt_einmalig (Einmalig bei Vertragswechsel)
+  const _einmaligEl = document.getElementById('wt_einmalig');
+  if (_einmaligEl) _einmaligEl.value = '0,00 €';
   document.getElementById('f_status').value = '1';
   const ridDispReset = document.getElementById('f_requestid_display');
   if (ridDispReset) ridDispReset.textContent = '–';
@@ -15046,9 +15049,9 @@ const DEFAULT_VERTRAG_MAPPING = [
   // — Vorabcheck-Nr → Anfragenummer —
   { id:'m_f_anfrage',   active:true, source:'vc.check_nr',                         target:'f_anfrageNr',       transform:'direct',         description:'Vorabcheck-Nr → Anfragenummer' },
   // — HV-Daten → Hauptformular (Fallback-Quellen via compute.*) —
-  { id:'m_f_firma',     active:true, source:'compute.hvName',                      target:'f_firma',           transform:'direct',         description:'HV-Name → Firmenname (Fallback: hv_name → verwalter_name)' },
-  { id:'m_f_standort',  active:true, source:'compute.objektAdresse',               target:'f_standort',        transform:'direct',         description:'Objekt-Adresse → Standort (Fallback: objekt_adresse → lead.adresse)' },
-  { id:'m_f_name',      active:true, source:'compute.hvName',                      target:'f_name',            transform:'direct',         description:'HV-Name → Name (Betreiber)' },
+  { id:'m_f_firma',     active:true, source:'compute.hvName',                      target:'f_firma',           transform:'direct',         description:'HV-Firma → Firmenname (Fallback: hv_name → verwalter_firma_name)' },
+  { id:'m_f_standort',  active:true, source:'compute.objektAdresse',               target:'f_standort',        transform:'direct',         description:'Objekt-Adresse → Standort (Fallback: objekt_adresse → verwalter_objekt_adresse → lead.adresse)' },
+  { id:'m_f_name',      active:true, source:'vc.verwalter_name',                   target:'f_name',            transform:'direct',         description:'HV-Personenname (Vor+Nachname) → Name (Betreiber)' },
   { id:'m_f_tel',       active:true, source:'compute.hvTelefon',                   target:'f_tel',             transform:'direct',         description:'HV-Telefon → Tel (Betreiber)' },
   // — HV-Daten → Wartungsblock (wt_*) —
   { id:'m_wt_firma',    active:true, source:'compute.hvName',                      target:'wt_firma',          transform:'direct',         description:'HV-Name → Vertragspartner' },
@@ -15218,6 +15221,17 @@ async function createCheckFromVorabcheck(checkNr, type) {
   // Vorabcheck-Verknüpfung global merken (collectFormData liest die ein)
   window._vorabcheckRefForNewCheck = vc.check_nr || '';
   window._vorabcheckRefForNewCheckSavedAt = new Date().toISOString();
+  // Check-ID (Vertragscheck-Nummer) vorab generieren, damit das PDF-Feld "Vorgang"
+  // sofort gefüllt ist und nicht erst nach dem ersten Speichern.
+  try {
+    const ridEl = document.getElementById('f_requestid');
+    const ridDisp = document.getElementById('f_requestid_display');
+    if (ridEl && !ridEl.value.trim()) {
+      const newId = await generateCheckId();
+      ridEl.value = newId;
+      if (ridDisp) ridDisp.textContent = newId;
+    }
+  } catch (e) { console.warn('Check-ID Vorab-Generierung fehlgeschlagen:', e.message); }
   // Felder vorausfüllen (nur wenn leer) — Counter für UX-Feedback
   let _filledCount = 0;
   const setIfEmpty = (id, val) => {
@@ -15294,69 +15308,9 @@ async function createCheckFromVorabcheck(checkNr, type) {
   _filledCount += applyVertragMapping(mapping, mappingCtx);
   // wt_jahresbeitrag hat ein Compute-Default (Kosten/Aufzug × Anzahl) — Fallback wenn nicht im Mapping
   if (type === 'wartung') setIfEmpty('wt_jahresbeitrag', jahrPreis);
-  // ── Ergänzungen / Bemerkungen: alles, was wir wissen, kompakt zusammenfassen ──
-  // Wartung → wt_ergaenzungen, Rechnung → rc_bemerkungen, Reparatur → f_empfehlung
-  // ASCII-only damit pdf-lib WinAnsi-Encoding nicht meckert (keine ━, ✉, ☎, 📍, • etc.)
-  const ergParts = [];
-  ergParts.push('=== Aus Vorabcheck ' + checkNr + ' ===');
-  if (auftraggeberName) {
-    ergParts.push('AUFTRAGGEBER: ' + auftraggeberName + (vc.role ? ' (' + vc.role + ')' : ''));
-    if (auftraggeberEmail) ergParts.push('  E-Mail: ' + auftraggeberEmail);
-    if (auftraggeberTel)   ergParts.push('  Tel.:   ' + auftraggeberTel);
-    if (auftraggeberAdresse && auftraggeberAdresse !== objekt) ergParts.push('  Adresse: ' + auftraggeberAdresse);
-  }
-  if (hvName || hvEmail || hvTel) {
-    ergParts.push('');
-    ergParts.push('HAUSVERWALTUNG:');
-    if (hvName)   ergParts.push('  ' + hvName);
-    if (hvAnschr) ergParts.push('  Adresse: ' + hvAnschr);
-    if (hvEmail)  ergParts.push('  E-Mail:  ' + hvEmail);
-    if (hvTel)    ergParts.push('  Tel.:    ' + hvTel);
-  }
-  if (resp && Object.keys(resp).length) {
-    ergParts.push('');
-    ergParts.push('ANTWORTEN HAUSVERWALTUNG (5-Fragen-Konfig):');
-    Object.entries(resp).forEach(([k, v]) => ergParts.push('  - ' + k.replace(/_/g, ' ') + ': ' + v));
-  }
-  if (vc.summary) {
-    ergParts.push('');
-    ergParts.push('KI-ZUSAMMENFASSUNG:');
-    ergParts.push(String(vc.summary));
-  }
-  if (vc.savings_estimate_eur) {
-    ergParts.push('');
-    ergParts.push('GESCHÄTZTES SPARPOTENZIAL: ' + Number(vc.savings_estimate_eur).toLocaleString('de-DE') + ' € / Jahr');
-  }
-  if (vc.aufzug_positionen_text) {
-    ergParts.push('');
-    ergParts.push('AUFZUG-POSITIONEN aus Dokument:');
-    ergParts.push(String(vc.aufzug_positionen_text));
-  }
-  // WinAnsi-Sanitizer: pdf-lib Standard-Fonts können nur WinAnsi (≈ Latin-1+) — alle anderen
-  // Unicode-Zeichen (Box-Drawing, Emojis, Symbol-Chars) werden vor dem Form-Feld gestrippt,
-  // sonst scheitert die spätere PDF-Erstellung.
-  const _winAnsiSafe = (s) => String(s || '')
-    .replace(/[─-╿]/g, '-')         // Box-Drawing (━ ─ etc.)
-    .replace(/[✀-➿]/g, '')          // Dingbats (✉ ✓ etc.)
-    .replace(/[☀-⛿]/g, '')          // Misc-Symbols (☎ ☆ etc.)
-    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')   // Emojis (📍 🔥 etc.)
-    .replace(/[←-⇿]/g, '->')        // Arrows (→ ← etc.)
-    .replace(/[•]/g, '-');               // Bullet
-  const ergText = _winAnsiSafe(ergParts.join('\n'));
-  if (type === 'wartung') {
-    const ergEl = document.getElementById('wt_ergaenzungen');
-    if (ergEl && !ergEl.value) ergEl.value = ergText;
-  } else if (type === 'rechnung') {
-    const rcEl = document.getElementById('rc_bemerkungen');
-    if (rcEl && !rcEl.value) rcEl.value = ergText;
-  } else {
-    // Reparaturcheck: in das Empfehlungs-Textfeld (contenteditable div)
-    const empEl = document.getElementById('f_empfehlung');
-    if (empEl && (empEl.textContent.trim() === '' || empEl.textContent === empEl.dataset.placeholder)) {
-      empEl.textContent = ergText;
-      empEl.style.color = 'var(--text)';
-    }
-  }
+  // Ergänzungen/Bemerkungen/Empfehlung bleiben bewusst LEER — Bearbeiter füllt sie
+  // selbst aus, falls gewünscht. (Vorher wurde hier ein Block mit Auftraggeber/HV/
+  // Konfig-Antworten/KI-Summary reingeschrieben; das hat sich als zu viel rausgestellt.)
   // Banner: Vorabcheck-Verknüpfung sichtbar machen
   _showVorabcheckLinkBanner(checkNr, vc);
   // Bearbeiter-Status auf "in Bearbeitung" setzen (Best-Effort, nicht blocking)
