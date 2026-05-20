@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.78';
+const APP_VERSION = 'V9.79';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7634,6 +7634,9 @@ async function previewErgebnis() {
     const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
 
+    // Layout zwingen: alle field-row.r4/r5 mit inline !important auf mehrspaltig
+    const restoreLayout = _forcePdfLayout();
+
     const canvas = await html2canvas(printArea, {
       scale: 1.5,
       useCORS: true,
@@ -7643,16 +7646,9 @@ async function previewErgebnis() {
       width: printArea.scrollWidth,
       height: printArea.scrollHeight,
       windowWidth: 1400, windowHeight: 2000,
-      onclone: (doc) => {
-        const s = doc.createElement('style');
-        s.textContent =
-          '.field-row.r4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important}' +
-          '.field-row.r5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}' +
-          '#checkNrBanner{flex-direction:row!important}';
-        doc.head.appendChild(s);
-      },
     });
 
+    restoreLayout();
     empBtn.style.display = '';
     empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
@@ -8269,6 +8265,39 @@ async function generateRechnungscheckPDF() {
   }
 }
 
+// PDF-Layout-Helper: forciert mehrspaltige Field-Rows VOR html2canvas, damit
+// keine @media (max-width:768px)-Mobile-CSS-Regeln das Grid zerquetschen.
+// Gibt eine Restore-Funktion zurück, die nach html2canvas aufgerufen werden muss.
+function _forcePdfLayout() {
+  const printArea = document.getElementById('print-area');
+  if (!printArea) return () => {};
+  const rows = printArea.querySelectorAll('.field-row');
+  const restore = [];
+  rows.forEach(fr => {
+    const prevCssText = fr.style.cssText;
+    restore.push({ el: fr, css: prevCssText });
+    fr.style.setProperty('display', 'grid', 'important');
+    if (fr.classList.contains('r4')) {
+      fr.style.setProperty('grid-template-columns', 'repeat(auto-fit,minmax(220px,1fr))', 'important');
+      fr.style.setProperty('gap', '14px', 'important');
+    } else if (fr.classList.contains('r5')) {
+      fr.style.setProperty('grid-template-columns', 'repeat(auto-fit,minmax(200px,1fr))', 'important');
+      fr.style.setProperty('gap', '14px', 'important');
+    }
+  });
+  // Banner mit Check-Nr (Vertragscheck-Nummer + Anfragenummer) zwingend mehrspaltig
+  const banner = document.getElementById('checkNrBanner');
+  let bannerRestore = null;
+  if (banner) {
+    bannerRestore = banner.style.cssText;
+    banner.style.setProperty('flex-direction', 'row', 'important');
+  }
+  return () => {
+    restore.forEach(({ el, css }) => { el.style.cssText = css; });
+    if (banner) banner.style.cssText = bannerRestore || '';
+  };
+}
+
 async function generatePDF() {
   // Rechnungscheck: nutze native pdf-lib Generierung statt html2canvas
   if (checkType === 'rechnung') {
@@ -8317,24 +8346,17 @@ async function generatePDF() {
     const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
 
+    // Layout zwingen: alle field-row.r4/r5 mit inline !important auf mehrspaltig
+    const restoreLayout = _forcePdfLayout();
+
     const canvas = await html2canvas(printArea, {
       scale: 2, useCORS: true, allowTaint: true,
       logging: false, backgroundColor: '#ffffff',
       width: printArea.scrollWidth, height: printArea.scrollHeight,
-      // FIX: html2canvas rendert in einer sandboxed iframe — windowWidth
-      // erzwingt einen breiten Viewport-Kontext, sonst greifen @media (max-width: 768px)
-      // Queries und die field-row.r4/r5-Spalten kollabieren auf 1 Spalte.
       windowWidth: 1400, windowHeight: 2000,
-      onclone: (doc) => {
-        const s = doc.createElement('style');
-        s.textContent =
-          '.field-row.r4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important}' +
-          '.field-row.r5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}' +
-          '#checkNrBanner{flex-direction:row!important}';
-        doc.head.appendChild(s);
-      },
     });
 
+    restoreLayout();
     empfehlungBtn.style.display = '';
     empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
@@ -14043,20 +14065,14 @@ async function buildCheckCoverBlob() {
   const prev = hideForPdf.map(el => el ? el.style.display : null);
   hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
+  const restoreLayout = _forcePdfLayout();
   try {
     const canvas = await html2canvas(printArea, {
       scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
       width: printArea.scrollWidth, height: printArea.scrollHeight,
       windowWidth: 1400, windowHeight: 2000,
-      onclone: (doc) => {
-        const s = doc.createElement('style');
-        s.textContent =
-          '.field-row.r4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important}' +
-          '.field-row.r5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}' +
-          '#checkNrBanner{flex-direction:row!important}';
-        doc.head.appendChild(s);
-      },
     });
+    restoreLayout();
     const { PDFDocument } = PDFLib;
     const doc = await PDFDocument.create();
     const png = await doc.embedPng(canvas.toDataURL('image/png'));
@@ -14070,6 +14086,7 @@ async function buildCheckCoverBlob() {
     const bytes = await doc.save();
     return new Blob([bytes], { type: 'application/pdf' });
   } finally {
+    try { restoreLayout(); } catch (_) {}
     if (empBtn) empBtn.style.display = prevEmp || '';
     hideForPdf.forEach((el, i) => { if (el) el.style.display = prev[i] || ''; });
   }
