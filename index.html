@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.77';
+const APP_VERSION = 'V9.78';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -7642,6 +7642,15 @@ async function previewErgebnis() {
       backgroundColor: '#ffffff',
       width: printArea.scrollWidth,
       height: printArea.scrollHeight,
+      windowWidth: 1400, windowHeight: 2000,
+      onclone: (doc) => {
+        const s = doc.createElement('style');
+        s.textContent =
+          '.field-row.r4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important}' +
+          '.field-row.r5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}' +
+          '#checkNrBanner{flex-direction:row!important}';
+        doc.head.appendChild(s);
+      },
     });
 
     empBtn.style.display = '';
@@ -8312,6 +8321,18 @@ async function generatePDF() {
       scale: 2, useCORS: true, allowTaint: true,
       logging: false, backgroundColor: '#ffffff',
       width: printArea.scrollWidth, height: printArea.scrollHeight,
+      // FIX: html2canvas rendert in einer sandboxed iframe — windowWidth
+      // erzwingt einen breiten Viewport-Kontext, sonst greifen @media (max-width: 768px)
+      // Queries und die field-row.r4/r5-Spalten kollabieren auf 1 Spalte.
+      windowWidth: 1400, windowHeight: 2000,
+      onclone: (doc) => {
+        const s = doc.createElement('style');
+        s.textContent =
+          '.field-row.r4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important}' +
+          '.field-row.r5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}' +
+          '#checkNrBanner{flex-direction:row!important}';
+        doc.head.appendChild(s);
+      },
     });
 
     empfehlungBtn.style.display = '';
@@ -14026,6 +14047,15 @@ async function buildCheckCoverBlob() {
     const canvas = await html2canvas(printArea, {
       scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
       width: printArea.scrollWidth, height: printArea.scrollHeight,
+      windowWidth: 1400, windowHeight: 2000,
+      onclone: (doc) => {
+        const s = doc.createElement('style');
+        s.textContent =
+          '.field-row.r4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important}' +
+          '.field-row.r5{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important}' +
+          '#checkNrBanner{flex-direction:row!important}';
+        doc.head.appendChild(s);
+      },
     });
     const { PDFDocument } = PDFLib;
     const doc = await PDFDocument.create();
