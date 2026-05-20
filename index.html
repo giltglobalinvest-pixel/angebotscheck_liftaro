@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.81';
+const APP_VERSION = 'V9.82';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -4845,12 +4845,29 @@ function resetForm() {
     'ca_angebotnr','ca_anbieter','ca_lieferzeit','ca_gwl','ca_preis',
     'ahw_firma','ahw_anschrift','ahw_standort','ahw_leistung','ahw_erlaeuterung','ahw_preis','ahw_termin',
     'f_leistung',
+    // Wartungsvertrag-AHW-Block (wt_*)
+    'wt_firma','wt_anschrift','wt_email','wt_tel','wt_standort','wt_ansprechpartner',
+    'wt_anzahl_aufzuege','wt_wartungen_pro_jahr','wt_vertragsbeginn','wt_jahresbeitrag','wt_einmalig','wt_ergaenzungen',
+    // Vergleichstabelle Bestandsvertrag (wv_*) + Alternativ (wa_*)
+    'wv_laufzeit','wv_kuendigung','wv_vertragsbeginn','wv_kuendfrist','wv_anzahl','wv_typ','wv_kosten','wv_zusammen',
+    'wa_laufzeit','wa_kuendigung','wa_vertragsbeginn','wa_kuendfrist','wa_anzahl','wa_typ','wa_kosten','wa_zusammen',
     // Rechnungscheck-Felder
     'rc_rechnungsnr','rc_rechnungsdatum','rc_ersteller','rc_ersteller_adresse',
     'rc_leistungszeitraum','rc_bezug','rc_leistung',
     'rc_netto','rc_mwst_satz','rc_mwst','rc_brutto','rc_zahlungsziel',
     'rc_bemerkungen','rc_ergebnis','rc_empfehlung'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // Wartungs-Checkboxes auf Default zurücksetzen (Vollwartung + Notruf an, sonst aus)
+  const cbReset = [
+    { id: 'wt_systemwartung', checked: false },
+    { id: 'wt_vollwartung',   checked: true },
+    { id: 'wt_notruf',        checked: true },
+    { id: 'wv_tuev_begl',     checked: false }, { id: 'wa_tuev_begl',  checked: false },
+    { id: 'wv_tuev_pruef',    checked: false }, { id: 'wa_tuev_pruef', checked: false },
+    { id: 'wv_entstoer',      checked: false }, { id: 'wa_entstoer',   checked: false },
+    { id: 'wv_notruf',        checked: false }, { id: 'wa_notruf',     checked: false },
+  ];
+  cbReset.forEach(c => { const el = document.getElementById(c.id); if (el) el.checked = c.checked; });
   // Rechnungscheck: MwSt-Satz auf Default 19, Checkbox Ansprechpartner zurück auf an
   const _mwst = document.getElementById('rc_mwst_satz'); if (_mwst) _mwst.value = '19';
   const _cbAnsp = document.getElementById('rc_show_ansprechpartner'); if (_cbAnsp) _cbAnsp.checked = true;
@@ -15241,6 +15258,10 @@ async function createCheckFromVorabcheck(checkNr, type) {
     for (const v of vals) { if (v != null && String(v).trim() !== '') return String(v).trim(); }
     return '';
   };
+  // anonymized_data_json (JSON-Blob im Vorab-Check) parsen — enthält u.a. betrag_aufzug_brutto
+  let anonData = {};
+  try { if (vc.anonymized_data_json) anonData = JSON.parse(vc.anonymized_data_json); } catch (_) {}
+  const anonBruttoAufzug = Number(anonData.betrag_aufzug_brutto || 0);
   const mappingCtx = {
     vc:      vc,
     lead:    ld,
@@ -15249,8 +15270,12 @@ async function createCheckFromVorabcheck(checkNr, type) {
       auftraggeberTel:  auftraggeberTel,
       jahrPreis:        jahrPreis,
       gesamtKost:       gesamtKost,
-      // Kosten/Jahr-Fallback: Vertrag-Extract → Vorabcheck-Gesamtkosten → KostenProAufzug × Anzahl
-      kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost || (proAufzug && Number(vc.aufzug_count) ? proAufzug * Number(vc.aufzug_count) : 0),
+      // Kosten/Jahr-Fallback (erste Quelle die einen Wert hat):
+      //   1. Vertrags-Jahresbeitrag (aus HV-Antwort / PDF-KI)
+      //   2. Aufzug-Gesamtkosten (aus Nebenkosten-KI)
+      //   3. anonymized_data.betrag_aufzug_brutto (KI-Brutto-Wert im JSON-Blob)
+      //   4. KostenProAufzug × Anzahl
+      kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost || anonBruttoAufzug || (proAufzug && Number(vc.aufzug_count) ? proAufzug * Number(vc.aufzug_count) : 0),
       // HV-Daten-Fallbacks: bevorzugt aus Eigentümer-CTA (hv_*), sonst aus Verwalter-Antwort (verwalter_*)
       hvName:           _firstNonEmpty(vc.hv_name, vc.verwalter_name),
       hvEmail:          _firstNonEmpty(vc.hv_email, vc.verwalter_email),
@@ -15428,6 +15453,9 @@ async function refillFromVorabcheck(checkNr) {
   const proAufzug2 = Number(vc.kosten_pro_aufzug_eur || 0);
   const gesamtKost2 = Number(vc.aufzug_gesamtkosten_eur || 0);
   const _fne2 = (...vals) => { for (const v of vals) { if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; };
+  let anonData2 = {};
+  try { if (vc.anonymized_data_json) anonData2 = JSON.parse(vc.anonymized_data_json); } catch (_) {}
+  const anonBruttoAufzug2 = Number(anonData2.betrag_aufzug_brutto || 0);
   const ctx = {
     vc, lead: ld,
     compute: {
@@ -15435,7 +15463,7 @@ async function refillFromVorabcheck(checkNr) {
       auftraggeberTel:  String(ld.telefon || '').trim(),
       jahrPreis:        gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : ''),
       gesamtKost:       gesamtKost2,
-      kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : 0),
+      kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost2 || anonBruttoAufzug2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : 0),
       hvName:           _fne2(vc.hv_name, vc.verwalter_name),
       hvEmail:          _fne2(vc.hv_email, vc.verwalter_email),
       hvTelefon:        _fne2(vc.hv_telefon, vc.verwalter_telefon),
