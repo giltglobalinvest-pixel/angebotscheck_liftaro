@@ -790,6 +790,21 @@ export default async function (req: Request): Promise<Response> {
         return res.ok ? jsonResp({ ok: true, linked: fields.linked_check_requestid }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
+    // Objekt-Adresse nachträglich am Vorab-Check-Record patchen (Step-4-Bestätigung der Public-Landing)
+    if (body.action === 'patch_objekt_adresse') {
+      const cn = String(body.check_nr || '').trim();
+      const addr = String(body.objekt_adresse || '').trim();
+      if (!cn || !addr) return jsonResp({ ok: false, error: 'check_nr + objekt_adresse erforderlich' }, 400, corsHeaders);
+      const k = Deno.env.get("AIRTABLE_KEY"); const b = Deno.env.get("AIRTABLE_BASE_ID");
+      if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
+      try {
+        const fr = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + encodeURIComponent("{check_nr}='" + cn + "'") + '&maxRecords=1', { headers: { Authorization: 'Bearer ' + k } });
+        const recId = (await fr.json())?.records?.[0]?.id;
+        if (!recId) return jsonResp({ ok: false, error: 'check not found' }, 404, corsHeaders);
+        const res = await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, { objekt_adresse: addr });
+        return res.ok ? jsonResp({ ok: true }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
+    }
     if (body.action === 'enrich_property_manager') {
       const name = String(body.name || '').trim();
       const city = String(body.city || '').trim();
@@ -1015,7 +1030,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.69',
+        backend_version: 'V9.71',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
@@ -1074,7 +1089,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.69',
+        backend_version: 'V9.71',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
