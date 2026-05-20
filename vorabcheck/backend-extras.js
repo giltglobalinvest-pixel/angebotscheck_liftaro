@@ -16,23 +16,28 @@ const S = (n, c) => ({ name: n, type: 'singleSelect', options: { choices: c.map(
 // (HV-Antwort, strukturierte Vertragsdaten, Bearbeiter-Inbox, Folge-Check-Verknüpfung).
 // Wird vom Backend in `ensure_vorabcheck_schema` per Meta-API automatisch angelegt.
 export const VORABCHECK_TARGET_FIELDS = [
-  // HV-Antwort (9)
+  // HV-Daten aus Eigentümer-CTA (submit_eigentuemer_cta) — neu in V9.83
+  T('hv_name'), T('hv_email'), T('hv_telefon'), T('hv_adresse'), T('hv_website'),
+  T('hv_pipedrive_org_id'),
+  // Pipedrive-Lead-Verknüpfung
+  T('pipedrive_lead_id'), T('pipedrive_person_id'),
+  // HV-Antwort (Verwalter-Landing)
   S('verwalter_status', ['offen', 'antwort_erhalten']),
   T('verwalter_name'), T('verwalter_email'), T('verwalter_telefon'),
   T('verwalter_response_mode'), D('verwalter_response_at'), M('verwalter_response_json'),
   { name: 'verwalter_response_pdf', type: 'multipleAttachments' },
   T('verwalter_response_pdf_name'),
-  // Strukturierte Vertragsdaten — aus Konfig (mode='fragen') oder PDF-KI (mode='upload') (14)
+  // Strukturierte Vertragsdaten — aus Konfig (mode='fragen') oder PDF-KI (mode='upload')
   T('vertrag_wartungen_pro_jahr'), T('vertrag_wartungstyp'),
   C('vertrag_tuev_begleitung'), C('vertrag_tuev_pruefung'), C('vertrag_notruf'), C('vertrag_entstoerung'),
   T('vertrag_vertragsbeginn'),
   N('vertrag_kuendigungsfrist_monate', 0), N('vertrag_jahresbeitrag_eur', 2),
   N('vertrag_anzahl_aufzuege', 0), N('vertrag_mindestlaufzeit_jahre', 1),
   D('vertrag_extracted_at'), T('vertrag_extracted_source'), M('vertrag_raw_json'),
-  // Bearbeiter-Inbox (3)
+  // Bearbeiter-Inbox
   S('bearbeiter_status', ['offen', 'in_bearbeitung', 'erledigt']),
   D('bearbeiter_status_at'), T('bearbeiter_name'),
-  // Folge-Check-Verknüpfung (5)
+  // Folge-Check-Verknüpfung
   T('linked_check_id'), T('linked_check_requestid'), T('linked_check_type'),
   T('linked_check_ersparnis'), D('linked_check_at'),
 ];
