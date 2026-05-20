@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.75';
+const APP_VERSION = 'V9.76';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14871,6 +14871,7 @@ function renderMappingEditor() {
     'vc.ampel','vc.role','vc.summary','vc.check_type',
     'lead.vorname','lead.nachname','lead.email','lead.telefon','lead.adresse',
     'compute.auftraggeberName','compute.auftraggeberTel','compute.jahrPreis','compute.gesamtKost','compute.kostenProJahr',
+    'compute.hvName','compute.hvEmail','compute.hvTelefon','compute.hvAdresse','compute.objektAdresse',
   ];
   const targetHints = [
     'f_firma','f_standort','f_name','f_tel','f_anfrageNr','f_datum',
@@ -14962,18 +14963,18 @@ const VERTRAG_MAPPING_VERSION = 1;
 const DEFAULT_VERTRAG_MAPPING = [
   // — Vorabcheck-Nr → Anfragenummer —
   { id:'m_f_anfrage',   active:true, source:'vc.check_nr',                         target:'f_anfrageNr',       transform:'direct',         description:'Vorabcheck-Nr → Anfragenummer' },
-  // — HV-Daten → Hauptformular —
-  { id:'m_f_firma',     active:true, source:'vc.hv_name',                          target:'f_firma',           transform:'direct',         description:'HV-Name → Firmenname (Hauptform)' },
-  { id:'m_f_standort',  active:true, source:'vc.objekt_adresse',                   target:'f_standort',        transform:'direct',         description:'Objekt-Adresse → Standort (Hauptform)' },
-  { id:'m_f_name',      active:true, source:'vc.hv_name',                          target:'f_name',            transform:'direct',         description:'HV-Name → Name (Betreiber)' },
-  { id:'m_f_tel',       active:true, source:'vc.hv_telefon',                       target:'f_tel',             transform:'direct',         description:'HV-Telefon → Tel (Betreiber)' },
+  // — HV-Daten → Hauptformular (Fallback-Quellen via compute.*) —
+  { id:'m_f_firma',     active:true, source:'compute.hvName',                      target:'f_firma',           transform:'direct',         description:'HV-Name → Firmenname (Fallback: hv_name → verwalter_name)' },
+  { id:'m_f_standort',  active:true, source:'compute.objektAdresse',               target:'f_standort',        transform:'direct',         description:'Objekt-Adresse → Standort (Fallback: objekt_adresse → lead.adresse)' },
+  { id:'m_f_name',      active:true, source:'compute.hvName',                      target:'f_name',            transform:'direct',         description:'HV-Name → Name (Betreiber)' },
+  { id:'m_f_tel',       active:true, source:'compute.hvTelefon',                   target:'f_tel',             transform:'direct',         description:'HV-Telefon → Tel (Betreiber)' },
   // — HV-Daten → Wartungsblock (wt_*) —
-  { id:'m_wt_firma',    active:true, source:'vc.hv_name',                          target:'wt_firma',          transform:'direct',         description:'HV-Name → Vertragspartner' },
-  { id:'m_wt_anschrift',active:true, source:'vc.hv_adresse',                       target:'wt_anschrift',      transform:'direct',         description:'HV-Anschrift' },
-  { id:'m_wt_email',    active:true, source:'vc.hv_email',                         target:'wt_email',          transform:'direct',         description:'HV-E-Mail' },
-  { id:'m_wt_tel',      active:true, source:'vc.hv_telefon',                       target:'wt_tel',            transform:'direct',         description:'HV-Telefon' },
-  { id:'m_wt_standort', active:true, source:'vc.objekt_adresse',                   target:'wt_standort',       transform:'direct',         description:'Objekt-Standort (Wartung)' },
-  { id:'m_wt_ansp',     active:true, source:'vc.hv_name',                          target:'wt_ansprechpartner',transform:'direct',         description:'HV-Name → Ansprechpartner (Wartung)' },
+  { id:'m_wt_firma',    active:true, source:'compute.hvName',                      target:'wt_firma',          transform:'direct',         description:'HV-Name → Vertragspartner' },
+  { id:'m_wt_anschrift',active:true, source:'compute.hvAdresse',                   target:'wt_anschrift',      transform:'direct',         description:'HV-Anschrift' },
+  { id:'m_wt_email',    active:true, source:'compute.hvEmail',                     target:'wt_email',          transform:'direct',         description:'HV-E-Mail' },
+  { id:'m_wt_tel',      active:true, source:'compute.hvTelefon',                   target:'wt_tel',            transform:'direct',         description:'HV-Telefon' },
+  { id:'m_wt_standort', active:true, source:'compute.objektAdresse',               target:'wt_standort',       transform:'direct',         description:'Objekt-Standort (Wartung)' },
+  { id:'m_wt_ansp',     active:true, source:'compute.hvName',                      target:'wt_ansprechpartner',transform:'direct',         description:'HV-Name → Ansprechpartner (Wartung)' },
   { id:'m_wt_aufz',     active:true, source:'vc.aufzug_count',                     target:'wt_anzahl_aufzuege',transform:'direct',         description:'Anzahl Aufzüge' },
   // — HV-Konfig-Antworten / PDF-KI → Vergleichstabelle (wv_* = Bestandsvertrag) —
   // Default-Werte: wenn die KI/HV den Wert nicht extrahieren konnte, einen Platzhalter setzen.
@@ -15159,6 +15160,13 @@ async function createCheckFromVorabcheck(checkNr, type) {
   // ── Hauptformular + wt_*/wv_* via Mapping-Engine (anpassbar im Hub → 🎛 Mapping) ──
   // Kontext für die Mapping-Engine: vc = Vorab-Check-Record, lead = Vorabcheck-Lead.
   // Berechnete Felder (auftraggeberName, jahrPreis etc.) als Pseudo-Quellen unter ctx.compute.
+  // Fallback-Ketten: HV-Daten können entweder via Eigentümer-CTA (hv_*) oder
+  // via Verwalter-Landing-Antwort (verwalter_*) im Vorab-Check landen. Wir nehmen
+  // den ersten nicht-leeren Wert in dieser Reihenfolge.
+  const _firstNonEmpty = (...vals) => {
+    for (const v of vals) { if (v != null && String(v).trim() !== '') return String(v).trim(); }
+    return '';
+  };
   const mappingCtx = {
     vc:      vc,
     lead:    ld,
@@ -15167,8 +15175,15 @@ async function createCheckFromVorabcheck(checkNr, type) {
       auftraggeberTel:  auftraggeberTel,
       jahrPreis:        jahrPreis,
       gesamtKost:       gesamtKost,
-      // Kosten/Jahr-Fallback-Kette: Vertrag-Extract → Vorabcheck-Gesamtkosten → KostenProAufzug × Anzahl
+      // Kosten/Jahr-Fallback: Vertrag-Extract → Vorabcheck-Gesamtkosten → KostenProAufzug × Anzahl
       kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost || (proAufzug && Number(vc.aufzug_count) ? proAufzug * Number(vc.aufzug_count) : 0),
+      // HV-Daten-Fallbacks: bevorzugt aus Eigentümer-CTA (hv_*), sonst aus Verwalter-Antwort (verwalter_*)
+      hvName:           _firstNonEmpty(vc.hv_name, vc.verwalter_name),
+      hvEmail:          _firstNonEmpty(vc.hv_email, vc.verwalter_email),
+      hvTelefon:        _firstNonEmpty(vc.hv_telefon, vc.verwalter_telefon),
+      hvAdresse:        _firstNonEmpty(vc.hv_adresse),
+      // Objekt-Adresse-Fallback: KI-extrahiert → Step-4-bestätigt → Lead-Adresse (alte Records)
+      objektAdresse:    _firstNonEmpty(vc.objekt_adresse, ld.adresse),
     },
   };
   const mapping = getVertragMapping();
@@ -15338,6 +15353,7 @@ async function refillFromVorabcheck(checkNr) {
   ld = ld || {};
   const proAufzug2 = Number(vc.kosten_pro_aufzug_eur || 0);
   const gesamtKost2 = Number(vc.aufzug_gesamtkosten_eur || 0);
+  const _fne2 = (...vals) => { for (const v of vals) { if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; };
   const ctx = {
     vc, lead: ld,
     compute: {
@@ -15346,6 +15362,11 @@ async function refillFromVorabcheck(checkNr) {
       jahrPreis:        gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : ''),
       gesamtKost:       gesamtKost2,
       kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : 0),
+      hvName:           _fne2(vc.hv_name, vc.verwalter_name),
+      hvEmail:          _fne2(vc.hv_email, vc.verwalter_email),
+      hvTelefon:        _fne2(vc.hv_telefon, vc.verwalter_telefon),
+      hvAdresse:        _fne2(vc.hv_adresse),
+      objektAdresse:    _fne2(vc.objekt_adresse, ld.adresse),
     },
   };
   const n = applyVertragMapping(getVertragMapping(), ctx);
