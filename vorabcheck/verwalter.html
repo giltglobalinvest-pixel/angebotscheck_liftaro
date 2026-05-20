@@ -140,10 +140,16 @@ input:focus{border-color:var(--brand-dark)}
       <!-- Variante 1: Fragen -->
       <div id="mode-fragen">
         <div class="q-block">
+          <div class="qlabel">Anzahl Aufzüge an der Anlage</div>
+          <div class="opts">
+            <input type="number" id="anzahl_aufzuege" name="anzahl_aufzuege" min="1" max="50" step="1" placeholder="z.B. 1" style="width:120px;padding:8px 10px;border:1.5px solid var(--line-2);border-radius:6px;font-size:14px;font-family:inherit">
+          </div>
+        </div>
+        <div class="q-block">
           <div class="qlabel">1. Wartungen pro Jahr</div>
           <div class="opts">
-            <label><input type="radio" name="wartungen" value="1"> 1 ×</label>
-            <label><input type="radio" name="wartungen" value="2" checked> 2 ×</label>
+            <label><input type="radio" name="wartungen" value="1" checked> 1 ×</label>
+            <label><input type="radio" name="wartungen" value="2"> 2 ×</label>
             <label><input type="radio" name="wartungen" value="3"> 3 ×</label>
             <label><input type="radio" name="wartungen" value="4"> 4 ×</label>
           </div>
@@ -277,6 +283,9 @@ function renderContext() {
     eName + ' (Eigentümer am Objekt ' + obj + ') hat über Liftaro einen kostenlosen Vorabcheck durchführen lassen. Das Ergebnis zeigt erhebliches Optimierungs-Potenzial bei den Aufzug-Wartungskosten.';
   document.getElementById('statObjekt').textContent = obj || '–';
   document.getElementById('statSavings').textContent = sav > 0 ? '€ ' + fmt(sav) + ' / Jahr' : 'siehe Auswertung';
+  // Anzahl Aufzüge aus dem Vorabcheck vorbefüllen (HV kann ggf. korrigieren)
+  const anzAufEl = document.getElementById('anzahl_aufzuege');
+  if (anzAufEl && Number(_ctx.aufzug_count) > 0) anzAufEl.value = String(_ctx.aufzug_count);
   // Wenn schon eine Antwort vorhanden ist → Success direkt zeigen
   if (_ctx.verwalter_status === 'antwort_erhalten') {
     document.getElementById('main').style.display = 'none';
@@ -341,7 +350,9 @@ async function submitResponse() {
 
   let responses = null;
   if (_mode === 'fragen') {
+    const anzAuf = document.getElementById('anzahl_aufzuege')?.value || '';
     responses = {
+      anzahl_aufzuege: anzAuf,
       wartungen:  document.querySelector('input[name=wartungen]:checked')?.value || '',
       vertragsart: document.querySelector('input[name=vertragsart]:checked')?.value || '',
       tuev_begl:   document.querySelector('input[name=tuev_begl]:checked')?.value || '',
