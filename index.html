@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.74';
+const APP_VERSION = 'V9.75';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14859,16 +14859,18 @@ function renderMappingEditor() {
   ];
   // Bekannte Quell-Felder als Auto-Suggest (datalist)
   const sourceHints = [
+    'vc.check_nr',
     'vc.hv_name','vc.hv_adresse','vc.hv_email','vc.hv_telefon','vc.hv_website',
     'vc.verwalter_name','vc.verwalter_email','vc.verwalter_telefon','vc.verwalter_status','vc.verwalter_response_mode',
     'vc.vertrag_vertragsbeginn','vc.vertrag_kuendigungsfrist_monate','vc.vertrag_mindestlaufzeit_jahre',
     'vc.vertrag_wartungen_pro_jahr','vc.vertrag_wartungstyp','vc.vertrag_jahresbeitrag_eur',
     'vc.vertrag_tuev_begleitung','vc.vertrag_tuev_pruefung','vc.vertrag_notruf','vc.vertrag_entstoerung',
     'vc.vertrag_anzahl_aufzuege',
-    'vc.objekt_adresse','vc.aufzug_count','vc.parteien_count','vc.savings_estimate_eur','vc.savings_individual_eur',
+    'vc.objekt_adresse','vc.aufzug_count','vc.parteien_count','vc.aufzug_gesamtkosten_eur','vc.kosten_pro_aufzug_eur',
+    'vc.savings_estimate_eur','vc.savings_individual_eur',
     'vc.ampel','vc.role','vc.summary','vc.check_type',
     'lead.vorname','lead.nachname','lead.email','lead.telefon','lead.adresse',
-    'compute.auftraggeberName','compute.auftraggeberTel','compute.jahrPreis','compute.gesamtKost',
+    'compute.auftraggeberName','compute.auftraggeberTel','compute.jahrPreis','compute.gesamtKost','compute.kostenProJahr',
   ];
   const targetHints = [
     'f_firma','f_standort','f_name','f_tel','f_anfrageNr','f_datum',
@@ -14883,6 +14885,7 @@ function renderMappingEditor() {
   const escAttr = (s) => String(s||'').replace(/"/g, '&quot;');
   const rows = draft.map((m, i) => {
     const isTpl = m.transform === 'template';
+    const isCb  = m.transform === 'bool_checkbox';
     return ''
       + '<tr data-idx="' + i + '" style="border-bottom:1px solid var(--border)">'
       + '<td style="padding:6px 8px;text-align:center"><input type="checkbox"' + (m.active!==false?' checked':'') + ' onchange="_mappingDraft[' + i + '].active=this.checked" style="width:15px;height:15px;cursor:pointer"></td>'
@@ -14890,6 +14893,7 @@ function renderMappingEditor() {
       + '<td style="padding:6px 8px"><input list="vchMappingTargetList" value="' + escAttr(m.target) + '" oninput="_mappingDraft[' + i + '].target=this.value" placeholder="f_foo / wt_bar / wv_baz" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px;font-family:DM Mono,monospace"></td>'
       + '<td style="padding:6px 8px"><select onchange="_mappingDraft[' + i + '].transform=this.value;renderMappingEditor()" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px">' + trOpt(m.transform || 'direct') + '</select></td>'
       + '<td style="padding:6px 8px">' + (isTpl ? '<input value="' + escAttr(m.template) + '" oninput="_mappingDraft[' + i + '].template=this.value" placeholder="{v} Monate" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px;font-family:DM Mono,monospace">' : '<span style="color:var(--muted);font-size:11px">—</span>') + '</td>'
+      + '<td style="padding:6px 8px">' + (isCb ? '<span style="color:var(--muted);font-size:11px">—</span>' : '<input value="' + escAttr(m.default) + '" oninput="_mappingDraft[' + i + '].default=this.value" placeholder="z.B. siehe Vertrag" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px" title="Wird eingesetzt wenn die Quelle leer ist">') + '</td>'
       + '<td style="padding:6px 8px"><input value="' + escAttr(m.description) + '" oninput="_mappingDraft[' + i + '].description=this.value" placeholder="Beschreibung (intern)" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px"></td>'
       + '<td style="padding:6px 8px;text-align:center"><button onclick="removeMappingRow(' + i + ')" title="Zeile löschen" style="background:transparent;border:none;color:#a8312f;font-size:14px;cursor:pointer">✕</button></td>'
       + '</tr>';
@@ -14903,11 +14907,12 @@ function renderMappingEditor() {
     + '<th style="padding:8px;text-align:center;width:50px">Aktiv</th>'
     + '<th style="padding:8px;text-align:left">Quell-Feld</th>'
     + '<th style="padding:8px;text-align:left">Ziel-Feld</th>'
-    + '<th style="padding:8px;text-align:left;width:180px">Transform</th>'
-    + '<th style="padding:8px;text-align:left;width:150px">Template</th>'
+    + '<th style="padding:8px;text-align:left;width:170px">Transform</th>'
+    + '<th style="padding:8px;text-align:left;width:130px">Template</th>'
+    + '<th style="padding:8px;text-align:left;width:130px" title="Wird eingesetzt wenn die Quelle leer ist">Default (wenn leer)</th>'
     + '<th style="padding:8px;text-align:left">Beschreibung</th>'
     + '<th style="padding:8px;text-align:center;width:40px"></th>'
-    + '</tr></thead><tbody>' + (rows || '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);font-style:italic">Keine Mapping-Zeilen — klick „+ Neue Zeile"</td></tr>') + '</tbody></table>';
+    + '</tr></thead><tbody>' + (rows || '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--muted);font-style:italic">Keine Mapping-Zeilen — klick „+ Neue Zeile"</td></tr>') + '</tbody></table>';
 }
 
 function addMappingRow() {
@@ -14955,26 +14960,29 @@ function resetMappingToDefault() {
 // Kann im Hub-Tab "🎛 Mapping" angepasst und in der Master-Base gespeichert werden.
 const VERTRAG_MAPPING_VERSION = 1;
 const DEFAULT_VERTRAG_MAPPING = [
-  // — Lead/HV-Kontakt → Hauptformular —
+  // — Vorabcheck-Nr → Anfragenummer —
+  { id:'m_f_anfrage',   active:true, source:'vc.check_nr',                         target:'f_anfrageNr',       transform:'direct',         description:'Vorabcheck-Nr → Anfragenummer' },
+  // — HV-Daten → Hauptformular —
   { id:'m_f_firma',     active:true, source:'vc.hv_name',                          target:'f_firma',           transform:'direct',         description:'HV-Name → Firmenname (Hauptform)' },
   { id:'m_f_standort',  active:true, source:'vc.objekt_adresse',                   target:'f_standort',        transform:'direct',         description:'Objekt-Adresse → Standort (Hauptform)' },
-  { id:'m_f_name',      active:true, source:'vc.verwalter_name',                   target:'f_name',            transform:'direct',         description:'HV-Ansprechpartner → Name (Betreiber)' },
-  { id:'m_f_tel',       active:true, source:'vc.verwalter_telefon',                target:'f_tel',             transform:'direct',         description:'HV-Telefon → Tel (Betreiber)' },
+  { id:'m_f_name',      active:true, source:'vc.hv_name',                          target:'f_name',            transform:'direct',         description:'HV-Name → Name (Betreiber)' },
+  { id:'m_f_tel',       active:true, source:'vc.hv_telefon',                       target:'f_tel',             transform:'direct',         description:'HV-Telefon → Tel (Betreiber)' },
   // — HV-Daten → Wartungsblock (wt_*) —
   { id:'m_wt_firma',    active:true, source:'vc.hv_name',                          target:'wt_firma',          transform:'direct',         description:'HV-Name → Vertragspartner' },
   { id:'m_wt_anschrift',active:true, source:'vc.hv_adresse',                       target:'wt_anschrift',      transform:'direct',         description:'HV-Anschrift' },
-  { id:'m_wt_email',    active:true, source:'vc.verwalter_email',                  target:'wt_email',          transform:'direct',         description:'HV-E-Mail' },
-  { id:'m_wt_tel',      active:true, source:'vc.verwalter_telefon',                target:'wt_tel',            transform:'direct',         description:'HV-Telefon' },
+  { id:'m_wt_email',    active:true, source:'vc.hv_email',                         target:'wt_email',          transform:'direct',         description:'HV-E-Mail' },
+  { id:'m_wt_tel',      active:true, source:'vc.hv_telefon',                       target:'wt_tel',            transform:'direct',         description:'HV-Telefon' },
   { id:'m_wt_standort', active:true, source:'vc.objekt_adresse',                   target:'wt_standort',       transform:'direct',         description:'Objekt-Standort (Wartung)' },
-  { id:'m_wt_ansp',     active:true, source:'vc.verwalter_name',                   target:'wt_ansprechpartner',transform:'direct',         description:'HV-Ansprechpartner (Wartung)' },
+  { id:'m_wt_ansp',     active:true, source:'vc.hv_name',                          target:'wt_ansprechpartner',transform:'direct',         description:'HV-Name → Ansprechpartner (Wartung)' },
   { id:'m_wt_aufz',     active:true, source:'vc.aufzug_count',                     target:'wt_anzahl_aufzuege',transform:'direct',         description:'Anzahl Aufzüge' },
-  // — HV-Konfig-Antworten → Vergleichstabelle (wv_* = Bestandsvertrag) —
-  { id:'m_wv_begin',    active:true, source:'vc.vertrag_vertragsbeginn',           target:'wv_vertragsbeginn', transform:'direct',         description:'Vertragsbeginn' },
-  { id:'m_wv_kuend',    active:true, source:'vc.vertrag_kuendigungsfrist_monate',  target:'wv_kuendfrist',     transform:'template',       template:'{v} Monate', description:'Kündigungsfrist' },
-  { id:'m_wv_laufz',    active:true, source:'vc.vertrag_mindestlaufzeit_jahre',    target:'wv_laufzeit',       transform:'template',       template:'{v} Jahre',  description:'Mindestlaufzeit' },
+  // — HV-Konfig-Antworten / PDF-KI → Vergleichstabelle (wv_* = Bestandsvertrag) —
+  // Default-Werte: wenn die KI/HV den Wert nicht extrahieren konnte, einen Platzhalter setzen.
+  { id:'m_wv_begin',    active:true, source:'vc.vertrag_vertragsbeginn',           target:'wv_vertragsbeginn', transform:'direct',         default:'Unbekannt',     description:'Vertragsbeginn (Default: Unbekannt)' },
+  { id:'m_wv_kuend',    active:true, source:'vc.vertrag_kuendigungsfrist_monate',  target:'wv_kuendfrist',     transform:'template',       template:'{v} Monate', default:'siehe Vertrag', description:'Kündigungsfrist (Default: siehe Vertrag)' },
+  { id:'m_wv_laufz',    active:true, source:'vc.vertrag_mindestlaufzeit_jahre',    target:'wv_laufzeit',       transform:'template',       template:'{v} Jahre',  default:'siehe Vertrag', description:'Mindestlaufzeit (Default: siehe Vertrag)' },
   { id:'m_wv_anz',      active:true, source:'vc.vertrag_wartungen_pro_jahr',       target:'wv_anzahl',         transform:'template',       template:'{v} / Jahr', description:'Wartungen pro Jahr' },
   { id:'m_wv_typ',      active:true, source:'vc.vertrag_wartungstyp',              target:'wv_typ',            transform:'direct',         description:'Wartungstyp (Voll/System)' },
-  { id:'m_wv_kost',     active:true, source:'vc.vertrag_jahresbeitrag_eur',        target:'wv_kosten',         transform:'eur',            description:'Kosten pro Jahr (€)' },
+  { id:'m_wv_kost',     active:true, source:'compute.kostenProJahr',               target:'wv_kosten',         transform:'eur',            description:'Kosten pro Jahr (Vertrag oder Vorabcheck-Gesamtkosten)' },
   { id:'m_wv_tuevb',    active:true, source:'vc.vertrag_tuev_begleitung',          target:'wv_tuev_begl',      transform:'bool_checkbox',  description:'TÜV-Begleitung inkl.' },
   { id:'m_wv_tuevp',    active:true, source:'vc.vertrag_tuev_pruefung',            target:'wv_tuev_pruef',     transform:'bool_checkbox',  description:'TÜV-Prüfung inkl.' },
   { id:'m_wv_entst',    active:true, source:'vc.vertrag_entstoerung',              target:'wv_entstoer',       transform:'bool_checkbox',  description:'Entstörung inkl.' },
@@ -15025,21 +15033,29 @@ function applyVertragMapping(mapping, ctx) {
   let count = 0;
   for (const m of mapping) {
     if (!m.active) continue;
-    const raw = _resolveMappingSource(m.source, ctx);
-    if (raw == null || raw === '') continue;
+    let raw = _resolveMappingSource(m.source, ctx);
+    // 0 / "0" als leer behandeln (Number-Felder ohne sinnvollen Wert)
+    if (raw === 0 || raw === '0') raw = '';
+    const isEmpty = raw == null || raw === '';
     const el = document.getElementById(m.target);
     if (!el) continue;
-    // Checkbox-Transform
-    if (m.transform === 'bool_checkbox') {
-      if (raw === true || raw === 'true')  { el.checked = true;  count++; }
-      else if (raw === false || raw === 'false') { /* checked bewusst nicht überschrieben — Default belassen */ }
+    // Wenn leer + Default-Wert definiert: Default einsetzen (außer bei Checkboxen)
+    if (isEmpty) {
+      if (m.default && m.transform !== 'bool_checkbox' && !el.value) {
+        el.value = String(m.default);
+        count++;
+      }
       continue;
     }
-    // Skip wenn Feld schon ausgefüllt (nicht überschreiben)
-    if (el.value) continue;
+    if (m.transform === 'bool_checkbox') {
+      if (raw === true || raw === 'true')  { el.checked = true;  count++; }
+      // false: Checkbox-Default beibehalten
+      continue;
+    }
+    if (el.value) continue; // schon gefüllt, nicht überschreiben
     let val = '';
     if (m.transform === 'eur') {
-      const n = Number(raw); if (!isFinite(n)) continue;
+      const n = Number(raw); if (!isFinite(n) || n === 0) continue;
       val = n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     } else if (m.transform === 'template' && m.template) {
       val = String(m.template).replace(/\{v\}/g, String(raw));
@@ -15151,6 +15167,8 @@ async function createCheckFromVorabcheck(checkNr, type) {
       auftraggeberTel:  auftraggeberTel,
       jahrPreis:        jahrPreis,
       gesamtKost:       gesamtKost,
+      // Kosten/Jahr-Fallback-Kette: Vertrag-Extract → Vorabcheck-Gesamtkosten → KostenProAufzug × Anzahl
+      kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost || (proAufzug && Number(vc.aufzug_count) ? proAufzug * Number(vc.aufzug_count) : 0),
     },
   };
   const mapping = getVertragMapping();
@@ -15318,13 +15336,16 @@ async function refillFromVorabcheck(checkNr) {
     if (lr && lr.length) ld = lr[0].fields;
   } catch (_) {}
   ld = ld || {};
+  const proAufzug2 = Number(vc.kosten_pro_aufzug_eur || 0);
+  const gesamtKost2 = Number(vc.aufzug_gesamtkosten_eur || 0);
   const ctx = {
     vc, lead: ld,
     compute: {
       auftraggeberName: [ld.vorname, ld.nachname].filter(Boolean).join(' ').trim(),
       auftraggeberTel:  String(ld.telefon || '').trim(),
-      jahrPreis:        (vc.aufzug_gesamtkosten_eur || (vc.kosten_pro_aufzug_eur && vc.aufzug_count ? Number(vc.kosten_pro_aufzug_eur) * Number(vc.aufzug_count) : '')) || '',
-      gesamtKost:       Number(vc.aufzug_gesamtkosten_eur || 0),
+      jahrPreis:        gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : ''),
+      gesamtKost:       gesamtKost2,
+      kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : 0),
     },
   };
   const n = applyVertragMapping(getVertragMapping(), ctx);
