@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.83';
+const APP_VERSION = 'V9.84';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14953,7 +14953,7 @@ function renderMappingEditor() {
     'vc.ampel','vc.role','vc.summary','vc.check_type',
     'lead.vorname','lead.nachname','lead.email','lead.telefon','lead.adresse',
     'compute.auftraggeberName','compute.auftraggeberTel','compute.jahrPreis','compute.gesamtKost','compute.kostenProJahr',
-    'compute.hvName','compute.hvEmail','compute.hvTelefon','compute.hvAdresse','compute.objektAdresse',
+    'compute.hvName','compute.hvEmail','compute.hvTelefon','compute.hvAdresse','compute.objektAdresse','compute.anzahlAufzuege',
   ];
   const targetHints = [
     'f_firma','f_standort','f_name','f_tel','f_anfrageNr','f_datum',
@@ -15056,8 +15056,8 @@ const DEFAULT_VERTRAG_MAPPING = [
   { id:'m_wt_email',    active:true, source:'compute.hvEmail',                     target:'wt_email',          transform:'direct',         description:'HV-E-Mail' },
   { id:'m_wt_tel',      active:true, source:'compute.hvTelefon',                   target:'wt_tel',            transform:'direct',         description:'HV-Telefon' },
   { id:'m_wt_standort', active:true, source:'compute.objektAdresse',               target:'wt_standort',       transform:'direct',         description:'Objekt-Standort (Wartung)' },
-  { id:'m_wt_ansp',     active:true, source:'compute.hvName',                      target:'wt_ansprechpartner',transform:'direct',         description:'HV-Name → Ansprechpartner (Wartung)' },
-  { id:'m_wt_aufz',     active:true, source:'vc.aufzug_count',                     target:'wt_anzahl_aufzuege',transform:'direct',         description:'Anzahl Aufzüge' },
+  { id:'m_wt_ansp',     active:true, source:'compute.auftraggeberName',            target:'wt_ansprechpartner',transform:'direct',         description:'Eigentümer (Vorabcheck-Auftraggeber) → Ansprechpartner' },
+  { id:'m_wt_aufz',     active:true, source:'compute.anzahlAufzuege',              target:'wt_anzahl_aufzuege',transform:'direct',         default:'1', description:'Anzahl Aufzüge (Vorabcheck → HV-Korrektur, Default 1)' },
   // — HV-Konfig-Antworten / PDF-KI → Vergleichstabelle (wv_* = Bestandsvertrag) —
   // Default-Werte: wenn die KI/HV den Wert nicht extrahieren konnte, einen Platzhalter setzen.
   { id:'m_wv_begin',    active:true, source:'vc.vertrag_vertragsbeginn',           target:'wv_vertragsbeginn', transform:'direct',         default:'Unbekannt',     description:'Vertragsbeginn (Default: Unbekannt)' },
@@ -15278,6 +15278,8 @@ async function createCheckFromVorabcheck(checkNr, type) {
       //   3. anonymized_data.betrag_aufzug_brutto (KI-Brutto-Wert im JSON-Blob)
       //   4. KostenProAufzug × Anzahl
       kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost || anonBruttoAufzug || (proAufzug && Number(vc.aufzug_count) ? proAufzug * Number(vc.aufzug_count) : 0),
+      // Anzahl Aufzüge: Vorabcheck-Wert hat Vorrang, dann HV-Korrektur über Verwalter-Landing
+      anzahlAufzuege:   Number(vc.aufzug_count) || Number(vc.vertrag_anzahl_aufzuege) || 0,
       // HV-Daten-Fallbacks: bevorzugt aus Eigentümer-CTA (hv_*), sonst aus Verwalter-Antwort (verwalter_*)
       hvName:           _firstNonEmpty(vc.hv_name, vc.verwalter_name),
       hvEmail:          _firstNonEmpty(vc.hv_email, vc.verwalter_email),
@@ -15466,6 +15468,7 @@ async function refillFromVorabcheck(checkNr) {
       jahrPreis:        gesamtKost2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : ''),
       gesamtKost:       gesamtKost2,
       kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost2 || anonBruttoAufzug2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : 0),
+      anzahlAufzuege:   Number(vc.aufzug_count) || Number(vc.vertrag_anzahl_aufzuege) || 0,
       hvName:           _fne2(vc.hv_name, vc.verwalter_name),
       hvEmail:          _fne2(vc.hv_email, vc.verwalter_email),
       hvTelefon:        _fne2(vc.hv_telefon, vc.verwalter_telefon),
