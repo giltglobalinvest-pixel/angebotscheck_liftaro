@@ -16,7 +16,15 @@ const S = (n, c) => ({ name: n, type: 'singleSelect', options: { choices: c.map(
 // (HV-Antwort, strukturierte Vertragsdaten, Bearbeiter-Inbox, Folge-Check-Verknüpfung).
 // Wird vom Backend in `ensure_vorabcheck_schema` per Meta-API automatisch angelegt.
 export const VORABCHECK_TARGET_FIELDS = [
-  // HV-Daten aus Eigentümer-CTA (submit_eigentuemer_cta) — neu in V9.83
+  // Vorabcheck-Standard-Felder (vom Vorabcheck-Submit & patch_objekt_adresse) — V9.84
+  T('objekt_adresse'),
+  N('aufzug_count', 0), N('parteien_count', 0),
+  N('aufzug_gesamtkosten_eur', 2), N('kosten_pro_aufzug_eur', 2),
+  N('savings_estimate_eur', 0), N('savings_total_eur', 0), N('savings_individual_eur', 0),
+  T('ampel'), M('summary'), T('check_type'), T('role'),
+  M('findings_json'), M('anonymized_data_json'),
+  M('aufzug_positionen_text'), M('aufzug_positionen_json'),
+  // HV-Daten aus Eigentümer-CTA (submit_eigentuemer_cta)
   T('hv_name'), T('hv_email'), T('hv_telefon'), T('hv_adresse'), T('hv_website'),
   T('hv_pipedrive_org_id'),
   // Pipedrive-Lead-Verknüpfung
