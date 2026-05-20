@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.85';
+const APP_VERSION = 'V9.86';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -15280,13 +15280,14 @@ async function createCheckFromVorabcheck(checkNr, type) {
       kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost || anonBruttoAufzug || (proAufzug && Number(vc.aufzug_count) ? proAufzug * Number(vc.aufzug_count) : 0),
       // Anzahl Aufzüge: Vorabcheck-Wert hat Vorrang, dann HV-Korrektur über Verwalter-Landing
       anzahlAufzuege:   Number(vc.aufzug_count) || Number(vc.vertrag_anzahl_aufzuege) || 0,
-      // HV-Daten-Fallbacks: bevorzugt aus Eigentümer-CTA (hv_*), sonst aus Verwalter-Antwort (verwalter_*)
-      hvName:           _firstNonEmpty(vc.hv_name, vc.verwalter_name),
+      // HV-Firma-Name: bevorzugt aus Eigentümer-CTA (hv_name), Fallback HV-Landing (verwalter_firma_name).
+      // verwalter_name (Vor+Nachname) ist KEIN Fallback mehr — der ist ein Personen-Name, keine Firma.
+      hvName:           _firstNonEmpty(vc.hv_name, vc.verwalter_firma_name),
       hvEmail:          _firstNonEmpty(vc.hv_email, vc.verwalter_email),
       hvTelefon:        _firstNonEmpty(vc.hv_telefon, vc.verwalter_telefon),
       hvAdresse:        _firstNonEmpty(vc.hv_adresse),
-      // Objekt-Adresse-Fallback: KI-extrahiert → Step-4-bestätigt → Lead-Adresse (alte Records)
-      objektAdresse:    _firstNonEmpty(vc.objekt_adresse, ld.adresse),
+      // Objekt-Adresse-Fallback: KI-extrahiert → HV-Bestätigt → Lead-Adresse
+      objektAdresse:    _firstNonEmpty(vc.objekt_adresse, vc.verwalter_objekt_adresse, ld.adresse),
     },
   };
   const mapping = getVertragMapping();
@@ -15469,11 +15470,11 @@ async function refillFromVorabcheck(checkNr) {
       gesamtKost:       gesamtKost2,
       kostenProJahr:    Number(vc.vertrag_jahresbeitrag_eur) || gesamtKost2 || anonBruttoAufzug2 || (proAufzug2 && Number(vc.aufzug_count) ? proAufzug2 * Number(vc.aufzug_count) : 0),
       anzahlAufzuege:   Number(vc.aufzug_count) || Number(vc.vertrag_anzahl_aufzuege) || 0,
-      hvName:           _fne2(vc.hv_name, vc.verwalter_name),
+      hvName:           _fne2(vc.hv_name, vc.verwalter_firma_name),
       hvEmail:          _fne2(vc.hv_email, vc.verwalter_email),
       hvTelefon:        _fne2(vc.hv_telefon, vc.verwalter_telefon),
       hvAdresse:        _fne2(vc.hv_adresse),
-      objektAdresse:    _fne2(vc.objekt_adresse, ld.adresse),
+      objektAdresse:    _fne2(vc.objekt_adresse, vc.verwalter_objekt_adresse, ld.adresse),
     },
   };
   const n = applyVertragMapping(getVertragMapping(), ctx);
