@@ -1692,6 +1692,12 @@ function _renderAdresseConfirm(r) {
       btn.textContent = '✓ Adresse aktualisieren';
       if (stat) { stat.textContent = ''; }
       if (window._lastResult) window._lastResult.objekt_adresse = val;
+      // Mail-Bodies neu bauen, damit der HV-Mail-Link die neue Adresse enthält
+      try {
+        if (typeof _buildEigCtaMailBodies === 'function' && window._lastResult) {
+          window._eigCtaCtx = _buildEigCtaMailBodies(window._lastResult);
+        }
+      } catch (_) {}
     } catch (e) {
       btn.disabled = false;
       btn.textContent = '✓ Adresse bestätigen';
@@ -2189,6 +2195,110 @@ function scrollToResultCta() {
 // auf Tap und der User kann den vorbereiteten Entwurf prüfen + abschicken.
 // E-Mail-Empfänger werden bewusst leer gelassen, wenn wir sie nicht kennen
 // (Vermieter / Hausverwaltung) — User trägt sie selbst ein.
+// Helper: baut die Mail-Bodies für Eigentümer-CTA (HV-Mail + Selbst-Mail + Liftaro-Mail)
+// Liest aktuelle Werte aus dem DOM (Lead-Eingaben + Adress-Bestätigung von Step 4)
+function _buildEigCtaMailBodies(r) {
+  const vorname  = (document.getElementById('vorname')?.value || '').trim();
+  const nachname = (document.getElementById('nachname')?.value || '').trim();
+  const email    = (document.getElementById('email')?.value || '').trim();
+  const telefon  = (document.getElementById('telefon')?.value || '').trim();
+  // Adresse: bevorzugt aus Step-4-Bestätigungs-Input, sonst r.objekt_adresse, sonst hidden
+  const confInp  = document.getElementById('adresse-confirm-input');
+  const adresse  = ((confInp && confInp.value) || r.objekt_adresse || document.getElementById('adresse')?.value || '').toString().trim();
+  const fullName = (vorname + ' ' + nachname).trim() || 'Ihr Name';
+  const checkNr  = r.check_nr || '—';
+  const summary  = (r.summary || '').trim();
+  const savingsTotal      = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  const savingsIndividual = Number(r.savings_individual_eur || 0);
+  const savingsTotalStr      = savingsTotal > 0      ? Math.round(savingsTotal).toLocaleString('de-DE') + ' €/Jahr' : 'siehe Auswertung';
+  const savingsIndividualStr = savingsIndividual > 0 ? Math.round(savingsIndividual).toLocaleString('de-DE') + ' €/Jahr' : '';
+  const verwalterUrl = location.origin + '/vorabcheck/verwalter.html?id=' + checkNr;
+  const landingUrl   = location.origin + location.pathname;
+
+  // Absender-Signatur: Name + Adresse + E-Mail + Telefon
+  const signatur =
+    'Mit freundlichen Grüßen\n\n' +
+    fullName + '\n' +
+    (adresse  ? adresse + '\n' : '') +
+    (email    ? '✉  ' + email   + '\n' : '') +
+    (telefon  ? '☎  ' + telefon + '\n' : '');
+
+  // ── HV-Mail ──
+  const subjHV = 'Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro';
+  const bodyHV =
+    'Sehr geehrte Hausverwaltung,\n\n' +
+    'als Eigentümer der Immobilie\n\n' +
+    (adresse ? '    ' + adresse + '\n\n' : '    (Adresse siehe unten in der Signatur)\n\n') +
+    'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen\n' +
+    'Liftaro-Vorabcheck prüfen lassen (Check-Nr. ' + checkNr + ').\n' +
+    'Bei der Aufzug-Position besteht Optimierungspotenzial.\n\n\n' +
+    '───── AUSWERTUNG IN KURZFORM ─────\n\n' +
+    summary + '\n\n' +
+    'Geschätzte jährliche Gesamtersparnis für das Haus:\n' +
+    '    ' + savingsTotalStr + '\n' +
+    (savingsIndividualStr ? 'Mein anteiliger Vorteil:\n    ' + savingsIndividualStr + '\n' : '') +
+    '\n\n' +
+    '───── BITTE PRÜFEN ─────\n\n' +
+    'Ich bitte Sie, das Vergleichsangebot direkt bei Liftaro anzufordern —\n' +
+    'über die folgende Schnell-Anfrage-Seite. Die wichtigsten Eckdaten Ihrer\n' +
+    'Verwaltung (Vertragsdetails oder Vertrags-Upload) genügen — wir erhalten\n' +
+    'dann zeitnah ein verbindliches Vergleichsangebot:\n\n\n' +
+    '    ▶  ' + verwalterUrl + '\n\n\n' +
+    'Liftaro ist auf Aufzug-Wartungsverträge spezialisiert. Über die laufende\n' +
+    'Betreuung lassen sich unterjährige Reparaturkosten im Einzelfall um bis\n' +
+    'zu 80 % reduzieren.\n\n' +
+    'Vielen Dank für Ihre Mühe.\n\n\n' +
+    signatur;
+
+  // ── Selbst-Mail (Fallback wenn HV-Mail nicht zur Hand) ──
+  const subjSelf = 'Ihr Liftaro-Vorabcheck — Auswertung ' + checkNr;
+  const bodySelf =
+    'Hallo ' + fullName + ',\n\n' +
+    'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern und Weiterleiten:\n\n' +
+    '───── ECKDATEN ─────\n\n' +
+    'Check-Nr.:  ' + checkNr + '\n' +
+    (adresse ? 'Objekt:     ' + adresse + '\n' : '') +
+    '\n' +
+    'Zusammenfassung:\n' + summary + '\n\n' +
+    'Geschätzte jährliche Gesamtersparnis:\n    ' + savingsTotalStr + '\n' +
+    (savingsIndividualStr ? 'Ihr anteiliger Vorteil:\n    ' + savingsIndividualStr + '\n' : '') +
+    '\n\n' +
+    '───── IHRE NÄCHSTEN SCHRITTE ─────\n\n' +
+    '• Diese E-Mail an Ihre Hausverwaltung weiterleiten. Über die folgende\n' +
+    '  Schnell-Anfrage-Seite kann die Verwaltung mit wenigen Klicks ein\n' +
+    '  konkretes Vergleichsangebot anfordern:\n\n\n' +
+    '    ▶  ' + verwalterUrl + '\n\n\n' +
+    '• Oder direkt mit Liftaro sprechen:  check@liftaro.de\n' +
+    '• Webseite:  ' + landingUrl + '\n\n\n' +
+    'Beste Grüße\nLiftaro';
+
+  // ── Liftaro-Direkt-Mail (sekundäre Option) ──
+  const subjLT = 'Konkrete Einsparungsberechnung – Eigentümer – Check ' + checkNr;
+  const bodyLT =
+    'Hallo Liftaro-Team,\n\n' +
+    'ich bin Eigentümer der Immobilie\n\n' +
+    (adresse ? '    ' + adresse + '\n\n' : '    (siehe Signatur)\n\n') +
+    'und habe einen Vorabcheck unter ' + checkNr + ' durchgeführt.\n\n' +
+    'Ich möchte eine konkrete Einsparungsberechnung in Auftrag geben —\n' +
+    'sowohl für die Aufzug-Wartung als auch für eine laufende Reparatur-\n' +
+    'Prüfung (bis zu 80 % Einsparung möglich).\n\n\n' +
+    '───── AUSWERTUNG IN KURZFORM ─────\n\n' +
+    summary + '\n\n' +
+    'Geschätzte jährliche Gesamtersparnis:\n    ' + savingsTotalStr + '\n' +
+    (savingsIndividualStr ? 'Mein anteiliger Vorteil:\n    ' + savingsIndividualStr + '\n' : '') +
+    '\n\n' +
+    'Ich bestätige, dass ich als Eigentümer berechtigt bin, eine Vertrags-\n' +
+    'optimierung anzustoßen.\n\n\n' +
+    signatur;
+
+  return {
+    subjHV, bodyHV,
+    subjSelf, bodySelf,
+    subjLT, bodyLT,
+    userEmail: email,
+  };
+}
+
 function renderResultCta(role, r) {
   const ctaWrap   = document.getElementById('result-cta');
   const titleEl   = document.getElementById('result-cta-title');
@@ -2261,64 +2371,8 @@ function renderResultCta(role, r) {
     textEl.innerHTML =
       'Leiten Sie das Ergebnis direkt an Ihre Hausverwaltung weiter — oder lassen Sie es sich selbst zusenden, falls Sie die E-Mail-Adresse gerade nicht zur Hand haben.';
 
-    // Mail-Texte vorbereiten (werden zur Click-Zeit über window._eigCtaCtx ausgelesen)
-    const subjHV = 'Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro';
-    const bodyHV =
-      'Sehr geehrte Hausverwaltung,\n\n' +
-      'als Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen ' +
-      'Liftaro-Vorabcheck prüfen lassen (Check-Nr. ' + checkNr + '). Bei der Aufzug-Position besteht ' +
-      'Optimierungspotenzial.\n\n' +
-      'Auswertung in Kurzform:\n' + summary + '\n\n' +
-      'Geschätzte jährliche Gesamtersparnis für das Haus: ' + savingsTotalStr +
-      (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-      'Ich bitte Sie, das Vergleichsangebot direkt bei Liftaro anzufordern — über die folgende ' +
-      'Schnell-Anfrage-Seite. Die wichtigsten Eckdaten Ihrer Verwaltung (Vertragsdetails oder ' +
-      'Vertrags-Upload) genügen — wir erhalten dann zeitnah ein verbindliches Vergleichsangebot.\n\n' +
-      '   👉  ' + location.origin + '/vorabcheck/verwalter.html?id=' + checkNr + '\n\n' +
-      'Liftaro ist auf Aufzug-Wartungsverträge spezialisiert. Über die laufende Betreuung lassen sich ' +
-      'unterjährige Reparaturkosten im Einzelfall um bis zu 80 % reduzieren.\n\n' +
-      'Vielen Dank für Ihre Mühe.\n\n' +
-      'Mit freundlichen Grüßen\n' + fullName;
-
-    // E-Mail "an mich selbst sichern" (wenn HV-Mail leer)
-    const subjSelf = 'Ihr Liftaro-Vorabcheck — Auswertung ' + checkNr;
-    const verwalterUrl = location.origin + '/vorabcheck/verwalter.html?id=' + checkNr;
-    const bodySelf =
-      'Hallo ' + fullName + ',\n\n' +
-      'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
-      'Check-Nr: ' + checkNr + '\n' +
-      (adresse ? 'Objekt: ' + adresse + '\n' : '') + '\n' +
-      'Zusammenfassung:\n' + summary + '\n\n' +
-      'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
-      (savingsIndividualStr ? '\nIhr anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-      'Ihre nächsten Schritte:\n' +
-      '• Diese E-Mail an Ihre Hausverwaltung weiterleiten — die folgende Schnell-Anfrage-Seite ' +
-      'ermöglicht der Verwaltung mit wenigen Klicks ein konkretes Vergleichsangebot anzufordern:\n' +
-      '   👉  ' + verwalterUrl + '\n' +
-      '• Oder direkt mit Liftaro sprechen: check@liftaro.de\n' +
-      '• Webseite: ' + landingUrl + '\n\n' +
-      'Beste Grüße\nLiftaro';
-
-    // E-Mail direkt an Liftaro (sekundäre Option)
-    const subjLT = 'Konkrete Einsparungsberechnung – Eigentümer – Check ' + checkNr;
-    const bodyLT =
-      'Hallo Liftaro-Team,\n\n' +
-      'ich bin Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'und habe einen Vorabcheck ' +
-      'unter ' + checkNr + ' durchgeführt.\n\n' +
-      'Ich möchte eine konkrete Einsparungsberechnung in Auftrag geben — sowohl für die Aufzug-Wartung ' +
-      'als auch für eine laufende Reparatur-Prüfung (bis zu 80 % Einsparung möglich).\n\n' +
-      'Auswertung in Kurzform:\n' + summary + '\n\n' +
-      'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
-      (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-      'Ich bestätige, dass ich als Eigentümer berechtigt bin, eine Vertragsoptimierung anzustoßen.\n\n' +
-      'Mit freundlichen Grüßen\n' + fullName;
-
-    window._eigCtaCtx = {
-      subjHV: subjHV, bodyHV: bodyHV,
-      subjSelf: subjSelf, bodySelf: bodySelf,
-      subjLT: subjLT, bodyLT: bodyLT,
-      userEmail: userEmail,
-    };
+    // Mail-Bodies via Helper bauen (Adresse + Signatur mit Kontaktdaten)
+    window._eigCtaCtx = _buildEigCtaMailBodies(r);
 
     actionsEl.innerHTML =
       '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
@@ -2781,50 +2835,8 @@ function _renderInlineCtaInSavingsCard(role, r) {
     '</div>';
   el.style.display = 'block';
 
-  // E-Mail-Templates befüllen analog zur CTA-Sektion (für mailto + Callback)
-  var checkNr   = r.check_nr || '—';
-  var summary   = (r.summary || '').trim();
-  var vorname   = (document.getElementById('vorname')?.value || '').trim();
-  var nachname  = (document.getElementById('nachname')?.value || '').trim();
-  var adresse   = (document.getElementById('adresse')?.value || '').trim();
-  var fullName  = (vorname + ' ' + nachname).trim() || 'Ihr Name';
-  var userEmail = (document.getElementById('email')?.value || '').trim();
-  var savingsTotal = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
-  var savingsIndividual = Number(r.savings_individual_eur || 0);
-  var savingsTotalStr = savingsTotal > 0 ? Math.round(savingsTotal).toLocaleString('de-DE') + ' €/Jahr' : 'siehe Auswertung';
-  var savingsIndividualStr = savingsIndividual > 0 ? Math.round(savingsIndividual).toLocaleString('de-DE') + ' €/Jahr' : '';
-  var landingUrl = location.origin + location.pathname;
-  var bodyHV = 'Sehr geehrte Hausverwaltung,\n\n' +
-    'als Eigentümer ' + (adresse ? '(' + adresse + ') ' : '') + 'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen ' +
-    'Liftaro-Vorabcheck prüfen lassen (Check-Nr. ' + checkNr + '). Bei der Aufzug-Position besteht Optimierungspotenzial.\n\n' +
-    'Auswertung in Kurzform:\n' + summary + '\n\n' +
-    'Geschätzte jährliche Gesamtersparnis für das Haus: ' + savingsTotalStr +
-    (savingsIndividualStr ? '\nMein anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-    'Bitte fordern Sie das Vergleichsangebot direkt über die folgende Schnell-Seite an — wenige Klicks genügen:\n' +
-    '   👉  ' + location.origin + '/vorabcheck/verwalter.html?id=' + checkNr + '\n\n' +
-    'Vielen Dank.\nMit freundlichen Grüßen\n' + fullName;
-  var verwalterUrl = location.origin + '/vorabcheck/verwalter.html?id=' + checkNr;
-  var bodySelf = 'Hallo ' + fullName + ',\n\n' +
-    'hier Ihre Liftaro-Vorabcheck-Auswertung zum Sichern:\n\n' +
-    'Check-Nr: ' + checkNr + '\n' +
-    (adresse ? 'Objekt: ' + adresse + '\n' : '') + '\n' +
-    'Zusammenfassung:\n' + summary + '\n\n' +
-    'Geschätzte jährliche Gesamtersparnis: ' + savingsTotalStr +
-    (savingsIndividualStr ? '\nIhr anteiliger Vorteil: ' + savingsIndividualStr : '') + '\n\n' +
-    'Ihre nächsten Schritte:\n' +
-    '• Diese E-Mail an Ihre Hausverwaltung weiterleiten — die folgende Schnell-Anfrage-Seite ' +
-    'ermöglicht der Verwaltung mit wenigen Klicks ein konkretes Vergleichsangebot anzufordern:\n' +
-    '   👉  ' + verwalterUrl + '\n' +
-    '• Oder direkt mit Liftaro sprechen: check@liftaro.de\n' +
-    '• Webseite: ' + landingUrl + '\n\n' +
-    'Beste Grüße\nLiftaro';
-  window._eigCtaCtx = {
-    subjHV: 'Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro',
-    bodyHV: bodyHV,
-    subjSelf: 'Ihr Liftaro-Vorabcheck — Auswertung ' + checkNr,
-    bodySelf: bodySelf,
-    userEmail: userEmail,
-  };
+  // E-Mail-Templates via Helper (Adresse + Signatur mit Kontaktdaten konsistent zur CTA-Section)
+  window._eigCtaCtx = _buildEigCtaMailBodies(r);
 }
 
 // ── Eigentümer-CTA: Sparpotenzial einreichen (an HV oder als Selbst-Sicherung) ──
