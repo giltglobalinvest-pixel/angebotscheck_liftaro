@@ -866,11 +866,8 @@ html[data-theme="liftaro"] .liftaro-step-desc {
             <input type="tel" id="telefon" placeholder="+49 711 123 456" autocomplete="tel">
             <span class="hint">Optional — nur für Rückfragen.</span>
           </div>
-          <div class="field full">
-            <label for="adresse">Adresse der Immobilie <span style="font-weight:400;color:var(--ink-3);font-size:12px">(optional)</span></label>
-            <input type="text" id="adresse" placeholder="Straße Hausnummer, PLZ Ort" autocomplete="street-address">
-            <span class="hint">Lassen Sie das Feld leer — wir lesen die Adresse aus Ihrem Dokument.</span>
-          </div>
+          <!-- Adresse-Feld wurde nach Step 4 verschoben (wird nach KI-Analyse mit extrahiertem Wert vorbelegt + bestätigt). Hidden bleibt für Backward-Compat des Submit-Codes. -->
+          <input type="hidden" id="adresse" value="">
         </div>
 
         <div class="consent">
@@ -935,6 +932,17 @@ html[data-theme="liftaro"] .liftaro-step-desc {
         </div>
         <h3 id="result-title">Ihre Auswertung ist fertig</h3>
         <p class="sub" id="result-summary">Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.</p>
+
+        <!-- Adresse-Bestätigung: nach KI-Analyse vorausgefüllt, Pflicht -->
+        <div id="adresse-confirm-block" style="display:none;background:linear-gradient(135deg,#eff6ff,#fff);border:1.5px solid #2d5f96;border-radius:12px;padding:14px 16px;margin-bottom:18px">
+          <div style="font-size:11px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px" id="adresse-confirm-label">📍 Adresse der Immobilie · Pflichtfeld</div>
+          <div style="font-size:12.5px;color:#1e40af;margin-bottom:10px;line-height:1.5" id="adresse-confirm-hint">Wir haben folgende Adresse aus Ihrem Dokument extrahiert. Bitte prüfen und ggf. anpassen.</div>
+          <input type="text" id="adresse-confirm-input" placeholder="Straße Hausnummer, PLZ Ort" autocomplete="street-address" style="width:100%;padding:10px 12px;font-size:14px;border:1.5px solid #2d5f96;border-radius:8px;font-family:inherit;background:#fff;color:var(--ink);outline:none;margin-bottom:10px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <button type="button" id="adresse-confirm-btn" style="background:#2d5f96;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">✓ Adresse bestätigen</button>
+            <span id="adresse-confirm-status" style="font-size:12px;color:var(--ink-3)"></span>
+          </div>
+        </div>
 
         <!-- Erkannte Anlagen-Info (Aufzug-Anzahl) -->
         <div id="building-info" style="display:none;background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13.5px;color:var(--ink-2);display:none;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1633,6 +1641,65 @@ async function runAnalysis() {
 }
 
 // Result-Rendering
+// Adresse-Bestätigungsblock: Pflicht nach KI-Analyse. Vorbelegung mit r.objekt_adresse (falls extrahiert).
+function _renderAdresseConfirm(r) {
+  const block = document.getElementById('adresse-confirm-block');
+  const input = document.getElementById('adresse-confirm-input');
+  const btn   = document.getElementById('adresse-confirm-btn');
+  const hint  = document.getElementById('adresse-confirm-hint');
+  const stat  = document.getElementById('adresse-confirm-status');
+  if (!block || !input || !btn) return;
+  const extracted = String(r.objekt_adresse || '').trim();
+  input.value = extracted;
+  if (extracted) {
+    hint.innerHTML = '✓ Wir haben folgende Adresse aus Ihrem Dokument extrahiert. <strong>Bitte prüfen und bestätigen</strong> — oder anpassen, falls nötig.';
+  } else {
+    hint.innerHTML = '⚠ Wir konnten die Adresse nicht eindeutig aus Ihrem Dokument lesen. <strong>Bitte tragen Sie die Adresse der Immobilie ein</strong>, damit wir Ihre Auswertung sauber zuordnen können.';
+  }
+  btn.disabled = false;
+  btn.textContent = '✓ Adresse bestätigen';
+  btn.style.background = '#2d5f96';
+  if (stat) stat.textContent = '';
+  block.style.display = 'block';
+  // Submit-Handler (re-attach um Mehrfachbindung zu vermeiden)
+  btn.onclick = async function() {
+    const val = String(input.value || '').trim();
+    if (val.length < 5) {
+      input.style.borderColor = '#a8312f';
+      input.focus();
+      if (stat) { stat.textContent = 'Bitte eine vollständige Adresse eingeben (mind. 5 Zeichen).'; stat.style.color = '#a8312f'; }
+      return;
+    }
+    input.style.borderColor = '#2d5f96';
+    btn.disabled = true;
+    btn.textContent = '⏳ Speichere …';
+    if (stat) { stat.textContent = ''; }
+    try {
+      const cn = String(r.check_nr || '').trim();
+      if (!cn) throw new Error('Keine Check-Nummer verfügbar');
+      const res = await fetch(LIFTARO_API_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'patch_objekt_adresse', check_nr: cn, objekt_adresse: val }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || 'Speichern fehlgeschlagen');
+      // Erfolg → Block grün
+      block.style.background = 'linear-gradient(135deg,#f0f9ec,#fff)';
+      block.style.borderColor = '#3d7a14';
+      hint.innerHTML = '<strong style="color:#3d7a14">✅ Adresse gespeichert · Vielen Dank!</strong> Falls Sie sie nochmal ändern möchten, einfach den Text anpassen und erneut bestätigen.';
+      btn.disabled = false;
+      btn.style.background = '#3d7a14';
+      btn.textContent = '✓ Adresse aktualisieren';
+      if (stat) { stat.textContent = ''; }
+      if (window._lastResult) window._lastResult.objekt_adresse = val;
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '✓ Adresse bestätigen';
+      if (stat) { stat.textContent = 'Fehler: ' + e.message; stat.style.color = '#a8312f'; }
+    }
+  };
+}
+
 function renderResult(r) {
   goToStep(4);
 
@@ -1669,6 +1736,9 @@ function renderResult(r) {
     title.textContent = 'Ihr Dokument ist plausibel';
   }
   summary.textContent = r.summary || 'Wir haben Ihr Dokument analysiert. Hier sind die Ergebnisse.';
+
+  // ── Adresse-Bestätigungs-Block (Pflichtfeld nach KI-Analyse) ──
+  _renderAdresseConfirm(r);
 
   // Erkannte Anlagen-Info (Aufzug-Anzahl + Verteiler-Info + Wartungs-Brutto)
   const buildingBox = document.getElementById('building-info');
