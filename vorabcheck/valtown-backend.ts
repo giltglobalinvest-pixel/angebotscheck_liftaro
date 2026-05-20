@@ -1,7 +1,7 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS } from "https://check.liftaro.de/vorabcheck/prompts.js?v=3";
-import { VORABCHECK_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=2";
+import { VORABCHECK_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=3";
 
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
@@ -719,6 +719,10 @@ export default async function (req: Request): Promise<Response> {
         if (body.responses) fields.verwalter_response_json = JSON.stringify(body.responses);
         if (mode === 'fragen' && body.responses && typeof body.responses === 'object') {
           const r: any = body.responses;
+          if (r.anzahl_aufzuege) {
+            const n = parseInt(String(r.anzahl_aufzuege), 10);
+            if (n > 0 && n <= 50) fields.vertrag_anzahl_aufzuege = n;
+          }
           if (r.wartungen)   fields.vertrag_wartungen_pro_jahr = String(r.wartungen);
           if (r.vertragsart === 'voll')   fields.vertrag_wartungstyp = 'Vollwartung';
           if (r.vertragsart === 'system') fields.vertrag_wartungstyp = 'Systemwartung';
@@ -1030,7 +1034,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.73',
+        backend_version: 'V9.83',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
@@ -1089,7 +1093,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.73',
+        backend_version: 'V9.83',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
