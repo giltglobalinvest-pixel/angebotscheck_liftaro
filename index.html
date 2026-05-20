@@ -3535,6 +3535,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div style="display:flex;gap:0;flex-wrap:wrap">
         <button class="vch-tab active" data-tab="overview" onclick="switchVchTab('overview')" style="background:transparent;border:none;color:#fff;padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">📊 Übersicht</button>
         <button class="vch-tab" data-tab="inbox" onclick="switchVchTab('inbox')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;display:inline-flex;align-items:center;gap:6px">🎯 Inbox <span id="vchInboxCountBadge" style="background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10.5px;font-weight:700;display:none;min-width:18px;text-align:center">0</span></button>
+        <button class="vch-tab" data-tab="mapping" onclick="switchVchTab('mapping')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🎛 Mapping</button>
         <button class="vch-tab" data-tab="prompts" onclick="switchVchTab('prompts')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">✏️ Prompts</button>
         <button class="vch-tab" data-tab="public" onclick="switchVchTab('public')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🌐 Mieter-Seite</button>
         <button class="vch-tab" data-tab="preise" onclick="switchVchTab('preise')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">💰 Preisliste</button>
@@ -3572,6 +3573,22 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div id="vch-inbox-filterbar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:10px"></div>
         <div id="vch-inbox-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px">
           <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;grid-column:1/-1">Daten werden geladen …</div>
+        </div>
+      </div>
+
+      <!-- TAB: MAPPING (Vertragscheck-Feldzuordnung aus Vorabcheck-Daten) -->
+      <div id="vch-pane-mapping" class="vch-pane" style="display:none">
+        <div style="background:var(--sky);border-left:3px solid var(--blue-mid);padding:10px 14px;border-radius:8px;font-size:12.5px;color:var(--text);margin-bottom:18px;line-height:1.5">
+          <strong>Wie das funktioniert:</strong> Wenn ein Bearbeiter aus einem Vorabcheck einen Vertragscheck erstellt, werden die hier definierten Quell-Felder (HV-Antwort, Lead-Daten, KI-extrahierte Vertragsdaten) automatisch in die Vertragscheck-Form-Felder geschrieben.
+          Default-Mapping kann angepasst werden. Speichern legt das Mapping in der Master-Base ab und wirkt sofort.
+        </div>
+        <div id="vch-mapping-container" style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Mapping wird geladen …</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+          <button id="vchMappingSaveBtn" onclick="saveMappingEditor()" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">💾 Mapping speichern</button>
+          <button onclick="addMappingRow()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">+ Neue Zeile</button>
+          <button onclick="resetMappingToDefault()" style="background:#fff;border:1.5px dashed var(--border);color:var(--muted);border-radius:8px;padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">↩ Auf Default zurücksetzen</button>
         </div>
       </div>
 
@@ -3900,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.69';
+const APP_VERSION = 'V9.70';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -3977,6 +3994,10 @@ async function loginWithUserKey(userKey) {
     if (r.fields.key_name === 'pipedriveDomain')        APP_KEYS.pipedriveDomain        = r.fields.key_value;
     if (r.fields.key_name === 'pipedriveApiToken')      APP_KEYS.pipedriveApiToken      = r.fields.key_value;
     if (r.fields.key_name === 'serperApiKey')           APP_KEYS.serperApiKey           = r.fields.key_value;
+    if (r.fields.key_name === 'vorabcheckMappingVertrag') {
+      APP_KEYS.vorabcheckMappingVertrag        = r.fields.key_value;
+      APP_KEYS.vorabcheckMappingVertragRecId   = r.id;
+    }
   });
 
   if (!APP_KEYS.anthropicKey) {
@@ -14517,6 +14538,7 @@ function switchVchTab(tab) {
   });
   if (tab === 'overview') loadVorabchecksList();
   if (tab === 'inbox')    loadInbox();
+  if (tab === 'mapping')  renderMappingEditor();
   if (tab === 'prompts')  loadVorabcheckPrompts();
   if (tab === 'public')   renderVchPublicTab();
   if (tab === 'preise')   loadPreisreferenzen();
@@ -14820,6 +14842,216 @@ async function diagnoseVorabcheck(checkNr) {
   document.body.appendChild(m);
 }
 
+// ── Mapping-Editor (Hub-Tab 🎛 Mapping) ──────────────────────────
+window._mappingDraft = null; // wird beim Öffnen des Tabs initialisiert
+
+function renderMappingEditor() {
+  const cont = document.getElementById('vch-mapping-container');
+  if (!cont) return;
+  // Aktuelles Mapping aus Master-Base ODER Default laden
+  if (!window._mappingDraft) window._mappingDraft = JSON.parse(JSON.stringify(getVertragMapping()));
+  const draft = window._mappingDraft;
+  const transformOpts = [
+    { v:'direct',         l:'Direkt (Wert 1:1)' },
+    { v:'template',       l:'Template ({v} ersetzen)' },
+    { v:'bool_checkbox',  l:'Boolean → Checkbox' },
+    { v:'eur',            l:'EUR-Format (1.234,56 €)' },
+  ];
+  // Bekannte Quell-Felder als Auto-Suggest (datalist)
+  const sourceHints = [
+    'vc.hv_name','vc.hv_adresse','vc.hv_email','vc.hv_telefon','vc.hv_website',
+    'vc.verwalter_name','vc.verwalter_email','vc.verwalter_telefon','vc.verwalter_status','vc.verwalter_response_mode',
+    'vc.vertrag_vertragsbeginn','vc.vertrag_kuendigungsfrist_monate','vc.vertrag_mindestlaufzeit_jahre',
+    'vc.vertrag_wartungen_pro_jahr','vc.vertrag_wartungstyp','vc.vertrag_jahresbeitrag_eur',
+    'vc.vertrag_tuev_begleitung','vc.vertrag_tuev_pruefung','vc.vertrag_notruf','vc.vertrag_entstoerung',
+    'vc.vertrag_anzahl_aufzuege',
+    'vc.objekt_adresse','vc.aufzug_count','vc.parteien_count','vc.savings_estimate_eur','vc.savings_individual_eur',
+    'vc.ampel','vc.role','vc.summary','vc.check_type',
+    'lead.vorname','lead.nachname','lead.email','lead.telefon','lead.adresse',
+    'compute.auftraggeberName','compute.auftraggeberTel','compute.jahrPreis','compute.gesamtKost',
+  ];
+  const targetHints = [
+    'f_firma','f_standort','f_name','f_tel','f_anfrageNr','f_datum',
+    'wt_firma','wt_anschrift','wt_email','wt_tel','wt_standort','wt_ansprechpartner',
+    'wt_anzahl_aufzuege','wt_wartungen_pro_jahr','wt_vertragsbeginn','wt_jahresbeitrag','wt_einmalig','wt_ergaenzungen',
+    'wt_systemwartung','wt_vollwartung','wt_notruf',
+    'wv_vertragsbeginn','wv_kuendigung','wv_kuendfrist','wv_laufzeit','wv_anzahl','wv_typ','wv_kosten','wv_zusammen',
+    'wv_tuev_begl','wv_tuev_pruef','wv_entstoer','wv_notruf',
+    'rc_bemerkungen','rc_ergebnis','rc_empfehlung',
+  ];
+  const trOpt = (cur) => transformOpts.map(o => '<option value="'+o.v+'"'+(o.v===cur?' selected':'')+'>'+o.l+'</option>').join('');
+  const escAttr = (s) => String(s||'').replace(/"/g, '&quot;');
+  const rows = draft.map((m, i) => {
+    const isTpl = m.transform === 'template';
+    return ''
+      + '<tr data-idx="' + i + '" style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:6px 8px;text-align:center"><input type="checkbox"' + (m.active!==false?' checked':'') + ' onchange="_mappingDraft[' + i + '].active=this.checked" style="width:15px;height:15px;cursor:pointer"></td>'
+      + '<td style="padding:6px 8px"><input list="vchMappingSourceList" value="' + escAttr(m.source) + '" oninput="_mappingDraft[' + i + '].source=this.value" placeholder="vc.foo oder lead.bar" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px;font-family:DM Mono,monospace"></td>'
+      + '<td style="padding:6px 8px"><input list="vchMappingTargetList" value="' + escAttr(m.target) + '" oninput="_mappingDraft[' + i + '].target=this.value" placeholder="f_foo / wt_bar / wv_baz" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px;font-family:DM Mono,monospace"></td>'
+      + '<td style="padding:6px 8px"><select onchange="_mappingDraft[' + i + '].transform=this.value;renderMappingEditor()" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px">' + trOpt(m.transform || 'direct') + '</select></td>'
+      + '<td style="padding:6px 8px">' + (isTpl ? '<input value="' + escAttr(m.template) + '" oninput="_mappingDraft[' + i + '].template=this.value" placeholder="{v} Monate" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px;font-family:DM Mono,monospace">' : '<span style="color:var(--muted);font-size:11px">—</span>') + '</td>'
+      + '<td style="padding:6px 8px"><input value="' + escAttr(m.description) + '" oninput="_mappingDraft[' + i + '].description=this.value" placeholder="Beschreibung (intern)" style="width:100%;padding:5px 8px;font-size:11.5px;border:1px solid var(--border);border-radius:5px"></td>'
+      + '<td style="padding:6px 8px;text-align:center"><button onclick="removeMappingRow(' + i + ')" title="Zeile löschen" style="background:transparent;border:none;color:#a8312f;font-size:14px;cursor:pointer">✕</button></td>'
+      + '</tr>';
+  }).join('');
+  cont.innerHTML = ''
+    + '<datalist id="vchMappingSourceList">' + sourceHints.map(s => '<option value="' + s + '"></option>').join('') + '</datalist>'
+    + '<datalist id="vchMappingTargetList">' + targetHints.map(t => '<option value="' + t + '"></option>').join('') + '</datalist>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<thead style="background:var(--sky);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">'
+    + '<tr>'
+    + '<th style="padding:8px;text-align:center;width:50px">Aktiv</th>'
+    + '<th style="padding:8px;text-align:left">Quell-Feld</th>'
+    + '<th style="padding:8px;text-align:left">Ziel-Feld</th>'
+    + '<th style="padding:8px;text-align:left;width:180px">Transform</th>'
+    + '<th style="padding:8px;text-align:left;width:150px">Template</th>'
+    + '<th style="padding:8px;text-align:left">Beschreibung</th>'
+    + '<th style="padding:8px;text-align:center;width:40px"></th>'
+    + '</tr></thead><tbody>' + (rows || '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);font-style:italic">Keine Mapping-Zeilen — klick „+ Neue Zeile"</td></tr>') + '</tbody></table>';
+}
+
+function addMappingRow() {
+  if (!window._mappingDraft) window._mappingDraft = [];
+  window._mappingDraft.push({
+    id: 'm_' + Date.now().toString(36),
+    active: true, source: '', target: '', transform: 'direct', description: '',
+  });
+  renderMappingEditor();
+}
+
+function removeMappingRow(idx) {
+  if (!window._mappingDraft) return;
+  if (!confirm('Mapping-Zeile entfernen?')) return;
+  window._mappingDraft.splice(idx, 1);
+  renderMappingEditor();
+}
+
+async function saveMappingEditor() {
+  if (!window._mappingDraft) return;
+  const btn = document.getElementById('vchMappingSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Speichern …'; }
+  try {
+    // Bereinigen: leere Source/Target rauswerfen
+    const clean = window._mappingDraft.filter(m => String(m.source||'').trim() && String(m.target||'').trim());
+    await saveVertragMapping(clean);
+    window._mappingDraft = clean;
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Gespeichert · ' + clean.length + ' Regeln'; setTimeout(() => { btn.textContent = '💾 Mapping speichern'; }, 3000); }
+    showToast('Mapping gespeichert · ' + clean.length + ' aktive Regeln', 'success');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Mapping speichern'; }
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 8000);
+  }
+}
+
+function resetMappingToDefault() {
+  if (!confirm('Mapping auf den Default-Stand zurücksetzen? Die aktuellen Änderungen werden verworfen.\n\nHinweis: Diese Aktion wirkt erst nach „💾 Mapping speichern".')) return;
+  window._mappingDraft = JSON.parse(JSON.stringify(DEFAULT_VERTRAG_MAPPING));
+  renderMappingEditor();
+  showToast('Default-Mapping geladen — bitte zum Übernehmen „💾 Mapping speichern" klicken.', 'info', 6000);
+}
+
+// ── Vertragscheck-Mapping: Default + Engine ───────────────────────
+// Definiert wie HV-/Lead-/Vorabcheck-Daten in die Vertragscheck-Form-Felder gemappt werden.
+// Kann im Hub-Tab "🎛 Mapping" angepasst und in der Master-Base gespeichert werden.
+const VERTRAG_MAPPING_VERSION = 1;
+const DEFAULT_VERTRAG_MAPPING = [
+  // — Lead/HV-Kontakt → Hauptformular —
+  { id:'m_f_firma',     active:true, source:'vc.hv_name',                          target:'f_firma',           transform:'direct',         description:'HV-Name → Firmenname (Hauptform)' },
+  { id:'m_f_standort',  active:true, source:'vc.objekt_adresse',                   target:'f_standort',        transform:'direct',         description:'Objekt-Adresse → Standort (Hauptform)' },
+  { id:'m_f_name',      active:true, source:'vc.verwalter_name',                   target:'f_name',            transform:'direct',         description:'HV-Ansprechpartner → Name (Betreiber)' },
+  { id:'m_f_tel',       active:true, source:'vc.verwalter_telefon',                target:'f_tel',             transform:'direct',         description:'HV-Telefon → Tel (Betreiber)' },
+  // — HV-Daten → Wartungsblock (wt_*) —
+  { id:'m_wt_firma',    active:true, source:'vc.hv_name',                          target:'wt_firma',          transform:'direct',         description:'HV-Name → Vertragspartner' },
+  { id:'m_wt_anschrift',active:true, source:'vc.hv_adresse',                       target:'wt_anschrift',      transform:'direct',         description:'HV-Anschrift' },
+  { id:'m_wt_email',    active:true, source:'vc.verwalter_email',                  target:'wt_email',          transform:'direct',         description:'HV-E-Mail' },
+  { id:'m_wt_tel',      active:true, source:'vc.verwalter_telefon',                target:'wt_tel',            transform:'direct',         description:'HV-Telefon' },
+  { id:'m_wt_standort', active:true, source:'vc.objekt_adresse',                   target:'wt_standort',       transform:'direct',         description:'Objekt-Standort (Wartung)' },
+  { id:'m_wt_ansp',     active:true, source:'vc.verwalter_name',                   target:'wt_ansprechpartner',transform:'direct',         description:'HV-Ansprechpartner (Wartung)' },
+  { id:'m_wt_aufz',     active:true, source:'vc.aufzug_count',                     target:'wt_anzahl_aufzuege',transform:'direct',         description:'Anzahl Aufzüge' },
+  // — HV-Konfig-Antworten → Vergleichstabelle (wv_* = Bestandsvertrag) —
+  { id:'m_wv_begin',    active:true, source:'vc.vertrag_vertragsbeginn',           target:'wv_vertragsbeginn', transform:'direct',         description:'Vertragsbeginn' },
+  { id:'m_wv_kuend',    active:true, source:'vc.vertrag_kuendigungsfrist_monate',  target:'wv_kuendfrist',     transform:'template',       template:'{v} Monate', description:'Kündigungsfrist' },
+  { id:'m_wv_laufz',    active:true, source:'vc.vertrag_mindestlaufzeit_jahre',    target:'wv_laufzeit',       transform:'template',       template:'{v} Jahre',  description:'Mindestlaufzeit' },
+  { id:'m_wv_anz',      active:true, source:'vc.vertrag_wartungen_pro_jahr',       target:'wv_anzahl',         transform:'template',       template:'{v} / Jahr', description:'Wartungen pro Jahr' },
+  { id:'m_wv_typ',      active:true, source:'vc.vertrag_wartungstyp',              target:'wv_typ',            transform:'direct',         description:'Wartungstyp (Voll/System)' },
+  { id:'m_wv_kost',     active:true, source:'vc.vertrag_jahresbeitrag_eur',        target:'wv_kosten',         transform:'eur',            description:'Kosten pro Jahr (€)' },
+  { id:'m_wv_tuevb',    active:true, source:'vc.vertrag_tuev_begleitung',          target:'wv_tuev_begl',      transform:'bool_checkbox',  description:'TÜV-Begleitung inkl.' },
+  { id:'m_wv_tuevp',    active:true, source:'vc.vertrag_tuev_pruefung',            target:'wv_tuev_pruef',     transform:'bool_checkbox',  description:'TÜV-Prüfung inkl.' },
+  { id:'m_wv_entst',    active:true, source:'vc.vertrag_entstoerung',              target:'wv_entstoer',       transform:'bool_checkbox',  description:'Entstörung inkl.' },
+  { id:'m_wv_notr',     active:true, source:'vc.vertrag_notruf',                   target:'wv_notruf',         transform:'bool_checkbox',  description:'Notruf inkl.' },
+];
+
+// Mapping aus Master-Base laden (Fallback: Default)
+function getVertragMapping() {
+  const raw = APP_KEYS.vorabcheckMappingVertrag;
+  if (!raw) return DEFAULT_VERTRAG_MAPPING;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.mapping)) return parsed.mapping;
+    if (Array.isArray(parsed)) return parsed;
+  } catch (e) { console.warn('Mapping in Master-Base ungültig — Default wird verwendet:', e.message); }
+  return DEFAULT_VERTRAG_MAPPING;
+}
+
+// Mapping in Master-Base speichern
+async function saveVertragMapping(mapping) {
+  const payload = JSON.stringify({ version: VERTRAG_MAPPING_VERSION, mapping });
+  await writeMasterBaseKey('vorabcheckMappingVertrag', payload, APP_KEYS.vorabcheckMappingVertragRecId || null);
+  APP_KEYS.vorabcheckMappingVertrag = payload;
+  // Record-ID nach Erstanlage neu holen
+  if (!APP_KEYS.vorabcheckMappingVertragRecId) {
+    try {
+      const headers = { Authorization: 'Bearer ' + APP_CONFIG.AIRTABLE_READ_KEY };
+      const f = encodeURIComponent("AND({project_id}='" + APP_CONFIG.PROJECT_ID + "',{key_name}='vorabcheckMappingVertrag')");
+      const r = await fetch('https://api.airtable.com/v0/' + APP_CONFIG.MASTER_BASE_ID + '/Keys?filterByFormula=' + f, { headers });
+      const d = await r.json();
+      if (d?.records?.[0]?.id) APP_KEYS.vorabcheckMappingVertragRecId = d.records[0].id;
+    } catch (_) {}
+  }
+}
+
+// Source-Wert auflösen: 'vc.foo' / 'lead.bar' → vc.foo bzw. lead.bar
+function _resolveMappingSource(path, ctx) {
+  if (!path || !ctx) return undefined;
+  const [scope, ...rest] = path.split('.');
+  const obj = ctx[scope];
+  if (!obj) return undefined;
+  const key = rest.join('.');
+  return obj[key];
+}
+
+// Mapping aufs Form anwenden — gibt Anzahl der gesetzten Felder zurück
+function applyVertragMapping(mapping, ctx) {
+  let count = 0;
+  for (const m of mapping) {
+    if (!m.active) continue;
+    const raw = _resolveMappingSource(m.source, ctx);
+    if (raw == null || raw === '') continue;
+    const el = document.getElementById(m.target);
+    if (!el) continue;
+    // Checkbox-Transform
+    if (m.transform === 'bool_checkbox') {
+      if (raw === true || raw === 'true')  { el.checked = true;  count++; }
+      else if (raw === false || raw === 'false') { /* checked bewusst nicht überschrieben — Default belassen */ }
+      continue;
+    }
+    // Skip wenn Feld schon ausgefüllt (nicht überschreiben)
+    if (el.value) continue;
+    let val = '';
+    if (m.transform === 'eur') {
+      const n = Number(raw); if (!isFinite(n)) continue;
+      val = n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    } else if (m.transform === 'template' && m.template) {
+      val = String(m.template).replace(/\{v\}/g, String(raw));
+    } else {
+      val = String(raw);
+    }
+    el.value = val;
+    count++;
+  }
+  return count;
+}
+
 // ── Folge-Check aus Vorabcheck erstellen ──────────────────────────
 // Öffnet die Check-Maske (Vertragscheck = wartung / Reparaturcheck = reparatur / Rechnungscheck = rechnung),
 // füllt sie mit den Vorabcheck-Daten vor, setzt eine globale Verknüpfungs-ID (vorabcheck_ref) und
@@ -14908,42 +15140,23 @@ async function createCheckFromVorabcheck(checkNr, type) {
   const jahrPreis = gesamtKost > 0
     ? String(gesamtKost)
     : (proAufzug > 0 && aufzAnz ? String(proAufzug * Number(aufzAnz)) : (proAufzug > 0 ? String(proAufzug) : ''));
-  // ── Hauptformular: Allgemeine Daten ─────────────────────────
-  // f_firma = HV-Name falls bekannt (wenn role=verwalter direkt, sonst aus Eigentümer-Angabe)
-  setIfEmpty('f_firma',    hvName);
-  setIfEmpty('f_standort', objekt);
-  // Ansprechpartner: HV-Name bevorzugt, sonst Auftraggeber als Fallback (kann manuell überschrieben werden)
-  setIfEmpty('f_name',     vc.verwalter_name || auftraggeberName);
-  setIfEmpty('f_tel',      hvTel || auftraggeberTel);
-  // ── Vertragscheck-spezifisch (wt_* = AHW-Block, wv_* = Vergleichstabelle Bestandsvertrag) ──
-  if (type === 'wartung') {
-    // AHW-Block (Aufzugshandwerk)
-    setIfEmpty('wt_firma',            hvName);
-    setIfEmpty('wt_anschrift',        hvAnschr);
-    setIfEmpty('wt_email',            hvEmail);
-    setIfEmpty('wt_tel',              hvTel);
-    setIfEmpty('wt_standort',         objekt);
-    setIfEmpty('wt_ansprechpartner',  vc.verwalter_name || auftraggeberName);
-    setIfEmpty('wt_anzahl_aufzuege',  aufzAnz);
-    setIfEmpty('wt_jahresbeitrag',    jahrPreis);
-    // Vertragsvergleich "Ihr Bestandsvertrag" (wv_*) aus strukturierten Vorabcheck-Daten
-    // Diese Felder werden vom Backend gesetzt:
-    //   - aus Konfig-Antworten (mode='fragen') → vertrag_wartungen_pro_jahr, vertrag_wartungstyp, vertrag_tuev_*, vertrag_notruf
-    //   - später aus PDF-KI-Extraktion (Phase 2) → zusätzlich vertrag_vertragsbeginn, vertrag_kuendigungsfrist_monate, vertrag_jahresbeitrag_eur, ...
-    setIfEmpty('wv_vertragsbeginn', vc.vertrag_vertragsbeginn || '');
-    setIfEmpty('wv_kuendfrist',     vc.vertrag_kuendigungsfrist_monate ? String(vc.vertrag_kuendigungsfrist_monate) + ' Monate' : '');
-    setIfEmpty('wv_laufzeit',       vc.vertrag_mindestlaufzeit_jahre ? String(vc.vertrag_mindestlaufzeit_jahre) + ' Jahre' : '');
-    setIfEmpty('wv_anzahl',         vc.vertrag_wartungen_pro_jahr ? String(vc.vertrag_wartungen_pro_jahr) + ' / Jahr' : '');
-    setIfEmpty('wv_typ',            vc.vertrag_wartungstyp || '');
-    // Kosten Bestandsvertrag — aus KI extrahierter Gesamtkosten oder vertrag_jahresbeitrag_eur (PDF-Phase)
-    const wvKosten = vc.vertrag_jahresbeitrag_eur || gesamtKost || jahrPreis;
-    setIfEmpty('wv_kosten',         wvKosten ? Number(wvKosten).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '');
-    // Checkbox-Felder (Bestandsvertrag)
-    setCbFromVorabcheck('wv_tuev_begl',  vc.vertrag_tuev_begleitung);
-    setCbFromVorabcheck('wv_tuev_pruef', vc.vertrag_tuev_pruefung);
-    setCbFromVorabcheck('wv_entstoer',   vc.vertrag_entstoerung);
-    setCbFromVorabcheck('wv_notruf',     vc.vertrag_notruf);
-  }
+  // ── Hauptformular + wt_*/wv_* via Mapping-Engine (anpassbar im Hub → 🎛 Mapping) ──
+  // Kontext für die Mapping-Engine: vc = Vorab-Check-Record, lead = Vorabcheck-Lead.
+  // Berechnete Felder (auftraggeberName, jahrPreis etc.) als Pseudo-Quellen unter ctx.compute.
+  const mappingCtx = {
+    vc:      vc,
+    lead:    ld,
+    compute: {
+      auftraggeberName: auftraggeberName,
+      auftraggeberTel:  auftraggeberTel,
+      jahrPreis:        jahrPreis,
+      gesamtKost:       gesamtKost,
+    },
+  };
+  const mapping = getVertragMapping();
+  _filledCount += applyVertragMapping(mapping, mappingCtx);
+  // wt_jahresbeitrag hat ein Compute-Default (Kosten/Aufzug × Anzahl) — Fallback wenn nicht im Mapping
+  if (type === 'wartung') setIfEmpty('wt_jahresbeitrag', jahrPreis);
   // ── Ergänzungen / Bemerkungen: alles, was wir wissen, kompakt zusammenfassen ──
   // Wartung → wt_ergaenzungen, Rechnung → rc_bemerkungen, Reparatur → f_empfehlung
   const ergParts = [];
@@ -15086,9 +15299,36 @@ function _showVorabcheckLinkBanner(checkNr, vc) {
       '<div style="font-size:11.5px;color:#92400e;margin-top:2px">Beim Speichern wird der Vorabcheck automatisch mit diesem Check verlinkt.</div>' +
     '</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      '<button onclick="refillFromVorabcheck(\'' + checkNr.replace(/\'/g, "\\\'") + '\')" style="background:#fff;border:1px solid #f59e0b;color:#78350f;border-radius:6px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit" title="Wendet das aktuelle Mapping nochmal an (z.B. nach Änderung im 🎛 Mapping-Tab)">🔁 Neu befüllen</button>' +
       '<button onclick="diagnoseVorabcheck(\'' + checkNr.replace(/\'/g, "\\\'") + '\')" style="background:#fff;border:1px solid #f59e0b;color:#78350f;border-radius:6px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit">🔍 Diagnose</button>' +
       '<button onclick="window._vorabcheckRefForNewCheck=null;this.parentElement.parentElement.remove()" style="background:transparent;border:1px solid #f59e0b;color:#78350f;border-radius:6px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit">Verknüpfung trennen</button>' +
     '</div>';
+}
+
+// Mapping nochmal anwenden — z.B. nach Anpassung im 🎛 Mapping-Tab oder zum Reset
+async function refillFromVorabcheck(checkNr) {
+  let vc = null; let ld = null;
+  try {
+    const fresh = await atRead('Vorab-Checks', "{check_nr}='" + checkNr + "'");
+    if (fresh && fresh.length) vc = fresh[0].fields;
+  } catch (_) {}
+  if (!vc) { showToast('Vorabcheck-Daten nicht ladbar', 'error'); return; }
+  try {
+    const lr = await atRead('Vorabcheck-Leads', "{check_nr}='" + checkNr + "'");
+    if (lr && lr.length) ld = lr[0].fields;
+  } catch (_) {}
+  ld = ld || {};
+  const ctx = {
+    vc, lead: ld,
+    compute: {
+      auftraggeberName: [ld.vorname, ld.nachname].filter(Boolean).join(' ').trim(),
+      auftraggeberTel:  String(ld.telefon || '').trim(),
+      jahrPreis:        (vc.aufzug_gesamtkosten_eur || (vc.kosten_pro_aufzug_eur && vc.aufzug_count ? Number(vc.kosten_pro_aufzug_eur) * Number(vc.aufzug_count) : '')) || '',
+      gesamtKost:       Number(vc.aufzug_gesamtkosten_eur || 0),
+    },
+  };
+  const n = applyVertragMapping(getVertragMapping(), ctx);
+  showToast('🔁 ' + n + ' Felder via Mapping aktualisiert', 'success', 5000);
 }
 
 // Lädt einen bestehenden Check anhand der requestId (z.B. um aus dem Vorabcheck den verlinkten Check zu öffnen)
