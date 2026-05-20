@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.84';
+const APP_VERSION = 'V9.85';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -14906,18 +14906,18 @@ async function diagnoseVorabcheck(checkNr) {
           '• Wenn <code>verwalter_*</code> leer: HV hat noch nicht über die Landing geantwortet — ODER die verwalter_*-Felder existieren nicht in Airtable.<br>' +
           '• Wenn alles da, aber Form trotzdem leer: dann ist es ein Frontend-Mapping-Bug.' +
         '</div>' +
-        // Schema-Setup-Button: legt alle benötigten Airtable-Felder per Meta-API an
-        (vertragKeys.length === 0 || verwKeys.length === 0 ? (
-          '<div style="margin-top:14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #2d5f96;border-radius:8px">' +
-            '<div style="font-size:12.5px;color:#1e3a8a;font-weight:700;margin-bottom:6px">🛠 Schema-Reparatur</div>' +
-            '<div style="font-size:11.5px;color:#1e40af;margin-bottom:8px;line-height:1.5">Du hast wahrscheinlich die benötigten Felder noch nicht in der <code>Vorab-Checks</code>-Tabelle angelegt. Klick anlegen, dann nochmal HV-Submit testen.</div>' +
-            '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-              '<button id="vchSchemaBtn" onclick="ensureVorabcheckSchema(false)" style="background:#2d5f96;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">🛠 Fehlende Felder automatisch anlegen</button>' +
-              '<button onclick="ensureVorabcheckSchema(true)" style="background:#fff;color:#1e3a8a;border:1.5px solid #2d5f96;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">👁 Vorschau (dry-run)</button>' +
-            '</div>' +
-            '<div style="font-size:10.5px;color:#1e40af;margin-top:8px;font-style:italic">PAT muss schema.bases:read + schema.bases:write können.</div>' +
-          '</div>'
-        ) : '') +
+        // Schema-Setup-Button: immer anzeigen — legt fehlende Airtable-Felder per Meta-API an,
+        // ändert nichts an existierenden. Wird in V9.84 wichtig weil viele Standard-Felder
+        // (objekt_adresse, aufzug_count, hv_* etc.) erst nachträglich ins Schema kamen.
+        '<div style="margin-top:14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #2d5f96;border-radius:8px">' +
+          '<div style="font-size:12.5px;color:#1e3a8a;font-weight:700;margin-bottom:6px">🛠 Schema-Synchronisation</div>' +
+          '<div style="font-size:11.5px;color:#1e40af;margin-bottom:8px;line-height:1.5">Legt fehlende Airtable-Felder in der <code>Vorab-Checks</code>-Tabelle automatisch an (HV-Daten, Objekt-Adresse, Aufzug-Anzahl, Bearbeiter-Status, Folge-Check-Verknüpfung, …). <strong>Bestehende Felder werden nicht verändert</strong>.</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button id="vchSchemaBtn" onclick="ensureVorabcheckSchema(false)" style="background:#2d5f96;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">🛠 Fehlende Felder automatisch anlegen</button>' +
+            '<button onclick="ensureVorabcheckSchema(true)" style="background:#fff;color:#1e3a8a;border:1.5px solid #2d5f96;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">👁 Vorschau (dry-run)</button>' +
+          '</div>' +
+          '<div style="font-size:10.5px;color:#1e40af;margin-top:8px;font-style:italic">PAT muss schema.bases:read + schema.bases:write können.</div>' +
+        '</div>' +
       '</div>' +
     '</div>';
   m.onclick = (e) => { if (e.target === m) m.remove(); };
