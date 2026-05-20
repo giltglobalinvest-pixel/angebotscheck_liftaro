@@ -1,7 +1,7 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 import { ROLE_CONTEXTS, DEFAULT_SYSTEM_PROMPTS } from "https://check.liftaro.de/vorabcheck/prompts.js?v=3";
-import { VORABCHECK_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=4";
+import { VORABCHECK_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=5";
 
 const MODEL = "claude-sonnet-4-6";     // Upgrade von 4.5 → 4.6 für besseres Vision-Verständnis bei Tabellen
 const COST_PER_M_INPUT_TOKENS = 3.0;   // $ pro 1M Input-Tokens (Sonnet 4.6 — Preise ähnlich 4.5)
@@ -716,6 +716,12 @@ export default async function (req: Request): Promise<Response> {
           verwalter_response_at: new Date().toISOString(),
           verwalter_status: 'antwort_erhalten',
         };
+        // HV-Firma (neu in V9.86): kommt aus der Verwalter-Landing wenn keine hv_name aus Eigentümer-CTA da war
+        const vFirma = String(v.firma || '').trim();
+        if (vFirma) fields.verwalter_firma_name = vFirma;
+        // HV bestätigt/korrigiert Objekt-Adresse: in eigenes Feld + auch objekt_adresse aktualisieren
+        const vObj = String(v.objekt_adresse || '').trim();
+        if (vObj) { fields.verwalter_objekt_adresse = vObj; fields.objekt_adresse = vObj; }
         if (body.responses) fields.verwalter_response_json = JSON.stringify(body.responses);
         if (mode === 'fragen' && body.responses && typeof body.responses === 'object') {
           const r: any = body.responses;
@@ -1034,7 +1040,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.84',
+        backend_version: 'V9.86',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
@@ -1093,7 +1099,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.84',
+        backend_version: 'V9.86',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
