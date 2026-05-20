@@ -32,6 +32,7 @@ export const VORABCHECK_TARGET_FIELDS = [
   // HV-Antwort (Verwalter-Landing)
   S('verwalter_status', ['offen', 'antwort_erhalten']),
   T('verwalter_name'), T('verwalter_email'), T('verwalter_telefon'),
+  T('verwalter_firma_name'), T('verwalter_objekt_adresse'),
   T('verwalter_response_mode'), D('verwalter_response_at'), M('verwalter_response_json'),
   { name: 'verwalter_response_pdf', type: 'multipleAttachments' },
   T('verwalter_response_pdf_name'),
