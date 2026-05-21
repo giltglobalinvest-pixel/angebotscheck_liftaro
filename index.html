@@ -4120,7 +4120,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.98';
+const APP_VERSION = 'V9.99';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7938,44 +7938,36 @@ async function previewErgebnis() {
   document.getElementById('prevPage').disabled = true;
   document.getElementById('nextPage').disabled = true;
 
+  const printArea = document.getElementById('print-area');
+  const empTA  = document.getElementById('f_empfehlung');
+  const empBtn = document.getElementById('btnEmpfehlung');
+  const sections = document.querySelectorAll('#print-area .section');
+  const hideForPdf = [
+    document.getElementById('f_status_field'),
+    document.getElementById('row_kuendfrist'),
+    document.getElementById('row_vertragsbeginn'),
+    document.getElementById('row_kuendigung'),
+    document.getElementById('btnSyncRep'),
+    document.getElementById('btnSyncWart'),
+    document.getElementById('invoiceBtnRow'),
+    document.getElementById('vorabcheckLinkBanner'),
+  ];
+  const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
+  let restoreLayout = () => {};
+
   try {
-    const printArea = document.getElementById('print-area');
-
-    // Expand empfehlung, unlock sections
-    const empTA = document.getElementById('f_empfehlung');
-    empTA.style.overflow = 'visible';
-    const sections = document.querySelectorAll('#print-area .section');
+    if (empTA)  empTA.style.overflow = 'visible';
     sections.forEach(s => s.style.overflow = 'visible');
+    if (empBtn) empBtn.style.display = 'none';
 
-    // Hide Empfehlung button
-    const empBtn = document.getElementById('btnEmpfehlung');
-    empBtn.style.display = 'none';
-
-    // Im Ergebnis-PDF/Vorschau ausblenden: Status, Kündigungsfrist-Zeile, Vertragsbeginn-Zeile,
-    // Sicherstellen, dass die Kündigung-möglich-bis-Anzeige unten den aktuellen Tabellenwert hat
     if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
-
-    // Kündigung-möglich-bis-Zeile (Tabelle), Sync-Buttons in Tabellenheadern
-    const hideForPdf = [
-      document.getElementById('f_status_field'),
-      document.getElementById('row_kuendfrist'),
-      document.getElementById('row_vertragsbeginn'),
-      document.getElementById('row_kuendigung'),
-      document.getElementById('btnSyncRep'),
-      document.getElementById('btnSyncWart'),
-      document.getElementById('invoiceBtnRow'),
-      document.getElementById('vorabcheckLinkBanner'),
-    ];
-    const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
 
-    // Layout zwingen: alle field-row.r4/r5 mit inline !important auf mehrspaltig
-    const restoreLayout = _forcePdfLayout();
+    restoreLayout = _forcePdfLayout();
 
-    // Mobile-Geräte (iOS Safari) haben Canvas-Größenlimits + html2canvas-Bugs.
-    // Wir kappen scale + scrollHeight, damit das Render-Canvas nicht zu groß wird.
+    // Mobile (iOS Safari): scale runter + scrollHeight kappen
     const mobile = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
-    const scl = mobile ? 1 : 1.5;
+    const scl  = mobile ? 1 : 1.5;
     const maxH = mobile ? 6000 : printArea.scrollHeight;
     const useH = Math.min(printArea.scrollHeight, maxH);
 
@@ -7990,19 +7982,23 @@ async function previewErgebnis() {
         width: printArea.scrollWidth,
         height: useH,
         windowWidth: 1400, windowHeight: 2000,
+        // Mobile-attached Sidebar-Cards (Vorliegendes/Alternativ/AHW) NICHT
+        // rendern — sie sind nur Editor-Hilfen und brechen html2canvas auf iOS.
+        ignoreElements: (el) => {
+          if (!el || !el.classList) return false;
+          return el.classList.contains('mobile-attached-here') ||
+                 el.classList.contains('mobile-slots-anchor');
+        },
+        // iOS-Safari-Crash-Mitigation: Cross-Origin-@import (Google Fonts) aus dem
+        // geklonten Dokument entfernen, weil html2canvas beim Lesen von cssRules
+        // mit "The index is not in the allowed range" abstürzt.
+        onclone: _sanitizeClonedDocForCanvas,
       });
     } catch(canvasErr) {
-      console.error('html2canvas failed:', canvasErr);
+      console.error('html2canvas (preview) failed:', canvasErr);
       throw new Error('Render fehlgeschlagen (' + (canvasErr.message || canvasErr) + ')');
     }
 
-    restoreLayout();
-    empBtn.style.display = '';
-    empTA.style.overflow = '';
-    sections.forEach(s => s.style.overflow = '');
-    hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
-
-    // Show canvas in modal
     const wrap = document.getElementById('previewWrap');
     wrap.innerHTML = '';
     canvas.style.cssText = 'max-width:100%;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
@@ -8019,6 +8015,14 @@ async function previewErgebnis() {
           Tipp: Direkt "PDF erstellen" verwenden — die Vorschau ist auf manchen Mobilbrowsern unzuverlässig.
         </div>
       </div>`;
+  } finally {
+    // ALWAYS restore — sonst klemmt print-area auf 1200 px Breite und das
+    // Layout bricht horizontal aus dem Viewport (iPhone-Bug).
+    try { restoreLayout(); } catch(_){}
+    if (empBtn) empBtn.style.display = '';
+    if (empTA)  empTA.style.overflow = '';
+    sections.forEach(s => s.style.overflow = '');
+    hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
   }
 }
 
@@ -8626,6 +8630,41 @@ async function generateRechnungscheckPDF() {
 // Ursache war: printArea.scrollWidth war im Live-Layout zu klein (~430-580px),
 // dadurch greifen die Mobile-CSS-Regeln und field-rows kollabieren auf 1 Spalte.
 // Fix: printArea + form-card explizit auf 1200px Width zwingen.
+// Bereinigt den von html2canvas geklonten Dokument-Knoten, BEVOR gerendert wird.
+// iOS-Safari + html2canvas stürzen mit "The index is not in the allowed range" ab,
+// sobald sie auf Cross-Origin-Stylesheets (Google Fonts @import) treffen und deren
+// cssRules iterieren wollen. Wir entfernen:
+//  1. <style>-Tags, deren Inhalt @import enthält
+//  2. <link rel="stylesheet">-Tags mit cross-origin href
+function _sanitizeClonedDocForCanvas(clonedDoc) {
+  try {
+    if (!clonedDoc || !clonedDoc.head) return;
+    // (1) <style>-Tags mit @import entfernen
+    var styleTags = clonedDoc.head.querySelectorAll('style');
+    Array.prototype.forEach.call(styleTags, function(s) {
+      try {
+        var text = s.textContent || '';
+        if (/@import\s+url/i.test(text)) {
+          // Nur die @import-Zeilen entfernen, Rest des Style-Tags behalten
+          s.textContent = text.replace(/@import\s+url\([^)]*\);?/gi, '');
+        }
+      } catch(_) {}
+    });
+    // (2) Cross-Origin-Stylesheet-Links entfernen
+    var linkTags = clonedDoc.head.querySelectorAll('link[rel="stylesheet"]');
+    Array.prototype.forEach.call(linkTags, function(l) {
+      try {
+        var href = l.getAttribute('href') || '';
+        if (/^https?:\/\//i.test(href) && !href.startsWith(location.origin)) {
+          l.parentNode && l.parentNode.removeChild(l);
+        }
+      } catch(_) {}
+    });
+  } catch(e) {
+    console.warn('_sanitizeClonedDocForCanvas:', e.message);
+  }
+}
+
 function _forcePdfLayout() {
   const printArea = document.getElementById('print-area');
   if (!printArea) return () => {};
@@ -8682,63 +8721,61 @@ async function generatePDF() {
   btn.disabled = true;
   document.getElementById('overlay').classList.add('show');
 
+  const printArea = document.getElementById('print-area');
+  const empTA = document.getElementById('f_empfehlung');
+  const empfehlungBtn = document.getElementById('btnEmpfehlung');
+  const sections = document.querySelectorAll('#print-area .section');
+  const hideForPdf = [
+    document.getElementById('f_status_field'),
+    document.getElementById('row_kuendfrist'),
+    document.getElementById('row_vertragsbeginn'),
+    document.getElementById('row_kuendigung'),
+    document.getElementById('btnSyncRep'),
+    document.getElementById('btnSyncWart'),
+    document.getElementById('invoiceBtnRow'),
+    document.getElementById('vorabcheckLinkBanner'),
+  ];
+  const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
+  let restoreLayout = () => {};
+  let canvas;
+
   try {
     setProgress('Formular wird gerendert …');
-    const printArea = document.getElementById('print-area');
 
-    // Expand empfehlung textarea fully for PDF capture
-    const empTA = document.getElementById('f_empfehlung');
-    empTA.style.overflow = 'visible';
-    const sections = document.querySelectorAll('#print-area .section');
+    if (empTA) empTA.style.overflow = 'visible';
     sections.forEach(s => s.style.overflow = 'visible');
+    if (empfehlungBtn) empfehlungBtn.style.display = 'none';
 
-    // Temporarily hide the button so it doesn't appear in the PDF
-    const empfehlungBtn = document.getElementById('btnEmpfehlung');
-    empfehlungBtn.style.display = 'none';
-
-    // Im Ergebnis-PDF ausblenden: Status-Feld, Kündigungsfrist-Zeile (Vertragscheck),
-    // Kündigung-möglich-am-Block im Liftaro-Ergebnis
-    // Im Ergebnis-PDF ausblenden: Status-Feld, Kündigungsfrist-Zeile, Vertragsbeginn-Zeile,
-    // Sicherstellen, dass die Kündigung-möglich-bis-Anzeige unten den aktuellen Tabellenwert hat
     if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
-
-    // Kündigung-möglich-bis-Zeile (Tabelle), Sync-Buttons in Tabellenheadern
-    const hideForPdf = [
-      document.getElementById('f_status_field'),
-      document.getElementById('row_kuendfrist'),
-      document.getElementById('row_vertragsbeginn'),
-      document.getElementById('row_kuendigung'),
-      document.getElementById('btnSyncRep'),
-      document.getElementById('btnSyncWart'),
-      document.getElementById('invoiceBtnRow'),
-      document.getElementById('vorabcheckLinkBanner'),
-    ];
-    const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
 
-    // Layout zwingen: alle field-row.r4/r5 mit inline !important auf mehrspaltig
-    const restoreLayout = _forcePdfLayout();
+    restoreLayout = _forcePdfLayout();
 
     // Mobile: scale 1 statt 2, sonst sprengt das Canvas iOS-Safari-Limits
-    // (max ~16 Mio Pixel pro Canvas). Auf Desktop bleibt's bei scale 2.
     const _isMob = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
     const _scale = _isMob ? 1 : 2;
-    let canvas;
     try {
       canvas = await html2canvas(printArea, {
         scale: _scale, useCORS: true, allowTaint: true,
         logging: false, backgroundColor: '#ffffff',
         width: printArea.scrollWidth, height: printArea.scrollHeight,
         windowWidth: 1400, windowHeight: 2000,
+        ignoreElements: (el) => {
+          if (!el || !el.classList) return false;
+          return el.classList.contains('mobile-attached-here') ||
+                 el.classList.contains('mobile-slots-anchor');
+        },
+        onclone: _sanitizeClonedDocForCanvas,
       });
     } catch(canvasErr) {
       console.error('html2canvas (generatePDF) failed:', canvasErr);
       throw new Error('Render fehlgeschlagen (' + (canvasErr.message || canvasErr) + ')');
     }
 
-    restoreLayout();
-    empfehlungBtn.style.display = '';
-    empTA.style.overflow = '';
+    // Layout sofort restoren — wir brauchen ab hier nur noch das gerenderte Canvas
+    try { restoreLayout(); restoreLayout = () => {}; } catch(_){}
+    if (empfehlungBtn) empfehlungBtn.style.display = '';
+    if (empTA) empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
     hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
 
@@ -8854,6 +8891,14 @@ async function generatePDF() {
     const bar = document.getElementById('statusBar');
     bar.className = 'status-bar error';
     bar.innerHTML = '<span>❌</span><span>Fehler: ' + err.message + '</span>';
+  } finally {
+    // ALWAYS restore — verhindert, dass print-area auf 1200 px gestreckt bleibt
+    // und das Layout horizontal aus dem iPhone-Viewport bricht.
+    try { restoreLayout(); } catch(_){}
+    if (empfehlungBtn) empfehlungBtn.style.display = '';
+    if (empTA) empTA.style.overflow = '';
+    sections.forEach(s => s.style.overflow = '');
+    hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
   }
   btn.disabled = false;
 }
@@ -14482,10 +14527,18 @@ async function buildCheckCoverBlob() {
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
   const restoreLayout = _forcePdfLayout();
   try {
+    const _isMob3 = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
     const canvas = await html2canvas(printArea, {
-      scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
+      scale: _isMob3 ? 1 : 2,
+      useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
       width: printArea.scrollWidth, height: printArea.scrollHeight,
       windowWidth: 1400, windowHeight: 2000,
+      ignoreElements: (el) => {
+        if (!el || !el.classList) return false;
+        return el.classList.contains('mobile-attached-here') ||
+               el.classList.contains('mobile-slots-anchor');
+      },
+      onclone: _sanitizeClonedDocForCanvas,
     });
     restoreLayout();
     const { PDFDocument } = PDFLib;
