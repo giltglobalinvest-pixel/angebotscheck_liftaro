@@ -1815,13 +1815,15 @@ const pdfWorkerReady = Promise.resolve();</script>
       content: '✓'; position: absolute; top: 1px; left: 5px;
       font-size: 18px; color: #fff; font-weight: 700; line-height: 1;
     }
-    /* Checkbox-Zellen: Pseudo-Label inline + Box rechts, mit ordentlichem Tap-Target */
-    .compare-table td:has(input[type="checkbox"]) {
+    /* Checkbox-Zellen: Pseudo-Label inline + Box rechts, mit ordentlichem Tap-Target.
+       Klasse .cb-cell wird per JS gesetzt — KEIN :has(), weil html2canvas auf manchen
+       iOS-Safari-Versionen beim Stylesheet-Walk damit Range-Errors wirft. */
+    .compare-table td.cb-cell {
       display: flex !important; align-items: center !important;
       justify-content: space-between !important; gap: 12px;
       padding: 8px 4px !important; min-height: 44px;
     }
-    .compare-table td:has(input[type="checkbox"])::before {
+    .compare-table td.cb-cell::before {
       margin-bottom: 0 !important; margin-top: 0 !important;
     }
     .compare-table .compare-zus, .compare-table textarea { min-height: 60px; }
@@ -1986,7 +1988,19 @@ const pdfWorkerReady = Promise.resolve();</script>
       }
     } catch (e) { console.warn('mobileReorderUploadSlots:', e.message); }
   }
-  document.addEventListener('DOMContentLoaded', _mobileReorderUploadSlots);
+  // Setze .cb-cell-Klasse auf alle <td>, die eine Checkbox enthalten
+  // (Ersatz für :has(), das auf manchen iOS-Safari-Versionen html2canvas killt).
+  function _markCheckboxCells() {
+    try {
+      document.querySelectorAll('.compare-table td').forEach(function(td) {
+        if (td.querySelector('input[type="checkbox"]')) td.classList.add('cb-cell');
+      });
+    } catch(e) { console.warn('_markCheckboxCells:', e.message); }
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    _markCheckboxCells();
+    _mobileReorderUploadSlots();
+  });
   window.addEventListener('resize', function() {
     if (window._mobileReorderTimer) clearTimeout(window._mobileReorderTimer);
     window._mobileReorderTimer = setTimeout(_mobileReorderUploadSlots, 200);
@@ -4106,7 +4120,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.97';
+const APP_VERSION = 'V9.98';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7958,16 +7972,29 @@ async function previewErgebnis() {
     // Layout zwingen: alle field-row.r4/r5 mit inline !important auf mehrspaltig
     const restoreLayout = _forcePdfLayout();
 
-    const canvas = await html2canvas(printArea, {
-      scale: 1.5,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      width: printArea.scrollWidth,
-      height: printArea.scrollHeight,
-      windowWidth: 1400, windowHeight: 2000,
-    });
+    // Mobile-Geräte (iOS Safari) haben Canvas-Größenlimits + html2canvas-Bugs.
+    // Wir kappen scale + scrollHeight, damit das Render-Canvas nicht zu groß wird.
+    const mobile = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
+    const scl = mobile ? 1 : 1.5;
+    const maxH = mobile ? 6000 : printArea.scrollHeight;
+    const useH = Math.min(printArea.scrollHeight, maxH);
+
+    let canvas;
+    try {
+      canvas = await html2canvas(printArea, {
+        scale: scl,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width: printArea.scrollWidth,
+        height: useH,
+        windowWidth: 1400, windowHeight: 2000,
+      });
+    } catch(canvasErr) {
+      console.error('html2canvas failed:', canvasErr);
+      throw new Error('Render fehlgeschlagen (' + (canvasErr.message || canvasErr) + ')');
+    }
 
     restoreLayout();
     empBtn.style.display = '';
@@ -7982,8 +8009,16 @@ async function previewErgebnis() {
     wrap.appendChild(canvas);
 
   } catch(err) {
+    console.error('previewErgebnis error:', err);
     document.getElementById('previewWrap').innerHTML =
-      `<div class="preview-loading" style="color:#f88">⚠ Fehler: ${err.message}</div>`;
+      `<div class="preview-loading" style="color:#f88;text-align:center;padding:24px">
+        <div style="font-size:32px;margin-bottom:12px">⚠</div>
+        <div style="font-weight:600;margin-bottom:8px">Vorschau fehlgeschlagen</div>
+        <div style="font-size:12px;opacity:.8;line-height:1.5">${(err && err.message) ? err.message : err}</div>
+        <div style="font-size:11px;opacity:.6;margin-top:14px;line-height:1.5">
+          Tipp: Direkt "PDF erstellen" verwenden — die Vorschau ist auf manchen Mobilbrowsern unzuverlässig.
+        </div>
+      </div>`;
   }
 }
 
@@ -8684,12 +8719,22 @@ async function generatePDF() {
     // Layout zwingen: alle field-row.r4/r5 mit inline !important auf mehrspaltig
     const restoreLayout = _forcePdfLayout();
 
-    const canvas = await html2canvas(printArea, {
-      scale: 2, useCORS: true, allowTaint: true,
-      logging: false, backgroundColor: '#ffffff',
-      width: printArea.scrollWidth, height: printArea.scrollHeight,
-      windowWidth: 1400, windowHeight: 2000,
-    });
+    // Mobile: scale 1 statt 2, sonst sprengt das Canvas iOS-Safari-Limits
+    // (max ~16 Mio Pixel pro Canvas). Auf Desktop bleibt's bei scale 2.
+    const _isMob = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
+    const _scale = _isMob ? 1 : 2;
+    let canvas;
+    try {
+      canvas = await html2canvas(printArea, {
+        scale: _scale, useCORS: true, allowTaint: true,
+        logging: false, backgroundColor: '#ffffff',
+        width: printArea.scrollWidth, height: printArea.scrollHeight,
+        windowWidth: 1400, windowHeight: 2000,
+      });
+    } catch(canvasErr) {
+      console.error('html2canvas (generatePDF) failed:', canvasErr);
+      throw new Error('Render fehlgeschlagen (' + (canvasErr.message || canvasErr) + ')');
+    }
 
     restoreLayout();
     empfehlungBtn.style.display = '';
