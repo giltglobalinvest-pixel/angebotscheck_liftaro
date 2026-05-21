@@ -2106,6 +2106,11 @@ const pdfWorkerReady = Promise.resolve();</script>
         Vorabcheck
         <span id="vorabcheckCountBadge" class="btn-badge" style="display:none">0</span>
       </button>
+      <button class="nav-pill" data-nav="emailinbox" onclick="openEmailInboxModal()" title="Email-Inbox — KI-klassifizierte eingehende Anfragen">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Email-Inbox
+        <span id="emailInboxBadge" class="btn-badge" style="display:none">0</span>
+      </button>
       <!-- Admin-only Direktlink zur Kunden-Landing -->
       <button id="adminLandingDirectBtn" class="nav-pill" onclick="openVorabcheckPublic()" title="Kunden-Landing direkt in neuem Tab öffnen (Admin)" style="display:none;background:rgba(125,194,66,.18);border-color:rgba(125,194,66,.45);color:#a8e070">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -2192,6 +2197,11 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button id="mobileVorabcheckHubBtn" class="mobile-menu-item" onclick="closeMobileMenu();openVorabcheckHub()" style="display:none">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Vorabcheck
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openEmailInboxModal()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Email-Inbox
+      <span id="emailInboxBadgeMobile" class="btn-badge" style="display:none;margin-left:auto;background:#a8312f;color:#fff;font-size:10px;padding:2px 7px;border-radius:8px">0</span>
     </button>
     <!-- Admin-only Direktlink zur Kunden-Landing (Mobile) -->
     <button id="mobileAdminLandingDirectBtn" class="mobile-menu-item" onclick="closeMobileMenu();openVorabcheckPublic()" style="display:none;background:rgba(125,194,66,.18);border-color:rgba(125,194,66,.4);color:#a8e070">
@@ -3254,6 +3264,98 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════════════
+     Email-Inbox-Modal — eingehende Emails aus val.town Email-Val
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:5060;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(1200px,96vw);height:min(820px,92vh);display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <!-- Header -->
+    <div style="background:#1a3a5c;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          <span>Email-Inbox</span>
+          <span id="emailInboxHeaderCount" style="background:rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:2px 9px;font-size:11.5px;font-weight:700">0</span>
+        </div>
+        <div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px">KI-klassifizierte eingehende Anfragen — pro Vorgang einen Check erstellen</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button onclick="loadEmailInbox(true)" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          Neu laden
+        </button>
+        <button onclick="closeEmailInboxModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;width:32px;height:32px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter-Pills (Status-Filter) -->
+    <div id="emailInboxFilters" style="padding:10px 22px;background:var(--sky);border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0">
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Status:</span>
+      <button class="ei-filt-pill" data-status="neu"            onclick="setEiFilter('neu')">neu</button>
+      <button class="ei-filt-pill" data-status="gesichtet"      onclick="setEiFilter('gesichtet')">gesichtet</button>
+      <button class="ei-filt-pill" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')">in Bearbeitung</button>
+      <button class="ei-filt-pill" data-status="geantwortet"    onclick="setEiFilter('geantwortet')">geantwortet</button>
+      <button class="ei-filt-pill" data-status="verworfen"      onclick="setEiFilter('verworfen')">verworfen</button>
+      <button class="ei-filt-pill" data-status="alle"           onclick="setEiFilter('alle')">alle</button>
+    </div>
+
+    <!-- 2-Spalten-Layout: Liste links, Detail rechts -->
+    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0;overflow:hidden">
+      <!-- Liste links -->
+      <div id="emailInboxList" style="border-right:1px solid var(--border);overflow-y:auto;background:#fafbfc">
+        <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Lade Emails …</div>
+      </div>
+      <!-- Detail rechts -->
+      <div id="emailInboxDetail" style="overflow-y:auto;padding:0">
+        <div style="padding:60px;text-align:center;color:var(--muted);font-size:13px">
+          <div style="font-size:36px;opacity:.3;margin-bottom:8px">📥</div>
+          Eine Email aus der Liste links auswählen
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CSS für Inbox -->
+<style id="emailInboxStyles">
+.ei-filt-pill { background:#fff; border:1.5px solid var(--border); color:var(--text); border-radius:14px; padding:4px 12px; font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:600; cursor:pointer; transition:all .12s; }
+.ei-filt-pill:hover { background:var(--sky2); }
+.ei-filt-pill.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+.ei-row { padding:12px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s; }
+.ei-row:hover { background:#f0f4f8; }
+.ei-row.selected { background:#e3edf7; border-left:3px solid var(--navy); padding-left:11px; }
+.ei-row-from { font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ei-row-subj { font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+.ei-row-meta { display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap; }
+.ei-row-date { font-size:10.5px; color:var(--muted); font-family:'DM Mono',monospace; margin-left:auto; }
+.ei-cls-pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; }
+.ei-cls-wartung { background:#0e6655; }
+.ei-cls-reparatur { background:#b8740c; }
+.ei-cls-rechnung { background:#7c3aed; }
+.ei-cls-korrespondenz { background:#5b6470; }
+.ei-cls-spam { background:#a8312f; }
+.ei-cls-multiple { background:#1a3a5c; }
+.ei-cls-unklar { background:#9ca3af; }
+.ei-conf-low    { opacity:.55; }
+.ei-conf-medium { opacity:.85; }
+.ei-conf-high   { opacity:1; }
+.ei-status-pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:600; background:#e5e7eb; color:#374151; }
+.ei-status-neu          { background:#fef3c7; color:#92400e; }
+.ei-status-gesichtet    { background:#dbeafe; color:#1e3a8a; }
+.ei-status-in_bearbeitung { background:#fce7f3; color:#9d174d; }
+.ei-status-geantwortet  { background:#d1fae5; color:#065f46; }
+.ei-status-verworfen    { background:#f3f4f6; color:#6b7280; text-decoration:line-through; }
+.ei-vc-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; }
+.ei-vc-typ-pill { display:inline-block; padding:3px 10px; border-radius:14px; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; margin-right:8px; }
+@media (max-width: 768px) {
+  #emailInboxBody { grid-template-columns: 1fr !important; }
+  #emailInboxList.detail-open { display:none; }
+  #emailInboxDetail.list-mode { display:none; }
+}
+</style>
+
 <!-- PWA-Install-Button (oben rechts, dezent): nur sichtbar wenn nicht installiert & installierbar -->
 <div id="pwaInstallBtn" style="display:none;position:fixed;right:16px;bottom:16px;z-index:81;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:24px;padding:10px 16px 10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none" onclick="installPwa()" title="Liftaro als Desktop-App installieren">
   <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -4120,7 +4222,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.99';
+const APP_VERSION = 'V10.0';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -4859,6 +4961,11 @@ async function setupTables() {
     { name: 'rc_bemerkungen',       type: 'multilineText' },
     { name: 'rc_empfehlung',        type: 'multilineText' },
     { name: 'rc_show_ansprechpartner', type: 'singleLineText' },
+    // Email-Inbox-Verknüpfung (Phase 2)
+    { name: 'email_source_id',  type: 'singleLineText' },  // Airtable-Record-ID der Quelle-Email
+    { name: 'email_from',       type: 'singleLineText' },
+    { name: 'email_subject',    type: 'singleLineText' },
+    { name: 'source',           type: 'singleLineText' },  // "email" | (sonst leer)
   ]);
   // Verträge-Tabelle
   try {
@@ -8932,6 +9039,7 @@ function appInit() {
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
   if (typeof updateInvoiceButtonVisibility === 'function') updateInvoiceButtonVisibility();
   if (typeof applyStatusFieldLock === 'function') applyStatusFieldLock();
+  if (typeof _initEmailInboxBadge === 'function') _initEmailInboxBadge();
 } // end appInit
 
 // ── AHW Wartungsvertrag generieren ───────────────────────────────
@@ -15027,6 +15135,356 @@ document.addEventListener('keydown', e => {
     closeMobileMenu();
   }
 });
+
+// ════════════════════════════════════════════════════════════════
+//  EMAIL-INBOX — eingehende Emails vom val.town Email-Val
+// ════════════════════════════════════════════════════════════════
+//  State (global, per Tab-Lifetime)
+let _eiAllRecords  = [];        // alle Emails aus Airtable, sortiert (neueste zuerst)
+let _eiFilter      = 'neu';     // aktiver Status-Filter
+let _eiSelectedId  = null;      // Airtable-Record-ID der gewählten Email
+
+function openEmailInboxModal() {
+  document.getElementById('emailInboxModal').style.display = 'flex';
+  setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
+  loadEmailInbox();
+}
+
+function closeEmailInboxModal() {
+  document.getElementById('emailInboxModal').style.display = 'none';
+}
+
+async function loadEmailInbox(silent) {
+  const listEl = document.getElementById('emailInboxList');
+  if (!silent) listEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Lade Emails …</div>';
+  try {
+    // Tabelle existiert ggf. noch nicht — atRead wirft dann; wir fangen das ab.
+    const recs = await atRead('Emails', null, { sort: false });
+    _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
+      .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+    renderEmailInboxList();
+    _refreshEmailInboxBadge();
+  } catch (e) {
+    listEl.innerHTML =
+      '<div style="padding:40px 24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6">' +
+      '<div style="font-size:32px;opacity:.3;margin-bottom:8px">📭</div>' +
+      'Noch keine Tabelle „Emails" in der Base.<br>' +
+      '<span style="font-size:11.5px">Sobald die erste Email an den val.town-Val<br>geht, wird die Tabelle automatisch angelegt.</span>' +
+      '</div>';
+    _eiAllRecords = [];
+    _refreshEmailInboxBadge();
+  }
+}
+
+function setEiFilter(status, skipRender) {
+  _eiFilter = status;
+  document.querySelectorAll('.ei-filt-pill').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-status') === status);
+  });
+  if (!skipRender) renderEmailInboxList();
+}
+
+function _eiFiltered() {
+  if (_eiFilter === 'alle') return _eiAllRecords;
+  return _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+}
+
+function renderEmailInboxList() {
+  const listEl = document.getElementById('emailInboxList');
+  const filt = _eiFiltered();
+  document.getElementById('emailInboxHeaderCount').textContent = filt.length;
+
+  if (filt.length === 0) {
+    listEl.innerHTML =
+      '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">' +
+      `Keine Emails mit Status „${_eiFilter}".</div>`;
+    return;
+  }
+  listEl.innerHTML = filt.map(r => {
+    const sel = (r._id === _eiSelectedId) ? ' selected' : '';
+    const cls = String(r.ki_classification || 'unklar').toLowerCase();
+    const conf = String(r.ki_confidence || 'low').toLowerCase();
+    const status = r.status || 'neu';
+    const date = String(r.received_at || '').slice(0, 16).replace('T', ' ');
+    const vcnt = r.ki_vorgaenge_count || 0;
+    return (
+      `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">` +
+        `<div class="ei-row-from">${_esc(r.from_name || r.from_email || '(unbekannt)')}</div>` +
+        `<div class="ei-row-subj">${_esc(r.subject || '(kein Betreff)')}</div>` +
+        `<div class="ei-row-meta">` +
+          `<span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>` +
+          (vcnt > 0 ? `<span style="font-size:10.5px;color:var(--muted);font-weight:600">${vcnt} Vorgang${vcnt>1?'änge':''}</span>` : '') +
+          `<span class="ei-status-pill ei-status-${status}">${_esc(status)}</span>` +
+          `<span class="ei-row-date">${_esc(date)}</span>` +
+        `</div>` +
+      `</div>`
+    );
+  }).join('');
+}
+
+function selectEmailRow(recId) {
+  _eiSelectedId = recId;
+  renderEmailInboxList();
+  renderEmailInboxDetail();
+}
+
+function renderEmailInboxDetail() {
+  const detEl = document.getElementById('emailInboxDetail');
+  if (!_eiSelectedId) {
+    detEl.innerHTML = '<div style="padding:60px;text-align:center;color:var(--muted);font-size:13px"><div style="font-size:36px;opacity:.3;margin-bottom:8px">📥</div>Eine Email aus der Liste links auswählen</div>';
+    return;
+  }
+  const r = _eiAllRecords.find(x => x._id === _eiSelectedId);
+  if (!r) { detEl.innerHTML = '<div style="padding:40px;color:#a8312f">Email nicht gefunden</div>'; return; }
+
+  // Parse Vorgänge
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (e) {}
+  if (!Array.isArray(vorgaenge)) vorgaenge = [];
+
+  const cls = String(r.ki_classification || 'unklar').toLowerCase();
+  const conf = String(r.ki_confidence || 'low');
+  const status = r.status || 'neu';
+  const attCount = r.attachment_count || (Array.isArray(r.attachments) ? r.attachments.length : 0);
+  const cost = (r.ki_cost_eur || 0).toFixed(4);
+
+  let html = `<div style="padding:20px 24px">`;
+
+  // Email-Header-Block
+  html += `<div style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">`;
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">`;
+  html += `<div style="font-size:15px;font-weight:700;color:var(--text)">${_esc(r.subject || '(kein Betreff)')}</div>`;
+  html += `<div style="display:flex;gap:6px;align-items:center">`;
+  html += `<span class="ei-cls-pill ei-cls-${cls}">${cls}</span>`;
+  html += `<span class="ei-status-pill ei-status-${status}">${_esc(status)}</span>`;
+  html += `</div></div>`;
+  html += `<div style="font-size:12px;color:var(--muted);line-height:1.6">`;
+  html += `<strong>Von:</strong> ${_esc(r.from_name ? `${r.from_name} <${r.from_email}>` : r.from_email)}<br>`;
+  html += `<strong>Empfangen:</strong> ${_esc(String(r.received_at||'').replace('T',' ').slice(0,19))} · `;
+  html += `<strong>Confidence:</strong> ${_esc(conf)} · `;
+  html += `<strong>KI-Kosten:</strong> ${cost} € · `;
+  html += `<strong>Anhänge:</strong> ${attCount}`;
+  html += `</div></div>`;
+
+  // KI-Summary
+  if (r.ki_summary) {
+    html += `<div style="background:#fff;border-left:3px solid var(--navy);padding:10px 14px;margin-bottom:16px;font-size:13px;line-height:1.5">`;
+    html += `<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">KI-Zusammenfassung</div>`;
+    html += _esc(r.ki_summary);
+    html += `</div>`;
+  }
+
+  // Vorgangs-Karten
+  if (vorgaenge.length > 0) {
+    html += `<div style="font-size:12px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 10px">Erkannte Vorgänge (${vorgaenge.length})</div>`;
+    vorgaenge.forEach((v, i) => {
+      const typColor = { wartung:'#0e6655', reparatur:'#b8740c', rechnung:'#7c3aed' }[v.typ] || '#5b6470';
+      html += `<div class="ei-vc-card">`;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">`;
+      html += `<span class="ei-vc-typ-pill" style="background:${typColor}">${_esc(v.typ || '?')}</span>`;
+      html += `<span style="font-weight:600;font-size:13.5px">${_esc(v.titel || '(ohne Titel)')}</span>`;
+      html += `</div>`;
+      html += `<div style="font-size:12px;line-height:1.7;color:var(--text)">`;
+      if (v.kunde_name || v.kunde_firma) html += `<strong>Kunde:</strong> ${_esc([v.kunde_name, v.kunde_firma].filter(Boolean).join(' — '))}<br>`;
+      if (v.kunde_email) html += `<strong>Email:</strong> ${_esc(v.kunde_email)}<br>`;
+      if (v.kunde_telefon) html += `<strong>Telefon:</strong> ${_esc(v.kunde_telefon)}<br>`;
+      if (v.objekt_adresse) html += `<strong>Objekt:</strong> ${_esc(v.objekt_adresse)}<br>`;
+      if (v.anlage_typ) html += `<strong>Anlage:</strong> ${_esc(v.anlage_typ)}<br>`;
+      if (v.anliegen_kurz) html += `<strong>Anliegen:</strong> ${_esc(v.anliegen_kurz)}<br>`;
+      html += `</div>`;
+      html += `<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">`;
+      html += `<button onclick="createCheckFromVorgang('${r._id}', ${i})" style="background:${typColor};color:#fff;border:none;border-radius:6px;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">`;
+      html += `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
+      html += `Check daraus erstellen`;
+      html += `</button>`;
+      html += `<button onclick="dismissVorgang('${r._id}', ${i})" style="background:#fff;color:var(--muted);border:1.5px solid var(--border);border-radius:6px;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer">`;
+      html += `Verwerfen</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    });
+  } else {
+    html += `<div style="padding:14px 16px;background:#fef9e7;border-left:3px solid #f59e0b;border-radius:6px;margin-bottom:16px;font-size:12.5px;line-height:1.6">`;
+    html += `Die KI hat keinen konkreten Prüf-Vorgang erkannt (klassifiziert als <strong>${cls}</strong>).`;
+    if (r.reply_draft) html += ` Ein Antwort-Entwurf wurde generiert (siehe unten).`;
+    html += `</div>`;
+  }
+
+  // Reply-Draft (falls vorhanden)
+  if (r.reply_draft) {
+    html += `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:18px">`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">`;
+    html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text)">KI-Antwortentwurf</div>`;
+    html += `<button onclick="copyText('eiReplyDraft_${r._id}')" style="background:var(--sky);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer">Kopieren</button>`;
+    html += `</div>`;
+    html += `<div id="eiReplyDraft_${r._id}" style="background:var(--sky);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.6;color:var(--text);white-space:pre-wrap">${_esc(r.reply_draft)}</div>`;
+    html += `<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">In Phase 3 wird daraus ein „Antwort senden"-Button mit PDF-Anhang.</div>`;
+    html += `</div>`;
+  }
+
+  // Email-Body
+  html += `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:18px">`;
+  html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text);margin-bottom:8px">Original-Body</div>`;
+  html += `<div style="font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--sky);padding:10px 12px;border-radius:6px">${_esc(r.body_text || '(leer)')}</div>`;
+  html += `</div>`;
+
+  // Anhänge
+  if (Array.isArray(r.attachments) && r.attachments.length) {
+    html += `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:18px">`;
+    html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text);margin-bottom:8px">Anhänge (${r.attachments.length})</div>`;
+    html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+    r.attachments.forEach(a => {
+      const fname = a.filename || a.name || 'Anhang';
+      const url = a.url || '';
+      const size = a.size ? (' · ' + Math.round(a.size/1024) + ' KB') : '';
+      html += `<a href="${_esc(url)}" target="_blank" style="background:var(--sky);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--navy);text-decoration:none;display:inline-flex;align-items:center;gap:8px">`;
+      html += `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`;
+      html += `${_esc(fname)}${size}`;
+      html += `</a>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Status-Buttons
+  html += `<div style="display:flex;gap:8px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);flex-wrap:wrap">`;
+  html += `<button onclick="setEmailStatus('${r._id}','gesichtet')" style="background:#dbeafe;color:#1e3a8a;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Als gesichtet markieren</button>`;
+  html += `<button onclick="setEmailStatus('${r._id}','in_bearbeitung')" style="background:#fce7f3;color:#9d174d;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">In Bearbeitung</button>`;
+  html += `<button onclick="setEmailStatus('${r._id}','verworfen')" style="background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Verwerfen</button>`;
+  html += `</div>`;
+
+  html += `</div>`;
+  detEl.innerHTML = html;
+}
+
+function _esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+async function setEmailStatus(recId, newStatus) {
+  try {
+    await atUpdate('Emails', recId, { status: newStatus, status_at: new Date().toISOString(), bearbeiter_name: (APP_KEYS.user || '') });
+    const r = _eiAllRecords.find(x => x._id === recId);
+    if (r) { r.status = newStatus; r.status_at = new Date().toISOString(); }
+    renderEmailInboxList();
+    renderEmailInboxDetail();
+    _refreshEmailInboxBadge();
+    showToast(`Email auf „${newStatus}" gesetzt.`, 'success');
+  } catch (e) {
+    showToast('Fehler beim Status-Update: ' + e.message, 'error');
+  }
+}
+
+async function dismissVorgang(recId, vIdx) {
+  // Vorgang als verworfen markieren: entferne ihn aus vorgaenge_json
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) return;
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  if (vIdx < 0 || vIdx >= vorgaenge.length) return;
+  if (!confirm(`Vorgang "${vorgaenge[vIdx].titel || ''}" verwerfen?`)) return;
+  vorgaenge.splice(vIdx, 1);
+  try {
+    await atUpdate('Emails', recId, {
+      vorgaenge_json: JSON.stringify(vorgaenge, null, 2),
+      ki_vorgaenge_count: vorgaenge.length,
+    });
+    r.vorgaenge_json = JSON.stringify(vorgaenge, null, 2);
+    r.ki_vorgaenge_count = vorgaenge.length;
+    renderEmailInboxDetail();
+    renderEmailInboxList();
+    showToast('Vorgang verworfen.', 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function createCheckFromVorgang(recId, vIdx) {
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) return;
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  const v = vorgaenge[vIdx];
+  if (!v) { showToast('Vorgang nicht gefunden', 'error'); return; }
+
+  showToast('Check wird erstellt …', 'info');
+  try {
+    // Neue Check-ID generieren
+    const newCheckId = await generateCheckId();
+    const checkType = (v.typ === 'rechnung') ? 'rechnung' : (v.typ === 'reparatur' ? 'reparatur' : 'wartung');
+
+    // Check-Record anlegen mit prefilled Daten
+    const fields = {
+      id:                   newCheckId,
+      requestid:            newCheckId,
+      datum:                new Date().toISOString().split('T')[0],
+      typ:                  checkType,
+      status:               'in Bearbeitung',
+      // Prefill aus Vorgang
+      f_hv_name:            v.kunde_firma || v.kunde_name || '',
+      f_ansprechpartner:    v.kunde_name || '',
+      f_email:              v.kunde_email || '',
+      f_tel:                v.kunde_telefon || '',
+      f_standort:           v.objekt_adresse || '',
+      f_anlage:             v.anlage_typ || '',
+      f_empfehlung:         v.anliegen_volltext || v.anliegen_kurz || '',
+      // Email-Verknüpfung
+      email_source_id:      recId,
+      email_from:           r.from_email || '',
+      email_subject:        r.subject || '',
+      source:               'email',
+    };
+    await atWrite('Checks', fields);
+
+    // Email-Record updaten: linked_check_ids + status
+    const newLinks = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    newLinks.push(newCheckId);
+    await atUpdate('Emails', recId, {
+      linked_check_ids:    newLinks.join(','),
+      linked_checks_count: newLinks.length,
+      status:              'in_bearbeitung',
+      status_at:           new Date().toISOString(),
+      bearbeiter_name:     (APP_KEYS.user || ''),
+    });
+    // State lokal aktualisieren
+    r.linked_check_ids    = newLinks.join(',');
+    r.linked_checks_count = newLinks.length;
+    r.status              = 'in_bearbeitung';
+
+    showToast(`Check ${newCheckId} angelegt — wird jetzt geladen …`, 'success');
+    // Modal schließen + Check öffnen (atomar)
+    closeEmailInboxModal();
+    if (typeof loadCheck === 'function') {
+      setTimeout(() => loadCheck(newCheckId), 300);
+    }
+    _refreshEmailInboxBadge();
+  } catch (e) {
+    console.error(e);
+    showToast('Check-Erstellung fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+function _refreshEmailInboxBadge() {
+  // Badge: Anzahl "neu"-Emails (Topbar + Mobile-Drawer)
+  const neuCnt = _eiAllRecords.filter(r => (r.status || 'neu') === 'neu').length;
+  ['emailInboxBadge', 'emailInboxBadgeMobile'].forEach(id => {
+    const badge = document.getElementById(id);
+    if (!badge) return;
+    if (neuCnt > 0) {
+      badge.textContent = String(neuCnt);
+      badge.style.display = 'inline-flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+// Beim App-Start: einmalig still laden, damit das Badge stimmt
+async function _initEmailInboxBadge() {
+  try {
+    const recs = await atRead('Emails', null, { sort: false });
+    _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }));
+    _refreshEmailInboxBadge();
+  } catch (_) { /* Tabelle ggf. noch nicht da — OK */ }
+}
 
 // ════════════════════════════════════════════════════════════════
 //  VORABCHECK-HUB — zentrale Admin-Oberfläche (4 Tabs)
