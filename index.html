@@ -1756,24 +1756,67 @@ const pdfWorkerReady = Promise.resolve();</script>
     #section-allgemein textarea,
     #section-allgemein select { background: #fff !important; color: var(--text) !important; }
 
-    /* Vergleichstabelle horizontal scrollbar — Touch-friendly */
-    .compare-table-wrap, .form-card div[style*="overflow:hidden"] { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+    /* Vergleichstabelle vertikal stacken auf Mobile — KEIN horizontaler Scroll,
+       sondern jede Zeile wird zu einer Card mit Kategorie als Header und
+       Bestand+Alternativ-Wert untereinander mit Label. */
+    .compare-table-wrap, .form-card div[style*="overflow:hidden"] { overflow-x: visible !important; }
     .compare-table {
-      min-width: 560px;       /* erzwingt horizontale Scrolling statt Quetschen */
-      font-size: 13px;
+      display: block; width: 100%;
+      font-size: 14px; min-width: 0 !important;
+    }
+    .compare-table thead { display: none; }
+    .compare-table tbody { display: block; }
+    .compare-table tr {
+      display: block;
+      background: var(--sky); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+    }
+    .compare-table td { display: block; padding: 4px 0; border: none !important; position: relative; }
+    .compare-table td:nth-child(1) {
+      font-weight: 700; color: var(--navy); font-size: 13px;
+      text-transform: uppercase; letter-spacing: .3px;
+      border-bottom: 1px dashed var(--border); padding-bottom: 6px; margin-bottom: 4px;
+    }
+    .compare-table td:nth-child(2)::before {
+      content: '🔵 Bestand'; display: block;
+      font-size: 10.5px; color: var(--muted); font-weight: 700;
+      text-transform: uppercase; letter-spacing: .3px; margin-bottom: 2px;
+    }
+    .compare-table td:nth-child(3)::before {
+      content: '🟢 Alternativ'; display: block;
+      font-size: 10.5px; color: #3d7a14; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .3px; margin-bottom: 2px; margin-top: 6px;
     }
     .compare-table input, .compare-table select {
-      min-height: 38px; font-size: 16px; /* iOS no-zoom */
+      min-height: 40px; font-size: 16px !important;
+      width: 100%; padding: 8px 10px; border-radius: 6px;
+      border: 1.5px solid var(--border) !important; background: #fff !important;
     }
-    .compare-table th, .compare-table td { padding: 6px 8px; }
+    .compare-table .compare-zus, .compare-table textarea { min-height: 60px; }
+    /* Verstecke leere Notiz-Zeilen (sync-buttons-Zeile etc.) — Erkennung über fehlende Inputs */
 
     /* Section-Inner: weniger Padding auf Mobile */
     .section .section-title { padding: 12px 14px !important; }
     .section .section-inner { padding: 14px !important; }
 
-    /* Upload-Zonen behalten wir versteckt (Drop&Drop ist auf Touch unbrauchbar) */
-    .upload-zone { display: none !important; }
-    /* aber die Vorschau-/Download-Buttons der Slots bleiben sichtbar — falls vorhanden */
+    /* Upload-Zonen auf Mobile als Tap-Buttons (kein Drop-Indicator) */
+    .upload-zone {
+      display: flex !important;
+      flex-direction: row; align-items: center; justify-content: flex-start;
+      gap: 12px; padding: 12px 14px !important;
+      background: var(--sky); border: 1.5px dashed var(--border); border-radius: 8px;
+      cursor: pointer; min-height: 50px;
+    }
+    .upload-zone .upload-icon { font-size: 22px !important; margin: 0 !important; }
+    .upload-zone .upload-label { font-size: 12px !important; line-height: 1.3; }
+    .upload-zone .upload-label strong { font-size: 13.5px; display: block; margin-bottom: 1px; }
+    .upload-zone .upload-name { font-size: 12px !important; color: #3d7a14; font-weight: 600; margin-top: 0 !important; }
+    /* Mobile-attached Side-Cards: kleines reset, weil sie in der Sidebar designed sind */
+    .side-card.mobile-attached-here { margin: 0 0 14px; border-radius: 12px; overflow: hidden; }
+    .side-card.mobile-attached-here .side-card-header { padding: 10px 14px; font-size: 14px; font-weight: 700; color: #fff; background: var(--navy); display: flex; align-items: center; gap: 8px; }
+    .side-card.mobile-attached-here .side-card-body { padding: 12px 14px; background: #fff; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; }
+    .side-card.mobile-attached-here .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+    .side-card.mobile-attached-here .btn-preview { flex: 1; min-height: 40px; padding: 8px 12px; border-radius: 6px; background: #fff; border: 1.5px solid var(--border); color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 
     /* === "Alle Checks" Modal: zuverlässiges Scrollen nur in der Liste === */
     #checksModal > div {
@@ -1836,6 +1879,43 @@ const pdfWorkerReady = Promise.resolve();</script>
       if (t && t !== 'default') document.body.setAttribute('data-theme', t);
     } catch(e) {}
   })();
+  // Mobile-Reorder: PDF-Upload-Slots aus der Sidebar in den Formular-Fluss umziehen
+  // — zwischen #section-allgemein und Wartungs-/Reparatur-Section. Auf Desktop unverändert.
+  function _mobileReorderUploadSlots() {
+    try {
+      var isMobile = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+      var slots = document.querySelectorAll('.side-card.mobile-attachable');
+      if (!slots.length) return;
+      var allg = document.getElementById('section-allgemein');
+      if (!allg || !allg.parentNode) return;
+      // Marker, an dem wir die Slots einhängen (direkt nach Allgemeine Daten)
+      var anchor = document.getElementById('mobile-slots-anchor');
+      if (isMobile) {
+        if (!anchor) {
+          anchor = document.createElement('div');
+          anchor.id = 'mobile-slots-anchor';
+          allg.parentNode.insertBefore(anchor, allg.nextSibling);
+        }
+        Array.prototype.forEach.call(slots, function(s) {
+          s.classList.add('mobile-attached-here');
+          if (s.parentNode !== anchor) anchor.appendChild(s);
+        });
+      } else if (anchor) {
+        var sb = document.querySelector('.sidebar');
+        Array.prototype.forEach.call(slots, function(s) {
+          s.classList.remove('mobile-attached-here');
+          if (sb && s.parentNode !== sb) sb.insertBefore(s, sb.firstChild);
+        });
+        anchor.remove();
+      }
+    } catch (e) { console.warn('mobileReorderUploadSlots:', e.message); }
+  }
+  document.addEventListener('DOMContentLoaded', _mobileReorderUploadSlots);
+  window.addEventListener('resize', function() {
+    if (window._mobileReorderTimer) clearTimeout(window._mobileReorderTimer);
+    window._mobileReorderTimer = setTimeout(_mobileReorderUploadSlots, 200);
+  });
+
   // Liftaro-Logo aus dem Form-Header (.fh-logo img) in Topbar & Login-Screen klonen
   document.addEventListener('DOMContentLoaded', function() {
     try {
@@ -2545,7 +2625,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   <!-- Sidebar -->
   <div class="sidebar">
 
-    <div class="side-card hide-on-mobile">
+    <div class="side-card mobile-attachable" data-mobile-pos="after-allgemein" data-mobile-order="1">
       <div class="side-card-header">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span id="zone1Title">Vorliegendes Angebot</span>
@@ -2571,7 +2651,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
 
-    <div class="side-card hide-on-mobile">
+    <div class="side-card mobile-attachable" data-mobile-pos="after-allgemein" data-mobile-order="2">
       <div class="side-card-header" style="background: var(--green2)">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         Alternativangebot
@@ -3931,7 +4011,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.92';
+const APP_VERSION = 'V9.93';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
