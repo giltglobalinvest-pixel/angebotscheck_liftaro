@@ -1787,10 +1787,42 @@ const pdfWorkerReady = Promise.resolve();</script>
       font-size: 10.5px; color: #3d7a14; font-weight: 700;
       text-transform: uppercase; letter-spacing: .3px; margin-bottom: 2px; margin-top: 6px;
     }
-    .compare-table input, .compare-table select {
+    /* Text/Number-Inputs + Selects: groß genug für Touch (16px = iOS-Anti-Zoom) */
+    .compare-table input:not([type="checkbox"]):not([type="radio"]),
+    .compare-table select {
       min-height: 40px; font-size: 16px !important;
       width: 100%; padding: 8px 10px; border-radius: 6px;
       border: 1.5px solid var(--border) !important; background: #fff !important;
+    }
+    /* Checkboxen NICHT auf 100% Breite strecken — sonst sind sie auf Mobile nicht
+       editierbar (oberes ::after-Häkchen bleibt im Eck, Klickfläche wirkt tot).
+       Stattdessen Touch-Größe 28×28 und linksbündig in der Zelle. */
+    .compare-table input[type="checkbox"],
+    .compare-table input.w-check {
+      width: 28px !important; height: 28px !important;
+      min-height: 28px !important; padding: 0 !important;
+      border-radius: 6px !important;
+      border: 2px solid var(--border) !important;
+      background: #fff !important;
+      cursor: pointer; flex: 0 0 auto;
+      display: inline-block !important;
+    }
+    .compare-table input.w-check:checked {
+      background: var(--navy) !important;
+      border-color: var(--navy) !important;
+    }
+    .compare-table input.w-check:checked::after {
+      content: '✓'; position: absolute; top: 1px; left: 5px;
+      font-size: 18px; color: #fff; font-weight: 700; line-height: 1;
+    }
+    /* Checkbox-Zellen: Pseudo-Label inline + Box rechts, mit ordentlichem Tap-Target */
+    .compare-table td:has(input[type="checkbox"]) {
+      display: flex !important; align-items: center !important;
+      justify-content: space-between !important; gap: 12px;
+      padding: 8px 4px !important; min-height: 44px;
+    }
+    .compare-table td:has(input[type="checkbox"])::before {
+      margin-bottom: 0 !important; margin-top: 0 !important;
     }
     .compare-table .compare-zus, .compare-table textarea { min-height: 60px; }
     /* Verstecke leere Notiz-Zeilen (sync-buttons-Zeile etc.) — Erkennung über fehlende Inputs */
@@ -1890,34 +1922,67 @@ const pdfWorkerReady = Promise.resolve();</script>
       if (t && t !== 'default') document.body.setAttribute('data-theme', t);
     } catch(e) {}
   })();
-  // Mobile-Reorder: PDF-Upload-Slots aus der Sidebar in den Formular-Fluss umziehen
-  // — zwischen #section-allgemein und Wartungs-/Reparatur-Section. Auf Desktop unverändert.
+  // Mobile-Reorder: Sidebar-Cards mit class="mobile-attachable" wandern in den
+  // Formular-Fluss. data-mobile-pos="after-allgemein|after-wartung|after-reparatur|
+  // after-rechnung" steuert die Zielsektion. Auf Desktop werden die Cards an ihre
+  // Original-Position in der Sidebar zurückgelegt (per gespeicherter Sibling-Ref).
   function _mobileReorderUploadSlots() {
     try {
       var isMobile = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
       var slots = document.querySelectorAll('.side-card.mobile-attachable');
       if (!slots.length) return;
-      var allg = document.getElementById('section-allgemein');
-      if (!allg || !allg.parentNode) return;
-      // Marker, an dem wir die Slots einhängen (direkt nach Allgemeine Daten)
-      var anchor = document.getElementById('mobile-slots-anchor');
-      if (isMobile) {
-        if (!anchor) {
-          anchor = document.createElement('div');
-          anchor.id = 'mobile-slots-anchor';
-          allg.parentNode.insertBefore(anchor, allg.nextSibling);
+
+      // Erstaufruf: Original-Sidebar-Position pro Slot merken (Parent + Next-Sibling)
+      Array.prototype.forEach.call(slots, function(s) {
+        if (!s._origParent) {
+          s._origParent  = s.parentNode;
+          s._origSibling = s.nextSibling;
         }
+      });
+
+      var posMap = {
+        'after-allgemein': 'section-allgemein',
+        'after-wartung':   'section-wartung',
+        'after-reparatur': 'section-reparatur',
+        'after-rechnung':  'section-rechnung'
+      };
+
+      function getAnchor(pos) {
+        var anchorId = 'mobile-slots-anchor-' + pos;
+        var anchor   = document.getElementById(anchorId);
+        if (anchor) return anchor;
+        var sectId = posMap[pos] || posMap['after-allgemein'];
+        var sect = document.getElementById(sectId);
+        if (!sect || !sect.parentNode) return null;
+        anchor = document.createElement('div');
+        anchor.id = anchorId;
+        anchor.className = 'mobile-slots-anchor';
+        sect.parentNode.insertBefore(anchor, sect.nextSibling);
+        return anchor;
+      }
+
+      if (isMobile) {
         Array.prototype.forEach.call(slots, function(s) {
+          var pos = s.getAttribute('data-mobile-pos') || 'after-allgemein';
+          var anchor = getAnchor(pos);
+          if (!anchor) return;
           s.classList.add('mobile-attached-here');
           if (s.parentNode !== anchor) anchor.appendChild(s);
         });
-      } else if (anchor) {
-        var sb = document.querySelector('.sidebar');
+      } else {
+        // Desktop: zurück an Originalposition (vor gemerkten nextSibling)
         Array.prototype.forEach.call(slots, function(s) {
           s.classList.remove('mobile-attached-here');
-          if (sb && s.parentNode !== sb) sb.insertBefore(s, sb.firstChild);
+          if (s._origParent && s.parentNode !== s._origParent) {
+            try {
+              s._origParent.insertBefore(s,
+                s._origSibling && s._origSibling.parentNode === s._origParent
+                  ? s._origSibling : null);
+            } catch(e) { s._origParent.appendChild(s); }
+          }
         });
-        anchor.remove();
+        var anchors = document.querySelectorAll('.mobile-slots-anchor, #mobile-slots-anchor');
+        Array.prototype.forEach.call(anchors, function(a) { a.remove(); });
       }
     } catch (e) { console.warn('mobileReorderUploadSlots:', e.message); }
   }
@@ -2703,7 +2768,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
 
-    <div class="side-card hide-on-mobile">
+    <div class="side-card mobile-attachable" data-mobile-pos="after-wartung" data-mobile-order="1">
       <div id="ahwCardHeader" class="side-card-header" style="background:#2a5c3a;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span id="ahw-card-title" style="flex-shrink:0;white-space:nowrap">Alternativangebot</span>
@@ -4029,7 +4094,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.95';
+const APP_VERSION = 'V9.96';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
