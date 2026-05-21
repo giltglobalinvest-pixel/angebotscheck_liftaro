@@ -689,9 +689,7 @@ export default async function (req: Request): Promise<Response> {
           parteien_count: Number(vc.parteien_count || 0),
           role: vc.role || '',
           eigentuemer_name: [lead.vorname, lead.nachname].filter(Boolean).join(' '),
-          // Objekt-Adresse: KI-extrahiert > Step-4-bestätigt > Lead-Adresse (Reihenfolge umgedreht zu V9.85)
           objekt_adresse: String(vc.objekt_adresse || lead.adresse || ''),
-          // HV-Daten aus Eigentümer-CTA → die Verwalter-Landing füllt sie vor, HV bestätigt nur
           hv_name:    vc.hv_name    || '',
           hv_email:   vc.hv_email   || '',
           hv_telefon: vc.hv_telefon || '',
@@ -723,10 +721,8 @@ export default async function (req: Request): Promise<Response> {
           verwalter_response_at: new Date().toISOString(),
           verwalter_status: 'antwort_erhalten',
         };
-        // HV-Firma (neu in V9.86): kommt aus der Verwalter-Landing wenn keine hv_name aus Eigentümer-CTA da war
         const vFirma = String(v.firma || '').trim();
         if (vFirma) fields.verwalter_firma_name = vFirma;
-        // HV bestätigt/korrigiert Objekt-Adresse: in eigenes Feld + auch objekt_adresse aktualisieren
         const vObj = String(v.objekt_adresse || '').trim();
         if (vObj) { fields.verwalter_objekt_adresse = vObj; fields.objekt_adresse = vObj; }
         if (body.responses) fields.verwalter_response_json = JSON.stringify(body.responses);
@@ -746,8 +742,6 @@ export default async function (req: Request): Promise<Response> {
           fields.vertrag_extracted_source = 'konfig';
         }
         if (body.pdf_base64 && body.pdf_base64.length > 100) {
-          // PDF nur als Attachment speichern — KI-Analyse läuft später im Vertragscheck-Frontend
-          // über die bereits existierende handleFile()→extractFromPDF()-Pipeline.
           const fname = String(body.pdf_name || 'vertrag.pdf');
           try {
             const up = await fetch('https://content.airtable.com/v0/' + b + '/' + recId + '/verwalter_response_pdf/uploadAttachment', {
@@ -805,6 +799,37 @@ export default async function (req: Request): Promise<Response> {
         };
         const res = await atPatchRetry('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, k, fields, 15);
         return res.ok ? jsonResp({ ok: true, linked: fields.linked_check_requestid }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
+      } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
+    }
+    // HV in Pipedrive synchronisieren (Duplikat-Check, dann ggf. anlegen)
+    if (body.action === 'sync_hv_pipedrive') {
+      const hvName = String(body.hv_name || '').trim();
+      if (!hvName) return jsonResp({ ok: false, error: 'hv_name pflicht' }, 400, corsHeaders);
+      try {
+        const ex = await findPipedriveOrgByName(hvName);
+        if (ex?.id) return jsonResp({ ok: true, action: 'found', org_id: ex.id, org_name: ex.name || hvName }, 200, corsHeaders);
+        const c = await createPipedriveOrgWithEmail({
+          name: hvName,
+          email: String(body.hv_email || '').trim() || undefined,
+          city:  String(body.hv_adresse || '').trim() || undefined,
+          source: body.hv_adresse ? 'ki_web' : 'user_verifiziert',
+        });
+        if (!c.ok || !c.org_id) return jsonResp({ ok: false, error: 'create failed' }, 500, corsHeaders);
+        // Note (best-effort)
+        try {
+          const cfg = await loadPipedriveConfig();
+          if (cfg && (body.check_nr || body.hv_telefon || body.hv_adresse)) {
+            const note = 'Aus Liftaro-Vertragscheck' +
+              (body.check_nr ? '\nCheck-Nr: ' + body.check_nr : '') +
+              (body.hv_telefon ? '\nTel: ' + body.hv_telefon : '') +
+              (body.hv_adresse ? '\nAdresse: ' + body.hv_adresse : '');
+            await fetch('https://' + cfg.domain + '/api/v1/notes?api_token=' + encodeURIComponent(cfg.token), {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: note, org_id: c.org_id }),
+            }).catch(() => {});
+          }
+        } catch (_) {}
+        return jsonResp({ ok: true, action: 'created', org_id: c.org_id }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
     // Objekt-Adresse nachträglich am Vorab-Check-Record patchen (Step-4-Bestätigung der Public-Landing)
@@ -920,7 +945,6 @@ export default async function (req: Request): Promise<Response> {
         let orgId: number | null = org?.id || null;
         let orgCreated = false;
         if (!orgId) {
-          // Bei neuer Org: Web-Adresse als Pipedrive-Address-Feld nutzen, Source 'ki_web' wenn aus Web-Suche
           const created = await createPipedriveOrgWithEmail({
             name: hvName,
             email: isGenericHvEmail(hvEmail) ? hvEmail : undefined,
@@ -930,7 +954,6 @@ export default async function (req: Request): Promise<Response> {
           if (created.ok && created.org_id) {
             orgId = created.org_id;
             orgCreated = true;
-            // Telefon + Website als Note an die neue Org haengen (Pipedrive-Org-Update fuer custom fields umstaendlich)
             if (hvTelefon || hvWebsite) {
               const cfgN = await loadPipedriveConfig();
               if (cfgN) {
@@ -996,7 +1019,6 @@ export default async function (req: Request): Promise<Response> {
           });
         }
 
-        // HV-Daten zusaetzlich in Vorab-Checks-Row patchen (damit alles an EINER Stelle steht)
         try {
           const ak = Deno.env.get("AIRTABLE_KEY"); const ab = Deno.env.get("AIRTABLE_BASE_ID");
           if (ak && ab && checkNr && checkNr !== '—') {
@@ -1011,21 +1033,7 @@ export default async function (req: Request): Promise<Response> {
               if (hvWebsite) hvFields.hv_website = hvWebsite;
               if (orgId)     hvFields.hv_pipedrive_org_id = String(orgId);
               if (Object.keys(hvFields).length) {
-                // PATCH mit Retry-on-Unknown-Field
-                let fields: any = { ...hvFields };
-                for (let i = 0; i < 12; i++) {
-                  const pr = await fetch('https://api.airtable.com/v0/' + ab + '/Vorab-Checks/' + rId, {
-                    method: 'PATCH',
-                    headers: { Authorization: 'Bearer ' + ak, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fields }),
-                  });
-                  if (pr.ok) break;
-                  const txt = await pr.text();
-                  let bad = '';
-                  try { const j = JSON.parse(txt); const msg = j?.error?.message || ''; const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i); if (m) bad = m[1]; } catch (_) {}
-                  if (bad && Object.prototype.hasOwnProperty.call(fields, bad)) { delete fields[bad]; continue; }
-                  break;
-                }
+                await atPatchRetry('https://api.airtable.com/v0/' + ab + '/Vorab-Checks/' + rId, ak, hvFields, 12);
               }
             }
           }
@@ -1047,7 +1055,7 @@ export default async function (req: Request): Promise<Response> {
         prompts: DEFAULT_SYSTEM_PROMPTS,
         role_contexts: ROLE_CONTEXTS,
         model: MODEL,
-        backend_version: 'V9.87',
+        backend_version: 'V9.90',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
       }, 200, corsHeaders);
     }
@@ -1106,7 +1114,7 @@ export default async function (req: Request): Promise<Response> {
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
-        backend_version: 'V9.87',
+        backend_version: 'V9.90',
         backend_features: ['set_bearbeiter_status', 'link_followup_check', 'vertrag_mapping_konfig', 'patch_retry_on_unknown_field', 'ensure_vorabcheck_schema', 'verwalter_pdf_attachment'],
         model: MODEL,
       }, 200, corsHeaders);
