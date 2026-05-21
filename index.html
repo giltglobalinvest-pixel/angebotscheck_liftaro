@@ -3917,7 +3917,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.89';
+const APP_VERSION = 'V9.90';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
@@ -5206,6 +5206,25 @@ async function saveCheck(reporter) {
       } catch (e) {
         console.warn('link_followup_check failed:', e.message);
         r.error('backlink', e.message);
+      }
+    }
+
+    // Pipedrive-Sync (HV als Org) — nur bei Wartungs-Checks, fire-and-forget
+    if (data.checkType === 'wartung' && data.wt_firma) {
+      r.step('pipedrive', 'HV in Pipedrive prüfen/anlegen');
+      try {
+        const pd = await syncHvToPipedrive({
+          hv_name:    data.wt_firma,
+          hv_email:   data.wt_email,
+          hv_telefon: data.wt_tel,
+          hv_adresse: data.wt_anschrift,
+          check_nr:   data.vorabcheck_ref || data.anfrageNr || data.requestId,
+        });
+        if (pd && pd.ok) r.done('pipedrive', pd.action === 'created' ? 'HV in Pipedrive angelegt (Org #' + pd.org_id + ')' : pd.action === 'found' ? 'HV war bereits in Pipedrive' : 'OK');
+        else r.error('pipedrive', pd?.error || 'unbekannt');
+      } catch (e) {
+        console.warn('[Pipedrive-Sync] saveCheck:', e.message);
+        r.error('pipedrive', e.message);
       }
     }
 
@@ -9276,6 +9295,30 @@ async function getKundenCache() {
   }
 }
 
+// HV in Pipedrive synchronisieren — prüft per Duplikat-Check (Name), legt nur an wenn neu.
+// Wird vom Speichern-Workflow + vom "Kunde speichern"-Button aufgerufen.
+async function syncHvToPipedrive(opts) {
+  opts = opts || {};
+  const hvName    = String(opts.hv_name    || document.getElementById('wt_firma')?.value     || document.getElementById('f_firma')?.value || '').trim();
+  if (!hvName) return { ok: false, skipped: true, reason: 'no_hv_name' };
+  if (!APP_KEYS.vorabcheckProxyUrl) return { ok: false, skipped: true, reason: 'no_proxy' };
+  try {
+    const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'sync_hv_pipedrive',
+        hv_name: hvName,
+        hv_email:   String(opts.hv_email   || document.getElementById('wt_email')?.value     || '').trim(),
+        hv_telefon: String(opts.hv_telefon || document.getElementById('wt_tel')?.value       || '').trim(),
+        hv_adresse: String(opts.hv_adresse || document.getElementById('wt_anschrift')?.value || '').trim(),
+        check_nr:   String(opts.check_nr   || window._vorabcheckRefForNewCheck || document.getElementById('f_anfrageNr')?.value || '').trim(),
+      }),
+    });
+    const d = await r.json();
+    return d;
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
 async function saveCurrentBetreiberAsKunde() {
   const firma = (document.getElementById('f_firma')?.value || '').trim();
   const name  = (document.getElementById('f_name')?.value  || '').trim();
@@ -9309,6 +9352,14 @@ async function saveCurrentBetreiberAsKunde() {
     }
     _kundenCache = null; // invalidate
     if (typeof refreshKundenBadge === 'function') refreshKundenBadge();
+    // Parallel: HV in Pipedrive synchronisieren (Duplikat-Check, dann ggf. anlegen)
+    try {
+      const pd = await syncHvToPipedrive({});
+      if (pd && pd.ok) {
+        if (pd.action === 'created') showToast('🎯 HV "' + firma + '" auch in Pipedrive angelegt', 'ok');
+        else if (pd.action === 'found') showToast('🎯 HV "' + firma + '" war bereits in Pipedrive', 'ok');
+      }
+    } catch (e) { console.warn('[Pipedrive-Sync] fehlgeschlagen:', e.message); }
   } catch (e) {
     console.error('[Kunden] Save Fehler:', e);
     if (typeof showToast === 'function') showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
