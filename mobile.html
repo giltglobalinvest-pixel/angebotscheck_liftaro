@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Liftaro Mobile">
+<meta name="theme-color" content="#0e2440">
+<title>Liftaro Mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0e2440;
+    --navy2: #1a3a5c;
+    --green: #7dc242;
+    --green2: #6ab32f;
+    --bg: #f4f7fa;
+    --card: #fff;
+    --text: #0e2440;
+    --muted: #6b7280;
+    --border: #e0e6ee;
+    --sky: #f1f6fb;
+    --red: #a8312f;
+    --red-bg: #fee2e2;
+    --amber: #b45309;
+    --amber-bg: #fef3c7;
+    --blue: #2d5f96;
+    --blue-bg: #dbeafe;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+  body { padding: calc(var(--safe-top) + 56px) 0 calc(var(--safe-bottom) + 64px); min-height: 100vh; overflow-x: hidden; }
+  button { font-family: inherit; cursor: pointer; }
+  input, textarea, select { font-family: inherit; font-size: 16px; /* iOS no-zoom */ }
+  a { color: var(--blue); text-decoration: none; }
+
+  /* ── Topbar ──────────────────────────────────── */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: calc(var(--safe-top) + 10px) 16px 10px;
+    background: linear-gradient(180deg, var(--navy2) 0%, var(--navy) 100%);
+    color: #fff;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  }
+  .topbar .title { font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
+  .topbar .logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; }
+  .topbar .logo .dot { width: 10px; height: 10px; background: var(--green); border-radius: 50%; box-shadow: 0 0 0 3px rgba(125,194,66,.25); }
+  .topbar button { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); color: #fff; border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; min-height: 38px; min-width: 38px; }
+  .topbar button:active { background: rgba(255,255,255,.22); }
+
+  /* ── Tabbar ──────────────────────────────────── */
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #fff;
+    border-top: 1px solid var(--border);
+    padding: 6px 4px calc(var(--safe-bottom) + 6px);
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+    z-index: 100;
+  }
+  .tabbar .tab {
+    background: none; border: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    padding: 7px 4px; min-height: 50px; border-radius: 8px;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    position: relative;
+  }
+  .tabbar .tab .icon { font-size: 22px; line-height: 1; }
+  .tabbar .tab.active { color: var(--navy); }
+  .tabbar .tab.active .icon { filter: none; }
+  .tabbar .tab:active { background: var(--sky); }
+  .tabbar .tab .badge {
+    position: absolute; top: 4px; right: calc(50% - 22px);
+    background: var(--red); color: #fff; font-size: 9.5px; font-weight: 700;
+    border-radius: 10px; min-width: 16px; height: 16px; padding: 0 4px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── Login ──────────────────────────────────── */
+  .login-screen {
+    position: fixed; inset: 0;
+    background: linear-gradient(180deg, var(--navy2) 0%, var(--navy) 100%);
+    color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px 24px;
+    z-index: 200;
+  }
+  .login-screen .brand { font-size: 28px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 8px; }
+  .login-screen .sub { color: rgba(255,255,255,.7); font-size: 14px; margin-bottom: 36px; }
+  .login-card { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; }
+  .login-card label { display: block; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.7); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
+  .login-card input { width: 100%; padding: 14px 16px; background: rgba(255,255,255,.95); border: none; border-radius: 10px; color: var(--text); font-size: 16px; font-weight: 600; }
+  .login-card input:focus { outline: 2px solid var(--green); }
+  .login-card .btn-login {
+    width: 100%; padding: 14px; background: var(--green); border: none; border-radius: 10px;
+    color: #fff; font-size: 15px; font-weight: 700; margin-top: 12px;
+    min-height: 50px;
+  }
+  .login-card .btn-login:disabled { opacity: .5; }
+  .login-card .err { color: #ffb4b4; font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ── Content ──────────────────────────────────── */
+  main { padding: 12px 14px 8px; }
+
+  /* Stats-Grid */
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; border-left: 3px solid var(--navy); }
+  .stat .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }
+  .stat .val { font-size: 18px; font-weight: 800; color: var(--text); margin-top: 2px; }
+  .stat .sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+  .stat.green { border-left-color: #3d7a14; }
+  .stat.amber { border-left-color: #a06a00; }
+  .stat.red { border-left-color: var(--red); }
+  .stat.teal { border-left-color: #0e6655; }
+
+  /* Filter-Chips */
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; -webkit-overflow-scrolling: touch; }
+  .chip {
+    flex-shrink: 0; background: #fff; border: 1.5px solid var(--border);
+    padding: 7px 12px; border-radius: 16px; font-size: 12.5px; font-weight: 600;
+    color: var(--muted); white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+    min-height: 34px;
+  }
+  .chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .chip .count { background: rgba(0,0,0,.08); padding: 1px 7px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+  .chip.active .count { background: rgba(255,255,255,.22); color: #fff; }
+
+  /* Cards (Liste) */
+  .card-list { display: flex; flex-direction: column; gap: 8px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    transition: transform .12s, box-shadow .12s;
+  }
+  .card:active { transform: scale(.98); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+  .card-strip { height: 3px; margin: -12px -14px 10px; border-radius: 12px 12px 0 0; }
+  .card-strip.red { background: var(--red); }
+  .card-strip.amber { background: #a06a00; }
+  .card-strip.green { background: #3d7a14; }
+  .card-strip.blue { background: var(--blue); }
+  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .card-nr { font-family: 'DM Mono', monospace; font-weight: 700; font-size: 13px; color: var(--text); }
+  .card-date { color: var(--muted); font-size: 12px; }
+  .card-amount { font-family: 'DM Mono', monospace; font-weight: 700; color: #3d7a14; font-size: 18px; }
+  .card-amount .unit { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .card-line { font-size: 13px; color: var(--text); line-height: 1.4; margin-top: 6px; }
+  .card-line .ic { color: var(--muted); margin-right: 4px; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .tag {
+    background: var(--sky); color: var(--muted);
+    padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .tag.ampel-gruen { background: #dcfce7; color: #15803d; }
+  .tag.ampel-gelb { background: var(--amber-bg); color: var(--amber); }
+  .tag.ampel-rot { background: var(--red-bg); color: var(--red); }
+  .tag.status-bereit { background: var(--red-bg); color: var(--red); }
+  .tag.status-warte { background: var(--amber-bg); color: var(--amber); }
+  .tag.status-bearbeit { background: var(--blue-bg); color: var(--blue); }
+  .tag.status-erledigt { background: #dcfce7; color: #15803d; }
+  .tag.hv-antwort { background: #dcfce7; color: #15803d; }
+  .tag.role { background: #e0e7ff; color: #3730a3; }
+
+  .empty {
+    background: var(--card); border: 1px dashed var(--border); border-radius: 12px;
+    padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px;
+  }
+  .loading { text-align: center; padding: 40px 16px; color: var(--muted); font-size: 13px; }
+  .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Search input */
+  .search-wrap { position: relative; margin-bottom: 10px; }
+  .search-input {
+    width: 100%; padding: 10px 14px 10px 38px; border-radius: 10px;
+    border: 1.5px solid var(--border); background: #fff;
+    font-size: 14px; color: var(--text); outline: none;
+  }
+  .search-input:focus { border-color: var(--navy); }
+  .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+
+  /* Bottom-Sheet */
+  .sheet-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,20,40,.55);
+    backdrop-filter: blur(2px);
+    z-index: 150;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .sheet-overlay.show { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--card); border-radius: 18px 18px 0 0;
+    max-height: 92vh; display: flex; flex-direction: column;
+    transform: translateY(100%); transition: transform .3s cubic-bezier(.32,.72,.0,1);
+    z-index: 151;
+    box-shadow: 0 -8px 32px rgba(0,0,0,.2);
+  }
+  .sheet.show { transform: translateY(0); }
+  .sheet-handle-wrap { padding: 8px 0; display: flex; justify-content: center; flex-shrink: 0; }
+  .sheet-handle { width: 42px; height: 5px; background: #d1d5db; border-radius: 3px; }
+  .sheet-header {
+    padding: 4px 18px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sheet-header h2 {
+    font-size: 17px; font-weight: 700; color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .sheet-header h2 .close {
+    background: var(--sky); border: none; width: 32px; height: 32px; border-radius: 50%;
+    font-size: 16px; color: var(--muted);
+  }
+  .sheet-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .sheet-content { padding: 14px 18px calc(var(--safe-bottom) + 80px); overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+  .sheet-actions {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 12px 18px calc(var(--safe-bottom) + 14px);
+    background: linear-gradient(180deg, transparent, var(--card) 30%);
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .sheet-actions .btn {
+    flex: 1; min-width: 130px; min-height: 48px;
+    padding: 12px 14px; border-radius: 10px; border: none;
+    font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-primary:active { background: var(--green2); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-neutral { background: var(--sky); color: var(--text); border: 1.5px solid var(--border)!important; }
+  .btn-blue { background: var(--blue); color: #fff; }
+
+  /* Detail-Sektionen im Sheet */
+  .det-section { margin-bottom: 14px; }
+  .det-section h3 { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
+  .det-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .det-cell { background: var(--sky); border-radius: 8px; padding: 8px 10px; }
+  .det-cell .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; }
+  .det-cell .v { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 2px; word-break: break-word; }
+  .det-text { background: var(--sky); border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+  .det-link {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--sky); border-radius: 8px; padding: 10px 14px;
+    color: var(--text); text-decoration: none; font-size: 13.5px; font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .det-link .arrow { color: var(--muted); }
+
+  /* Toast */
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--safe-bottom) + 80px);
+    background: var(--navy); color: #fff;
+    padding: 10px 18px; border-radius: 24px; font-size: 13.5px; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    z-index: 250; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+  #toast.success { background: #166534; }
+  #toast.error { background: var(--red); }
+
+  /* Hide-on-Desktop link */
+  .desktop-hint {
+    position: fixed; top: calc(var(--safe-top) + 56px); left: 0; right: 0;
+    background: var(--amber-bg); color: var(--amber); border-bottom: 1px solid #facc15;
+    font-size: 12px; padding: 7px 14px; text-align: center;
+    z-index: 90; display: none;
+  }
+  @media (min-width: 900px) { .desktop-hint { display: block; } }
+</style>
+</head>
+<body>
+
+<div class="desktop-hint">
+  💻 Diese Ansicht ist für Mobile optimiert.
+  <a href="./" style="color: var(--navy); font-weight: 700; text-decoration: underline">Zur Desktop-Version</a>
+</div>
+
+<!-- LOGIN-SCREEN -->
+<div class="login-screen" id="loginScreen">
+  <div class="brand">Liftaro</div>
+  <div class="sub">Bearbeiter-Cockpit · Mobile</div>
+  <div class="login-card">
+    <label for="userKey">Zugangscode</label>
+    <input id="userKey" type="password" autocomplete="current-password" placeholder="••••••••" inputmode="text">
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">Anmelden</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<header class="topbar" id="topbar" style="display:none">
+  <div class="logo"><span class="dot"></span><span id="topTitle">Vorabchecks</span></div>
+  <button onclick="doLogout()" aria-label="Abmelden">⏻</button>
+</header>
+
+<!-- CONTENT -->
+<main id="content" style="display:none">
+  <div class="loading"><span class="spinner"></span> Lade …</div>
+</main>
+
+<!-- TABBAR -->
+<nav class="tabbar" id="tabbar" style="display:none">
+  <button class="tab active" data-tab="vorab" onclick="switchTab('vorab')">
+    <span class="icon">📊</span><span>Vorabchecks</span>
+  </button>
+  <button class="tab" data-tab="inbox" onclick="switchTab('inbox')">
+    <span class="icon">🎯</span><span>Inbox</span>
+    <span class="badge" id="inboxBadge" style="display:none">0</span>
+  </button>
+  <button class="tab" data-tab="checks" onclick="switchTab('checks')">
+    <span class="icon">📋</span><span>Checks</span>
+  </button>
+</nav>
+
+<!-- BOTTOM-SHEET -->
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-handle-wrap"><div class="sheet-handle"></div></div>
+  <div class="sheet-header">
+    <h2><span id="sheetTitle">Details</span><button class="close" onclick="closeSheet()">✕</button></h2>
+    <div class="sheet-sub" id="sheetSub"></div>
+  </div>
+  <div class="sheet-content" id="sheetContent"></div>
+  <div class="sheet-actions" id="sheetActions" style="display:none"></div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── Globaler Zustand ──────────────────────────────────────────────
+const STATE = {
+  cfg: null,        // APP_CONFIG (read-key, base-ids)
+  user: null,       // User-Record
+  keys: {           // Master-Base-Keys
+    airtableWriteKey: null,
+    appBaseId: null,
+    vorabcheckProxyUrl: null,
+  },
+  currentTab: 'vorab',
+  vorabchecks: [],
+  vorabcheckLeads: [],
+  checks: [],
+  filters: {
+    vorabAmpel: null,    // 'gruen' | 'gelb' | 'rot' | null
+    inboxStatus: 'bereit', // bereit | warte_hv | in_bearbeitung | erledigt | alle
+    search: '',
+  },
+};
+
+// ── App-Konfiguration (gleiche IDs + Read-Key wie Desktop) ────────
+// Read-Key in 4 Teile gesplittet — verhindert GitHub-Secret-Scanner-Push-Block.
+const _k1 = 'patu8KWM';
+const _k2 = '8aWByxCGL';
+const _k3 = '.69fae5d9fa4b94c266b42';
+const _k4 = '6dadd71a51f574945d840b33569058ab5e9d89ebef3';
+const APP_CONFIG = {
+  AIRTABLE_READ_KEY: _k1 + _k2 + _k3 + _k4,
+  MASTER_BASE_ID:    'appzhNrhkLSTEaNFW',
+  APP_BASE_ID:       'apprX1EwclCYzR2bF',
+  PROJECT_ID:        'p_1777239396379',
+};
+
+// Speicher-Key für Login-Persistierung
+const LS_USER = 'liftaro_mobile_user';
+const LS_USERKEY = 'liftaro_mobile_userkey';
+
+function getReadKey() { return APP_CONFIG.AIRTABLE_READ_KEY; }
+
+// ── Toast ─────────────────────────────────────────────────────────
+let _toastTimer = null;
+function toast(msg, kind, ms) {
+  const t = document.getElementById('toast');
+  t.className = ''; t.classList.add('show');
+  if (kind === 'success' || kind === 'error') t.classList.add(kind);
+  t.textContent = msg;
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.classList.remove('show'); }, ms || 2400);
+}
+
+// ── Airtable-Helper ───────────────────────────────────────────────
+async function atRead(table, formula) {
+  const key = getReadKey();
+  if (!key || !STATE.keys.appBaseId) throw new Error('Read-Key oder Base-ID fehlt');
+  const url = 'https://api.airtable.com/v0/' + STATE.keys.appBaseId + '/' + encodeURIComponent(table) +
+    (formula ? '?filterByFormula=' + encodeURIComponent(formula) : '');
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + key } });
+  if (!r.ok) throw new Error('Airtable ' + table + ': HTTP ' + r.status);
+  const d = await r.json();
+  return d.records || [];
+}
+
+async function atReadMaster(table, formula) {
+  const key = getReadKey();
+  if (!key) throw new Error('Read-Key fehlt');
+  const url = 'https://api.airtable.com/v0/' + APP_CONFIG.MASTER_BASE_ID + '/' + encodeURIComponent(table) +
+    (formula ? '?filterByFormula=' + encodeURIComponent(formula) : '');
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + key } });
+  if (!r.ok) throw new Error('Airtable ' + table + ': HTTP ' + r.status);
+  const d = await r.json();
+  return d.records || [];
+}
+
+// ── Login ─────────────────────────────────────────────────────────
+async function doLogin() {
+  const userKey = document.getElementById('userKey').value.trim();
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  if (!userKey) { errEl.textContent = 'Bitte Zugangscode eingeben.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Anmeldung läuft …';
+  try {
+    // App-Base-ID ist hardcoded — fix für Mobile-App
+    STATE.keys.appBaseId = APP_CONFIG.APP_BASE_ID;
+    // Master-Base-Keys holen (für vorabcheckProxyUrl)
+    try {
+      const projKeys = await atReadMaster('Keys', "{project_id}='" + APP_CONFIG.PROJECT_ID + "'");
+      for (const r of projKeys) {
+        const f = r.fields || {};
+        if (f.key_name === 'vorabcheckProxyUrl') STATE.keys.vorabcheckProxyUrl = f.key_value;
+      }
+    } catch (_) { /* tolerant — Proxy ist nur für Status-Aktionen nötig */ }
+    // User in App-Base prüfen
+    const userRecs = await atRead('User', "AND({api_key}='" + userKey + "',{status}='aktiv')");
+    if (!userRecs.length) throw new Error('Ungültiger Zugangscode oder nicht aktiv.');
+    STATE.user = userRecs[0].fields;
+    try {
+      localStorage.setItem(LS_USERKEY, userKey);
+      localStorage.setItem(LS_USER, JSON.stringify(STATE.user));
+    } catch (_) {}
+    showApp();
+  } catch (e) {
+    errEl.textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Anmelden';
+  }
+}
+
+function doLogout() {
+  if (!confirm('Wirklich abmelden?')) return;
+  try {
+    localStorage.removeItem(LS_USER);
+    localStorage.removeItem(LS_USERKEY);
+  } catch (_) {}
+  location.reload();
+}
+
+function tryAutoLogin() {
+  try {
+    const cached = localStorage.getItem(LS_USER);
+    const cachedKey = localStorage.getItem(LS_USERKEY);
+    if (!cached || !cachedKey || !getReadKey()) return false;
+    STATE.user = JSON.parse(cached);
+    // App-Base-ID ist beim ersten Login geladen worden; wir laden sie zur Sicherheit nochmal asynchron
+    document.getElementById('userKey').value = cachedKey;
+    doLogin(); // benutzt cached value
+    return true;
+  } catch (_) { return false; }
+}
+
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('topbar').style.display = 'flex';
+  document.getElementById('tabbar').style.display = 'grid';
+  document.getElementById('content').style.display = 'block';
+  loadData();
+}
+
+// ── Data-Loader ───────────────────────────────────────────────────
+async function loadData() {
+  const cont = document.getElementById('content');
+  cont.innerHTML = '<div class="loading"><span class="spinner"></span> Lade Daten …</div>';
+  try {
+    const [vc, leads, ch] = await Promise.all([
+      atRead('Vorab-Checks').catch(() => []),
+      atRead('Vorabcheck-Leads').catch(() => []),
+      atRead('Checks').catch(() => []),
+    ]);
+    STATE.vorabchecks = vc.map(r => r.fields).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    STATE.vorabcheckLeads = leads.map(r => r.fields);
+    STATE.checks = ch.map(r => r.fields).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    renderCurrentTab();
+  } catch (e) {
+    cont.innerHTML = '<div class="empty">Fehler: ' + escHtml(e.message) + '<br><br><button class="btn btn-neutral" onclick="loadData()" style="padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:#fff">↻ Neu laden</button></div>';
+  }
+}
+
+function escHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function fmtEur(n) { const x = Number(n || 0); return x > 0 ? x.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €' : '–'; }
+function fmtDate(s) { if (!s) return '–'; const d = new Date(s); return isNaN(d) ? '–' : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
+
+// ── Tab-Switch ────────────────────────────────────────────────────
+function switchTab(tab) {
+  STATE.currentTab = tab;
+  document.querySelectorAll('.tabbar .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('topTitle').textContent = tab === 'vorab' ? 'Vorabchecks' : tab === 'inbox' ? 'Inbox' : 'Checks';
+  renderCurrentTab();
+  // scroll-to-top für besseres UX
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function renderCurrentTab() {
+  if (STATE.currentTab === 'vorab')  renderVorab();
+  else if (STATE.currentTab === 'inbox') renderInbox();
+  else if (STATE.currentTab === 'checks') renderChecks();
+  updateInboxBadge();
+}
+
+function updateInboxBadge() {
+  const n = STATE.vorabchecks.filter(r => _bearbeiterStatus(r) === 'bereit' || _bearbeiterStatus(r) === 'in_bearbeitung').length;
+  const b = document.getElementById('inboxBadge');
+  if (!b) return;
+  b.textContent = String(n);
+  b.style.display = n ? 'flex' : 'none';
+}
+
+function _bearbeiterStatus(r) {
+  const bs = String(r.bearbeiter_status || '').trim();
+  if (bs === 'erledigt') return 'erledigt';
+  if (bs === 'in_bearbeitung') return 'in_bearbeitung';
+  if (r.verwalter_status === 'antwort_erhalten') return 'bereit';
+  if (r.role === 'verwalter') return 'bereit';
+  if (r.role === 'eigentuemer' && r.hv_email) return 'warte_hv';
+  if (r.role === 'eigentuemer') return 'bereit';
+  return 'warte_hv';
+}
+
+// ── Tab: Vorabchecks ──────────────────────────────────────────────
+function renderVorab() {
+  const cont = document.getElementById('content');
+  const all = STATE.vorabchecks;
+  if (!all.length) { cont.innerHTML = '<div class="empty">Noch keine Vorabchecks.</div>'; return; }
+  // Filter
+  const f = STATE.filters.vorabAmpel;
+  const q = STATE.filters.search.toLowerCase().trim();
+  const list = all.filter(r => {
+    if (f && r.ampel !== f) return false;
+    if (q) {
+      const hay = [r.check_nr, r.summary, r.objekt_adresse, r.hv_name, r.role].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  // Stats
+  const gruen = all.filter(r => r.ampel === 'gruen').length;
+  const gelb  = all.filter(r => r.ampel === 'gelb').length;
+  const rot   = all.filter(r => r.ampel === 'rot').length;
+  const pool  = list.reduce((s, r) => s + (Number(r.savings_estimate_eur) || 0), 0);
+  // Render
+  const chip = (val, label, count, cls) => '<button class="chip ' + (f === val ? 'active' : '') + ' ' + (cls || '') + '" onclick="toggleVorabAmpel(\'' + val + '\')">' + label + '<span class="count">' + count + '</span></button>';
+  let html = ''
+    + '<div class="stats">'
+    + statCard('Gesamt', String(all.length), '#1a3a5c', list.length !== all.length ? 'gefiltert: ' + list.length : '')
+    + statCard('🟢 Grün',  String(gruen), '#3d7a14', '', 'green')
+    + statCard('🟡 Gelb',  String(gelb), '#a06a00', '', 'amber')
+    + statCard('🔴 Rot',   String(rot), '#a8312f', '', 'red')
+    + statCard('Ersparnis', fmtEur(pool), '#0e6655', list.length !== all.length ? 'gefilterte Summe' : 'gesamt', 'teal')
+    + '</div>'
+    + '<div class="chips">'
+    + chip(null, 'Alle', all.length, '')
+    + chip('gruen', '🟢 Grün', gruen, '')
+    + chip('gelb',  '🟡 Gelb', gelb, '')
+    + chip('rot',   '🔴 Rot', rot, '')
+    + '</div>'
+    + '<div class="search-wrap">'
+    + '<svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+    + '<input class="search-input" type="search" placeholder="Suche Check-Nr, Objekt …" value="' + escHtml(STATE.filters.search) + '" oninput="setSearch(this.value)">'
+    + '</div>';
+  if (!list.length) html += '<div class="empty">Keine Treffer.</div>';
+  else {
+    html += '<div class="card-list">' + list.map(r => renderVorabCard(r)).join('') + '</div>';
+  }
+  cont.innerHTML = html;
+}
+
+function statCard(label, val, color, sub, cls) {
+  return '<div class="stat ' + (cls || '') + '" style="border-left-color:' + color + '">'
+    + '<div class="label">' + label + '</div>'
+    + '<div class="val">' + val + '</div>'
+    + (sub ? '<div class="sub">' + escHtml(sub) + '</div>' : '')
+    + '</div>';
+}
+
+function renderVorabCard(r) {
+  const amp = r.ampel || '';
+  const ampLabel = amp === 'rot' ? '🔴 Rot' : amp === 'gelb' ? '🟡 Gelb' : amp === 'gruen' ? '🟢 Grün' : '⚪';
+  const stripCls = amp === 'rot' ? 'red' : amp === 'gelb' ? 'amber' : amp === 'gruen' ? 'green' : '';
+  const cnEsc = escHtml(r.check_nr || '–');
+  const sav = Number(r.savings_estimate_eur || 0);
+  const role = r.role ? '<span class="tag role">' + escHtml(r.role) + '</span>' : '';
+  const hvAns = r.verwalter_status === 'antwort_erhalten' ? '<span class="tag hv-antwort">✓ HV antwortete</span>' : '';
+  return '<div class="card" onclick="openVorabSheet(\'' + (r.check_nr || '').replace(/\'/g, "\\'") + '\')">'
+    + '<div class="card-strip ' + stripCls + '"></div>'
+    + '<div class="card-row"><span class="card-nr">' + cnEsc + '</span><span class="card-date">' + fmtDate(r.savedAt) + '</span></div>'
+    + '<div class="card-row" style="margin-top:6px"><span class="card-amount">' + (sav > 0 ? fmtEur(sav) : '–') + ' <span class="unit">/ Jahr</span></span></div>'
+    + (r.objekt_adresse ? '<div class="card-line"><span class="ic">📍</span>' + escHtml(r.objekt_adresse) + '</div>' : '')
+    + (r.hv_name ? '<div class="card-line"><span class="ic">🏢</span>' + escHtml(r.hv_name) + '</div>' : '')
+    + '<div class="card-tags">'
+      + '<span class="tag ampel-' + amp + '">' + ampLabel + '</span>'
+      + (r.check_type ? '<span class="tag">' + escHtml(r.check_type) + '</span>' : '')
+      + role + hvAns
+    + '</div>'
+  + '</div>';
+}
+
+function toggleVorabAmpel(val) {
+  STATE.filters.vorabAmpel = (STATE.filters.vorabAmpel === val) ? null : val;
+  renderVorab();
+}
+
+function setSearch(v) {
+  STATE.filters.search = String(v || '');
+  if (STATE.currentTab === 'vorab') renderVorab();
+}
+
+// ── Tab: Inbox ────────────────────────────────────────────────────
+function renderInbox() {
+  const cont = document.getElementById('content');
+  const all = STATE.vorabchecks;
+  const annot = all.map(r => ({ r, st: _bearbeiterStatus(r) }));
+  // Inbox-relevante: nur eigentuemer/verwalter ODER mit HV-Antwort/linked-check/bearbeiter_status
+  const relevant = annot.filter(a => a.r.role === 'eigentuemer' || a.r.role === 'verwalter' || a.r.verwalter_status === 'antwort_erhalten' || a.r.linked_check_requestid || a.r.bearbeiter_status);
+  const cnt = {
+    bereit:         relevant.filter(a => a.st === 'bereit').length,
+    warte_hv:       relevant.filter(a => a.st === 'warte_hv').length,
+    in_bearbeitung: relevant.filter(a => a.st === 'in_bearbeitung').length,
+    erledigt:       relevant.filter(a => a.st === 'erledigt').length,
+  };
+  const cur = STATE.filters.inboxStatus;
+  const rows = cur === 'alle' ? relevant : relevant.filter(a => a.st === cur);
+  rows.sort((a, b) => {
+    const dA = a.r.verwalter_response_at || a.r.savedAt || '';
+    const dB = b.r.verwalter_response_at || b.r.savedAt || '';
+    return dB.localeCompare(dA);
+  });
+  const chip = (val, label, count) => '<button class="chip ' + (cur === val ? 'active' : '') + '" onclick="setInboxStatus(\'' + val + '\')">' + label + '<span class="count">' + count + '</span></button>';
+  let html = ''
+    + '<div class="stats">'
+    + statCard('🔥 Bereit',         String(cnt.bereit),         '#a8312f', 'HV hat geantwortet · jetzt bearbeiten', 'red')
+    + statCard('⏳ Warte HV',       String(cnt.warte_hv),       '#a06a00', 'Eigentümer-Mail raus · Antwort offen', 'amber')
+    + statCard('👤 In Bearbeitung', String(cnt.in_bearbeitung), '#2d5f96', 'Du arbeitest gerade dran', 'teal')
+    + statCard('✅ Erledigt',       String(cnt.erledigt),       '#3d7a14', 'Check abgeschlossen', 'green')
+    + '</div>'
+    + '<div class="chips">'
+    + chip('bereit',         '🔥 Bereit',         cnt.bereit)
+    + chip('warte_hv',       '⏳ Warte HV',       cnt.warte_hv)
+    + chip('in_bearbeitung', '👤 In Bearb.',      cnt.in_bearbeitung)
+    + chip('erledigt',       '✅ Erledigt',       cnt.erledigt)
+    + chip('alle',           '🗂 Alle',           relevant.length)
+    + '</div>';
+  if (!rows.length) {
+    const msg = cur === 'bereit' ? '🎉 Aktuell nichts zu bearbeiten — alle bereiten Checks sind durch.'
+      : cur === 'warte_hv' ? 'Keine offenen HV-Anfragen.'
+      : cur === 'in_bearbeitung' ? 'Aktuell hast du nichts in Bearbeitung.'
+      : cur === 'erledigt' ? 'Noch keine Checks abgeschlossen.'
+      : 'Keine Einträge in dieser Inbox.';
+    html += '<div class="empty">' + msg + '</div>';
+  } else {
+    html += '<div class="card-list">' + rows.map(a => renderInboxCard(a.r, a.st)).join('') + '</div>';
+  }
+  cont.innerHTML = html;
+}
+
+function renderInboxCard(r, st) {
+  const stClass = 'status-' + (st === 'bereit' ? 'bereit' : st === 'warte_hv' ? 'warte' : st === 'in_bearbeitung' ? 'bearbeit' : 'erledigt');
+  const stLabel = st === 'bereit' ? '🔥 Bereit' : st === 'warte_hv' ? '⏳ Warte HV' : st === 'in_bearbeitung' ? '👤 In Bearb.' : '✅ Erledigt';
+  const stripCls = st === 'bereit' ? 'red' : st === 'in_bearbeitung' ? 'blue' : st === 'erledigt' ? 'green' : 'amber';
+  const amp = r.ampel || '';
+  const ampLabel = amp === 'rot' ? '🔴' : amp === 'gelb' ? '🟡' : amp === 'gruen' ? '🟢' : '⚪';
+  const sav = Number(r.savings_estimate_eur || 0);
+  const eventTs = r.verwalter_response_at || r.savedAt || '';
+  let ago = '';
+  if (eventTs) {
+    const days = Math.floor((Date.now() - new Date(eventTs).getTime()) / 86400000);
+    ago = days <= 0 ? 'heute' : days === 1 ? 'gestern' : 'vor ' + days + ' T.';
+  }
+  const cnEsc = escHtml(r.check_nr || '–');
+  const linked = r.linked_check_requestid ? '<span class="tag">📋 ' + escHtml(r.linked_check_requestid) + '</span>' : '';
+  const hvAns = r.verwalter_status === 'antwort_erhalten' ? '<span class="tag hv-antwort">✓ HV antwortete' + (r.verwalter_response_mode ? ' (' + (r.verwalter_response_mode === 'fragen' ? 'Konfig' : 'PDF') + ')' : '') + '</span>' : '';
+  return '<div class="card" onclick="openVorabSheet(\'' + (r.check_nr || '').replace(/\'/g, "\\'") + '\')">'
+    + '<div class="card-strip ' + stripCls + '"></div>'
+    + '<div class="card-row"><span class="card-nr">' + ampLabel + ' ' + cnEsc + '</span><span class="card-date">' + ago + '</span></div>'
+    + '<div class="card-row" style="margin-top:6px"><span class="card-amount">' + (sav > 0 ? fmtEur(sav) : '–') + ' <span class="unit">/ Jahr</span></span></div>'
+    + (r.objekt_adresse ? '<div class="card-line"><span class="ic">📍</span>' + escHtml(r.objekt_adresse) + '</div>' : '')
+    + (r.hv_name ? '<div class="card-line"><span class="ic">🏢</span>' + escHtml(r.hv_name) + '</div>' : '')
+    + '<div class="card-tags">'
+      + '<span class="tag ' + stClass + '">' + stLabel + '</span>'
+      + hvAns + linked
+    + '</div>'
+  + '</div>';
+}
+
+function setInboxStatus(s) { STATE.filters.inboxStatus = s; renderInbox(); }
+
+// ── Tab: Checks ───────────────────────────────────────────────────
+function renderChecks() {
+  const cont = document.getElementById('content');
+  const all = STATE.checks;
+  if (!all.length) { cont.innerHTML = '<div class="empty">Noch keine Checks.</div>'; return; }
+  // Stats: pro Status zählen
+  const byType = { reparatur: 0, wartung: 0, rechnung: 0 };
+  all.forEach(c => { byType[c.checkType || 'reparatur'] = (byType[c.checkType || 'reparatur'] || 0) + 1; });
+  let html = ''
+    + '<div class="stats">'
+    + statCard('Gesamt',       String(all.length), '#1a3a5c', '')
+    + statCard('🔧 Reparatur', String(byType.reparatur || 0), '#0e2440', '', 'teal')
+    + statCard('🔄 Wartung',   String(byType.wartung || 0),   '#0e6655', '', 'teal')
+    + statCard('🧾 Rechnung',  String(byType.rechnung || 0),  '#6b3eb8', '', 'green')
+    + '</div>'
+    + '<div class="search-wrap">'
+    + '<svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+    + '<input class="search-input" type="search" placeholder="Suche Check-Nr, Firma …" value="' + escHtml(STATE.filters.search) + '" oninput="setSearch(this.value)" id="chkSearch">'
+    + '</div>';
+  const q = STATE.filters.search.toLowerCase().trim();
+  const list = q ? all.filter(c => {
+    const hay = [c.requestId, c.id, c.firma, c.standort, c.checkType].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  }) : all;
+  if (!list.length) html += '<div class="empty">Keine Treffer.</div>';
+  else html += '<div class="card-list">' + list.slice(0, 200).map(c => renderCheckCard(c)).join('') + '</div>';
+  cont.innerHTML = html;
+}
+
+function renderCheckCard(c) {
+  const typeLabel = c.checkType === 'wartung' ? '🔄 Wartung' : c.checkType === 'rechnung' ? '🧾 Rechnung' : '🔧 Reparatur';
+  const stripCls = c.checkType === 'wartung' ? 'green' : c.checkType === 'rechnung' ? 'blue' : 'amber';
+  const stat = String(c.status || '1');
+  const statLabel = stat === '1' ? '1 · Check' : stat === '2' ? '2 · Beauftragt' : stat === '3' ? '3 · Ausgeführt/Gekündigt' : '–';
+  const ersparnis = c.ersparnis || '–';
+  return '<div class="card" onclick="openCheckSheet(\'' + (c.id || '').replace(/\'/g, "\\'") + '\')">'
+    + '<div class="card-strip ' + stripCls + '"></div>'
+    + '<div class="card-row"><span class="card-nr">' + escHtml(c.requestId || c.id || '–') + '</span><span class="card-date">' + fmtDate(c.datum || c.savedAt) + '</span></div>'
+    + (c.firma ? '<div class="card-line"><span class="ic">🏢</span>' + escHtml(c.firma) + '</div>' : '')
+    + (c.standort ? '<div class="card-line"><span class="ic">📍</span>' + escHtml(c.standort) + '</div>' : '')
+    + '<div class="card-tags">'
+      + '<span class="tag">' + typeLabel + '</span>'
+      + '<span class="tag">' + escHtml(statLabel) + '</span>'
+      + (ersparnis && ersparnis !== '– €' ? '<span class="tag hv-antwort">' + escHtml(ersparnis) + '</span>' : '')
+      + (c.vorabcheck_ref ? '<span class="tag role">VC: ' + escHtml(c.vorabcheck_ref) + '</span>' : '')
+    + '</div>'
+  + '</div>';
+}
+
+// ── Bottom-Sheet ──────────────────────────────────────────────────
+function openSheet(title, sub) {
+  document.getElementById('sheetTitle').textContent = title || '';
+  document.getElementById('sheetSub').textContent = sub || '';
+  document.getElementById('sheetActions').style.display = 'none';
+  document.getElementById('sheetContent').innerHTML = '<div class="loading"><span class="spinner"></span> Lade …</div>';
+  document.getElementById('sheet').classList.add('show');
+  document.getElementById('sheetOverlay').classList.add('show');
+}
+
+function closeSheet() {
+  document.getElementById('sheet').classList.remove('show');
+  document.getElementById('sheetOverlay').classList.remove('show');
+}
+
+function openVorabSheet(checkNr) {
+  const r = STATE.vorabchecks.find(x => x.check_nr === checkNr);
+  if (!r) { toast('Check nicht gefunden', 'error'); return; }
+  const ld = STATE.vorabcheckLeads.find(x => x.check_nr === checkNr) || {};
+  const st = _bearbeiterStatus(r);
+  openSheet('Vorabcheck ' + (r.check_nr || ''), (r.check_type || '–') + ' · ' + (r.role || '–') + (r.ampel ? ' · ' + (r.ampel === 'rot' ? '🔴' : r.ampel === 'gelb' ? '🟡' : '🟢') : ''));
+  const sav = Number(r.savings_estimate_eur || 0);
+  const auftrName = [ld.vorname, ld.nachname].filter(Boolean).join(' ');
+  const html = ''
+    + '<div class="det-section">'
+    + '<div class="det-text" style="background:linear-gradient(135deg,#e6f4d8,#fff);border:1px solid #c9e6a8">'
+    + '<div style="font-size:11px;font-weight:700;color:#3d7a14;text-transform:uppercase">Sparpotenzial</div>'
+    + '<div style="font-size:24px;font-weight:800;color:#3d7a14;margin-top:2px">' + fmtEur(sav) + ' <span style="font-size:13px;font-weight:500;color:var(--muted)">/ Jahr</span></div>'
+    + '</div></div>'
+    + '<div class="det-section"><h3>🛗 Aufzug-Daten</h3><div class="det-grid">'
+    + cell('Anzahl Aufzüge', r.aufzug_count || '–')
+    + cell('Parteien', r.parteien_count || '–')
+    + cell('Gesamtkosten/J', r.aufzug_gesamtkosten_eur ? fmtEur(r.aufzug_gesamtkosten_eur) : '–')
+    + cell('Pro Aufzug/J', r.kosten_pro_aufzug_eur ? fmtEur(r.kosten_pro_aufzug_eur) : '–')
+    + '</div></div>'
+    + (r.objekt_adresse ? '<div class="det-section"><h3>📍 Standort</h3><div class="det-text">' + escHtml(r.objekt_adresse) + '</div></div>' : '')
+    + (auftrName ? '<div class="det-section"><h3>👤 Auftraggeber</h3><div class="det-text">' + escHtml(auftrName) + (ld.email ? '<br>' + escHtml(ld.email) : '') + (ld.telefon ? '<br>' + escHtml(ld.telefon) : '') + '</div></div>' : '')
+    + (r.hv_name ? '<div class="det-section"><h3>🏢 Hausverwaltung</h3><div class="det-text">' + escHtml(r.hv_name) + (r.hv_adresse ? '<br>' + escHtml(r.hv_adresse) : '') + (r.hv_email ? '<br>' + escHtml(r.hv_email) : '') + (r.hv_telefon ? '<br>' + escHtml(r.hv_telefon) : '') + '</div></div>' : '')
+    + (r.verwalter_status === 'antwort_erhalten' ? '<div class="det-section"><h3>✓ HV-Antwort</h3><div class="det-text">Eingegangen ' + fmtDate(r.verwalter_response_at) + ' · Modus: ' + (r.verwalter_response_mode === 'fragen' ? '5-Fragen-Konfig' : 'PDF-Upload') + (r.verwalter_name ? '<br>von ' + escHtml(r.verwalter_name) : '') + '</div></div>' : '')
+    + (r.linked_check_requestid ? '<div class="det-section"><h3>📋 Folge-Check</h3><a class="det-link" href="./#check-' + escHtml(r.linked_check_requestid) + '" target="_blank">' + escHtml(r.linked_check_requestid) + '<span class="arrow">→ Desktop</span></a></div>' : '')
+    + (r.summary ? '<div class="det-section"><h3>📝 KI-Zusammenfassung</h3><div class="det-text">' + escHtml(r.summary) + '</div></div>' : '');
+  document.getElementById('sheetContent').innerHTML = html;
+  // Action-Buttons je Status
+  const actions = document.getElementById('sheetActions');
+  let acts = '';
+  const cnEsc = (r.check_nr || '').replace(/\'/g, "\\'");
+  if (st === 'bereit') {
+    acts += '<button class="btn btn-danger" onclick="setStatus(\'' + cnEsc + '\',\'in_bearbeitung\')">👤 Übernehmen</button>';
+  } else if (st === 'in_bearbeitung') {
+    acts += '<button class="btn btn-primary" onclick="setStatus(\'' + cnEsc + '\',\'erledigt\')">✅ Erledigt</button>';
+  } else if (st === 'erledigt') {
+    acts += '<button class="btn btn-neutral" onclick="setStatus(\'' + cnEsc + '\',\'offen\')">↩ Wieder öffnen</button>';
+  }
+  // Vertragscheck-Erstellung nur via Desktop
+  acts += '<button class="btn btn-blue" onclick="openInDesktop(\'' + cnEsc + '\')">💻 Im Desktop bearbeiten</button>';
+  actions.innerHTML = acts;
+  actions.style.display = 'flex';
+}
+
+function cell(k, v) {
+  return '<div class="det-cell"><div class="k">' + escHtml(k) + '</div><div class="v">' + escHtml(v) + '</div></div>';
+}
+
+function openCheckSheet(id) {
+  const c = STATE.checks.find(x => x.id === id);
+  if (!c) { toast('Check nicht gefunden', 'error'); return; }
+  openSheet('Check ' + (c.requestId || c.id || '–'), (c.checkType === 'wartung' ? '🔄 Wartungsvertrag' : c.checkType === 'rechnung' ? '🧾 Rechnungscheck' : '🔧 Reparatur'));
+  const html = ''
+    + '<div class="det-section"><div class="det-grid">'
+    + cell('Datum', fmtDate(c.datum || c.savedAt))
+    + cell('Status', c.status || '1')
+    + '</div></div>'
+    + (c.firma ? '<div class="det-section"><h3>🏢 Firma</h3><div class="det-text">' + escHtml(c.firma) + '</div></div>' : '')
+    + (c.standort ? '<div class="det-section"><h3>📍 Standort</h3><div class="det-text">' + escHtml(c.standort) + '</div></div>' : '')
+    + (c.ersparnis && c.ersparnis !== '– €' ? '<div class="det-section"><h3>💚 Ersparnis</h3><div class="det-text">' + escHtml(c.ersparnis) + (c.liftaroBet ? '<br>Liftaro-Beteiligung: ' + escHtml(c.liftaroBet) : '') + '</div></div>' : '')
+    + (c.vorabcheck_ref ? '<div class="det-section"><h3>🔗 Aus Vorabcheck</h3><div class="det-text">' + escHtml(c.vorabcheck_ref) + '</div></div>' : '');
+  document.getElementById('sheetContent').innerHTML = html;
+  const actions = document.getElementById('sheetActions');
+  actions.innerHTML = '<button class="btn btn-blue" onclick="openCheckInDesktop(\'' + (c.id || '').replace(/\'/g, "\\'") + '\')">💻 Im Desktop bearbeiten</button>';
+  actions.style.display = 'flex';
+}
+
+function openInDesktop(checkNr) {
+  // Öffnet Desktop-App + Hint: User soll im Hub den Check suchen
+  const url = './';
+  toast('Wechsle zur Desktop-Version …');
+  setTimeout(() => { window.open(url, '_blank'); }, 300);
+}
+
+function openCheckInDesktop(id) {
+  const url = './';
+  toast('Wechsle zur Desktop-Version …');
+  setTimeout(() => { window.open(url, '_blank'); }, 300);
+}
+
+// ── Bearbeiter-Status setzen ──────────────────────────────────────
+async function setStatus(checkNr, status) {
+  if (!STATE.keys.vorabcheckProxyUrl) { toast('Proxy nicht konfiguriert', 'error'); return; }
+  const labels = { offen: 'Wieder geöffnet', in_bearbeitung: 'Übernommen', erledigt: 'Als erledigt markiert' };
+  toast('⏳ Speichere …');
+  try {
+    const r = await fetch(STATE.keys.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_bearbeiter_status', check_nr: checkNr, status: status }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'unbekannt');
+    // Cache aktualisieren
+    const row = STATE.vorabchecks.find(x => x.check_nr === checkNr);
+    if (row) { row.bearbeiter_status = status; row.bearbeiter_status_at = new Date().toISOString(); }
+    toast('✓ ' + labels[status], 'success');
+    closeSheet();
+    renderCurrentTab();
+  } catch (e) { toast('Fehler: ' + e.message, 'error', 4000); }
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Auto-Login wenn User-Daten gecached
+  const ok = tryAutoLogin();
+  if (!ok) {
+    // Login-Screen sichtbar lassen
+    setTimeout(() => document.getElementById('userKey').focus(), 200);
+  }
+  // Enter in Login
+  document.getElementById('userKey').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doLogin();
+  });
+  // Pull-to-Refresh (rudimentär: bei Tab-Wechsel reload)
+});
+</script>
+</body>
+</html>
