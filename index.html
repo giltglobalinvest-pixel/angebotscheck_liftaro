@@ -4222,7 +4222,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.2';
+const APP_VERSION = 'V10.3';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15359,9 +15359,18 @@ function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
+function _eiCurrentUserName() {
+  try {
+    const u = APP_KEYS && APP_KEYS.user;
+    if (!u) return '';
+    if (typeof u === 'string') return u;
+    return String(u.name || u.email || u.username || '');
+  } catch(_) { return ''; }
+}
+
 async function setEmailStatus(recId, newStatus) {
   try {
-    await atUpdate('Emails', recId, { status: newStatus, status_at: new Date().toISOString(), bearbeiter_name: (APP_KEYS.user || '') });
+    await atUpdate('Emails', recId, { status: newStatus, status_at: new Date().toISOString(), bearbeiter_name: _eiCurrentUserName() });
     const r = _eiAllRecords.find(x => x._id === recId);
     if (r) { r.status = newStatus; r.status_at = new Date().toISOString(); }
     renderEmailInboxList();
@@ -15442,7 +15451,7 @@ async function createCheckFromVorgang(recId, vIdx) {
       linked_checks_count: newLinks.length,
       status:              'in_bearbeitung',
       status_at:           new Date().toISOString(),
-      bearbeiter_name:     (APP_KEYS.user || ''),
+      bearbeiter_name:     _eiCurrentUserName(),
     });
     // State lokal aktualisieren
     r.linked_check_ids    = newLinks.join(',');
