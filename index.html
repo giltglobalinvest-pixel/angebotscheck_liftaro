@@ -2187,11 +2187,23 @@ const pdfWorkerReady = Promise.resolve();</script>
 
     <div style="height:1px;background:rgba(255,255,255,.1);margin:10px 8px"></div>
     <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.6px;padding:0 8px;margin-bottom:4px">Aktionen</div>
-    <button class="mobile-menu-item hide-on-mobile" onclick="closeMobileMenu();saveWithVisualization()" style="background:rgba(125,194,66,.18);border-color:rgba(125,194,66,.4);color:#a8e070">
+    <button class="mobile-menu-item" onclick="closeMobileMenu();saveWithVisualization()" style="background:rgba(125,194,66,.18);border-color:rgba(125,194,66,.4);color:#a8e070">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       Speichern
     </button>
-    <button class="mobile-menu-item hide-on-mobile" onclick="closeMobileMenu();resetForm()" style="color:#fca5a5">
+    <button class="mobile-menu-item" onclick="closeMobileMenu();previewErgebnis()" style="background:rgba(45,95,150,.2);border-color:rgba(45,95,150,.4);color:#9ec4ff">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Ergebnis-Vorschau
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();generatePDF()" style="background:rgba(255,180,30,.18);border-color:rgba(255,180,30,.4);color:#ffd778">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
+      PDF erstellen
+    </button>
+    <button id="mobileDownloadFullBtn" class="mobile-menu-item" onclick="closeMobileMenu();downloadFullResult()" style="display:none;background:rgba(45,95,150,.3);border-color:rgba(45,95,150,.5);color:#bcd9ff">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Gesamt herunterladen
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();resetForm()" style="color:#fca5a5">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
       Reset
     </button>
@@ -4094,7 +4106,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.96';
+const APP_VERSION = 'V9.97';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -8784,6 +8796,9 @@ async function generatePDF() {
 
     document.getElementById('overlay').classList.remove('show');
     document.getElementById('btnDownloadFull').style.display = 'inline-flex';
+    // Mobile-Drawer: gleichen Button (text-flow-Variante) ebenfalls einblenden
+    var mobileDl = document.getElementById('mobileDownloadFullBtn');
+    if (mobileDl) mobileDl.style.display = 'flex';
     const bar = document.getElementById('statusBar');
     bar.className = 'status-bar ok';
     bar.innerHTML = '<span>✅</span><span>Ergebnis erstellt und gespeichert. Vorschau geöffnet.</span>';
