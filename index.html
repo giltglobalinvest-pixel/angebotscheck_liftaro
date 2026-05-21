@@ -1799,6 +1799,17 @@ const pdfWorkerReady = Promise.resolve();</script>
     .section .section-title { padding: 12px 14px !important; }
     .section .section-inner { padding: 14px !important; }
 
+    /* Ersparnisse-/Liftaro-Beteiligung-Zeile: Label oben, Wert darunter — stoppt das
+       Rechts-Abschneiden, das durch white-space:nowrap-Labels + min-width-Wertboxen
+       auf schmalen Viewports entstand. */
+    .savings-row > div { flex-direction: column !important; align-items: stretch !important; gap: 6px !important; }
+    .savings-row label { white-space: normal !important; line-height: 1.4; }
+    .savings-row .savings-display { width: 100%; min-width: 0 !important; text-align: center; }
+    .savings-row > div > div[style*="display:flex"] { justify-content: flex-start; flex-wrap: wrap; }
+
+    /* Smiley-Bewertungs-Tabelle (Ergebnis-Sektion): horizontal sichtbar machen */
+    #section-ergebnis table, .form-card .section table { width: 100%; max-width: 100%; }
+
     /* Upload-Zonen auf Mobile als Tap-Buttons (kein Drop-Indicator) */
     .upload-zone {
       display: flex !important;
@@ -4018,7 +4029,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.94';
+const APP_VERSION = 'V9.95';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
