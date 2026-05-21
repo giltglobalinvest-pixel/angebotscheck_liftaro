@@ -1739,27 +1739,41 @@ const pdfWorkerReady = Promise.resolve();</script>
     /* Stelle sicher, dass nichts horizontal aus dem Viewport rausragt */
     .page-wrap, .page-wrap > * { box-sizing: border-box; max-width: 100%; }
 
-    /* === Auf mobilen Geräten ausblenden === */
+    /* === Auf mobilen Geräten ausblenden ===
+       Sidebar-Cards, Tabellen-Header-Buttons und Footer-Modals bleiben hidden,
+       die fachlichen Check-Sektionen (Reparatur/Wartung/Rechnung/Ergebnis)
+       sind ab V9.92 EDITIERBAR im Mobile-View.                           */
     .hide-on-mobile { display: none !important; }
-
-    /* === Upload-Zonen (Drop-Areas) auf Mobile ausblenden — nur Ansicht === */
-    .upload-zone { display: none !important; }
-
-    /* === Allgemeine Daten: nicht editierbar auf Mobile === */
+    /* Check-Sektionen wieder einblenden — Bearbeiter sollen Check am Handy ausfüllen können */
+    #section-reparatur.hide-on-mobile,
+    #section-wartung.hide-on-mobile,
+    #section-rechnung.hide-on-mobile,
+    #section-ergebnis.hide-on-mobile { display: block !important; }
+    /* Form-Card-Wrapper, falls hide-on-mobile drauf — sichtbar machen */
+    .form-card .hide-on-mobile.section { display: block !important; }
+    /* Allgemeine Daten + alle Form-Felder voll editierbar auf Mobile */
     #section-allgemein input,
     #section-allgemein textarea,
-    #section-allgemein select {
-      pointer-events: none !important;
-      background: #eef3f8 !important;
-      color: #4a5568 !important;
-      cursor: not-allowed !important;
-      -webkit-user-select: text;
-      user-select: text;
+    #section-allgemein select { background: #fff !important; color: var(--text) !important; }
+
+    /* Vergleichstabelle horizontal scrollbar — Touch-friendly */
+    .compare-table-wrap, .form-card div[style*="overflow:hidden"] { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+    .compare-table {
+      min-width: 560px;       /* erzwingt horizontale Scrolling statt Quetschen */
+      font-size: 13px;
     }
-    #section-allgemein #f_anfrageNr {
-      background: #f5f5f5 !important;
-      color: #4a5568 !important;
+    .compare-table input, .compare-table select {
+      min-height: 38px; font-size: 16px; /* iOS no-zoom */
     }
+    .compare-table th, .compare-table td { padding: 6px 8px; }
+
+    /* Section-Inner: weniger Padding auf Mobile */
+    .section .section-title { padding: 12px 14px !important; }
+    .section .section-inner { padding: 14px !important; }
+
+    /* Upload-Zonen behalten wir versteckt (Drop&Drop ist auf Touch unbrauchbar) */
+    .upload-zone { display: none !important; }
+    /* aber die Vorschau-/Download-Buttons der Slots bleiben sichtbar — falls vorhanden */
 
     /* === "Alle Checks" Modal: zuverlässiges Scrollen nur in der Liste === */
     #checksModal > div {
@@ -2209,7 +2223,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div id="mobileAlternativViewer" style="display:none;margin-top:14px"></div>
 
         <!-- REPARATUR SECTION -->
-        <div id="section-reparatur" class="hide-on-mobile">
+        <div id="section-reparatur">
           <div class="section" style="margin-top:20px">
             <div class="section-title">Angebotsvergleich</div>
             <div style="overflow:hidden">
@@ -2272,7 +2286,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <!-- WARTUNG SECTION -->
-        <div id="section-wartung" class="hide-on-mobile" style="display:none">
+        <div id="section-wartung" style="display:none">
           <div class="section" style="margin-top:20px">
             <div class="section-title">Vertragsvergleich</div>
             <div style="overflow:hidden">
@@ -2357,7 +2371,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <!-- ════════════════════════════════════════════════════
              RECHNUNGSCHECK SECTION
              ════════════════════════════════════════════════════ -->
-        <div id="section-rechnung" class="hide-on-mobile" style="display:none">
+        <div id="section-rechnung" style="display:none">
           <div class="section" style="margin-top:20px">
             <div class="section-title">Rechnungsdaten</div>
             <div class="section-inner">
@@ -2433,10 +2447,10 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <!-- Ergebnis Liftaro -->
-        <div class="section hide-on-mobile" id="section-ergebnis" style="margin-top:20px">
+        <div class="section" id="section-ergebnis" style="margin-top:20px">
           <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
             Ergebnis Liftaro
-            <button id="btnEmpfehlung" class="hide-on-mobile" onclick="requireApiKey(generateEmpfehlung)"
+            <button id="btnEmpfehlung" onclick="requireApiKey(generateEmpfehlung)"
               style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;
               font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer"
               onmouseover="this.style.background='var(--green2)'"
@@ -3917,7 +3931,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V9.90';
+const APP_VERSION = 'V9.92';
 
 // ── Rechnungs-Konfiguration ───────────────────────────────────────
 const LIFTARO_INVOICE = {
