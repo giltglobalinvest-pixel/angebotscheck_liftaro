@@ -4277,7 +4277,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.4';
+const APP_VERSION = 'V10.5';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -4416,7 +4416,8 @@ const APP_CONFIG = {
 
 let APP_KEYS = { airtableWriteKey: null, anthropicKey: null, user: null, appBaseId: null,
   valtownKey: null, vorabcheckValId: null, vorabcheckProxyUrl: null, vorabcheckLandingTheme: null, startseiteVariante: null,
-  pipedriveDomain: null, pipedriveApiToken: null, serperApiKey: null };
+  pipedriveDomain: null, pipedriveApiToken: null, serperApiKey: null,
+  emailSenderUrl: null, emailSenderSecret: null };
 
 async function loginWithUserKey(userKey) {
   const headers = { 'Authorization': 'Bearer ' + APP_CONFIG.AIRTABLE_READ_KEY };
@@ -4446,6 +4447,8 @@ async function loginWithUserKey(userKey) {
     if (r.fields.key_name === 'pipedriveDomain')        APP_KEYS.pipedriveDomain        = r.fields.key_value;
     if (r.fields.key_name === 'pipedriveApiToken')      APP_KEYS.pipedriveApiToken      = r.fields.key_value;
     if (r.fields.key_name === 'serperApiKey')           APP_KEYS.serperApiKey           = r.fields.key_value;
+    if (r.fields.key_name === 'emailSenderUrl')         APP_KEYS.emailSenderUrl         = r.fields.key_value;
+    if (r.fields.key_name === 'emailSenderSecret')      APP_KEYS.emailSenderSecret      = r.fields.key_value;
     if (r.fields.key_name === 'vorabcheckMappingVertrag') {
       APP_KEYS.vorabcheckMappingVertrag        = r.fields.key_value;
       APP_KEYS.vorabcheckMappingVertragRecId   = r.id;
@@ -15545,8 +15548,8 @@ let _erContext = null;  // { emailRec, checkRec?, pdfBlob? }
 async function openEmailReplyModal(recId) {
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) { showToast('Email nicht gefunden', 'error'); return; }
-  if (!APP_KEYS.valtownKey) {
-    showToast('val.town API-Key fehlt in den Einstellungen', 'error');
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert — bitte App neu laden (Master-Base "emailSenderUrl"/"emailSenderSecret")', 'error');
     return;
   }
   _erContext = { emailRec: r, checkRec: null, pdfBlob: null, pdfName: null };
@@ -15588,9 +15591,8 @@ async function openEmailReplyModal(recId) {
     attachInfo.innerHTML = '<span style="color:var(--muted)">Keine Check-Erstellung verknüpft — Antwort wird ohne PDF-Anhang versendet (z.B. Rückfrage bei Korrespondenz).</span>';
   }
 
-  // From-Adresse anzeigen (val.town nutzt eigene Sender-Domain)
-  document.getElementById('erFromDisplay').textContent = (APP_KEYS.user && APP_KEYS.user.name)
-    ? `${APP_KEYS.user.name} (via val.town)` : 'noreply@val.email (via val.town)';
+  // From-Adresse: check@liftaro.de via All-Inkl-SMTP-Wrapper
+  document.getElementById('erFromDisplay').textContent = 'Liftaro GmbH <check@liftaro.de>';
 
   document.getElementById('emailReplyModal').style.display = 'flex';
 }
@@ -15700,7 +15702,7 @@ async function doSendEmailReply() {
   status.innerHTML = '<span style="color:var(--navy)">⏳ Senden läuft …</span>';
 
   try {
-    // 1. Anhang lazy laden (falls vorhanden)
+    // 1. Anhang lazy laden (falls vorhanden) — base64 für SMTP-Wrapper
     let attachments = [];
     if (_erContext.pdfUrl) {
       status.innerHTML = '<span style="color:var(--navy)">⏳ Lade PDF-Anhang …</span>';
@@ -15709,44 +15711,40 @@ async function doSendEmailReply() {
       const blob = await pdfRes.blob();
       const b64 = await _blobToBase64Raw(blob);
       attachments.push({
-        content: b64,
-        filename: _erContext.pdfName || 'Liftaro_Check.pdf',
-        type: 'application/pdf',
-        disposition: 'attachment',
+        filename:      _erContext.pdfName || 'Liftaro_Check.pdf',
+        contentType:   'application/pdf',
+        contentBase64: b64,
       });
     }
 
-    // 2. In-Reply-To-Header setzen (wenn Original-Message-ID vorhanden)
-    const headers = {};
-    if (r.message_id) {
-      // Header brauchen <…> bei email-message-IDs
-      const mid = r.message_id.startsWith('<') ? r.message_id : ('<' + r.message_id + '>');
-      headers['In-Reply-To'] = mid;
-      headers['References']  = mid;
+    // 2. Endpoint + Secret aus Master-Base
+    if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+      throw new Error('Email-Sender nicht konfiguriert (Master-Base "emailSenderUrl"/"emailSenderSecret" fehlt — bitte App neu laden)');
     }
 
-    // 3. val.town /v1/email POST
-    status.innerHTML = '<span style="color:var(--navy)">⏳ Sende via val.town …</span>';
+    // 3. POST an liftaroEmailSender (SMTP-Wrapper über All-Inkl)
+    status.innerHTML = '<span style="color:var(--navy)">⏳ Sende über check@liftaro.de …</span>';
     const payload = {
-      to: to,
-      subject: subject,
-      text: body,
-      headers: headers,
-      replyToList: [{ email: 'check@liftaro.de', name: 'Liftaro GmbH' }],
+      to:        to,
+      subject:   subject,
+      text:      body,
+      replyTo:   'check@liftaro.de',
+      inReplyTo: r.message_id || undefined,
     };
     if (attachments.length) payload.attachments = attachments;
 
-    const resp = await fetch('https://api.val.town/v1/email', {
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + APP_KEYS.valtownKey,
         'Content-Type': 'application/json',
+        'X-App-Secret': APP_KEYS.emailSenderSecret,
       },
       body: JSON.stringify(payload),
     });
-    if (resp.status !== 202 && !resp.ok) {
-      const txt = await resp.text();
-      throw new Error('val.town HTTP ' + resp.status + ': ' + txt.slice(0, 300));
+    if (!resp.ok) {
+      let txt = '';
+      try { txt = await resp.text(); } catch(_){}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 300));
     }
 
     // 4. Email-Record updaten
