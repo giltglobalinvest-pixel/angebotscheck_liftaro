@@ -3318,6 +3318,61 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════════════
+     Email-Reply-Modal — "Antwort senden" für eine Inbox-Email (Phase 3)
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="emailReplyModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5080;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(820px,95vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:#0e6655;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;flex-wrap:wrap">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 9 12 2 21 9"/><path d="M3 9v12h18V9"/><path d="M9 2v7M15 2v7"/></svg>
+          <span>Antwort senden</span>
+        </div>
+        <div style="color:rgba(255,255,255,.78);font-size:11.5px;margin-top:2px">Über val.town · landet im Email-Thread des Empfängers (In-Reply-To)</div>
+      </div>
+      <button onclick="closeEmailReplyModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;width:32px;height:32px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:18px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Empfänger</label>
+        <input type="text" id="erTo" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Betreff</label>
+        <input type="text" id="erSubject" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px">
+      </div>
+      <div>
+        <label style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">
+          <span>Nachricht</span>
+          <button onclick="regenerateReplyBody()" id="erRegenBtn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;text-transform:none;letter-spacing:0">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+            KI-Text neu generieren
+          </button>
+        </label>
+        <textarea id="erBody" style="width:100%;min-height:240px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.65;background:var(--sky);resize:vertical;white-space:pre-wrap"></textarea>
+      </div>
+      <div id="erAttachmentBox" style="background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Anhang</div>
+        <div id="erAttachInfo" style="font-size:12px;color:var(--text);line-height:1.5">Wird geladen …</div>
+      </div>
+      <div id="erStatus" style="font-size:12px;color:var(--muted);min-height:18px"></div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc">
+      <div style="font-size:11.5px;color:var(--muted)">Absender: <code style="background:#fff;padding:1px 6px;border-radius:3px;font-size:11px" id="erFromDisplay">noreply@val.email</code></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="closeEmailReplyModal()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
+        <button id="erSendBtn" onclick="doSendEmailReply()" style="background:#0e6655;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Antwort senden
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- CSS für Inbox -->
 <style id="emailInboxStyles">
 .ei-filt-pill { background:#fff; border:1.5px solid var(--border); color:var(--text); border-radius:14px; padding:4px 12px; font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:600; cursor:pointer; transition:all .12s; }
@@ -4222,7 +4277,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.3';
+const APP_VERSION = 'V10.4';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15344,8 +15399,19 @@ function renderEmailInboxDetail() {
     html += `</div></div>`;
   }
 
-  // Status-Buttons
+  // Status- & Aktions-Buttons
   html += `<div style="display:flex;gap:8px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);flex-wrap:wrap">`;
+  // "Antwort senden" — Haupt-Aktion bei geantwortetem Check ODER reiner Korrespondenz mit reply_draft
+  const canReply = (r.from_email && (r.linked_check_ids || r.reply_draft || vorgaenge.length === 0));
+  if (canReply && r.status !== 'geantwortet') {
+    html += `<button onclick="openEmailReplyModal('${r._id}')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">`;
+    html += `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+    html += `Antwort senden`;
+    html += `</button>`;
+  }
+  if (r.status === 'geantwortet') {
+    html += `<div style="background:#d1fae5;color:#065f46;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">✓ Bereits geantwortet ${r.replied_at ? '(' + String(r.replied_at).slice(0,16).replace('T',' ') + ')' : ''}</div>`;
+  }
   html += `<button onclick="setEmailStatus('${r._id}','gesichtet')" style="background:#dbeafe;color:#1e3a8a;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Als gesichtet markieren</button>`;
   html += `<button onclick="setEmailStatus('${r._id}','in_bearbeitung')" style="background:#fce7f3;color:#9d174d;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">In Bearbeitung</button>`;
   html += `<button onclick="setEmailStatus('${r._id}','verworfen')" style="background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Verwerfen</button>`;
@@ -15468,6 +15534,249 @@ async function createCheckFromVorgang(recId, vIdx) {
   } catch (e) {
     console.error(e);
     showToast('Check-Erstellung fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EMAIL-REPLY (Phase 3) — "Antwort senden" via val.town /v1/email
+// ════════════════════════════════════════════════════════════════
+let _erContext = null;  // { emailRec, checkRec?, pdfBlob? }
+
+async function openEmailReplyModal(recId) {
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  if (!APP_KEYS.valtownKey) {
+    showToast('val.town API-Key fehlt in den Einstellungen', 'error');
+    return;
+  }
+  _erContext = { emailRec: r, checkRec: null, pdfBlob: null, pdfName: null };
+
+  // Modal vorausfüllen
+  document.getElementById('erTo').value      = r.from_email || '';
+  document.getElementById('erSubject').value = _ensureRePrefix(r.subject || '');
+  // Default-Body: vorhandener KI-Reply-Draft, sonst leer
+  document.getElementById('erBody').value    = r.reply_draft || '';
+  document.getElementById('erStatus').textContent = '';
+  document.getElementById('erSendBtn').disabled = false;
+
+  // Verlinkter Check vorhanden? → Full-PDF als Anhang vorbereiten
+  const linkedIds = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  const attachInfo = document.getElementById('erAttachInfo');
+  if (linkedIds.length > 0) {
+    attachInfo.innerHTML = `<span style="color:var(--muted)">Lade Check ${_esc(linkedIds[0])} und PDF …</span>`;
+    try {
+      const checkRecs = await atRead('Checks', "{id}='" + linkedIds[0] + "'");
+      if (checkRecs && checkRecs.length) {
+        _erContext.checkRec = checkRecs[0].fields;
+        const pdfField = checkRecs[0].fields.ergebnis_pdf;
+        if (Array.isArray(pdfField) && pdfField[0] && pdfField[0].url) {
+          const att = pdfField[0];
+          attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt</div></div></div>`;
+          // PDF lazy laden (erst beim Senden)
+          _erContext.pdfUrl  = att.url;
+          _erContext.pdfName = att.filename || `Liftaro_Check_${linkedIds[0]}.pdf`;
+        } else {
+          attachInfo.innerHTML = `<span style="color:#b8740c">⚠ Check „${_esc(linkedIds[0])}" hat noch kein Ergebnis-PDF. Bitte erst im Check „PDF erstellen" ausführen, dann nochmal antworten.</span>`;
+        }
+      } else {
+        attachInfo.innerHTML = `<span style="color:#a8312f">Check „${_esc(linkedIds[0])}" nicht in App-Base gefunden</span>`;
+      }
+    } catch (e) {
+      attachInfo.innerHTML = `<span style="color:#a8312f">Fehler beim Laden des Checks: ${_esc(e.message)}</span>`;
+    }
+  } else {
+    attachInfo.innerHTML = '<span style="color:var(--muted)">Keine Check-Erstellung verknüpft — Antwort wird ohne PDF-Anhang versendet (z.B. Rückfrage bei Korrespondenz).</span>';
+  }
+
+  // From-Adresse anzeigen (val.town nutzt eigene Sender-Domain)
+  document.getElementById('erFromDisplay').textContent = (APP_KEYS.user && APP_KEYS.user.name)
+    ? `${APP_KEYS.user.name} (via val.town)` : 'noreply@val.email (via val.town)';
+
+  document.getElementById('emailReplyModal').style.display = 'flex';
+}
+
+function closeEmailReplyModal() {
+  document.getElementById('emailReplyModal').style.display = 'none';
+  _erContext = null;
+}
+
+function _ensureRePrefix(subject) {
+  if (!subject) return 'Re: (Ihre Anfrage)';
+  return /^re:\s/i.test(subject) ? subject : ('Re: ' + subject);
+}
+
+async function regenerateReplyBody() {
+  if (!_erContext || !_erContext.emailRec) return;
+  const btn = document.getElementById('erRegenBtn');
+  btn.disabled = true;
+  const oldHTML = btn.innerHTML;
+  btn.innerHTML = '<span style="opacity:.8">… generiert …</span>';
+  try {
+    if (!APP_KEYS.anthropicKey) throw new Error('Anthropic-Key fehlt');
+    const r = _erContext.emailRec;
+    const c = _erContext.checkRec || {};
+    const ergebnisText = [
+      c.f_empfehlung && ('Empfehlung: ' + c.f_empfehlung),
+      c.f_ampel && ('Ampel: ' + c.f_ampel),
+      c.f_ersparnis_jahr && ('Jährliche Ersparnis: ' + c.f_ersparnis_jahr + ' €'),
+    ].filter(Boolean).join('\n');
+    const userMsg = `Original-Email:
+Von: ${r.from_email || ''}
+Betreff: ${r.subject || ''}
+Body: ${(r.body_text || '').slice(0, 2000)}
+
+Check-Typ: ${c.typ || r.ki_classification || 'wartung'}
+Liftaro-Ergebnis:
+${ergebnisText || '(noch kein Check-Ergebnis vorhanden — formuliere allgemeine höfliche Antwort, die auf den beigefügten Prüfbericht verweist)'}
+
+Generiere die Antwort-Email gemäß Schema.`;
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1200,
+        system: 'Du formulierst die Antwort-Email für einen abgeschlossenen Liftaro-Check. Antworte AUSSCHLIESSLICH mit gültigem JSON: { "subject": "...", "body": "..." }. Tonfall: deutsch, höflich-sachlich, 4-7 Sätze. Anrede aus Email-Signatur ableiten, sonst "Sehr geehrte Damen und Herren". Signatur: "Mit freundlichen Grüßen\\nLiftaro GmbH\\nIhr Liftaro-Team".',
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!resp.ok) throw new Error('Anthropic HTTP ' + resp.status);
+    const data = await resp.json();
+    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed; try { parsed = JSON.parse(cleaned); } catch (_) { parsed = null; }
+    if (!parsed) {
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} }
+    }
+    if (parsed && parsed.body) {
+      document.getElementById('erBody').value = parsed.body;
+      if (parsed.subject) document.getElementById('erSubject').value = parsed.subject;
+      showToast('KI-Text aktualisiert', 'success');
+    } else {
+      throw new Error('Konnte KI-Antwort nicht parsen');
+    }
+  } catch (e) {
+    showToast('KI-Generierung fehlgeschlagen: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = oldHTML;
+  }
+}
+
+async function _blobToBase64Raw(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      // FileReader-Ergebnis: "data:application/pdf;base64,XXXXX..." → nur Base64-Teil ohne Prefix
+      const s = String(fr.result || '');
+      const idx = s.indexOf(',');
+      resolve(idx >= 0 ? s.slice(idx + 1) : s);
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+async function doSendEmailReply() {
+  if (!_erContext || !_erContext.emailRec) return;
+  const r = _erContext.emailRec;
+  const to      = document.getElementById('erTo').value.trim();
+  const subject = document.getElementById('erSubject').value.trim();
+  const body    = document.getElementById('erBody').value;
+  const status  = document.getElementById('erStatus');
+  const sendBtn = document.getElementById('erSendBtn');
+
+  if (!to) { showToast('Empfänger fehlt', 'error'); return; }
+  if (!subject) { showToast('Betreff fehlt', 'error'); return; }
+  if (!body || !body.trim()) { showToast('Nachricht ist leer', 'error'); return; }
+
+  sendBtn.disabled = true;
+  status.innerHTML = '<span style="color:var(--navy)">⏳ Senden läuft …</span>';
+
+  try {
+    // 1. Anhang lazy laden (falls vorhanden)
+    let attachments = [];
+    if (_erContext.pdfUrl) {
+      status.innerHTML = '<span style="color:var(--navy)">⏳ Lade PDF-Anhang …</span>';
+      const pdfRes = await fetch(_erContext.pdfUrl);
+      if (!pdfRes.ok) throw new Error('PDF-Download fehlgeschlagen (HTTP ' + pdfRes.status + ')');
+      const blob = await pdfRes.blob();
+      const b64 = await _blobToBase64Raw(blob);
+      attachments.push({
+        content: b64,
+        filename: _erContext.pdfName || 'Liftaro_Check.pdf',
+        type: 'application/pdf',
+        disposition: 'attachment',
+      });
+    }
+
+    // 2. In-Reply-To-Header setzen (wenn Original-Message-ID vorhanden)
+    const headers = {};
+    if (r.message_id) {
+      // Header brauchen <…> bei email-message-IDs
+      const mid = r.message_id.startsWith('<') ? r.message_id : ('<' + r.message_id + '>');
+      headers['In-Reply-To'] = mid;
+      headers['References']  = mid;
+    }
+
+    // 3. val.town /v1/email POST
+    status.innerHTML = '<span style="color:var(--navy)">⏳ Sende via val.town …</span>';
+    const payload = {
+      to: to,
+      subject: subject,
+      text: body,
+      headers: headers,
+      replyToList: [{ email: 'check@liftaro.de', name: 'Liftaro GmbH' }],
+    };
+    if (attachments.length) payload.attachments = attachments;
+
+    const resp = await fetch('https://api.val.town/v1/email', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + APP_KEYS.valtownKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (resp.status !== 202 && !resp.ok) {
+      const txt = await resp.text();
+      throw new Error('val.town HTTP ' + resp.status + ': ' + txt.slice(0, 300));
+    }
+
+    // 4. Email-Record updaten
+    await atUpdate('Emails', r._id, {
+      status:           'geantwortet',
+      status_at:        new Date().toISOString(),
+      replied_at:       new Date().toISOString(),
+      replied_subject:  subject,
+      replied_body:     body.slice(0, 95000),
+      bearbeiter_name:  _eiCurrentUserName(),
+    });
+    // State lokal
+    r.status          = 'geantwortet';
+    r.replied_at      = new Date().toISOString();
+    r.replied_subject = subject;
+    r.replied_body    = body;
+
+    status.innerHTML = '<span style="color:#0e6655;font-weight:600">✓ Antwort gesendet</span>';
+    showToast('Antwort an ' + to + ' versendet.', 'success');
+    setTimeout(() => {
+      closeEmailReplyModal();
+      renderEmailInboxList();
+      renderEmailInboxDetail();
+      _refreshEmailInboxBadge();
+    }, 800);
+  } catch (e) {
+    console.error('doSendEmailReply:', e);
+    status.innerHTML = '<span style="color:#a8312f">⚠ ' + _esc(e.message) + '</span>';
+    showToast('Senden fehlgeschlagen: ' + e.message, 'error');
+    sendBtn.disabled = false;
   }
 }
 
