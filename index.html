@@ -9,11 +9,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a3a5c">
 <!-- App-Icons fürs Hinzufügen zum Home-Bildschirm (PWA / iOS) -->
-<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
-<link rel="shortcut icon" href="./icon-192.png">
-<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=10.2">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=10.2">
+<link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png?v=10.2">
+<link rel="shortcut icon" href="./icon-192.png?v=10.2">
+<link rel="manifest" href="./manifest.webmanifest?v=10.2">
 <!-- Cache-Steuerung: index.html selbst nicht aggressiv cachen, damit Updates schneller ankommen -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -4222,7 +4222,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.1';
+const APP_VERSION = 'V10.2';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
