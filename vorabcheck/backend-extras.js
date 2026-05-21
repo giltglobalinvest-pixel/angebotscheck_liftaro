@@ -55,3 +55,46 @@ export const VORABCHECK_TARGET_FIELDS = [
 // Werte mit diesen Keys werden im Backend als String gespeichert (nicht als Number),
 // weil Airtable für vertrag_wartungstyp/vertragsbeginn Single-Line-Text-Felder hat.
 export const VERTRAG_EXTRACT_STRING_KEYS = ['vertragsbeginn', 'wartungen_pro_jahr', 'wartungstyp'];
+
+// ──────────────────────────────────────────────────────────────────
+// Email-Inbox: Schema für die "Emails"-Tabelle in Airtable.
+// Eine Email pro Record. Vorgänge (1..N nach KI-Splitting) leben als JSON
+// im Feld `vorgaenge_json` UND werden zusätzlich als Light-Index in den
+// Status-Feldern aggregiert, damit Filter-Views in Airtable funktionieren.
+// ──────────────────────────────────────────────────────────────────
+export const EMAILS_TARGET_FIELDS = [
+  // Empfangs-Header
+  T('from_email'), T('from_name'),
+  T('to_email'), T('reply_to'),
+  T('subject'),
+  D('received_at'),
+  T('message_id'), T('in_reply_to'),
+  // Body (raw)
+  M('body_text'), M('body_html'),
+  // Attachments — Airtable speichert Datei direkt + Anzahl als Index
+  { name: 'attachments', type: 'multipleAttachments' },
+  N('attachment_count', 0),
+  // KI-Analyse
+  M('ki_summary'),               // Kurzfassung der Email für Inbox-Liste
+  S('ki_classification', ['wartung', 'reparatur', 'rechnung', 'korrespondenz', 'multiple', 'unklar', 'spam']),
+  N('ki_vorgaenge_count', 0),    // wie viele Check-Vorgänge die KI gefunden hat
+  M('vorgaenge_json'),           // Array der erkannten Vorgänge (JSON-String)
+  M('reply_draft'),              // KI-Antwortvorschlag bei "korrespondenz"
+  T('ki_confidence'),            // low/medium/high
+  D('ki_analyzed_at'),
+  T('ki_model'),
+  N('ki_cost_eur', 4),
+  // Workflow-Status
+  S('status', ['neu', 'gesichtet', 'in_bearbeitung', 'geantwortet', 'verworfen']),
+  D('status_at'),
+  T('bearbeiter_name'),
+  // Verknüpfung zu Checks-Tabelle (in App-Base) — wir speichern Komma-getrennte
+  // Check-IDs, weil Cross-Base-Links in Airtable nicht möglich sind
+  T('linked_check_ids'),         // "C-2026-0042,C-2026-0043"
+  N('linked_checks_count', 0),
+  // Reply-Tracking
+  D('replied_at'),
+  T('replied_subject'),
+  M('replied_body'),
+  T('reply_postmark_id'),        // Postmark/SES-MessageID der Antwort
+];
