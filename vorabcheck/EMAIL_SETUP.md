@@ -34,6 +34,61 @@ Phase 3 (Antwort senden mit PDF-Anhang) folgen in separaten Schritten.
 
 ## Schritt 1: val.town Email-Val anlegen
 
+### Option A — Vollautomatisch via `valdeploy` (empfohlen)
+
+Wenn du das `valdeploy`-Script schon eingerichtet hast (`~/bin/valdeploy`),
+musst du nur einmalig den API-Token + Secrets vorbereiten und dann:
+
+```bash
+# 1. Einmaliges Setup — API-Token holen + ablegen
+mkdir -p ~/.config/valtown
+# https://www.val.town/settings/api → "New Token" → Scopes:
+#   user:read, vals:read, vals:write, env_vars:read, env_vars:write
+printf '%s' "<DEIN-API-TOKEN>" > ~/.config/valtown/token
+chmod 600 ~/.config/valtown/token
+
+# 2. Secrets, die in den Val gepusht werden (alle Vals teilen sich diese Datei)
+cat > ~/.config/valtown/secrets.json <<'EOF'
+{
+  "AIRTABLE_KEY":         "patXXX....",
+  "AIRTABLE_BASE_ID":     "appXXX....",
+  "ANTHROPIC_API_KEY":    "sk-ant-...",
+  "EMAIL_INBOX_ENABLED":  "0"
+}
+EOF
+chmod 600 ~/.config/valtown/secrets.json
+
+# 3. Val anlegen + Code pushen + Secrets setzen (alles in einem Schritt)
+cd ~/Documents/Liftaro\ GmbH/Anthropic/Angebotscheck/v4.1
+~/bin/valdeploy --init liftaroEmailInbox vorabcheck/valtown-email.ts email
+```
+
+Das Script gibt dir am Ende die Empfangs-Email-Adresse aus (Format
+`<dein-username>-liftaroEmailInbox@valtown.email`).
+
+**Spätere Code-Updates** ohne Argumente: nur Datei pushen, keine Secrets anfassen:
+
+```bash
+~/bin/valdeploy liftaroEmailInbox vorabcheck/valtown-email.ts
+```
+
+**Nur Secrets neu setzen** (z. B. nach Schlüssel-Rotation):
+
+```bash
+~/bin/valdeploy --secrets liftaroEmailInbox
+```
+
+**Status anzeigen**:
+
+```bash
+~/bin/valdeploy --info liftaroEmailInbox
+~/bin/valdeploy --list
+```
+
+---
+
+### Option B — Manuell via val.town-Editor
+
 1. Öffne https://www.val.town und logge dich ein
 2. Klicke oben rechts auf **"+ New Val"** → wähle **"Email"** als Trigger-Type
 3. Benenne den Val z.B. `liftaroEmailInbox`
