@@ -3004,23 +3004,33 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Hausverwaltungen-Modal (lädt aus Pipedrive) -->
-<div id="kundenModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(880px,94vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:var(--navy);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px">
-      <div>
-        <span style="color:#fff;font-size:15px;font-weight:700">🏢 Hausverwaltungen</span>
-        <span style="color:rgba(255,255,255,.5);font-size:11px;margin-left:10px">Live aus Pipedrive · klick auf eine HV öffnet die Detailansicht</span>
+<!-- Hausverwaltungen-Modal — V11.1 Redesign -->
+<div id="kundenModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(900px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-navy);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(26,58,92,.25),0 4px 12px rgba(26,58,92,.18);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Hausverwaltungen</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Live aus Pipedrive · Klick auf HV öffnet Detailansicht</div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <input type="search" id="kundenSearch" placeholder="🔍 Filtern …" oninput="renderKundenList()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 10px;font-size:12.5px;outline:none;width:180px">
-        <button onclick="document.getElementById('kundenModal').style.display='none'"
-          style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+        <div style="position:relative">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="kundenSearch" placeholder="Filtern …" oninput="renderKundenList()" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:8px 12px 8px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:200px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
+        </div>
+        <button onclick="document.getElementById('kundenModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
-    <div id="kundenList" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:8px"></div>
-    <div style="padding:10px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)">
+    <div id="kundenList" style="flex:1;overflow-y:auto;padding:14px 24px;display:flex;flex-direction:column;gap:8px;background:var(--dr-bg-soft)"></div>
+    <div style="padding:12px 24px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:space-between;align-items:center;font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em">
       <span id="kundenStats">– Hausverwaltungen geladen</span>
-      <span style="font-size:11px;color:var(--muted)">Quelle: Pipedrive (Organizations) · Anlegen direkt in Pipedrive</span>
+      <span>Quelle: Pipedrive · Anlegen direkt in Pipedrive</span>
     </div>
   </div>
 </div>
@@ -3133,24 +3143,35 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Rechnungs-Übersicht-Modal -->
-<div id="rechnungenModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <span style="color:#fff;font-size:15px;font-weight:700">📑 Rechnungen</span>
-      <button onclick="document.getElementById('rechnungenModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+<!-- Rechnungen-Modal — V11.1 Redesign -->
+<div id="rechnungenModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-purple);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(124,58,237,.3),0 4px 12px rgba(124,58,237,.22);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Rechnungen</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Eigene Liftaro-Rechnungen — alle Vorgänge</div>
+        </div>
+      </div>
+      <button onclick="document.getElementById('rechnungenModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
-    <div style="padding:12px 22px 0;flex-shrink:0">
+    <div style="padding:16px 24px 14px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;flex-direction:column;gap:10px">
       <div style="position:relative">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="rechnungenSearch" oninput="filterRechnungen()" placeholder="Suchen nach Rechnungsnr., Empfänger, Check-ID …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="rechnungenSearch" oninput="filterRechnungen()" placeholder="Suchen nach Rechnungsnr., Empfänger, Check-ID …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
       </div>
-      <div id="rechnungenTypeFilter" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Typ:</span>
+      <div id="rechnungenTypeFilter" class="dr-filterbar">
+        <span class="dr-filterbar-label">Typ:</span>
       </div>
-      <div id="rechnungenInfo" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:14px"></div>
+      <div id="rechnungenInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);min-height:14px;letter-spacing:.04em"></div>
     </div>
-    <div id="rechnungenList" style="flex:1;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:10px">
-      <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Noch keine Rechnungen.</p>
+    <div id="rechnungenList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:10px;background:var(--dr-bg-soft)">
+      <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Rechnungen.</div>
     </div>
   </div>
 </div>
@@ -3238,49 +3259,55 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Fälligkeiten-Modal: alle fälligen / unklaren Vertragsabrechnungen + direkter "Rechnung erstellen"-Button -->
-<div id="dueBillingsModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:5050;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(1080px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:#0e6655;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span>Fälligkeiten</span>
-          <span id="dueBillingsCount" style="background:rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:2px 9px;font-size:11.5px;font-weight:700">0</span>
+<!-- Fälligkeiten-Modal — V11.1 Redesign -->
+<div id="dueBillingsModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5050;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(1080px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-green);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(22,163,74,.3),0 4px 12px rgba(22,163,74,.22);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         </div>
-        <div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px">Aktive Vertragschecks mit anstehender Jahresrechnung — direkt abrechnen</div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;display:flex;align-items:center;gap:10px">
+            Fälligkeiten
+            <span id="dueBillingsCount" style="background:var(--dr-green-soft);color:var(--dr-green-deep);border-radius:var(--dr-r-pill);padding:2px 9px;font-family:var(--dr-f-mono);font-size:11px;font-weight:700">0</span>
+          </div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Aktive Vertragschecks mit anstehender Jahresrechnung — direkt abrechnen</div>
+        </div>
       </div>
-      <button onclick="closeDueBillingsModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+      <button onclick="closeDueBillingsModal()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
 
     <!-- Filter + Suche + Sort -->
-    <div style="padding:12px 22px 0;flex-shrink:0;display:flex;flex-direction:column;gap:8px">
+    <div style="padding:16px 24px 14px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;background:var(--dr-surface);border-bottom:1px solid var(--dr-border)">
       <div style="position:relative">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="dueBillingsSearch" oninput="renderDueBillings()" placeholder="Suchen nach Firma, Standort, Check-ID, Anfragenummer …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="dueBillingsSearch" oninput="renderDueBillings()" placeholder="Suchen nach Firma, Standort, Check-ID, Anfragenummer …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
       </div>
-      <div id="dueBillingsFilterChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Filter:</span>
-        <!-- Chips werden via JS gerendert -->
+      <div id="dueBillingsFilterChips" class="dr-filterbar">
+        <span class="dr-filterbar-label">Filter:</span>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Sortierung:</span>
-        <select id="dueBillingsSort" onchange="renderDueBillings()" style="border:1.5px solid var(--border);border-radius:14px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;background:#fff;cursor:pointer;outline:none">
+      <div class="dr-filterbar">
+        <span class="dr-filterbar-label">Sortierung:</span>
+        <select id="dueBillingsSort" onchange="renderDueBillings()" style="border:1.5px solid var(--dr-border-strong);border-radius:var(--dr-r-pill);padding:5px 12px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;background:var(--dr-surface);color:var(--dr-ink);cursor:pointer;outline:none">
           <option value="date_asc">Fälligkeit · früheste zuerst</option>
           <option value="date_desc">Fälligkeit · späteste zuerst</option>
           <option value="firma_asc">Firma · A–Z</option>
           <option value="periode_desc">Periode · höchste zuerst</option>
         </select>
-        <button id="dueBillingsRefreshBtn" onclick="loadDueBillings(true)" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:4px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--muted)" title="Daten neu laden">
-          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+        <button id="dueBillingsRefreshBtn" class="dr-pill" onclick="loadDueBillings(true)" title="Daten neu laden">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
           Aktualisieren
         </button>
       </div>
-      <div id="dueBillingsInfo" style="font-size:11px;color:var(--muted);min-height:14px"></div>
+      <div id="dueBillingsInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);min-height:14px;letter-spacing:.04em"></div>
     </div>
 
     <!-- Tabelle (Liste) -->
-    <div id="dueBillingsList" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 22px 18px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y">
-      <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:#0e6655;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>
+    <div id="dueBillingsList" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 24px 18px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;background:var(--dr-bg-soft)">
+      <div style="text-align:center;color:var(--dr-ink-mute);font-size:13px;padding:40px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid var(--dr-border-strong);border-top-color:var(--dr-green);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Daten werden geladen …</div>
     </div>
   </div>
 </div>
@@ -3688,26 +3715,39 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
-<!-- Verträge: Listen-Modal -->
-<div id="vertraegeModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px">
-      <span style="color:#fff;font-size:15px;font-weight:700">📑 Rahmenverträge</span>
-      <div style="display:flex;gap:8px">
-        <button onclick="openVertragEditor()" style="background:#7dc242;border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600">+ Neuer Vertrag</button>
-        <button onclick="document.getElementById('vertraegeModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+<!-- Verträge: Listen-Modal — V11.1 Redesign -->
+<div id="vertraegeModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--dr-elev-blue);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Rahmenverträge</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Beraterverträge & Hausverwaltungs-Verträge</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="openVertragEditor()" style="background:var(--dr-green);border:none;color:#fff;border-radius:var(--dr-r-md);padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(22,163,74,.3),0 4px 12px rgba(22,163,74,.22);transition:filter .15s" onmouseover="this.style.filter='brightness(.95)'" onmouseout="this.style.filter='brightness(1)'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Neuer Vertrag
+        </button>
+        <button onclick="document.getElementById('vertraegeModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
-    <div style="padding:12px 22px 0;flex-shrink:0">
+    <div style="padding:16px 24px 14px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border)">
       <div style="position:relative">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="vertraegeSearch" oninput="filterVertraege()" placeholder="Suchen nach Firma, GF, Adresse, ID, E-Mail, Telefon …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
-        <button type="button" id="vertraegeSearchClear" onclick="clearVertraegeSearch()" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px 8px;line-height:1">✕</button>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="vertraegeSearch" oninput="filterVertraege()" placeholder="Suchen nach Firma, GF, Adresse, ID, E-Mail, Telefon …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
+        <button type="button" id="vertraegeSearchClear" onclick="clearVertraegeSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--dr-ink-mute);cursor:pointer;font-size:16px;padding:4px 8px;line-height:1">✕</button>
       </div>
-      <div id="vertraegeSearchInfo" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:14px"></div>
+      <div id="vertraegeSearchInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-top:8px;min-height:14px;letter-spacing:.04em"></div>
     </div>
-    <div id="vertraegeList" style="flex:1;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:10px">
-      <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine Verträge gespeichert.</p>
+    <div id="vertraegeList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:10px;background:var(--dr-bg-soft)">
+      <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Keine Verträge gespeichert.</div>
     </div>
   </div>
 </div>
@@ -3783,24 +3823,38 @@ const pdfWorkerReady = Promise.resolve();</script>
      LIGHT-VERTRÄGE: Liste + Editor + WEG-Sub-Modal
      Liftmanagement Light = 45 €/Aufzug/Monat, Vertrag pro HV, Rechnungen pro WEG
      ═══════════════════════════════════════════════════════════════════════ -->
-<div id="lightVertraegeModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(840px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px">
-      <span style="color:#fff;font-size:15px;font-weight:700">⚡ Liftmanagement Light · Rahmenvereinbarungen</span>
-      <div style="display:flex;gap:8px">
-        <button onclick="openLightVertragEditor()" style="background:#7dc242;border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600">+ Neue Vereinbarung</button>
-        <button onclick="document.getElementById('lightVertraegeModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+<!-- Light-Verträge-Modal — V11.1 Redesign -->
+<div id="lightVertraegeModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(840px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-purple);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(124,58,237,.3),0 4px 12px rgba(124,58,237,.22);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Liftmanagement Light</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Rahmenvereinbarungen · 45 €/Aufzug/Monat pro HV</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="openLightVertragEditor()" style="background:var(--dr-green);border:none;color:#fff;border-radius:var(--dr-r-md);padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(22,163,74,.3),0 4px 12px rgba(22,163,74,.22);transition:filter .15s" onmouseover="this.style.filter='brightness(.95)'" onmouseout="this.style.filter='brightness(1)'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Neue Vereinbarung
+        </button>
+        <button onclick="document.getElementById('lightVertraegeModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
-    <div style="padding:12px 22px 0;flex-shrink:0">
+    <div style="padding:16px 24px 14px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border)">
       <div style="position:relative">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="lightVertraegeSearch" oninput="filterLightVertraege()" placeholder="Suchen nach Firma, GF, Adresse, ID, E-Mail …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="lightVertraegeSearch" oninput="filterLightVertraege()" placeholder="Suchen nach Firma, GF, Adresse, ID, E-Mail …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
       </div>
-      <div id="lightVertraegeSearchInfo" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:14px"></div>
+      <div id="lightVertraegeSearchInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-top:8px;min-height:14px;letter-spacing:.04em"></div>
     </div>
-    <div id="lightVertraegeList" style="flex:1;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:10px">
-      <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Noch keine Light-Vereinbarungen gespeichert.</p>
+    <div id="lightVertraegeList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:10px;background:var(--dr-bg-soft)">
+      <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Light-Vereinbarungen gespeichert.</div>
     </div>
   </div>
 </div>
@@ -4132,29 +4186,37 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Vorabcheck-Hub-Modal: Tabs für Übersicht, Prompts, Mieter-Seite, Setup -->
-<div id="vorabcheckHubModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(960px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <!-- Header mit Tabs -->
-    <div style="background:var(--navy);padding:14px 22px 0;flex-shrink:0;display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <span style="color:#fff;font-size:15px;font-weight:700">🛡️ Vorabcheck</span>
-          <span style="color:rgba(255,255,255,.55);font-size:11px;margin-left:8px">Public Lead-Magnet · Verwaltung</span>
+<!-- Vorabcheck-Hub-Modal — V11.1 Redesign -->
+<div id="vorabcheckHubModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(960px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <!-- Header -->
+    <div style="background:var(--dr-surface);padding:18px 24px 0;flex-shrink:0;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-navy);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(26,58,92,.25),0 4px 12px rgba(26,58,92,.18);flex-shrink:0">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Vorabcheck-Hub</div>
+            <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Public Lead-Magnet · Verwaltung</div>
+          </div>
         </div>
-        <button onclick="document.getElementById('vorabcheckHubModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+        <button onclick="document.getElementById('vorabcheckHubModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <div style="display:flex;gap:0;flex-wrap:wrap">
-        <button class="vch-tab active" data-tab="overview" onclick="switchVchTab('overview')" style="background:transparent;border:none;color:#fff;padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">📊 Übersicht</button>
-        <button class="vch-tab" data-tab="inbox" onclick="switchVchTab('inbox')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;display:inline-flex;align-items:center;gap:6px">🎯 Inbox <span id="vchInboxCountBadge" style="background:#a8312f;color:#fff;border-radius:10px;padding:1px 7px;font-size:10.5px;font-weight:700;display:none;min-width:18px;text-align:center">0</span></button>
-        <button class="vch-tab" data-tab="mapping" onclick="switchVchTab('mapping')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🎛 Mapping</button>
-        <button class="vch-tab" data-tab="prompts" onclick="switchVchTab('prompts')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">✏️ Prompts</button>
-        <button class="vch-tab" data-tab="public" onclick="switchVchTab('public')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">🌐 Mieter-Seite</button>
-        <button class="vch-tab" data-tab="preise" onclick="switchVchTab('preise')" style="background:transparent;border:none;color:rgba(255,255,255,.6);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent">💰 Preisliste</button>
+      <div style="display:flex;gap:2px;flex-wrap:wrap;margin-top:6px">
+        <button class="vch-tab active" data-tab="overview" onclick="switchVchTab('overview')" style="background:transparent;border:none;color:var(--dr-ink);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid var(--dr-blue);transition:all .15s">📊 Übersicht</button>
+        <button class="vch-tab" data-tab="inbox" onclick="switchVchTab('inbox')" style="background:transparent;border:none;color:var(--dr-ink-mute);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;display:inline-flex;align-items:center;gap:6px;transition:all .15s">🎯 Inbox <span id="vchInboxCountBadge" style="background:var(--dr-red);color:#fff;border-radius:var(--dr-r-pill);padding:1px 8px;font-family:var(--dr-f-mono);font-size:10.5px;font-weight:700;display:none;min-width:20px;text-align:center">0</span></button>
+        <button class="vch-tab" data-tab="mapping" onclick="switchVchTab('mapping')" style="background:transparent;border:none;color:var(--dr-ink-mute);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;transition:all .15s">🎛 Mapping</button>
+        <button class="vch-tab" data-tab="prompts" onclick="switchVchTab('prompts')" style="background:transparent;border:none;color:var(--dr-ink-mute);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;transition:all .15s">✏️ Prompts</button>
+        <button class="vch-tab" data-tab="public" onclick="switchVchTab('public')" style="background:transparent;border:none;color:var(--dr-ink-mute);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;transition:all .15s">🌐 Mieter-Seite</button>
+        <button class="vch-tab" data-tab="preise" onclick="switchVchTab('preise')" style="background:transparent;border:none;color:var(--dr-ink-mute);padding:10px 16px;border-radius:8px 8px 0 0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;transition:all .15s">💰 Preisliste</button>
       </div>
     </div>
 
     <!-- Body -->
-    <div style="flex:1;overflow-y:auto;padding:22px;background:var(--bg)">
+    <div style="flex:1;overflow-y:auto;padding:22px;background:var(--dr-bg-soft)">
 
       <!-- TAB: ÜBERSICHT -->
       <div id="vch-pane-overview" class="vch-pane">
@@ -4528,7 +4590,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V11.0';
+const APP_VERSION = 'V11.1';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -16189,7 +16251,8 @@ function switchVchTab(tab) {
   document.querySelectorAll('.vch-tab').forEach(b => {
     const active = b.dataset.tab === tab;
     b.classList.toggle('active', active);
-    b.style.color = active ? '#fff' : 'rgba(255,255,255,.6)';
+    b.style.color = active ? 'var(--dr-ink)' : 'var(--dr-ink-mute)';
+    b.style.borderBottomColor = active ? 'var(--dr-blue)' : 'transparent';
   });
   document.querySelectorAll('.vch-pane').forEach(p => {
     p.style.display = p.id === 'vch-pane-' + tab ? 'block' : 'none';
