@@ -3269,53 +3269,60 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════
-     Email-Inbox-Modal — eingehende Emails aus val.town Email-Val
+     Email-Inbox-Modal — V10.8 Redesign (dr-* System aus Lager-App)
      ════════════════════════════════════════════════════════════════════ -->
-<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.82);z-index:5060;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(1200px,96vw);height:min(820px,92vh);display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5060;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(1200px,96vw);height:min(820px,92vh);display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
     <!-- Header -->
-    <div style="background:#1a3a5c;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          <span>Email-Inbox</span>
-          <span id="emailInboxHeaderCount" style="background:rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:2px 9px;font-size:11.5px;font-weight:700">0</span>
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--dr-elev-blue);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         </div>
-        <div style="color:rgba(255,255,255,.75);font-size:11.5px;margin-top:2px">KI-klassifizierte eingehende Anfragen — pro Vorgang einen Check erstellen</div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;display:flex;align-items:center;gap:10px">
+            Email-Inbox
+            <span id="emailInboxHeaderCount" style="background:var(--dr-blue-soft);color:var(--dr-blue-deep);border-radius:var(--dr-r-pill);padding:2px 9px;font-family:var(--dr-f-mono);font-size:11px;font-weight:700">0</span>
+          </div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">KI-klassifizierte eingehende Anfragen — pro Vorgang einen Check erstellen</div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button onclick="loadEmailInbox(true)" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
-          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+        <button class="dr-pill" onclick="loadEmailInbox(true)">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
           Neu laden
         </button>
-        <button onclick="closeEmailInboxModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;width:32px;height:32px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <button onclick="closeEmailInboxModal()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
     </div>
 
     <!-- Filter-Pills (Status-Filter) -->
-    <div id="emailInboxFilters" style="padding:10px 22px;background:var(--sky);border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0">
-      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Status:</span>
-      <button class="ei-filt-pill" data-status="neu"            onclick="setEiFilter('neu')">neu</button>
-      <button class="ei-filt-pill" data-status="gesichtet"      onclick="setEiFilter('gesichtet')">gesichtet</button>
-      <button class="ei-filt-pill" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')">in Bearbeitung</button>
-      <button class="ei-filt-pill" data-status="geantwortet"    onclick="setEiFilter('geantwortet')">geantwortet</button>
-      <button class="ei-filt-pill" data-status="verworfen"      onclick="setEiFilter('verworfen')">verworfen</button>
-      <button class="ei-filt-pill" data-status="alle"           onclick="setEiFilter('alle')">alle</button>
+    <div id="emailInboxFilters" style="padding:12px 24px;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0">
+      <span class="dr-filterbar-label">Status:</span>
+      <button class="dr-pill ei-filt-pill" data-status="neu"            onclick="setEiFilter('neu')">neu</button>
+      <button class="dr-pill ei-filt-pill" data-status="gesichtet"      onclick="setEiFilter('gesichtet')">gesichtet</button>
+      <button class="dr-pill ei-filt-pill" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')">in Bearbeitung</button>
+      <button class="dr-pill ei-filt-pill" data-status="geantwortet"    onclick="setEiFilter('geantwortet')">geantwortet</button>
+      <button class="dr-pill ei-filt-pill" data-status="verworfen"      onclick="setEiFilter('verworfen')">verworfen</button>
+      <button class="dr-pill ei-filt-pill" data-status="alle"           onclick="setEiFilter('alle')">alle</button>
     </div>
 
     <!-- 2-Spalten-Layout: Liste links, Detail rechts -->
-    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0;overflow:hidden">
+    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0;overflow:hidden;background:var(--dr-bg-soft)">
       <!-- Liste links -->
-      <div id="emailInboxList" style="border-right:1px solid var(--border);overflow-y:auto;background:#fafbfc">
-        <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Lade Emails …</div>
+      <div id="emailInboxList" style="border-right:1px solid var(--dr-border);overflow-y:auto;background:var(--dr-surface)">
+        <div style="padding:40px;text-align:center;color:var(--dr-ink-mute);font-size:13px">Lade Emails …</div>
       </div>
       <!-- Detail rechts -->
-      <div id="emailInboxDetail" style="overflow-y:auto;padding:0">
-        <div style="padding:60px;text-align:center;color:var(--muted);font-size:13px">
-          <div style="font-size:36px;opacity:.3;margin-bottom:8px">📥</div>
-          Eine Email aus der Liste links auswählen
+      <div id="emailInboxDetail" style="overflow-y:auto;padding:0;background:var(--dr-bg-soft)">
+        <div style="padding:80px 24px;text-align:center;color:var(--dr-ink-subtle);font-size:13px">
+          <div style="width:64px;height:64px;border-radius:18px;background:var(--dr-surface);border:1px solid var(--dr-border);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:var(--dr-elev-1)">
+            <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--dr-ink-subtle)"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div style="font-size:14px;font-weight:600;color:var(--dr-ink);margin-bottom:4px">Keine Email ausgewählt</div>
+          <div>Wähle eine Email aus der Liste links</div>
         </div>
       </div>
     </div>
@@ -3377,37 +3384,36 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
-<!-- CSS für Inbox -->
+<!-- CSS für Inbox — V10.8 Redesign (dr-* System) -->
 <style id="emailInboxStyles">
-.ei-filt-pill { background:#fff; border:1.5px solid var(--border); color:var(--text); border-radius:14px; padding:4px 12px; font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:600; cursor:pointer; transition:all .12s; }
-.ei-filt-pill:hover { background:var(--sky2); }
-.ei-filt-pill.active { background:var(--navy); color:#fff; border-color:var(--navy); }
-.ei-row { padding:12px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s; }
-.ei-row:hover { background:#f0f4f8; }
-.ei-row.selected { background:#e3edf7; border-left:3px solid var(--navy); padding-left:11px; }
-.ei-row-from { font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ei-row-subj { font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
-.ei-row-meta { display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap; }
-.ei-row-date { font-size:10.5px; color:var(--muted); font-family:'DM Mono',monospace; margin-left:auto; }
-.ei-cls-pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; }
-.ei-cls-wartung { background:#0e6655; }
-.ei-cls-reparatur { background:#b8740c; }
-.ei-cls-rechnung { background:#7c3aed; }
-.ei-cls-korrespondenz { background:#5b6470; }
-.ei-cls-spam { background:#a8312f; }
-.ei-cls-multiple { background:#1a3a5c; }
-.ei-cls-unklar { background:#9ca3af; }
+.ei-filt-pill { font-size:11.5px !important; padding:4px 10px !important; }
+.ei-filt-pill.active { background:var(--dr-blue) !important; color:#fff !important; border-color:var(--dr-blue) !important; box-shadow:var(--dr-elev-blue) !important; }
+.ei-row { padding:13px 16px; border-bottom:1px solid var(--dr-divider); cursor:pointer; transition:background .12s, border-color .12s; }
+.ei-row:hover { background:var(--dr-blue-soft); }
+.ei-row.selected { background:var(--dr-surface); border-left:3px solid var(--dr-blue); padding-left:13px; box-shadow:inset 0 0 0 1px var(--dr-blue-light); }
+.ei-row-from { font-size:13px; font-weight:700; color:var(--dr-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-.01em; }
+.ei-row-subj { font-size:12.5px; color:var(--dr-ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:3px; }
+.ei-row-meta { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.ei-row-date { font-size:10.5px; color:var(--dr-ink-mute); font-family:var(--dr-f-mono); margin-left:auto; letter-spacing:.04em; }
+.ei-cls-pill { display:inline-block; padding:2px 8px; border-radius:var(--dr-r-pill); font-family:var(--dr-f-mono); font-size:9.5px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.06em; }
+.ei-cls-wartung       { background:var(--dr-green); }
+.ei-cls-reparatur     { background:var(--dr-amber); }
+.ei-cls-rechnung      { background:var(--dr-purple); }
+.ei-cls-korrespondenz { background:var(--dr-ink-mute); }
+.ei-cls-spam          { background:var(--dr-red); }
+.ei-cls-multiple      { background:var(--dr-navy); }
+.ei-cls-unklar        { background:var(--dr-ink-subtle); }
 .ei-conf-low    { opacity:.55; }
-.ei-conf-medium { opacity:.85; }
+.ei-conf-medium { opacity:.82; }
 .ei-conf-high   { opacity:1; }
-.ei-status-pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:600; background:#e5e7eb; color:#374151; }
-.ei-status-neu          { background:#fef3c7; color:#92400e; }
-.ei-status-gesichtet    { background:#dbeafe; color:#1e3a8a; }
-.ei-status-in_bearbeitung { background:#fce7f3; color:#9d174d; }
-.ei-status-geantwortet  { background:#d1fae5; color:#065f46; }
-.ei-status-verworfen    { background:#f3f4f6; color:#6b7280; text-decoration:line-through; }
-.ei-vc-card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; }
-.ei-vc-typ-pill { display:inline-block; padding:3px 10px; border-radius:14px; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; margin-right:8px; }
+.ei-status-pill { display:inline-block; padding:2px 8px; border-radius:var(--dr-r-pill); font-family:var(--dr-f-mono); font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+.ei-status-neu             { background:var(--dr-amber-soft); color:#9A3412; }
+.ei-status-gesichtet       { background:var(--dr-blue-soft); color:var(--dr-blue-deep); }
+.ei-status-in_bearbeitung  { background:#FCE7F3; color:#9D174D; }
+.ei-status-geantwortet     { background:var(--dr-green-soft); color:var(--dr-green-deep); }
+.ei-status-verworfen       { background:var(--dr-surface-alt); color:var(--dr-ink-mute); text-decoration:line-through; }
+.ei-vc-card { background:var(--dr-surface); border:1px solid var(--dr-border); border-radius:var(--dr-r-md); padding:16px; margin-bottom:12px; box-shadow:var(--dr-elev-1); }
+.ei-vc-typ-pill { display:inline-block; padding:3px 10px; border-radius:var(--dr-r-pill); font-family:var(--dr-f-mono); font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.06em; margin-right:8px; }
 @media (max-width: 768px) {
   #emailInboxBody { grid-template-columns: 1fr !important; }
   #emailInboxList.detail-open { display:none; }
@@ -3438,7 +3444,8 @@ const pdfWorkerReady = Promise.resolve();</script>
      Rest der App unverändert bleibt.
      ════════════════════════════════════════════════════════════════════ -->
 <style id="dashRedesignStyles">
-#dashboardView {
+/* === Liftaro Design-System V10.7+ (Lager-App-orientiert) === */
+:root {
   --dr-bg: #DDE7F0;
   --dr-bg-soft: #E8EFF6;
   --dr-surface: #FFFFFF;
@@ -3474,7 +3481,9 @@ const pdfWorkerReady = Promise.resolve();</script>
   --dr-elev-2: 0 1px 2px rgba(15,24,48,0.06), 0 8px 20px rgba(15,24,48,0.06);
   --dr-elev-blue: 0 1px 2px rgba(36,86,229,0.2), 0 8px 24px rgba(36,86,229,0.2);
   --dr-f-mono: 'DM Mono', ui-monospace, 'SF Mono', monospace;
+}
 
+#dashboardView {
   background: var(--dr-bg-soft);
   min-height: calc(100vh - 80px);
   padding: 28px 32px;
@@ -3482,25 +3491,25 @@ const pdfWorkerReady = Promise.resolve();</script>
   margin: 0 auto;
 }
 
-#dashboardView .dr-header {
+.dr-header {
   display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 14px; margin-bottom: 22px;
 }
-#dashboardView .dr-header-title { display: flex; align-items: center; gap: 14px; }
-#dashboardView .dr-header-icon {
+.dr-header-title { display: flex; align-items: center; gap: 14px; }
+.dr-header-icon {
   width: 44px; height: 44px; border-radius: 14px;
   background: var(--dr-blue); color: #fff;
   display: flex; align-items: center; justify-content: center;
   box-shadow: var(--dr-elev-blue); flex-shrink: 0;
 }
-#dashboardView .dr-header h1 {
+.dr-header h1 {
   margin: 0; font-size: 24px; font-weight: 700;
   letter-spacing: -0.02em; color: var(--dr-ink);
 }
-#dashboardView .dr-header-sub {
+.dr-header-sub {
   font-size: 13px; color: var(--dr-ink-mute); margin-top: 3px;
 }
-#dashboardView .dr-cta {
+.dr-cta {
   background: var(--dr-blue); color: #fff; border: 0;
   border-radius: var(--dr-r-md); padding: 11px 18px;
   font-family: 'DM Sans', sans-serif;
@@ -3509,33 +3518,33 @@ const pdfWorkerReady = Promise.resolve();</script>
   display: inline-flex; align-items: center; gap: 8px;
   transition: filter .15s, transform .1s;
 }
-#dashboardView .dr-cta:hover { filter: brightness(.95); }
-#dashboardView .dr-cta:active { transform: scale(.98); }
+.dr-cta:hover { filter: brightness(.95); }
+.dr-cta:active { transform: scale(.98); }
 
-#dashboardView .dr-stack { display: flex; flex-direction: column; gap: 16px; }
+.dr-stack { display: flex; flex-direction: column; gap: 16px; }
 
-#dashboardView .dr-section {
+.dr-section {
   background: var(--dr-surface);
   border: 1px solid var(--dr-border);
   border-radius: var(--dr-r-tile);
   padding: 22px 24px;
   box-shadow: var(--dr-elev-1);
 }
-#dashboardView .dr-section--accent {
+.dr-section--accent {
   background: linear-gradient(180deg, var(--dr-surface) 0%, var(--dr-surface-alt) 100%);
 }
-#dashboardView .dr-section-head {
+.dr-section-head {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px; gap: 12px; flex-wrap: wrap;
 }
-#dashboardView .dr-section-title {
+.dr-section-title {
   display: inline-flex; align-items: center; gap: 8px;
   font-family: var(--dr-f-mono);
   font-size: 11px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--dr-ink-mute);
 }
-#dashboardView .dr-section-title__count {
+.dr-section-title__count {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 22px; padding: 2px 7px;
   background: var(--dr-blue-soft); color: var(--dr-blue-deep);
@@ -3544,11 +3553,11 @@ const pdfWorkerReady = Promise.resolve();</script>
   letter-spacing: 0; text-transform: none;
 }
 
-#dashboardView .dr-kpi-grid {
+.dr-kpi-grid {
   display: grid; gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
-#dashboardView .dr-kpi {
+.dr-kpi {
   padding: 14px 16px;
   background: var(--dr-surface);
   border: 1px solid var(--dr-border);
@@ -3557,38 +3566,38 @@ const pdfWorkerReady = Promise.resolve();</script>
   display: flex; flex-direction: column; gap: 5px;
   min-width: 0; min-height: 88px;
 }
-#dashboardView .dr-kpi--blue   { border-color: rgba(36,86,229,0.20);  background: linear-gradient(135deg, #fff 0%, var(--dr-blue-soft)   100%); }
-#dashboardView .dr-kpi--green  { border-color: #8FD4A6;                background: linear-gradient(135deg, #fff 0%, var(--dr-green-soft)  100%); }
-#dashboardView .dr-kpi--amber  { border-color: #FB923C;                background: linear-gradient(135deg, #fff 0%, var(--dr-amber-soft)  100%); }
-#dashboardView .dr-kpi--red    { border-color: rgba(229,72,77,0.25);   background: linear-gradient(135deg, #fff 0%, var(--dr-red-soft)    100%); }
-#dashboardView .dr-kpi--purple { border-color: rgba(124,58,237,0.25);  background: linear-gradient(135deg, #fff 0%, var(--dr-purple-soft) 100%); }
-#dashboardView .dr-kpi--navy   { border-color: rgba(26,58,92,0.20);    background: linear-gradient(135deg, #fff 0%, var(--dr-navy-soft)   100%); }
-#dashboardView .dr-kpi--blue   .dr-kpi__label, #dashboardView .dr-kpi--blue   .dr-kpi__val { color: var(--dr-blue-deep); }
-#dashboardView .dr-kpi--green  .dr-kpi__label, #dashboardView .dr-kpi--green  .dr-kpi__val { color: var(--dr-green-deep); }
-#dashboardView .dr-kpi--amber  .dr-kpi__label, #dashboardView .dr-kpi--amber  .dr-kpi__val { color: #9A3412; }
-#dashboardView .dr-kpi--red    .dr-kpi__label, #dashboardView .dr-kpi--red    .dr-kpi__val { color: #9F1B1F; }
-#dashboardView .dr-kpi--purple .dr-kpi__label, #dashboardView .dr-kpi--purple .dr-kpi__val { color: var(--dr-purple-deep); }
-#dashboardView .dr-kpi--navy   .dr-kpi__label, #dashboardView .dr-kpi--navy   .dr-kpi__val { color: var(--dr-navy); }
-#dashboardView .dr-kpi__label {
+.dr-kpi--blue   { border-color: rgba(36,86,229,0.20);  background: linear-gradient(135deg, #fff 0%, var(--dr-blue-soft)   100%); }
+.dr-kpi--green  { border-color: #8FD4A6;                background: linear-gradient(135deg, #fff 0%, var(--dr-green-soft)  100%); }
+.dr-kpi--amber  { border-color: #FB923C;                background: linear-gradient(135deg, #fff 0%, var(--dr-amber-soft)  100%); }
+.dr-kpi--red    { border-color: rgba(229,72,77,0.25);   background: linear-gradient(135deg, #fff 0%, var(--dr-red-soft)    100%); }
+.dr-kpi--purple { border-color: rgba(124,58,237,0.25);  background: linear-gradient(135deg, #fff 0%, var(--dr-purple-soft) 100%); }
+.dr-kpi--navy   { border-color: rgba(26,58,92,0.20);    background: linear-gradient(135deg, #fff 0%, var(--dr-navy-soft)   100%); }
+.dr-kpi--blue   .dr-kpi__label, .dr-kpi--blue   .dr-kpi__val { color: var(--dr-blue-deep); }
+.dr-kpi--green  .dr-kpi__label, .dr-kpi--green  .dr-kpi__val { color: var(--dr-green-deep); }
+.dr-kpi--amber  .dr-kpi__label, .dr-kpi--amber  .dr-kpi__val { color: #9A3412; }
+.dr-kpi--red    .dr-kpi__label, .dr-kpi--red    .dr-kpi__val { color: #9F1B1F; }
+.dr-kpi--purple .dr-kpi__label, .dr-kpi--purple .dr-kpi__val { color: var(--dr-purple-deep); }
+.dr-kpi--navy   .dr-kpi__label, .dr-kpi--navy   .dr-kpi__val { color: var(--dr-navy); }
+.dr-kpi__label {
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--dr-f-mono);
   font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--dr-ink-mute);
 }
-#dashboardView .dr-kpi__val {
+.dr-kpi__val {
   font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
   line-height: 1.05; color: var(--dr-ink);
   font-variant-numeric: tabular-nums;
   word-wrap: break-word;
 }
-#dashboardView .dr-kpi__sub {
+.dr-kpi__sub {
   font-size: 11.5px; font-weight: 500;
   color: var(--dr-ink-soft); line-height: 1.4;
   margin-top: 1px;
 }
 
-#dashboardView .dr-pill {
+.dr-pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px;
   background: var(--dr-surface);
@@ -3599,29 +3608,29 @@ const pdfWorkerReady = Promise.resolve();</script>
   color: var(--dr-ink); cursor: pointer;
   transition: all .15s;
 }
-#dashboardView .dr-pill:hover {
+.dr-pill:hover {
   background: var(--dr-blue-soft);
   border-color: var(--dr-blue-light);
 }
-#dashboardView .dr-pill--active {
+.dr-pill--active {
   background: var(--dr-blue); color: #fff;
   border-color: var(--dr-blue);
   box-shadow: var(--dr-elev-blue);
 }
-#dashboardView .dr-pill--reset {
+.dr-pill--reset {
   border-style: dashed; color: var(--dr-ink-mute);
   background: transparent;
 }
-#dashboardView .dr-pill__count {
+.dr-pill__count {
   font-family: var(--dr-f-mono);
   font-size: 10.5px; opacity: 0.7;
 }
-#dashboardView .dr-pill--active .dr-pill__count { opacity: 0.85; }
+.dr-pill--active .dr-pill__count { opacity: 0.85; }
 
-#dashboardView .dr-filterbar {
+.dr-filterbar {
   display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center;
 }
-#dashboardView .dr-filterbar-label {
+.dr-filterbar-label {
   font-family: var(--dr-f-mono);
   font-size: 10.5px; font-weight: 700;
   color: var(--dr-ink-mute);
@@ -3631,12 +3640,12 @@ const pdfWorkerReady = Promise.resolve();</script>
 
 @media (max-width: 768px) {
   #dashboardView { padding: 16px 14px; max-width: 100%; }
-  #dashboardView .dr-section { padding: 16px 14px; border-radius: 16px; }
-  #dashboardView .dr-kpi { padding: 12px 14px; min-height: 80px; }
-  #dashboardView .dr-kpi__val { font-size: 22px; }
-  #dashboardView .dr-header h1 { font-size: 20px; }
-  #dashboardView .dr-header-icon { width: 38px; height: 38px; border-radius: 12px; }
-  #dashboardView .dr-cta { padding: 10px 14px; font-size: 13px; }
+  .dr-section { padding: 16px 14px; border-radius: 16px; }
+  .dr-kpi { padding: 12px 14px; min-height: 80px; }
+  .dr-kpi__val { font-size: 22px; }
+  .dr-header h1 { font-size: 20px; }
+  .dr-header-icon { width: 38px; height: 38px; border-radius: 12px; }
+  .dr-cta { padding: 10px 14px; font-size: 13px; }
 }
 </style>
 
@@ -4488,7 +4497,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.7';
+const APP_VERSION = 'V10.8';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15602,11 +15611,11 @@ function selectEmailRow(recId) {
 function renderEmailInboxDetail() {
   const detEl = document.getElementById('emailInboxDetail');
   if (!_eiSelectedId) {
-    detEl.innerHTML = '<div style="padding:60px;text-align:center;color:var(--muted);font-size:13px"><div style="font-size:36px;opacity:.3;margin-bottom:8px">📥</div>Eine Email aus der Liste links auswählen</div>';
+    detEl.innerHTML = '<div style="padding:80px 24px;text-align:center;color:var(--dr-ink-subtle);font-size:13px"><div style="width:64px;height:64px;border-radius:18px;background:var(--dr-surface);border:1px solid var(--dr-border);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:var(--dr-elev-1)"><svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--dr-ink-subtle)"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div style="font-size:14px;font-weight:600;color:var(--dr-ink);margin-bottom:4px">Keine Email ausgewählt</div><div>Wähle eine Email aus der Liste links</div></div>';
     return;
   }
   const r = _eiAllRecords.find(x => x._id === _eiSelectedId);
-  if (!r) { detEl.innerHTML = '<div style="padding:40px;color:#a8312f">Email nicht gefunden</div>'; return; }
+  if (!r) { detEl.innerHTML = '<div style="padding:40px;color:#9F1B1F">Email nicht gefunden</div>'; return; }
 
   // Parse Vorgänge
   let vorgaenge = [];
@@ -15619,119 +15628,131 @@ function renderEmailInboxDetail() {
   const attCount = r.attachment_count || (Array.isArray(r.attachments) ? r.attachments.length : 0);
   const cost = (r.ki_cost_eur || 0).toFixed(4);
 
+  // Helper für saubere Detail-Cards
+  const card = (title, body, extra) => `<div class="dr-section" style="padding:16px 18px;margin-bottom:12px">
+    ${title ? `<div class="dr-section-head" style="margin-bottom:10px"><div class="dr-section-title">${title}</div>${extra||''}</div>` : ''}
+    ${body}
+  </div>`;
+  const monoMeta = (label, value) => `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-right:3px">${label}</span><span style="font-size:12px;color:var(--dr-ink)">${value}</span>`;
+
   let html = `<div style="padding:20px 24px">`;
 
   // Email-Header-Block
-  html += `<div style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">`;
-  html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">`;
-  html += `<div style="font-size:15px;font-weight:700;color:var(--text)">${_esc(r.subject || '(kein Betreff)')}</div>`;
-  html += `<div style="display:flex;gap:6px;align-items:center">`;
-  html += `<span class="ei-cls-pill ei-cls-${cls}">${cls}</span>`;
-  html += `<span class="ei-status-pill ei-status-${status}">${_esc(status)}</span>`;
-  html += `</div></div>`;
-  html += `<div style="font-size:12px;color:var(--muted);line-height:1.6">`;
-  html += `<strong>Von:</strong> ${_esc(r.from_name ? `${r.from_name} <${r.from_email}>` : r.from_email)}<br>`;
-  html += `<strong>Empfangen:</strong> ${_esc(String(r.received_at||'').replace('T',' ').slice(0,19))} · `;
-  html += `<strong>Confidence:</strong> ${_esc(conf)} · `;
-  html += `<strong>KI-Kosten:</strong> ${cost} € · `;
-  html += `<strong>Anhänge:</strong> ${attCount}`;
-  html += `</div></div>`;
+  html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="font-size:16px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;line-height:1.3;flex:1;min-width:0">${_esc(r.subject || '(kein Betreff)')}</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+        <span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>
+        <span class="ei-status-pill ei-status-${status}">${_esc(status)}</span>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--dr-ink-soft);line-height:1.65;display:flex;flex-wrap:wrap;gap:14px">
+      <div>${monoMeta('Von:', _esc(r.from_name ? `${r.from_name} <${r.from_email}>` : r.from_email))}</div>
+      <div>${monoMeta('Empfangen:', _esc(String(r.received_at||'').replace('T',' ').slice(0,16)))}</div>
+      <div>${monoMeta('Confidence:', _esc(conf))}</div>
+      <div>${monoMeta('KI-Kosten:', cost + ' €')}</div>
+      <div>${monoMeta('Anhänge:', String(attCount))}</div>
+    </div>
+  </div>`;
 
   // KI-Summary
   if (r.ki_summary) {
-    html += `<div style="background:#fff;border-left:3px solid var(--navy);padding:10px 14px;margin-bottom:16px;font-size:13px;line-height:1.5">`;
-    html += `<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">KI-Zusammenfassung</div>`;
-    html += _esc(r.ki_summary);
-    html += `</div>`;
+    html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid var(--dr-blue)">
+      <div class="dr-section-title" style="margin-bottom:6px">KI-Zusammenfassung</div>
+      <div style="font-size:13px;line-height:1.55;color:var(--dr-ink)">${_esc(r.ki_summary)}</div>
+    </div>`;
   }
 
   // Vorgangs-Karten
   if (vorgaenge.length > 0) {
-    html += `<div style="font-size:12px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 10px">Erkannte Vorgänge (${vorgaenge.length})</div>`;
+    html += `<div class="dr-section-title" style="margin:20px 0 10px">Erkannte Vorgänge<span class="dr-section-title__count">${vorgaenge.length}</span></div>`;
     vorgaenge.forEach((v, i) => {
-      const typColor = { wartung:'#0e6655', reparatur:'#b8740c', rechnung:'#7c3aed' }[v.typ] || '#5b6470';
-      html += `<div class="ei-vc-card">`;
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">`;
-      html += `<span class="ei-vc-typ-pill" style="background:${typColor}">${_esc(v.typ || '?')}</span>`;
-      html += `<span style="font-weight:600;font-size:13.5px">${_esc(v.titel || '(ohne Titel)')}</span>`;
-      html += `</div>`;
-      html += `<div style="font-size:12px;line-height:1.7;color:var(--text)">`;
-      if (v.kunde_name || v.kunde_firma) html += `<strong>Kunde:</strong> ${_esc([v.kunde_name, v.kunde_firma].filter(Boolean).join(' — '))}<br>`;
-      if (v.kunde_email) html += `<strong>Email:</strong> ${_esc(v.kunde_email)}<br>`;
-      if (v.kunde_telefon) html += `<strong>Telefon:</strong> ${_esc(v.kunde_telefon)}<br>`;
-      if (v.objekt_adresse) html += `<strong>Objekt:</strong> ${_esc(v.objekt_adresse)}<br>`;
-      if (v.anlage_typ) html += `<strong>Anlage:</strong> ${_esc(v.anlage_typ)}<br>`;
-      if (v.anliegen_kurz) html += `<strong>Anliegen:</strong> ${_esc(v.anliegen_kurz)}<br>`;
-      html += `</div>`;
-      html += `<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">`;
-      html += `<button onclick="createCheckFromVorgang('${r._id}', ${i})" style="background:${typColor};color:#fff;border:none;border-radius:6px;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">`;
-      html += `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
-      html += `Check daraus erstellen`;
-      html += `</button>`;
-      html += `<button onclick="dismissVorgang('${r._id}', ${i})" style="background:#fff;color:var(--muted);border:1.5px solid var(--border);border-radius:6px;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer">`;
-      html += `Verwerfen</button>`;
-      html += `</div>`;
-      html += `</div>`;
+      const typVariant = { wartung:'green', reparatur:'amber', rechnung:'purple' }[v.typ] || 'navy';
+      const typColor = { wartung:'var(--dr-green)', reparatur:'var(--dr-amber)', rechnung:'var(--dr-purple)' }[v.typ] || 'var(--dr-ink-mute)';
+      html += `<div class="ei-vc-card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <span class="ei-vc-typ-pill" style="background:${typColor}">${_esc(v.typ || '?')}</span>
+          <span style="font-weight:700;font-size:14px;color:var(--dr-ink);letter-spacing:-.01em">${_esc(v.titel || '(ohne Titel)')}</span>
+        </div>
+        <div style="font-size:12.5px;line-height:1.75;color:var(--dr-ink-soft);display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px 18px">
+          ${v.kunde_name || v.kunde_firma ? `<div>${monoMeta('Kunde:', _esc([v.kunde_name, v.kunde_firma].filter(Boolean).join(' — ')))}</div>` : ''}
+          ${v.kunde_email   ? `<div>${monoMeta('Email:', _esc(v.kunde_email))}</div>` : ''}
+          ${v.kunde_telefon ? `<div>${monoMeta('Telefon:', _esc(v.kunde_telefon))}</div>` : ''}
+          ${v.objekt_adresse? `<div>${monoMeta('Objekt:', _esc(v.objekt_adresse))}</div>` : ''}
+          ${v.anlage_typ    ? `<div>${monoMeta('Anlage:', _esc(v.anlage_typ))}</div>` : ''}
+        </div>
+        ${v.anliegen_kurz ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--dr-divider);font-size:12.5px;color:var(--dr-ink);line-height:1.55"><span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-right:6px">Anliegen:</span>${_esc(v.anliegen_kurz)}</div>` : ''}
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <button onclick="createCheckFromVorgang('${r._id}', ${i})" style="background:${typColor};color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(15,24,48,.1)">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Check daraus erstellen
+          </button>
+          <button class="dr-pill" onclick="dismissVorgang('${r._id}', ${i})">Verwerfen</button>
+        </div>
+      </div>`;
     });
   } else {
-    html += `<div style="padding:14px 16px;background:#fef9e7;border-left:3px solid #f59e0b;border-radius:6px;margin-bottom:16px;font-size:12.5px;line-height:1.6">`;
-    html += `Die KI hat keinen konkreten Prüf-Vorgang erkannt (klassifiziert als <strong>${cls}</strong>).`;
-    if (r.reply_draft) html += ` Ein Antwort-Entwurf wurde generiert (siehe unten).`;
-    html += `</div>`;
+    html += `<div style="padding:14px 16px;background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:var(--dr-r-md);margin-bottom:14px;font-size:12.5px;line-height:1.6;color:#9A3412">
+      Die KI hat keinen konkreten Prüf-Vorgang erkannt (klassifiziert als <strong>${cls}</strong>).${r.reply_draft ? ' Ein Antwort-Entwurf wurde generiert (siehe unten).' : ''}
+    </div>`;
   }
 
-  // Reply-Draft (falls vorhanden)
+  // Reply-Draft
   if (r.reply_draft) {
-    html += `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:18px">`;
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">`;
-    html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text)">KI-Antwortentwurf</div>`;
-    html += `<button onclick="copyText('eiReplyDraft_${r._id}')" style="background:var(--sky);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer">Kopieren</button>`;
-    html += `</div>`;
-    html += `<div id="eiReplyDraft_${r._id}" style="background:var(--sky);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.6;color:var(--text);white-space:pre-wrap">${_esc(r.reply_draft)}</div>`;
-    html += `<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">In Phase 3 wird daraus ein „Antwort senden"-Button mit PDF-Anhang.</div>`;
-    html += `</div>`;
+    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+      <div class="dr-section-head" style="margin-bottom:10px">
+        <div class="dr-section-title">KI-Antwortentwurf</div>
+        <button class="dr-pill" onclick="copyText('eiReplyDraft_${r._id}')">Kopieren</button>
+      </div>
+      <div id="eiReplyDraft_${r._id}" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:12px 14px;font-size:12.5px;line-height:1.6;color:var(--dr-ink);white-space:pre-wrap">${_esc(r.reply_draft)}</div>
+    </div>`;
   }
 
   // Email-Body
-  html += `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:18px">`;
-  html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text);margin-bottom:8px">Original-Body</div>`;
-  html += `<div style="font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--sky);padding:10px 12px;border-radius:6px">${_esc(r.body_text || '(leer)')}</div>`;
-  html += `</div>`;
+  html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+    <div class="dr-section-title" style="margin-bottom:10px">Original-Body</div>
+    <div style="font-size:12.5px;line-height:1.7;color:var(--dr-ink-soft);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--dr-surface-alt);padding:12px 14px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(r.body_text || '(leer)')}</div>
+  </div>`;
 
   // Anhänge
   if (Array.isArray(r.attachments) && r.attachments.length) {
-    html += `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:18px">`;
-    html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text);margin-bottom:8px">Anhänge (${r.attachments.length})</div>`;
-    html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+      <div class="dr-section-head" style="margin-bottom:10px">
+        <div class="dr-section-title">Anhänge<span class="dr-section-title__count">${r.attachments.length}</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">`;
     r.attachments.forEach(a => {
       const fname = a.filename || a.name || 'Anhang';
       const url = a.url || '';
-      const size = a.size ? (' · ' + Math.round(a.size/1024) + ' KB') : '';
-      html += `<a href="${_esc(url)}" target="_blank" style="background:var(--sky);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--navy);text-decoration:none;display:inline-flex;align-items:center;gap:8px">`;
-      html += `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`;
-      html += `${_esc(fname)}${size}`;
-      html += `</a>`;
+      const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
+      html += `<a href="${_esc(url)}" target="_blank" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:var(--dr-ink);text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface-alt)';this.style.borderColor='var(--dr-border)'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--dr-blue);flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
+        ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
+      </a>`;
     });
     html += `</div></div>`;
   }
 
   // Status- & Aktions-Buttons
-  html += `<div style="display:flex;gap:8px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);flex-wrap:wrap">`;
-  // "Antwort senden" — Haupt-Aktion bei geantwortetem Check ODER reiner Korrespondenz mit reply_draft
   const canReply = (r.from_email && (r.linked_check_ids || r.reply_draft || vorgaenge.length === 0));
+  html += `<div class="dr-section" style="padding:14px 18px">
+    <div class="dr-section-title" style="margin-bottom:12px">Aktionen</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">`;
   if (canReply && r.status !== 'geantwortet') {
-    html += `<button onclick="openEmailReplyModal('${r._id}')" style="background:#0e6655;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">`;
-    html += `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
-    html += `Antwort senden`;
-    html += `</button>`;
+    html += `<button onclick="openEmailReplyModal('${r._id}')" style="background:var(--dr-green);color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(22,163,74,.2),0 6px 16px rgba(22,163,74,.16)">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Antwort senden
+    </button>`;
   }
   if (r.status === 'geantwortet') {
-    html += `<div style="background:#d1fae5;color:#065f46;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">✓ Bereits geantwortet ${r.replied_at ? '(' + String(r.replied_at).slice(0,16).replace('T',' ') + ')' : ''}</div>`;
+    html += `<div style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:var(--dr-r-md);padding:9px 14px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px">✓ Bereits geantwortet${r.replied_at ? ' · ' + String(r.replied_at).slice(0,16).replace('T',' ') : ''}</div>`;
   }
-  html += `<button onclick="setEmailStatus('${r._id}','gesichtet')" style="background:#dbeafe;color:#1e3a8a;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Als gesichtet markieren</button>`;
-  html += `<button onclick="setEmailStatus('${r._id}','in_bearbeitung')" style="background:#fce7f3;color:#9d174d;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">In Bearbeitung</button>`;
-  html += `<button onclick="setEmailStatus('${r._id}','verworfen')" style="background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer">Verwerfen</button>`;
-  html += `</div>`;
+  html += `<button class="dr-pill" onclick="setEmailStatus('${r._id}','gesichtet')">Als gesichtet markieren</button>
+    <button class="dr-pill" onclick="setEmailStatus('${r._id}','in_bearbeitung')">In Bearbeitung</button>
+    <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')">Verwerfen</button>
+    </div>
+  </div>`;
 
   html += `</div>`;
   detEl.innerHTML = html;
