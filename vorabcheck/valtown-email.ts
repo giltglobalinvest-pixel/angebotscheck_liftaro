@@ -187,6 +187,45 @@ async function createEmailRecord(fields: any): Promise<string | null> {
 // Airtable braucht Attachments als { url, filename } — wir nutzen
 // content.airtable.com Upload für direkten Binary-Upload.
 // ──────────────────────────────────────────────────────────────────
+// Robuste Bytes-Konversion: val.town liefert Attachment-Content in unterschiedlichen
+// Formaten (Uint8Array, ArrayBuffer, Buffer, base64-String). Wir akzeptieren alles.
+function _toUint8Array(content: any): Uint8Array | null {
+  if (content == null) return null;
+  if (content instanceof Uint8Array) return content;
+  if (content instanceof ArrayBuffer) return new Uint8Array(content);
+  if (typeof content === "string") {
+    // Versuche base64 zu dekodieren
+    try {
+      const bin = atob(content);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch (_) {
+      // raw String → UTF-8-Bytes
+      return new TextEncoder().encode(content);
+    }
+  }
+  // Buffer (Node-Stil) oder andere Array-likes — duck-typing
+  if (typeof content.length === "number") {
+    try { return new Uint8Array(content); } catch (_) {}
+  }
+  if (content.buffer && content.buffer instanceof ArrayBuffer) {
+    return new Uint8Array(content.buffer, content.byteOffset || 0, content.byteLength);
+  }
+  return null;
+}
+
+// Chunked base64-Konversion — String.fromCharCode(...) bei großen Arrays (>~100k)
+// fällt sonst mit "Maximum call stack size exceeded" um.
+function _bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000; // 32k Chunks
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+  }
+  return btoa(binary);
+}
+
 async function uploadAttachmentToAirtable(
   recordId: string,
   fieldName: string,
@@ -198,8 +237,7 @@ async function uploadAttachmentToAirtable(
   const base = Deno.env.get("AIRTABLE_BASE_ID");
   // Airtable Content-Upload-Endpoint (eingeführt 2024)
   const url = `https://content.airtable.com/v0/${base}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`;
-  // Base64 für JSON-Payload — Airtable will base64-encoded file
-  const b64 = btoa(String.fromCharCode(...bytes));
+  const b64 = _bytesToBase64(bytes);
   const r = await fetch(url, {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
@@ -210,6 +248,27 @@ async function uploadAttachmentToAirtable(
     return false;
   }
   return true;
+}
+
+// HTML → Plain-Text-Approximation (für body_text-Fallback, wenn nur HTML kam)
+function _htmlToText(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -249,8 +308,10 @@ export default async function (e: any): Promise<void> {
   const toArr        = Array.isArray(e?.to) ? e.to : (e?.to ? [String(e.to)] : []);
   const toEmail      = toArr[0] || "";
   const subject      = String(e?.subject || "");
-  const text         = String(e?.text || "");
   const html         = String(e?.html || "");
+  // body_text Fallback: viele Mailclients senden nur HTML; wir leiten dann den
+  // Text aus dem HTML ab, damit der KI-Klassifikator und die Inbox-UI was haben.
+  const text         = String(e?.text || "") || _htmlToText(html);
   const attachments  = Array.isArray(e?.attachments) ? e.attachments : [];
   const attachNames  = attachments.map((a: any) => String(a?.filename || "anhang.bin"));
   const messageId    = String(e?.headers?.messageId  || e?.headers?.["message-id"]  || "");
@@ -305,23 +366,33 @@ export default async function (e: any): Promise<void> {
     return;
   }
 
-  // Attachments hochladen (sequentiell, damit wir Airtable nicht überlasten)
+  // Attachments hochladen (sequentiell, damit wir Airtable nicht überlasten).
+  // val.town liefert das Content-Feld in unterschiedlichen Formaten je nach
+  // Email-Provider — wir akzeptieren Uint8Array, ArrayBuffer, Buffer, base64-String.
+  let uploadedCount = 0;
   for (const att of attachments) {
     try {
-      const fname   = String(att?.filename || "anhang.bin");
-      const ctype   = String(att?.contentType || "application/octet-stream");
-      const content = att?.content; // Uint8Array
-      if (!(content instanceof Uint8Array) || content.byteLength === 0) continue;
-      // Größenschutz: 20 MB pro Attachment cap (Airtable-Limit ist ~30 MB)
-      if (content.byteLength > 20 * 1024 * 1024) {
-        console.warn("[Emails] Attachment zu groß — skipped:", fname, content.byteLength);
+      const fname = String(att?.filename || att?.name || "anhang.bin");
+      const ctype = String(att?.contentType || att?.type || "application/octet-stream");
+      // Try unterschiedliche Felder, je nach val.town-Email-Schema
+      const rawContent = att?.content ?? att?.body ?? att?.data ?? att?.buffer;
+      const bytes = _toUint8Array(rawContent);
+      if (!bytes || bytes.byteLength === 0) {
+        console.warn("[Emails] Attachment ohne lesbaren Content — skipped:", fname,
+          "type=", typeof rawContent, "keys=", rawContent ? Object.keys(rawContent).slice(0, 5) : "(null)");
         continue;
       }
-      await uploadAttachmentToAirtable(recordId, "attachments", fname, ctype, content);
+      if (bytes.byteLength > 20 * 1024 * 1024) {
+        console.warn("[Emails] Attachment zu groß — skipped:", fname, bytes.byteLength);
+        continue;
+      }
+      const ok = await uploadAttachmentToAirtable(recordId, "attachments", fname, ctype, bytes);
+      if (ok) uploadedCount++;
     } catch (err) {
       console.warn("[Emails] Attachment-Upload-Error:", err);
     }
   }
 
-  console.log("[Emails] Verarbeitet OK:", recordId, "—", kiResult.parsed.classification, `(${kiResult.parsed.vorgaenge?.length || 0} Vorgänge)`);
+  console.log("[Emails] Verarbeitet OK:", recordId, "—", kiResult.parsed.classification,
+    `(${kiResult.parsed.vorgaenge?.length || 0} Vorgänge, ${uploadedCount}/${attachments.length} Anhänge hochgeladen)`);
 }
