@@ -18,7 +18,7 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 import { EMAIL_SPLITTER_PROMPT } from "https://check.liftaro.de/vorabcheck/prompts.js?v=4";
-import { EMAILS_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=6";
+import { EMAILS_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=7";
 
 const MODEL_CLASSIFIER = "claude-haiku-4-5";   // schnell + günstig für Triage
 const COST_PER_M_INPUT  = 1.0;                 // Haiku 4.5 — niedriger Preis
@@ -188,11 +188,23 @@ async function createEmailRecord(fields: any): Promise<string | null> {
 // content.airtable.com Upload für direkten Binary-Upload.
 // ──────────────────────────────────────────────────────────────────
 // Robuste Bytes-Konversion: val.town liefert Attachment-Content in unterschiedlichen
-// Formaten (Uint8Array, ArrayBuffer, Buffer, base64-String). Wir akzeptieren alles.
-function _toUint8Array(content: any): Uint8Array | null {
+// Formaten (Uint8Array, ArrayBuffer, Buffer, base64-String, Blob). Wir akzeptieren alles.
+// Achtung: für Blob/ReadableStream brauchen wir await → diese Funktion ist async.
+async function _toUint8Array(content: any): Promise<Uint8Array | null> {
   if (content == null) return null;
   if (content instanceof Uint8Array) return content;
   if (content instanceof ArrayBuffer) return new Uint8Array(content);
+  // Blob (oft von val.town-Email API)
+  if (typeof Blob !== "undefined" && content instanceof Blob) {
+    const ab = await content.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  // ReadableStream
+  if (typeof ReadableStream !== "undefined" && content instanceof ReadableStream) {
+    const resp = new Response(content);
+    const ab = await resp.arrayBuffer();
+    return new Uint8Array(ab);
+  }
   if (typeof content === "string") {
     // Versuche base64 zu dekodieren
     try {
@@ -211,6 +223,10 @@ function _toUint8Array(content: any): Uint8Array | null {
   }
   if (content.buffer && content.buffer instanceof ArrayBuffer) {
     return new Uint8Array(content.buffer, content.byteOffset || 0, content.byteLength);
+  }
+  // letzter Versuch: arrayBuffer-Methode (Web-Standard)
+  if (typeof content.arrayBuffer === "function") {
+    try { return new Uint8Array(await content.arrayBuffer()); } catch (_) {}
   }
   return null;
 }
@@ -280,11 +296,21 @@ function _parseForwardedHeaders(subject: string, bodyText: string, defaultFromEm
   }
 
   // Suche nach "Von:" / "From:" mit Name + <email>
-  const fromMatchNameEmail = body.match(/^\s*(?:Von|From):\s*"?([^<\n"]+?)"?\s*<([^>\n]+)>\s*$/im);
+  // Akzeptiert auch:
+  //   "> Von: ..." (Quote-Prefix von Apple Mail / Plain-Text-Forwards)
+  //   "*Von:*" (Markdown-Bold von Gmail)
+  //   Whitespace + Soft-Hyphen-Mix
+  // Regex-Komponenten:
+  //   ^[\s>*]*    → optionale Quote/Bold/Whitespace-Prefixe
+  //   (?:Von|From|Absender):   → Header-Name (multi-language)
+  //   \s*"?       → optional gequoted
+  //   ([^<\n"]+?) → Name (greedy bis < oder Zeilenende)
+  //   "?\s*<([^>\n]+)>  → Email in spitzen Klammern
+  const fromMatchNameEmail = body.match(/^[\s>*]*(?:Von|From|Absender):\s*"?([^<\n"]+?)"?\s*<([^>\n]+)>/im);
   // Fallback: nur "Von: email@host"
-  const fromMatchEmail = body.match(/^\s*(?:Von|From):\s*([^\s<\n>]+@[^\s<\n>]+)\s*$/im);
-  // Original-Subject extrahieren
-  const subjMatch = body.match(/^\s*(?:Betreff|Subject):\s*(.+?)\s*$/im);
+  const fromMatchEmail = body.match(/^[\s>*]*(?:Von|From|Absender):\s*([^\s<\n>]+@[^\s<\n>]+)/im);
+  // Original-Subject extrahieren — auch mit Quote-Prefix
+  const subjMatch = body.match(/^[\s>*]*(?:Betreff|Subject):\s*(.+?)\s*$/im);
 
   let orig_email = "", orig_name = "";
   if (fromMatchNameEmail) {
@@ -449,18 +475,23 @@ export default async function (e: any): Promise<void> {
 
   // Attachments hochladen (sequentiell, damit wir Airtable nicht überlasten).
   // val.town liefert das Content-Feld in unterschiedlichen Formaten je nach
-  // Email-Provider — wir akzeptieren Uint8Array, ArrayBuffer, Buffer, base64-String.
+  // Email-Provider — wir akzeptieren Uint8Array, ArrayBuffer, Buffer, base64-String, Blob.
   let uploadedCount = 0;
   for (const att of attachments) {
     try {
       const fname = String(att?.filename || att?.name || "anhang.bin");
       const ctype = String(att?.contentType || att?.type || "application/octet-stream");
+      // Detail-Logging zum Diagnostizieren des val.town-Email-Schemas
+      const attKeys = att ? Object.keys(att).slice(0, 10) : [];
+      console.log(`[Emails] Attachment-Probe '${fname}': keys=${JSON.stringify(attKeys)}, ` +
+        `typeof content=${typeof att?.content}, isBlob=${typeof Blob!=='undefined' && att?.content instanceof Blob}, ` +
+        `isUint8=${att?.content instanceof Uint8Array}, isArrayBuffer=${att?.content instanceof ArrayBuffer}`);
       // Try unterschiedliche Felder, je nach val.town-Email-Schema
-      const rawContent = att?.content ?? att?.body ?? att?.data ?? att?.buffer;
-      const bytes = _toUint8Array(rawContent);
+      const rawContent = att?.content ?? att?.body ?? att?.data ?? att?.buffer ?? att?.blob;
+      const bytes = await _toUint8Array(rawContent);
       if (!bytes || bytes.byteLength === 0) {
         console.warn("[Emails] Attachment ohne lesbaren Content — skipped:", fname,
-          "type=", typeof rawContent, "keys=", rawContent ? Object.keys(rawContent).slice(0, 5) : "(null)");
+          "type=", typeof rawContent, "keys=", rawContent ? Object.keys(rawContent).slice(0, 8) : "(null)");
         continue;
       }
       if (bytes.byteLength > 20 * 1024 * 1024) {
