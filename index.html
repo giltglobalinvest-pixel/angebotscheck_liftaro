@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Liftaro">
 <meta name="mobile-web-app-capable" content="yes">
@@ -4590,7 +4591,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V11.2';
+const APP_VERSION = 'V11.3';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15808,13 +15809,15 @@ function renderEmailInboxDetail() {
   // Email-Body — body_text bevorzugt, body_html als Fallback (HTML strippen)
   const bodyText = (r.body_text && r.body_text.trim()) || _stripHtml(r.body_html || '') || '(leer)';
   const hasHtml = !!(r.body_html && r.body_html.trim());
+  // HTML im sicheren Container vorhalten (NICHT iframe — der wirft sandbox-Warnings)
+  // Wir rendern das HTML lazy in einen Shadow-DOM-ähnlichen Container erst beim Klick
   html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
     <div class="dr-section-head" style="margin-bottom:10px">
       <div class="dr-section-title">Original-Body${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
       ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Original-HTML anzeigen</button>` : ''}
     </div>
     <div id="eiBodyText_${r._id}" style="font-size:12.5px;line-height:1.7;color:var(--dr-ink-soft);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--dr-surface-alt);padding:12px 14px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
-    ${hasHtml ? `<iframe id="eiBodyHtml_${r._id}" sandbox="allow-same-origin" srcdoc="${_esc(r.body_html)}" style="display:none;width:100%;height:340px;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;margin-top:8px"></iframe>` : ''}
+    ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:none;width:100%;max-height:340px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;margin-top:8px"></div>` : ''}
   </div>`;
 
   // Anhänge
@@ -15924,12 +15927,23 @@ function _eiChooseHvDialog(query, hits) {
   });
 }
 
-// Toggle zwischen Plain-Text und HTML-Iframe im Detail-View
+// Toggle zwischen Plain-Text und HTML-Body. Beim ersten Click wird das HTML
+// gesäubert (Scripts, Iframes, on*-Handler entfernt) und ins div gerendert —
+// ohne iframe-Sandbox, weil das Browser-Warnings warf.
 function _eiToggleHtml(recId) {
   const textEl = document.getElementById('eiBodyText_' + recId);
   const htmlEl = document.getElementById('eiBodyHtml_' + recId);
   const btn    = document.getElementById('eiHtmlToggle_' + recId);
   if (!textEl || !htmlEl || !btn) return;
+
+  // Lazy: HTML erst beim ersten Click rein-rendern (sicher)
+  if (!htmlEl.dataset.rendered) {
+    const raw = htmlEl.getAttribute('data-html') || '';
+    htmlEl.innerHTML = _sanitizeEmailHtml(raw);
+    htmlEl.dataset.rendered = '1';
+    htmlEl.removeAttribute('data-html');
+  }
+
   if (htmlEl.style.display === 'none') {
     htmlEl.style.display = 'block';
     textEl.style.display = 'none';
@@ -15938,6 +15952,29 @@ function _eiToggleHtml(recId) {
     htmlEl.style.display = 'none';
     textEl.style.display = 'block';
     btn.textContent = 'Original-HTML anzeigen';
+  }
+}
+
+// HTML-Sanitizer für Email-Bodies: entfernt Scripts, Iframes, Event-Handler
+// und externe Resources, die Cross-Origin-Warnings werfen würden.
+function _sanitizeEmailHtml(html) {
+  try {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = String(html || '');
+    // Gefährliche Elemente entfernen
+    tpl.content.querySelectorAll('script, iframe, object, embed, link[rel="stylesheet"], style').forEach(el => el.remove());
+    // on*-Attributes entfernen + javascript:-URLs neutralisieren
+    tpl.content.querySelectorAll('*').forEach(el => {
+      [...el.attributes].forEach(attr => {
+        const n = attr.name.toLowerCase();
+        const v = String(attr.value || '').trim();
+        if (n.startsWith('on')) el.removeAttribute(attr.name);
+        else if ((n === 'href' || n === 'src' || n === 'action') && /^javascript:/i.test(v)) el.removeAttribute(attr.name);
+      });
+    });
+    return tpl.innerHTML;
+  } catch (e) {
+    return _esc(html);
   }
 }
 
