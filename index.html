@@ -737,16 +737,20 @@ const pdfWorkerReady = Promise.resolve();</script>
   }
 
   /* ── Top bar ─────────────────────────────────────────────────── */
+  /* ════════════════════════════════════════════════════════════════
+   *  TOPBAR — V11.0 Redesign (Lager-App-Stil, Brand-Navy beibehalten)
+   *  Subtilerer Gradient + Frosted-Glass-Shelf + Blue-Active-Pills
+   * ════════════════════════════════════════════════════════════════ */
   .topbar {
-    background: var(--navy);
-    padding: 14px 40px;
+    background: linear-gradient(180deg, #0e2440 0%, #16345a 100%);
+    padding: 14px 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: 0 2px 16px rgba(0,0,0,.25);
+    box-shadow: inset 0 -1px 0 rgba(255,255,255,.06), 0 4px 16px rgba(15,24,48,.20);
   }
   .topbar-logo-img {
     height: 44px;
@@ -754,82 +758,78 @@ const pdfWorkerReady = Promise.resolve();</script>
     display: block;
     border-radius: 4px;
   }
-  .topbar-right { display: flex; align-items: center; gap: 12px; }
-  /* ════════════════════════════════════════════════════════════════
-   *  TOPBAR – komplett überarbeitet
-   *  Drei klare Zonen pro Button:
-   *    - Navigation (Pills im "Shelf"-Container)
-   *    - Action-Group (klare Hierarchie: primary > secondary > ghost)
-   *    - Generate (große CTA, prominenter)
-   * ════════════════════════════════════════════════════════════════ */
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
 
-  /* Navigation Shelf: heller, abgegrenzter Container für die Nav-Pills */
+  /* Frosted-Glass-Shelf für Nav-Pills */
   .nav-shelf {
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    background: rgba(0,0,0,.18);
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 10px;
-    padding: 3px;
+    background: rgba(15,24,48,.45);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 12px;
+    padding: 4px;
     flex-wrap: wrap;
+    backdrop-filter: blur(8px);
   }
   .nav-shelf-divider {
     width: 1px;
     height: 18px;
     background: rgba(255,255,255,.08);
-    margin: 0 3px;
+    margin: 0 4px;
     flex-shrink: 0;
   }
 
-  /* Nav-Pill: einheitlicher Look, Hover lifts, Active = solid weiß */
+  /* Nav-Pill: cleaner, mit blauer Active-Pill (statt komplett weiß) */
   .nav-pill {
     background: transparent;
     border: none;
-    color: rgba(255,255,255,.72);
-    border-radius: 7px;
-    padding: 7px 12px;
+    color: rgba(255,255,255,.78);
+    border-radius: 9px;
+    padding: 7px 13px;
     font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
+    letter-spacing: -0.005em;
     cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
-    transition: background .14s ease, color .14s ease, transform .08s ease;
+    transition: background .15s ease, color .15s ease, transform .08s ease, box-shadow .15s ease;
     white-space: nowrap;
     line-height: 1;
     position: relative;
   }
-  .nav-pill svg { opacity: 0.78; flex-shrink: 0; }
+  .nav-pill svg { opacity: 0.72; flex-shrink: 0; }
   .nav-pill:hover {
-    background: rgba(255,255,255,.09);
+    background: rgba(255,255,255,.08);
     color: #fff;
   }
   .nav-pill:hover svg { opacity: 1; }
   .nav-pill.active {
-    background: #fff;
-    color: var(--navy);
+    background: var(--dr-blue);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(36,86,229,.4), 0 4px 12px rgba(36,86,229,.25);
   }
   .nav-pill.active svg { opacity: 1; }
   .nav-pill:active { transform: scale(0.97); }
 
-  /* Backwards-compat: btn-settings alt -> wie nav-pill für Übergang */
+  /* btn-settings (rechte Aktionsbuttons) */
   .btn-settings {
     background: transparent;
     border: 1px solid transparent;
-    color: rgba(255,255,255,.78);
-    border-radius: 7px;
-    padding: 7px 12px;
+    color: rgba(255,255,255,.82);
+    border-radius: 9px;
+    padding: 8px 13px;
     font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
-    transition: background .14s, color .14s, border-color .14s, transform .08s;
+    transition: all .15s ease;
     white-space: nowrap;
     line-height: 1;
   }
-  .btn-settings svg { opacity: 0.8; flex-shrink: 0; }
-  .btn-settings:hover { background: rgba(255,255,255,.1); color: #fff; }
+  .btn-settings svg { opacity: 0.78; flex-shrink: 0; }
+  .btn-settings:hover { background: rgba(255,255,255,.10); color: #fff; }
   .btn-settings:hover svg { opacity: 1; }
   .btn-settings:active { transform: scale(0.97); }
   .btn-settings:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -839,48 +839,53 @@ const pdfWorkerReady = Promise.resolve();</script>
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    background: rgba(15,24,48,.35);
+    border: 1px solid rgba(255,255,255,.05);
+    border-radius: 12px;
+    padding: 4px;
+    backdrop-filter: blur(8px);
   }
 
-  /* Primary Action (Speichern) — solid grün, deutlich CTA */
+  /* Primary Action (Speichern) — moderner Green-Pill */
   .btn-settings.btn-primary,
   .nav-pill.btn-primary {
-    background: var(--green);
+    background: var(--dr-green);
     color: #fff;
-    border-color: var(--green);
+    border-color: var(--dr-green);
     font-weight: 700;
-    box-shadow: 0 2px 6px rgba(125,194,66,.25);
+    box-shadow: 0 1px 2px rgba(22,163,74,.35), 0 4px 12px rgba(22,163,74,.28);
   }
   .btn-settings.btn-primary:hover,
   .nav-pill.btn-primary:hover {
-    background: var(--green2);
+    background: #15803d;
     color: #fff;
-    box-shadow: 0 4px 12px rgba(125,194,66,.4);
+    box-shadow: 0 2px 4px rgba(22,163,74,.45), 0 6px 16px rgba(22,163,74,.35);
     transform: translateY(-1px);
   }
 
-  /* Secondary Action (Vorschau) — outline weiß */
+  /* Secondary Action (Vorschau) — frosted outline */
   .btn-settings.btn-secondary {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,.28);
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.18);
     color: #fff;
     font-weight: 600;
   }
   .btn-settings.btn-secondary:hover {
-    background: rgba(255,255,255,.12);
-    border-color: rgba(255,255,255,.45);
+    background: rgba(255,255,255,.16);
+    border-color: rgba(255,255,255,.32);
   }
 
   /* Danger / Ghost (Reset, Abmelden) — text-only, hover rot */
   .btn-settings.btn-danger {
     background: transparent;
     border: 1px solid transparent;
-    color: rgba(255,255,255,.5);
+    color: rgba(255,255,255,.55);
     font-weight: 500;
   }
   .btn-settings.btn-danger:hover {
-    background: rgba(220,80,80,.15);
+    background: rgba(229,72,77,.18);
     color: #fca5a5;
-    border-color: rgba(220,80,80,.3);
+    border-color: rgba(229,72,77,.32);
   }
 
   /* Vertikaler Trenner zwischen Aktions-Untergruppen */
@@ -987,24 +992,36 @@ const pdfWorkerReady = Promise.resolve();</script>
   .topbar-sub { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 2px; letter-spacing: .5px; }
 
   .btn-generate {
-    background: var(--green);
+    background: var(--dr-blue);
     color: #fff;
     border: none;
-    border-radius: 8px;
-    padding: 12px 28px;
+    border-radius: 10px;
+    padding: 9px 16px;
     font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 8px;
-    transition: background .18s, transform .12s, box-shadow .18s;
-    box-shadow: 0 4px 14px rgba(125,194,66,.35);
+    gap: 7px;
+    transition: all .15s ease;
+    box-shadow: 0 1px 2px rgba(36,86,229,.35), 0 4px 12px rgba(36,86,229,.28);
+    white-space: nowrap;
+    line-height: 1;
   }
-  .btn-generate:hover { background: var(--green2); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(125,194,66,.45); }
+  .btn-generate:hover {
+    background: var(--dr-blue-deep);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(36,86,229,.45), 0 6px 16px rgba(36,86,229,.35);
+  }
   .btn-generate:active { transform: translateY(0); }
-  .btn-generate:disabled { background: #aac; cursor: not-allowed; box-shadow: none; transform: none; }
+  .btn-generate:disabled {
+    background: rgba(255,255,255,.18);
+    color: rgba(255,255,255,.45);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
 
   /* ── Layout ──────────────────────────────────────────────────── */
   .page-wrap {
@@ -4511,7 +4528,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.9';
+const APP_VERSION = 'V11.0';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
