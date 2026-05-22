@@ -250,6 +250,63 @@ async function uploadAttachmentToAirtable(
   return true;
 }
 
+// Forward-Erkennung: Erkennt manuell weitergeleitete Emails (Fwd/WG/...) und
+// extrahiert den UR-Absender aus dem Forward-Header im Body. Diverse Mailclients
+// nutzen leicht unterschiedliche Formate:
+//   "Von: Max Mustermann <max@example.de>"
+//   "From: max@example.de"
+//   "-------- Weitergeleitete Nachricht --------"
+//   "Begin forwarded message:"
+type ForwardInfo = {
+  is_forwarded: boolean;
+  original_from_email: string;
+  original_from_name: string;
+  original_subject: string;
+  forwarded_via: string;
+};
+function _parseForwardedHeaders(subject: string, bodyText: string, defaultFromEmail: string): ForwardInfo {
+  const subj = subject || "";
+  const body = bodyText || "";
+  const startsLikeForward = /^\s*(fwd?|wg|weitergeleitet)[:\s]/i.test(subj);
+  const bodyHasForwardMarker =
+    /^\s*-{3,}\s*(weitergeleitete?|forwarded)/im.test(body) ||
+    /^\s*begin forwarded message/im.test(body) ||
+    /^\s*von:\s*.{1,80}@/im.test(body) ||
+    /^\s*from:\s*.{1,80}@/im.test(body);
+
+  const isForward = startsLikeForward || bodyHasForwardMarker;
+  if (!isForward) {
+    return { is_forwarded: false, original_from_email: "", original_from_name: "", original_subject: "", forwarded_via: "" };
+  }
+
+  // Suche nach "Von:" / "From:" mit Name + <email>
+  const fromMatchNameEmail = body.match(/^\s*(?:Von|From):\s*"?([^<\n"]+?)"?\s*<([^>\n]+)>\s*$/im);
+  // Fallback: nur "Von: email@host"
+  const fromMatchEmail = body.match(/^\s*(?:Von|From):\s*([^\s<\n>]+@[^\s<\n>]+)\s*$/im);
+  // Original-Subject extrahieren
+  const subjMatch = body.match(/^\s*(?:Betreff|Subject):\s*(.+?)\s*$/im);
+
+  let orig_email = "", orig_name = "";
+  if (fromMatchNameEmail) {
+    orig_name = (fromMatchNameEmail[1] || "").trim();
+    orig_email = (fromMatchNameEmail[2] || "").trim();
+  } else if (fromMatchEmail) {
+    orig_email = (fromMatchEmail[1] || "").trim();
+  }
+
+  // Original-Email aus Adresse mit < > entpacken falls vorhanden
+  const emailMatch = orig_email.match(/<?([^<>\s]+@[^<>\s]+)>?/);
+  if (emailMatch) orig_email = emailMatch[1];
+
+  return {
+    is_forwarded: true,
+    original_from_email: orig_email,
+    original_from_name: orig_name,
+    original_subject: subjMatch ? subjMatch[1].trim() : "",
+    forwarded_via: defaultFromEmail,
+  };
+}
+
 // HTML → Plain-Text-Approximation (für body_text-Fallback, wenn nur HTML kam)
 function _htmlToText(html: string): string {
   if (!html) return "";
@@ -320,10 +377,27 @@ export default async function (e: any): Promise<void> {
 
   console.log("[Emails] Empfangen:", { from, subject, attachments: attachNames.length });
 
-  // KI-Triage
+  // Forward-Erkennung: Wenn die Mail über check@liftaro.de weitergeleitet wurde,
+  // den UR-Absender aus dem Forward-Body extrahieren — sonst landet der eigene
+  // check@-Account als "from_email" und Reply-Aktionen gehen ins Leere.
+  const fwd = _parseForwardedHeaders(subject, text, fromEmail);
+  const effectiveFromEmail = (fwd.is_forwarded && fwd.original_from_email) ? fwd.original_from_email : fromEmail;
+  const effectiveFromName  = (fwd.is_forwarded && fwd.original_from_name)  ? fwd.original_from_name  : fromName;
+  // Original-Subject (ohne "Fwd:") für Inbox-Anzeige bevorzugen
+  const cleanedSubject     = (fwd.is_forwarded && fwd.original_subject)
+    ? fwd.original_subject
+    : subject.replace(/^\s*(fwd?|wg|weitergeleitet)[:\s]+/i, "");
+
+  if (fwd.is_forwarded) {
+    console.log("[Emails] Forward erkannt:",
+      `original=${effectiveFromName} <${effectiveFromEmail}>, via=${fwd.forwarded_via}`);
+  }
+
+  // KI-Triage — mit dem EFFEKTIVEN Absender + bereinigtem Subject, damit die KI
+  // den echten Kontext sieht (nicht "Fwd: ...")
   let kiResult: KiResult;
   try {
-    kiResult = await classifyEmail(subject, text || html, fromEmail, fromName, attachNames);
+    kiResult = await classifyEmail(cleanedSubject, text || html, effectiveFromEmail, effectiveFromName, attachNames);
   } catch (err: any) {
     console.error("[Emails] KI-Triage FAIL:", err?.message || err);
     kiResult = {
@@ -334,11 +408,18 @@ export default async function (e: any): Promise<void> {
 
   // Airtable-Record anlegen (ohne Attachments — die kommen im 2. Step via Upload-Endpoint)
   const recordFields: any = {
-    from_email:     fromEmail,
-    from_name:      fromName,
+    // Effektive Werte (bei Forward: Original-Absender; sonst: tatsächlicher Sender)
+    from_email:     effectiveFromEmail,
+    from_name:      effectiveFromName,
+    // Forward-Metadaten (transparent für den Bearbeiter)
+    is_forwarded:   fwd.is_forwarded,
+    forwarded_via:  fwd.forwarded_via,
+    raw_from_email: fwd.is_forwarded ? fromEmail : "",
+    raw_from_name:  fwd.is_forwarded ? fromName  : "",
     to_email:       toEmail,
-    reply_to:       replyTo,
-    subject:        subject,
+    reply_to:       (fwd.is_forwarded && fwd.original_from_email) ? fwd.original_from_email : replyTo,
+    subject:        cleanedSubject,
+    raw_subject:    fwd.is_forwarded ? subject : "",
     received_at:    new Date().toISOString(),
     message_id:     messageId,
     in_reply_to:    inReplyTo,
