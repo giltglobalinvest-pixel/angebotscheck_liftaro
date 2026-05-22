@@ -3332,9 +3332,9 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button class="dr-pill" onclick="loadEmailInbox(true)">
-          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-          Neu laden
+        <button id="emailInboxReloadBtn" class="dr-pill" onclick="loadEmailInbox(true)">
+          <svg id="emailInboxReloadIcon" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .3s ease"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          <span id="emailInboxReloadLabel">Neu laden</span>
         </button>
         <button onclick="closeEmailInboxModal()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -4590,7 +4590,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V11.5';
+const APP_VERSION = 'V11.6';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15633,7 +15633,18 @@ function closeEmailInboxModal() {
 
 async function loadEmailInbox(silent) {
   const listEl = document.getElementById('emailInboxList');
-  if (!silent) listEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Lade Emails …</div>';
+  if (!silent) listEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dr-ink-mute);font-size:13px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid var(--dr-border-strong);border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Lade Emails …</div>';
+  // Reload-Button visuell als "lädt …" markieren (auch bei silent=true)
+  const reloadBtn   = document.getElementById('emailInboxReloadBtn');
+  const reloadIcon  = document.getElementById('emailInboxReloadIcon');
+  const reloadLabel = document.getElementById('emailInboxReloadLabel');
+  const tStart = Date.now();
+  if (reloadBtn) {
+    reloadBtn.disabled = true;
+    reloadBtn.style.opacity = '.7';
+    if (reloadIcon) reloadIcon.style.animation = 'spin .9s linear infinite';
+    if (reloadLabel) reloadLabel.textContent = 'Lädt …';
+  }
   try {
     // Tabelle existiert ggf. noch nicht — atRead wirft dann; wir fangen das ab.
     const recs = await atRead('Emails', null, { sort: false });
@@ -15641,15 +15652,27 @@ async function loadEmailInbox(silent) {
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
     renderEmailInboxList();
     _refreshEmailInboxBadge();
+    // Mindestens 400ms Spin sichtbar lassen (sonst wirkt's wie kein Feedback bei schnellem Load)
+    const elapsed = Date.now() - tStart;
+    if (elapsed < 400 && reloadBtn) await new Promise(r => setTimeout(r, 400 - elapsed));
+    if (silent) showToast(`✓ ${_eiAllRecords.length} Email${_eiAllRecords.length===1?'':'s'} aktualisiert`, 'success', 1800);
   } catch (e) {
     listEl.innerHTML =
-      '<div style="padding:40px 24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6">' +
+      '<div style="padding:40px 24px;text-align:center;color:var(--dr-ink-mute);font-size:13px;line-height:1.6">' +
       '<div style="font-size:32px;opacity:.3;margin-bottom:8px">📭</div>' +
       'Noch keine Tabelle „Emails" in der Base.<br>' +
       '<span style="font-size:11.5px">Sobald die erste Email an den val.town-Val<br>geht, wird die Tabelle automatisch angelegt.</span>' +
       '</div>';
     _eiAllRecords = [];
     _refreshEmailInboxBadge();
+  } finally {
+    // Button-State zurücksetzen — egal ob erfolgreich oder Fehler
+    if (reloadBtn) {
+      reloadBtn.disabled = false;
+      reloadBtn.style.opacity = '';
+      if (reloadIcon) reloadIcon.style.animation = '';
+      if (reloadLabel) reloadLabel.textContent = 'Neu laden';
+    }
   }
 }
 
