@@ -4612,7 +4612,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.5';
+const APP_VERSION = 'V12.6';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15917,15 +15917,42 @@ function renderEmailInboxDetail() {
         </div>`;
       }
 
-      // Check-Erstellen-Button — disabled wenn keine Zuordnung
-      const btnStyle = checkBtnDisabled
-        ? `background:var(--dr-surface-alt);color:var(--dr-ink-subtle);border:1px solid var(--dr-border-strong);cursor:not-allowed`
-        : `background:${typColor};color:#fff;border:none;cursor:pointer;box-shadow:0 1px 2px rgba(15,24,48,.1)`;
+      // V12.6: Existierende Check-Verlinkung erkennen (per-Vorgang oder Backwards-Compat)
+      // Vorrang: vorgang.linked_check_id (neu, V12.6+)
+      // Fallback: ein einziger Vorgang in der Email + Email-level linked_check_ids → erster Eintrag
+      const emailLinks = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+      let linkedCheckId = (v.linked_check_id || '').trim();
+      if (!linkedCheckId && emailLinks.length === 1 && vorgaenge.length === 1) {
+        linkedCheckId = emailLinks[0];
+      }
+      const linkedCheckAt = v.linked_check_at || '';
+
+      // Check-Button — drei Zustände:
+      //   1) Bereits verlinkt → grüner "Check öffnen"-Button
+      //   2) Noch keine Zuordnung → disabled grauer "Check daraus erstellen"
+      //   3) Zugeordnet, noch kein Check → farbiger "Check daraus erstellen"
+      let checkButtonHtml;
+      if (linkedCheckId) {
+        const dateStr = linkedCheckAt ? ' · ' + String(linkedCheckAt).slice(0,10) : '';
+        checkButtonHtml = `<button onclick="openLinkedCheckById('${_esc(linkedCheckId)}')" style="background:var(--dr-green);color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(22,163,74,.25),0 6px 16px rgba(22,163,74,.18)" title="Check ${_esc(linkedCheckId)} öffnen${dateStr}">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            Check öffnen <span style="font-family:var(--dr-f-mono);font-size:11px;opacity:.9;margin-left:3px">${_esc(linkedCheckId)}</span>
+          </button>`;
+      } else {
+        const btnStyle = checkBtnDisabled
+          ? `background:var(--dr-surface-alt);color:var(--dr-ink-subtle);border:1px solid var(--dr-border-strong);cursor:not-allowed`
+          : `background:${typColor};color:#fff;border:none;cursor:pointer;box-shadow:0 1px 2px rgba(15,24,48,.1)`;
+        checkButtonHtml = `<button ${checkBtnDisabled ? 'disabled' : `onclick="createCheckFromVorgang('${r._id}', ${i})"`} style="${btnStyle};border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:7px" ${checkBtnDisabled ? 'title="Erst Kunde zuordnen"' : ''}>
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Check daraus erstellen
+          </button>`;
+      }
 
       html += `<div class="ei-vc-card">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
           <span class="ei-vc-typ-pill" style="background:${typColor}">${_esc(v.typ || '?')}</span>
           <span style="font-weight:700;font-size:14px;color:var(--dr-ink);letter-spacing:-.01em">${_esc(v.titel || '(ohne Titel)')}</span>
+          ${linkedCheckId ? `<span style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:999px;padding:2px 10px;font-family:var(--dr-f-mono);font-size:10.5px;font-weight:700;letter-spacing:.04em">✓ ${_esc(linkedCheckId)}</span>` : ''}
         </div>
 
         ${assignBlock}
@@ -15939,10 +15966,7 @@ function renderEmailInboxDetail() {
         </div>
         ${v.anliegen_kurz ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--dr-divider);font-size:12.5px;color:var(--dr-ink);line-height:1.55"><span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-right:6px">Anliegen:</span>${_esc(v.anliegen_kurz)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-          <button ${checkBtnDisabled ? 'disabled' : `onclick="createCheckFromVorgang('${r._id}', ${i})"`} style="${btnStyle};border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:7px" ${checkBtnDisabled ? 'title="Erst Kunde zuordnen"' : ''}>
-            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-            Check daraus erstellen
-          </button>
+          ${checkButtonHtml}
           <button class="dr-pill" onclick="dismissVorgang('${r._id}', ${i})">Verwerfen</button>
         </div>
       </div>`;
@@ -16598,6 +16622,31 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
   });
 }
 
+// V12.6: Bereits verlinkten Check öffnen (statt erneut zu erstellen).
+// Aufruf aus der Vorgangs-Karte, wenn vorgang.linked_check_id gesetzt ist.
+async function openLinkedCheckById(checkId) {
+  if (!checkId) { showToast('Keine Check-ID', 'error'); return; }
+  showToast('Lade Check ' + checkId + ' …', 'info', 1500);
+  closeEmailInboxModal();
+  try {
+    const all = await loadChecksFromAirtable();
+    window._checksCache = all;
+    const c = all.find(x => x.id === checkId || x.requestId === checkId);
+    if (!c) {
+      showToast('Check ' + checkId + ' nicht gefunden — wurde er evtl. gelöscht?', 'error', 5000);
+      return;
+    }
+    if (typeof showCheckView === 'function') showCheckView();
+    if (typeof loadCheck === 'function') {
+      await loadCheck(c);
+      showToast('Check ' + checkId + ' geöffnet.', 'success');
+    }
+  } catch (e) {
+    console.error('openLinkedCheckById:', e);
+    showToast('Check konnte nicht geöffnet werden: ' + e.message, 'error');
+  }
+}
+
 async function createCheckFromVorgang(recId, vIdx) {
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) return;
@@ -16724,20 +16773,28 @@ async function createCheckFromVorgang(recId, vIdx) {
       }
     }
 
-    // Email-Record updaten: linked_check_ids + status
+    // Email-Record updaten: linked_check_ids + status + per-Vorgang-Verlinkung
     const newLinks = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
     newLinks.push(newCheckId);
+    // V12.6: Pro Vorgang Check-Verlinkung persistieren — danach zeigt der Button
+    //        "Check öffnen" statt "Check daraus erstellen" für genau diesen Vorgang.
+    vorgaenge[vIdx].linked_check_id  = newCheckId;
+    vorgaenge[vIdx].linked_check_at  = new Date().toISOString();
+    vorgaenge[vIdx].linked_check_typ = checkType;
+    const updatedVorgaengeJson = JSON.stringify(vorgaenge);
     await atUpdate('Emails', recId, {
       linked_check_ids:    newLinks.join(','),
       linked_checks_count: newLinks.length,
       status:              'in_bearbeitung',
       status_at:           new Date().toISOString(),
       bearbeiter_name:     _eiCurrentUserName(),
+      vorgaenge_json:      updatedVorgaengeJson,
     });
     // State lokal aktualisieren
     r.linked_check_ids    = newLinks.join(',');
     r.linked_checks_count = newLinks.length;
     r.status              = 'in_bearbeitung';
+    r.vorgaenge_json      = updatedVorgaengeJson;
 
     showToast(`Check ${newCheckId} angelegt${attachedFiles ? ` · ${attachedFiles} Anhang übernommen` : ''} — wird geladen …`, 'success');
     // Modal schließen + Check öffnen (atomar)
