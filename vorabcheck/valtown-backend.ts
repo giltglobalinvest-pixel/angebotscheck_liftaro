@@ -12,7 +12,6 @@ let _promptCache: Record<string, string> | null = null;
 let _promptCacheTs = 0;
 const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
 
-// Airtable PATCH mit Retry-on-Unknown-Field: dropt unbekannte Felder einzeln und probiert nochmal
 async function atPatchRetry(url: string, k: string, fields: any, max = 15): Promise<{ ok: boolean, error?: string }> {
   const headers = { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' };
   let a = 0;
@@ -660,7 +659,6 @@ export default async function (req: Request): Promise<Response> {
         } }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-    // Verwalter-Landing: Kontext laden (Eigentuemer-Name, Objekt, Sparpotenzial)
     if (body.action === 'get_verwalter_context') {
       const cn = String(body.check_nr || '').trim();
       if (!cn) return jsonResp({ ok: false, error: 'check_nr missing' }, 400, corsHeaders);
@@ -755,7 +753,6 @@ export default async function (req: Request): Promise<Response> {
         return jsonResp({ ok: true, applied_fields: Object.keys(fields) }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-    // Bearbeiter-Inbox: Status setzen (offen / in_bearbeitung / erledigt)
     if (body.action === 'set_bearbeiter_status') {
       const cn = String(body.check_nr || '').trim();
       const st = String(body.status || '').trim();
@@ -768,7 +765,6 @@ export default async function (req: Request): Promise<Response> {
         const fr = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + encodeURIComponent("{check_nr}='" + cn + "'") + '&maxRecords=1', { headers: { Authorization: 'Bearer ' + k } });
         const recId = (await fr.json())?.records?.[0]?.id;
         if (!recId) return jsonResp({ ok: false, error: 'check not found' }, 404, corsHeaders);
-        // Felder mit Retry-on-Unknown-Field (analog atPostSafe in saveToAirtable)
         const fields: any = {
           bearbeiter_status: st,
           bearbeiter_status_at: new Date().toISOString(),
@@ -778,7 +774,6 @@ export default async function (req: Request): Promise<Response> {
         return res.ok ? jsonResp({ ok: true, status: st }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-    // Folge-Check (z.B. Vertragscheck) mit Vorabcheck verknüpfen
     if (body.action === 'link_followup_check') {
       const cn = String(body.check_nr || '').trim();
       if (!cn) return jsonResp({ ok: false, error: 'check_nr missing' }, 400, corsHeaders);
@@ -801,7 +796,6 @@ export default async function (req: Request): Promise<Response> {
         return res.ok ? jsonResp({ ok: true, linked: fields.linked_check_requestid }, 200, corsHeaders) : jsonResp({ ok: false, error: res.error }, 500, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-    // HV in Pipedrive synchronisieren (Duplikat-Check, dann ggf. anlegen)
     if (body.action === 'sync_hv_pipedrive') {
       const hvName = String(body.hv_name || '').trim();
       if (!hvName) return jsonResp({ ok: false, error: 'hv_name pflicht' }, 400, corsHeaders);
@@ -815,7 +809,6 @@ export default async function (req: Request): Promise<Response> {
           source: body.hv_adresse ? 'ki_web' : 'user_verifiziert',
         });
         if (!c.ok || !c.org_id) return jsonResp({ ok: false, error: 'create failed' }, 500, corsHeaders);
-        // Note (best-effort)
         try {
           const cfg = await loadPipedriveConfig();
           if (cfg && (body.check_nr || body.hv_telefon || body.hv_adresse)) {
@@ -832,7 +825,6 @@ export default async function (req: Request): Promise<Response> {
         return jsonResp({ ok: true, action: 'created', org_id: c.org_id }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: e.message }, 500, corsHeaders); }
     }
-    // Objekt-Adresse nachträglich am Vorab-Check-Record patchen (Step-4-Bestätigung der Public-Landing)
     if (body.action === 'patch_objekt_adresse') {
       const cn = String(body.check_nr || '').trim();
       const addr = String(body.objekt_adresse || '').trim();
@@ -851,7 +843,6 @@ export default async function (req: Request): Promise<Response> {
       const name = String(body.name || '').trim();
       const city = String(body.city || '').trim();
       if (!name) return jsonResp({ ok: false, error: 'name required' }, 400, corsHeaders);
-      // Erst Env-Var (schnell, kein Airtable-Roundtrip), dann Master-Base als Fallback
       let serperKey = String(Deno.env.get("SERPER_API_KEY") || '').trim();
       if (!serperKey) {
         const atKey = Deno.env.get("AIRTABLE_KEY");
@@ -906,6 +897,14 @@ export default async function (req: Request): Promise<Response> {
         }
         return jsonResp({ ok: true, data, snippet_count: snippets.split('\n\n').length }, 200, corsHeaders);
       } catch (e: any) { return jsonResp({ ok: false, error: 'Claude: ' + e.message }, 500, corsHeaders); }
+    }
+    if (body.action === 'create_pm') {
+      const n=String(body.name||'').trim(); if(!n) return jsonResp({ok:false,error:'name required'},400,corsHeaders);
+      const e=String(body.email||'').trim(), s=String(body.strasse||'').trim(), c=String(body.city||'').trim(), t=String(body.tel||'').trim(), w=String(body.website||'').trim();
+      const cr=await createPipedriveOrgWithEmail({name:n,email:e,city:s||c,website:w,source:'inbox_ki'});
+      if(!cr.ok) return jsonResp(cr,200,corsHeaders);
+      if(t||w||s){const cfg=await loadPipedriveConfig(); if(cfg){const note='🤖 Inbox-KI:\n'+(s?'Adresse: '+s+(c?', '+c:'')+'\n':'')+(t?'Telefon: '+t+'\n':'')+(w?'Website: '+w+'\n':''); await fetch('https://'+cfg.domain+'/api/v1/notes?api_token='+encodeURIComponent(cfg.token),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:note,org_id:cr.org_id})}).catch(()=>{});}}
+      return jsonResp({ok:true,org_id:cr.org_id,name:n},200,corsHeaders);
     }
     if (body.action === 'find_property_manager') {
       const q = String(body.query || '').trim();
@@ -1064,7 +1063,6 @@ export default async function (req: Request): Promise<Response> {
       if (!k || !b) return jsonResp({ ok: false, error: 'airtable nicht konfiguriert' }, 500, corsHeaders);
       const TARGET_FIELDS: any[] = VORABCHECK_TARGET_FIELDS;
       try {
-        // Schema lesen
         const schemaRes = await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables', {
           headers: { Authorization: 'Bearer ' + k },
         });
@@ -1090,7 +1088,6 @@ export default async function (req: Request): Promise<Response> {
           }
           return jsonResp({ ok: true, dry_run: true, would_create: created, already_exists: skipped, total_target: TARGET_FIELDS.length, table_id: tbl.id }, 200, corsHeaders);
         }
-        // Felder einzeln anlegen
         for (const field of TARGET_FIELDS) {
           if (existingNames.has(field.name)) { skipped.push(field.name); continue; }
           const createRes = await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables/' + tbl.id + '/fields', {
@@ -1110,7 +1107,6 @@ export default async function (req: Request): Promise<Response> {
         return jsonResp({ ok: false, error: e.message }, 500, corsHeaders);
       }
     }
-    // Schneller Health-/Version-Check ohne Side-Effects
     if (body.action === 'ping') {
       return jsonResp({
         ok: true,
@@ -1165,7 +1161,6 @@ export default async function (req: Request): Promise<Response> {
     const wartungBruttoUser = Math.max(0, parseFloat(String(body.wartung_brutto_user || '0').replace(',', '.')) || 0);
 
     const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
-    // Dev-Bypass-Token: Frontend kann mit ?dev=1 testen ohne Turnstile-Validierung (echte User nutzen es nicht)
     const isDevBypass = String(turnstile_token || '') === 'dev-bypass-token';
     if (turnstileSecret && turnstile_token && !isDevBypass) {
       const ok = await verifyTurnstile(turnstile_token, turnstileSecret);
@@ -1505,8 +1500,6 @@ async function saveToAirtable(data: {
   const at = `https://api.airtable.com/v0/${base}`;
   const headers = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" };
 
-  // Robust POST: bei 'Unknown field name: X' wird X aus dem Body entfernt und retried.
-  // Damit ueberlebt der Save auch wenn die Airtable-Tabelle nicht alle Felder hat.
   async function atPostSafe(tableUrl: string, fieldsIn: Record<string, any>) {
     const fields = { ...fieldsIn };
     for (let i = 0; i < 20; i++) {
@@ -1514,8 +1507,6 @@ async function saveToAirtable(data: {
         const r = await fetch(tableUrl, { method: 'POST', headers, body: JSON.stringify({ fields }) });
         if (r.ok) return;
         const txt = await r.text();
-        // Airtable returnt JSON wie {"error":{"type":"UNKNOWN_FIELD_NAME","message":"Unknown field name: \"role\""}}
-        // → parse JSON + extrahiere msg, dann match Feldname.
         let badField = '';
         try {
           const j = JSON.parse(txt);
@@ -1559,11 +1550,9 @@ async function saveToAirtable(data: {
     aufzugGesamtkosten = aufzugPositionen.reduce((s: number, p: any) => s + (Number(p.betrag_eur) || 0), 0);
   }
   const aufzugCount = Number(data.result.aufzug_count || 0);
-  // Kosten pro Aufzug pro Jahr (berechnet aus Gesamtkosten / Anzahl)
   const kostenProAufzugEur = aufzugCount > 0
     ? Math.round((aufzugGesamtkosten / aufzugCount) * 100) / 100
     : 0;
-  // Objekt-Standort: KI extrahiert (objekt_adresse), Fallback auf User-eingegebene lead.adresse
   const objektAdresse = String(
     data.result.objekt_adresse ||
     data.result.anonymized_data?.objekt_adresse ||
