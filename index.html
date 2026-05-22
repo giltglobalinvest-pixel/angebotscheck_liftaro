@@ -3999,30 +3999,41 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Alle Checks Modal -->
-<div id="checksModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
-  <div style="background:#fff;border-radius:16px;width:min(700px,94vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-    <div style="background:var(--navy);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <span style="color:#fff;font-size:15px;font-weight:700">📋 Alle Checks</span>
-      <button onclick="document.getElementById('checksModal').style.display='none'"
-        style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+<!-- Alle-Checks-Modal — V10.9 Redesign (dr-* System) -->
+<div id="checksModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <!-- Header -->
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--dr-elev-blue);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><polyline points="9 12 11 14 15 10"/></svg>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Alle Checks</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Reparatur-, Wartungs- und Rechnungschecks</div>
+        </div>
+      </div>
+      <button onclick="document.getElementById('checksModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
-    <div style="padding:12px 22px 0;flex-shrink:0">
+
+    <!-- Such- und Filter-Toolbar -->
+    <div style="padding:16px 24px 14px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;flex-direction:column;gap:10px">
       <div style="position:relative">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="checksSearch" oninput="filterChecks()" placeholder="Suchen nach Check-ID, Firma, Standort, Anbieter, Datum …" style="width:100%;padding:9px 32px 9px 34px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none">
-        <button type="button" id="checksSearchClear" onclick="clearChecksSearch()" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px 8px;line-height:1">✕</button>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="checksSearch" oninput="filterChecks()" placeholder="Suchen nach Check-ID, Firma, Standort, Anbieter, Datum …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
+        <button type="button" id="checksSearchClear" onclick="clearChecksSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--dr-ink-mute);cursor:pointer;font-size:16px;padding:4px 8px;line-height:1">✕</button>
       </div>
-      <div id="checksTypeFilter" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Typ:</span>
-        <!-- Chips werden via JS gerendert -->
+      <div id="checksTypeFilter" class="dr-filterbar">
+        <span class="dr-filterbar-label">Typ:</span>
       </div>
-      <div id="checksStatusFilter" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Status:</span>
-        <!-- Chips werden via JS gerendert -->
+      <div id="checksStatusFilter" class="dr-filterbar">
+        <span class="dr-filterbar-label">Status:</span>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-right:4px">Sortierung:</span>
-        <select id="checksSort" onchange="filterChecks()" style="border:1.5px solid var(--border);border-radius:14px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;background:#fff;cursor:pointer;outline:none">
+      <div class="dr-filterbar">
+        <span class="dr-filterbar-label">Sortierung:</span>
+        <select id="checksSort" onchange="filterChecks()" style="border:1.5px solid var(--dr-border-strong);border-radius:var(--dr-r-pill);padding:5px 12px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;background:var(--dr-surface);color:var(--dr-ink);cursor:pointer;outline:none">
           <option value="date_desc">Datum · neueste zuerst</option>
           <option value="date_asc">Datum · älteste zuerst</option>
           <option value="kuend_asc">Kündigung möglich bis · nächste zuerst</option>
@@ -4030,29 +4041,32 @@ const pdfWorkerReady = Promise.resolve();</script>
           <option value="firma_asc">Firma · A–Z</option>
         </select>
       </div>
-      <div id="checksSearchInfo" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:14px"></div>
+      <div id="checksSearchInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);min-height:14px;letter-spacing:.04em"></div>
     </div>
-    <div id="checksList" style="flex:1;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:10px">
-      <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine gespeicherten Checks.</p>
+
+    <!-- Liste -->
+    <div id="checksList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:10px;background:var(--dr-bg-soft)">
+      <p style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:24px">Keine gespeicherten Checks.</p>
     </div>
-    <div id="checksModalFooter" class="hide-on-mobile" style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div style="display:flex;gap:8px">
-        <button onclick="exportChecks()"
-          style="background:var(--navy);border:none;color:#fff;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
+
+    <!-- Footer -->
+    <div id="checksModalFooter" class="hide-on-mobile" style="padding:14px 24px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="dr-pill" onclick="exportChecks()">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
           Exportieren (.json)
         </button>
-        <label style="background:#fff;border:1px solid var(--border);color:var(--navy);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8l4 4h-3v8h-2v-8H8l4-4z"/><rect x="4" y="4" width="16" height="2" rx="1"/></svg>
+        <label class="dr-pill" style="margin:0">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 8l4 4h-3v8h-2v-8H8l4-4z"/><rect x="4" y="4" width="16" height="2" rx="1"/></svg>
           Importieren (.json)
           <input type="file" accept=".json" style="display:none" onchange="importChecks(this)">
         </label>
       </div>
-      <div id="adminCheckActions" style="display:none;gap:8px;flex-wrap:wrap">
-        <button onclick="renumberAllChecks()" title="Alle Checks fortlaufend nummerieren ab C_1200 – Admin" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🔢 Neu nummerieren</button>
-        <button onclick="migrateVertragschecks()" title="Bestandsdaten-Migration: alle Vertragsrechnungen löschen, Vertragschecks auf Status 'aktiv' zurücksetzen – Admin" style="background:#fff;border:1px solid #2a5c3a;color:#2a5c3a;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🔄 Vertragschecks migrieren</button>
-        <button onclick="deleteUnnumberedChecks()" title="Alle Checks ohne Checknummer löschen – Admin" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🧹 Ohne ID löschen</button>
-        <button onclick="deleteAllChecks()" title="Alle Checks löschen – Admin" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Alle löschen</button>
+      <div id="adminCheckActions" style="display:none;gap:6px;flex-wrap:wrap">
+        <button class="dr-pill" onclick="renumberAllChecks()" title="Alle Checks fortlaufend nummerieren ab C_1200 – Admin">🔢 Neu nummerieren</button>
+        <button class="dr-pill" onclick="migrateVertragschecks()" title="Bestandsdaten-Migration – Admin">🔄 Migrieren</button>
+        <button class="dr-pill dr-pill--reset" onclick="deleteUnnumberedChecks()" title="Alle Checks ohne Checknummer löschen – Admin" style="color:#9F1B1F">🧹 Ohne ID löschen</button>
+        <button class="dr-pill dr-pill--reset" onclick="deleteAllChecks()" title="Alle Checks löschen – Admin" style="color:#9F1B1F">🗑 Alle löschen</button>
       </div>
     </div>
   </div>
@@ -4497,7 +4511,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V10.8';
+const APP_VERSION = 'V10.9';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6392,17 +6406,17 @@ function renderChecksTypeChips() {
     const active = window._checksTypeFilter.has(t.value);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.textContent = `${t.label} (${count})`;
-    btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid ${active ? t.color : 'var(--border)'};background:${active ? t.color : '#fff'};color:${active ? '#fff' : t.color};font-family:'DM Sans',sans-serif;transition:all .15s`;
+    btn.className = 'dr-pill' + (active ? ' dr-pill--active' : '');
+    btn.innerHTML = `${t.label}<span class="dr-pill__count">${count}</span>`;
     btn.onclick = () => toggleChecksTypeFilter(t.value);
     wrap.appendChild(btn);
   });
   if (window._checksTypeFilter.size) {
     const reset = document.createElement('button');
     reset.type = 'button';
+    reset.className = 'dr-pill dr-pill--reset';
     reset.textContent = '✕';
     reset.title = 'Typ-Filter zurücksetzen';
-    reset.style.cssText = 'padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:\'DM Sans\',sans-serif';
     reset.onclick = () => { window._checksTypeFilter.clear(); renderChecksTypeChips(); filterChecks(); };
     wrap.appendChild(reset);
   }
@@ -6428,17 +6442,16 @@ function renderChecksStatusChips() {
     const active = window._checksStatusFilter.has(s.value);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.textContent = `${s.label} (${count})`;
-    btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1.5px solid ${active ? s.color : 'var(--border)'};background:${active ? s.color : '#fff'};color:${active ? '#fff' : s.color};font-family:'DM Sans',sans-serif;transition:all .15s`;
+    btn.className = 'dr-pill' + (active ? ' dr-pill--active' : '');
+    btn.innerHTML = `${s.label}<span class="dr-pill__count">${count}</span>`;
     btn.onclick = () => toggleChecksStatusFilter(s.value);
     wrap.appendChild(btn);
   });
-  // "Alle"-Reset-Button wenn mind. 1 Filter aktiv
   if (window._checksStatusFilter.size) {
     const reset = document.createElement('button');
     reset.type = 'button';
+    reset.className = 'dr-pill dr-pill--reset';
     reset.textContent = '✕ Filter zurücksetzen';
-    reset.style.cssText = 'padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:\'DM Sans\',sans-serif';
     reset.onclick = () => { window._checksStatusFilter.clear(); renderChecksStatusChips(); filterChecks(); };
     wrap.appendChild(reset);
   }
@@ -6520,8 +6533,8 @@ function renderChecksList(checks, query) {
   const list = document.getElementById('checksList');
   if (!checks.length) {
     list.innerHTML = query
-      ? `<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine Treffer für „${query}".</p>`
-      : '<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Keine gespeicherten Checks.</p>';
+      ? `<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Keine Treffer für „${query}".</div>`
+      : '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Keine gespeicherten Checks.</div>';
     return;
   }
   const cache = window._checksCache || [];
@@ -6529,31 +6542,31 @@ function renderChecksList(checks, query) {
     const i = cache.indexOf(c);
     const ahwFilled = [c.ahw_firma, c.ahw_preis, c.ahw_standort].filter(Boolean).length;
     const ahwBadge  = ahwFilled > 0
-      ? '<span style="background:var(--green);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">AHW ✓</span>'
-      : '<span style="background:#ddd;color:#888;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:6px">AHW leer</span>';
+      ? '<span class="ei-status-pill" style="background:var(--dr-green-soft);color:var(--dr-green-deep);margin-left:4px">AHW ✓</span>'
+      : '<span class="ei-status-pill" style="background:var(--dr-surface-alt);color:var(--dr-ink-mute);margin-left:4px">AHW leer</span>';
     const typeBadge = c.checkType === 'wartung'
-      ? '<span style="background:#0e6655;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🔄 Wartung</span>'
+      ? '<span class="ei-cls-pill ei-cls-wartung" style="margin-left:4px">🔄 Wartung</span>'
       : (c.checkType === 'rechnung'
-        ? '<span style="background:#6366f1;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🧾 Rechnung</span>'
-        : '<span style="background:var(--navy);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">🔧 Reparatur</span>');
+        ? '<span class="ei-cls-pill ei-cls-rechnung" style="margin-left:4px">🧾 Rechnung</span>'
+        : '<span class="ei-cls-pill ei-cls-reparatur" style="margin-left:4px">🔧 Reparatur</span>');
 
-    // Download-Chips für vorhandene Anhänge
-    const fileChip = (att, icon, label, color) => {
+    // Download-Chips für vorhandene Anhänge — V10.9 dr-Stil (outline → hover-fill)
+    const fileChip = (att, icon, label, col) => {
       if (!att || !att.length) return '';
       const a = att[0];
       const sizeStr = a.size ? ` (${(a.size/1024).toFixed(0)} KB)` : '';
       const url = (a.url || '').replace(/"/g, '&quot;');
       const fname = (a.filename || 'datei.pdf').replace(/"/g, '&quot;');
-      return `<button onclick="event.stopPropagation();downloadAttachment('${url}','${fname}')" title="${fname}${sizeStr}" style="background:${color};color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">${icon} ${label}</button>`;
+      return `<button onclick="event.stopPropagation();downloadAttachment('${url}','${fname}')" title="${fname}${sizeStr}" style="background:#fff;color:${col};border:1.5px solid ${col}40;border-radius:var(--dr-r-pill);padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;transition:all .12s" onmouseover="this.style.background=this.dataset.col;this.style.color='#fff';this.style.borderColor=this.dataset.col" onmouseout="this.style.background='#fff';this.style.color=this.dataset.col;this.style.borderColor=this.dataset.col+'40'" data-col="${col}">${icon} ${label}</button>`;
     };
     const downloads = [
-      fileChip(c._attVorliegend, '📄', 'Vorliegend', '#5a7da8'),
-      fileChip(c._attAlternativ, '📋', 'Alternativ', '#7da645'),
-      fileChip(c._attErgebnis,   '✓',  'Ergebnis',   'var(--navy)'),
+      fileChip(c._attVorliegend, '📄', 'Vorliegend', '#2456E5'),
+      fileChip(c._attAlternativ, '📋', 'Alternativ', '#16A34A'),
+      fileChip(c._attErgebnis,   '✓',  'Ergebnis',   '#1A3A5C'),
     ].filter(Boolean).join(' ');
     const downloadRow = downloads
-      ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">${downloads}</div>`
-      : `<div style="margin-top:6px;font-size:10.5px;color:var(--muted);font-style:italic">Keine Datei-Anhänge</div>`;
+      ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${downloads}</div>`
+      : `<div style="margin-top:6px;font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-subtle);font-style:italic;letter-spacing:.03em">— keine Datei-Anhänge —</div>`;
 
     // Kündigung möglich bis (nur bei Vertrags-Checks anzeigen, falls gesetzt)
     let kuendInfo = '';
@@ -6562,44 +6575,46 @@ function renderChecksList(checks, query) {
       if (k) {
         const kd = parseDateDE(k);
         const today = new Date(); today.setHours(0,0,0,0);
-        let color = '#3d7a14', icon = '📅', label = 'Kündigung möglich bis';
+        let bg = 'var(--dr-green-soft)', fg = 'var(--dr-green-deep)', icon = '📅', label = 'Kündigung möglich bis';
         if (kd) {
           const diffDays = Math.round((kd - today) / 86400000);
-          if (diffDays < 0)        { color = '#a8312f'; icon = '⏰'; label = 'Kündigung verpasst'; }
-          else if (diffDays <= 30) { color = '#a8312f'; icon = '⏰'; label = 'Kündigung bald'; }
-          else if (diffDays <= 90) { color = '#c08a14'; icon = '⏳'; label = 'Kündigung möglich bis'; }
+          if (diffDays < 0)        { bg = 'var(--dr-red-soft)';   fg = '#9F1B1F'; icon = '⏰'; label = 'Kündigung verpasst'; }
+          else if (diffDays <= 30) { bg = 'var(--dr-red-soft)';   fg = '#9F1B1F'; icon = '⏰'; label = 'Kündigung bald'; }
+          else if (diffDays <= 90) { bg = 'var(--dr-amber-soft)'; fg = '#9A3412'; icon = '⏳'; label = 'Kündigung möglich bis'; }
         }
-        kuendInfo = `<div style="margin-top:4px;font-size:11.5px;font-weight:600;color:${color};display:flex;align-items:center;gap:5px"><span>${icon}</span><span>${label}: <strong>${k}</strong></span></div>`;
+        kuendInfo = `<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;background:${bg};color:${fg};padding:4px 10px;border-radius:var(--dr-r-pill);font-size:11.5px;font-weight:600"><span>${icon}</span><span>${label}: <strong>${k}</strong></span></div>`;
       }
     }
 
-    return '<div style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="loadCheckByIndex(' + i + ')">'
-      + '<div style="flex:1">'
-      + '<div style="font-weight:700;font-size:13.5px;color:var(--navy)">'
-      + (c.requestId ? 'Check ' + c.requestId : 'Check ohne ID')
-      + (c.anfrageNr ? '<span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">· Anfrage: <strong style="color:var(--text);font-family:\'DM Mono\',monospace">' + c.anfrageNr + '</strong></span>' : '')
-      + '<span style="font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px">' + (c.datum || '') + '</span>'
-      + typeBadge + ahwBadge + '</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (c.firma || '–') + ' · ' + (c.standort || '–') + '</div>'
-      + '<div style="font-size:12px;margin-top:4px">'
-      + '<span style="color:var(--navy)">' + (c.cv_anbieter || '–') + '</span><span style="color:var(--muted)"> vs </span>'
-      + '<span style="color:var(--green2)">' + (c.ca_anbieter || '–') + '</span>'
-      + '<span style="color:var(--green2);font-weight:600;margin-left:8px">' + (c.ersparnis || '') + '</span></div>'
+    return '<div style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:14px 16px;display:flex;align-items:flex-start;gap:14px;cursor:pointer;box-shadow:var(--dr-elev-1);transition:all .15s" onmouseover="this.style.borderColor=\'var(--dr-blue-light)\';this.style.boxShadow=\'var(--dr-elev-blue)\'" onmouseout="this.style.borderColor=\'var(--dr-border)\';this.style.boxShadow=\'var(--dr-elev-1)\'" onclick="loadCheckByIndex(' + i + ')">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'
+      + '<span style="font-weight:700;font-size:14px;color:var(--dr-ink);letter-spacing:-.01em">'
+      + (c.requestId ? c.requestId : 'Check ohne ID') + '</span>'
+      + typeBadge + ahwBadge
+      + (c.anfrageNr ? '<span style="font-family:var(--dr-f-mono);font-size:11px;color:var(--dr-ink-mute);letter-spacing:.04em">· Anfrage ' + c.anfrageNr + '</span>' : '')
+      + (c.datum ? '<span style="font-family:var(--dr-f-mono);font-size:11px;color:var(--dr-ink-mute);letter-spacing:.04em">· ' + c.datum + '</span>' : '')
+      + '</div>'
+      + '<div style="font-size:13px;color:var(--dr-ink);margin-top:3px;font-weight:600">' + (c.firma || '–') + ' <span style="font-weight:400;color:var(--dr-ink-mute)">· ' + (c.standort || '–') + '</span></div>'
+      + '<div style="font-size:12.5px;margin-top:4px;color:var(--dr-ink-soft)">'
+      + '<span style="color:var(--dr-blue-deep);font-weight:600">' + (c.cv_anbieter || '–') + '</span>'
+      + '<span style="color:var(--dr-ink-subtle);margin:0 4px">vs</span>'
+      + '<span style="color:var(--dr-green-deep);font-weight:600">' + (c.ca_anbieter || '–') + '</span>'
+      + (c.ersparnis ? '<span style="color:var(--dr-green-deep);font-weight:700;margin-left:10px;font-family:var(--dr-f-mono)">' + c.ersparnis + '</span>' : '')
+      + '</div>'
       + kuendInfo
       + downloadRow
       + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
+      + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">'
       + (c.savedAt
-          ? '<span style="font-size:11px;color:var(--muted);text-align:right;line-height:1.35">'
+          ? '<div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-align:right;line-height:1.4;letter-spacing:.03em">'
               + new Date(c.savedAt).toLocaleDateString('de-DE')
-              + '<br><span style="font-family:\'DM Mono\',monospace;font-size:10.5px">' + new Date(c.savedAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) + '</span>'
-            + '</span>'
+              + '<br>' + new Date(c.savedAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})
+            + '</div>'
           : '')
       + (() => {
           const sm = getCheckStatusMeta(c);
           const isVertrag = c.checkType === 'wartung';
-          // Reparatur: Status 4 (Abgerechnet) sperren ohne Admin
-          // Vertrag: Status 3 (Gekündigt) sperren ohne Admin (Endzustand)
           const locked = ((!isVertrag && sm.value === '4') || (isVertrag && sm.value === '3')) && !isAdmin();
           let opts = '';
           getCheckStatusList(c).forEach(s => {
@@ -6607,11 +6622,11 @@ function renderChecksList(checks, query) {
           });
           const lockedAttrs = locked ? ' disabled' : '';
           const lockedTitle = locked ? (isVertrag ? '🔒 Gekündigt – nur Admins können den Status ändern.' : '🔒 Abgerechnet – nur Admins können den Status ändern.') : 'Status ändern';
-          const lockedStyle = locked ? ';cursor:not-allowed;opacity:.7' : '';
-          return `<select${lockedAttrs} onchange="event.stopPropagation();setCheckStatus(${i}, this.value)" onclick="event.stopPropagation()" title="${lockedTitle}" style="border:1.5px solid ${sm.color};color:${sm.color};background:${sm.color}11;border-radius:5px;padding:3px 6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none${lockedStyle}">${opts}</select>`;
+          const lockedStyle = locked ? ';cursor:not-allowed;opacity:.6' : '';
+          return `<select${lockedAttrs} onchange="event.stopPropagation();setCheckStatus(${i}, this.value)" onclick="event.stopPropagation()" title="${lockedTitle}" style="border:1.5px solid ${sm.color};color:${sm.color};background:${sm.color}11;border-radius:var(--dr-r-pill);padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none${lockedStyle}">${opts}</select>`;
         })()
       + (isAdmin()
-          ? '<button onclick="event.stopPropagation();deleteCheckAt(' + i + ')" title="Check l\u00f6schen (Admin)" style="background:none;border:1px solid #e0a09a;color:#a8312f;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">\ud83d\uddd1 L\u00f6schen</button>'
+          ? '<button onclick="event.stopPropagation();deleteCheckAt(' + i + ')" title="Check l\u00f6schen (Admin)" class="dr-pill dr-pill--reset" style="color:#9F1B1F;padding:3px 9px;font-size:11px">\ud83d\uddd1 L\u00f6schen</button>'
           : '')
       + '</div></div>';
   }).join('');
