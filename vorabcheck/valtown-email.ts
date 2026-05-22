@@ -18,7 +18,7 @@
 
 import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 import { EMAIL_SPLITTER_PROMPT } from "https://check.liftaro.de/vorabcheck/prompts.js?v=4";
-import { EMAILS_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=7";
+import { EMAILS_TARGET_FIELDS } from "https://check.liftaro.de/vorabcheck/backend-extras.js?v=8";
 
 const MODEL_CLASSIFIER = "claude-haiku-4-5";   // schnell + günstig für Triage
 const COST_PER_M_INPUT  = 1.0;                 // Haiku 4.5 — niedriger Preis
@@ -513,21 +513,39 @@ export default async function (e: any): Promise<void> {
   // val.town liefert das Content-Feld in unterschiedlichen Formaten je nach
   // Email-Provider — wir akzeptieren Uint8Array, ArrayBuffer, Buffer, base64-String, Blob.
   let uploadedCount = 0;
+  const debugInfo: string[] = [];   // Wird in Airtable-Record geschrieben für Diagnose
   for (const att of attachments) {
     try {
       const fname = String(att?.filename || att?.name || "anhang.bin");
       const ctype = String(att?.contentType || att?.type || "application/octet-stream");
       // Detail-Logging zum Diagnostizieren des val.town-Email-Schemas
-      const attKeys = att ? Object.keys(att).slice(0, 10) : [];
-      console.log(`[Emails] Attachment-Probe '${fname}': keys=${JSON.stringify(attKeys)}, ` +
-        `typeof content=${typeof att?.content}, isBlob=${typeof Blob!=='undefined' && att?.content instanceof Blob}, ` +
-        `isUint8=${att?.content instanceof Uint8Array}, isArrayBuffer=${att?.content instanceof ArrayBuffer}`);
-      // Try unterschiedliche Felder, je nach val.town-Email-Schema
+      const attKeys = att ? Object.keys(att).slice(0, 12) : [];
       const rawContent = att?.content ?? att?.body ?? att?.data ?? att?.buffer ?? att?.blob;
+      const contentInfo = {
+        fname,
+        ctype,
+        attKeys,
+        rawTypeof: typeof rawContent,
+        isNull: rawContent == null,
+        isUint8Array: rawContent instanceof Uint8Array,
+        isArrayBuffer: rawContent instanceof ArrayBuffer,
+        isBlob: typeof Blob !== "undefined" && rawContent instanceof Blob,
+        isReadableStream: typeof ReadableStream !== "undefined" && rawContent instanceof ReadableStream,
+        hasArrayBufferMethod: rawContent && typeof rawContent.arrayBuffer === "function",
+        hasLength: rawContent && typeof rawContent.length === "number" ? rawContent.length : null,
+        hasByteLength: rawContent && typeof rawContent.byteLength === "number" ? rawContent.byteLength : null,
+        hasSize: rawContent && typeof rawContent.size === "number" ? rawContent.size : null,
+        contentSubKeys: rawContent && typeof rawContent === "object" ? Object.keys(rawContent).slice(0, 8) : null,
+        stringPreview: typeof rawContent === "string" ? rawContent.slice(0, 80) : null,
+        constructorName: rawContent && rawContent.constructor ? rawContent.constructor.name : null,
+      };
+      console.log("[Emails] Attachment-Probe:", JSON.stringify(contentInfo));
+      debugInfo.push(JSON.stringify(contentInfo));
+
       const bytes = await _toUint8Array(rawContent);
       if (!bytes || bytes.byteLength === 0) {
-        console.warn("[Emails] Attachment ohne lesbaren Content — skipped:", fname,
-          "type=", typeof rawContent, "keys=", rawContent ? Object.keys(rawContent).slice(0, 8) : "(null)");
+        console.warn("[Emails] Attachment ohne lesbaren Content — skipped:", fname);
+        debugInfo.push(`SKIPPED: ${fname} — bytes null or empty`);
         continue;
       }
       if (bytes.byteLength > 20 * 1024 * 1024) {
@@ -539,6 +557,20 @@ export default async function (e: any): Promise<void> {
     } catch (err) {
       console.warn("[Emails] Attachment-Upload-Error:", err);
     }
+  }
+
+  // Diagnose-Info in Airtable schreiben — hilft beim Debuggen wenn Anhänge fehlen.
+  // Wir patchen den eben angelegten Record per separatem Update.
+  if (debugInfo.length > 0) {
+    try {
+      const key  = Deno.env.get("AIRTABLE_KEY");
+      const base = Deno.env.get("AIRTABLE_BASE_ID");
+      await fetch(`https://api.airtable.com/v0/${base}/${EMAILS_TABLE}/${recordId}`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { attachment_debug: debugInfo.join("\n---\n").slice(0, 90000) } }),
+      });
+    } catch (e) { console.warn("[Emails] attachment_debug-Patch fehlgeschlagen:", e); }
   }
 
   console.log("[Emails] Verarbeitet OK:", recordId, "—", kiResult.parsed.classification,
