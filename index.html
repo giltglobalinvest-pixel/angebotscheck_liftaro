@@ -4590,7 +4590,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V11.1';
+const APP_VERSION = 'V11.2';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -5337,6 +5337,9 @@ async function setupTables() {
     { name: 'email_from',       type: 'singleLineText' },
     { name: 'email_subject',    type: 'singleLineText' },
     { name: 'source',           type: 'singleLineText' },  // "email" | (sonst leer)
+    // Pipedrive-HV-Verknüpfung (V11.2)
+    { name: 'pipedrive_org_id',  type: 'singleLineText' },
+    { name: 'pipedrive_kundennr',type: 'singleLineText' },
   ]);
   // Verträge-Tabelle
   try {
@@ -15802,10 +15805,16 @@ function renderEmailInboxDetail() {
     </div>`;
   }
 
-  // Email-Body
+  // Email-Body — body_text bevorzugt, body_html als Fallback (HTML strippen)
+  const bodyText = (r.body_text && r.body_text.trim()) || _stripHtml(r.body_html || '') || '(leer)';
+  const hasHtml = !!(r.body_html && r.body_html.trim());
   html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
-    <div class="dr-section-title" style="margin-bottom:10px">Original-Body</div>
-    <div style="font-size:12.5px;line-height:1.7;color:var(--dr-ink-soft);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--dr-surface-alt);padding:12px 14px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(r.body_text || '(leer)')}</div>
+    <div class="dr-section-head" style="margin-bottom:10px">
+      <div class="dr-section-title">Original-Body${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
+      ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Original-HTML anzeigen</button>` : ''}
+    </div>
+    <div id="eiBodyText_${r._id}" style="font-size:12.5px;line-height:1.7;color:var(--dr-ink-soft);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--dr-surface-alt);padding:12px 14px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
+    ${hasHtml ? `<iframe id="eiBodyHtml_${r._id}" sandbox="allow-same-origin" srcdoc="${_esc(r.body_html)}" style="display:none;width:100%;height:340px;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;margin-top:8px"></iframe>` : ''}
   </div>`;
 
   // Anhänge
@@ -15854,6 +15863,82 @@ function renderEmailInboxDetail() {
 
 function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// HTML → Plain-Text-Approximation (für Inbox-Body-Fallback)
+function _stripHtml(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Promise-basierter Dialog für mehrere Pipedrive-HV-Treffer.
+// Resolves: chosen-hit-Object | null (=ohne Verknüpfung weiter) | false (=Abbruch)
+function _eiChooseHvDialog(query, hits) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px';
+    ov.innerHTML = `<div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(560px,96vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.4);overflow:hidden;border:1px solid var(--dr-border)">
+      <div style="background:var(--dr-surface);padding:16px 20px;border-bottom:1px solid var(--dr-border)">
+        <div style="font-size:15px;font-weight:700;color:var(--dr-ink);letter-spacing:-.01em">Hausverwaltung zuordnen</div>
+        <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:3px">${hits.length} Treffer für „${_esc(query)}" in Pipedrive — bitte auswählen</div>
+      </div>
+      <div id="_eiHvList" style="flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:8px"></div>
+      <div style="padding:12px 20px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <button class="dr-pill" id="_eiHvSkip">Ohne Verknüpfung anlegen</button>
+        <button class="dr-pill dr-pill--reset" id="_eiHvCancel">Abbrechen</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+
+    const listEl = ov.querySelector('#_eiHvList');
+    hits.forEach((h, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'dr-section';
+      btn.style.cssText = 'padding:12px 14px;text-align:left;cursor:pointer;border:1px solid var(--dr-border);transition:all .15s';
+      btn.innerHTML = `<div style="font-weight:600;font-size:13.5px;color:var(--dr-ink)">${_esc(h.name || '')}</div>
+        <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:3px;font-family:var(--dr-f-mono);letter-spacing:.04em">
+          ${h.city ? '📍 ' + _esc(h.city) + ' · ' : ''}Pipedrive-ID ${_esc(String(h.org_id))}${h.email ? ' · ' + _esc(h.email) : ''}${h.kundennr ? ' · Kunde ' + _esc(h.kundennr) : ''}
+        </div>`;
+      btn.onmouseover = () => { btn.style.borderColor = 'var(--dr-blue-light)'; btn.style.background = 'var(--dr-blue-soft)'; };
+      btn.onmouseout  = () => { btn.style.borderColor = 'var(--dr-border)'; btn.style.background = 'var(--dr-surface)'; };
+      btn.onclick = () => { document.body.removeChild(ov); resolve(h); };
+      listEl.appendChild(btn);
+    });
+    ov.querySelector('#_eiHvSkip').onclick   = () => { document.body.removeChild(ov); resolve(null); };
+    ov.querySelector('#_eiHvCancel').onclick = () => { document.body.removeChild(ov); resolve(false); };
+  });
+}
+
+// Toggle zwischen Plain-Text und HTML-Iframe im Detail-View
+function _eiToggleHtml(recId) {
+  const textEl = document.getElementById('eiBodyText_' + recId);
+  const htmlEl = document.getElementById('eiBodyHtml_' + recId);
+  const btn    = document.getElementById('eiHtmlToggle_' + recId);
+  if (!textEl || !htmlEl || !btn) return;
+  if (htmlEl.style.display === 'none') {
+    htmlEl.style.display = 'block';
+    textEl.style.display = 'none';
+    btn.textContent = 'Als Text anzeigen';
+  } else {
+    htmlEl.style.display = 'none';
+    textEl.style.display = 'block';
+    btn.textContent = 'Original-HTML anzeigen';
+  }
 }
 
 function _eiCurrentUserName() {
@@ -15911,11 +15996,54 @@ async function createCheckFromVorgang(recId, vIdx) {
   const v = vorgaenge[vIdx];
   if (!v) { showToast('Vorgang nicht gefunden', 'error'); return; }
 
-  showToast('Check wird erstellt …', 'info');
+  // 1. Pipedrive-Match versuchen — Suche nach kunde_firma (Fallback kunde_name)
+  // Es kann (a) kein Treffer, (b) 1 eindeutiger Treffer, (c) mehrere Treffer geben.
+  let pdMatch = null;
+  let pdAll = [];
+  const searchName = (v.kunde_firma || v.kunde_name || '').trim();
+  if (searchName.length >= 3 && APP_KEYS.vorabcheckProxyUrl) {
+    showToast('Suche Hausverwaltung in Pipedrive …', 'info', 2000);
+    try {
+      const resp = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'find_property_manager', query: searchName }),
+      });
+      const d = await resp.json();
+      if (d.ok && Array.isArray(d.results)) pdAll = d.results;
+    } catch (e) { console.warn('Pipedrive-Suche fehlgeschlagen:', e); }
+  }
+
+  // 2. Bei mehreren Treffern: User auswählen lassen
+  if (pdAll.length > 1) {
+    pdMatch = await _eiChooseHvDialog(searchName, pdAll);
+    if (pdMatch === false) return; // User-Abbruch
+  } else if (pdAll.length === 1) {
+    pdMatch = pdAll[0];
+    showToast(`✓ Hausverwaltung "${pdMatch.name}" aus Pipedrive verknüpft`, 'success', 2500);
+  } else if (searchName) {
+    showToast(`Keine Pipedrive-HV zu "${searchName}" — Check wird ohne Verknüpfung angelegt`, 'info', 3000);
+  }
+
+  // 3. Optional: Volle HV-Details aus Pipedrive nachladen
+  let pdDetails = null;
+  if (pdMatch && pdMatch.org_id) {
+    try { pdDetails = await _fetchOrgDetails(pdMatch.org_id); } catch (_) {}
+  }
+
+  showToast('Check wird erstellt …', 'info', 1500);
   try {
     // Neue Check-ID generieren
     const newCheckId = await generateCheckId();
     const checkType = (v.typ === 'rechnung') ? 'rechnung' : (v.typ === 'reparatur' ? 'reparatur' : 'wartung');
+
+    // Anschrift aus Pipedrive bevorzugt — sonst aus KI-Extraktion
+    const hvFirma = (pdDetails && pdDetails.firma) || pdMatch?.name || v.kunde_firma || v.kunde_name || '';
+    const hvStrasse = (pdDetails && pdDetails.strasse) || '';
+    const hvPlz     = (pdDetails && pdDetails.plz) || '';
+    const hvOrt     = (pdDetails && pdDetails.ort) || pdMatch?.city || '';
+    const hvAnschrift = [hvStrasse, [hvPlz, hvOrt].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const hvEmail   = (pdDetails && pdDetails.email) || pdMatch?.email || v.kunde_email || '';
+    const hvTel     = (pdDetails && pdDetails.tel) || v.kunde_telefon || '';
 
     // Check-Record anlegen mit prefilled Daten
     const fields = {
@@ -15924,14 +16052,18 @@ async function createCheckFromVorgang(recId, vIdx) {
       datum:                new Date().toISOString().split('T')[0],
       typ:                  checkType,
       status:               'in Bearbeitung',
-      // Prefill aus Vorgang
-      f_hv_name:            v.kunde_firma || v.kunde_name || '',
-      f_ansprechpartner:    v.kunde_name || '',
-      f_email:              v.kunde_email || '',
-      f_tel:                v.kunde_telefon || '',
+      // Prefill aus Pipedrive (bevorzugt) / Vorgang
+      f_hv_name:            hvFirma,
+      f_hv_anschrift:       hvAnschrift,
+      f_ansprechpartner:    (pdDetails && pdDetails.gf) || v.kunde_name || '',
+      f_email:              hvEmail,
+      f_tel:                hvTel,
       f_standort:           v.objekt_adresse || '',
       f_anlage:             v.anlage_typ || '',
       f_empfehlung:         v.anliegen_volltext || v.anliegen_kurz || '',
+      // Pipedrive-Verknüpfung
+      pipedrive_org_id:     pdMatch?.org_id || '',
+      pipedrive_kundennr:   (pdDetails && pdDetails.kundennr) || pdMatch?.kundennr || '',
       // Email-Verknüpfung
       email_source_id:      recId,
       email_from:           r.from_email || '',
