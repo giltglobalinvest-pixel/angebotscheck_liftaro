@@ -2153,6 +2153,11 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Gesamt herunterladen
       </button>
+      <!-- V12.3: Antwort-Entwurf vorbereiten (nur sichtbar, wenn Check aus Email stammt) -->
+      <button class="btn-generate" id="btnReplyDraft" onclick="openReplyForCurrentCheck()" style="display:none;background:#16a34a" title="Email-Entwurf mit Ergebnis-PDF und KI-Text öffnen">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Antwort an Kunde
+      </button>
     </div>
     <!-- Logout: immer sichtbar, getrennt von Check-Aktionen -->
     <div class="action-group" id="actionGroupGlobal" style="margin-left:8px">
@@ -2243,6 +2248,11 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button id="mobileDownloadFullBtn" class="mobile-menu-item" onclick="closeMobileMenu();downloadFullResult()" style="display:none;background:rgba(45,95,150,.3);border-color:rgba(45,95,150,.5);color:#bcd9ff">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Gesamt herunterladen
+    </button>
+    <!-- V12.3: Antwort-Entwurf vorbereiten (Mobile) -->
+    <button id="mobileReplyDraftBtn" class="mobile-menu-item" onclick="closeMobileMenu();openReplyForCurrentCheck()" style="display:none;background:rgba(22,163,74,.22);border-color:rgba(22,163,74,.5);color:#86efac">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Antwort an Kunde
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();forceAppReload()" style="background:rgba(45,95,150,.18);border-color:rgba(45,95,150,.4);color:#9ec4ff">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
@@ -4590,7 +4600,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.2';
+const APP_VERSION = 'V12.3';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6129,6 +6139,9 @@ async function saveWithVisualization() {
 async function loadCheck(data) {
   const r = makeLoadReporter();
   r.step('fields');
+  // V12.3: Email-Quelle des aktuell geladenen Checks für Reply-CTA cachen
+  window._currentCheckEmailSrc = data?.email_source_id || null;
+  window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
   // Set field value - works for input, textarea, and contenteditable div
   const set = (id, val) => {
     const el = document.getElementById(id);
@@ -6367,6 +6380,12 @@ async function loadCheck(data) {
   } else if (hasFiles) {
     showFileLoadHint(files);
   }
+
+  // V12.3: "Antwort an Kunde"-CTA sichtbar machen, wenn Check aus einer Email stammt
+  // (UND ein Ergebnis-PDF in Airtable hängt). Sonst Buttons verstecken.
+  if (typeof _refreshReplyDraftBtnVisibility === 'function') {
+    setTimeout(_refreshReplyDraftBtnVisibility, 50);
+  }
 }
 
 function showFileLoadHint(files) {
@@ -6401,6 +6420,11 @@ async function loadChecksFromAirtable() {
       if (!d.gekuendigt_am          && r.fields.gekuendigt_am)          d.gekuendigt_am          = r.fields.gekuendigt_am;
       if (!d.gekuendigt_grund       && r.fields.gekuendigt_grund)       d.gekuendigt_grund       = r.fields.gekuendigt_grund;
       d._attSignedVertrag = r.fields.signierter_vertrag || null;
+      // V12.3: Email-Quelle aus Top-Level übernehmen (für Reply-CTA & ältere Checks)
+      if (!d.email_source_id && r.fields.email_source_id) d.email_source_id = r.fields.email_source_id;
+      if (!d.email_from      && r.fields.email_from)      d.email_from      = r.fields.email_from;
+      if (!d.email_subject   && r.fields.email_subject)   d.email_subject   = r.fields.email_subject;
+      if (!d.source          && r.fields.source)          d.source          = r.fields.source;
       // Status aus Top-Level übernehmen, falls in formData fehlt
       if (!d.status && r.fields.status) d.status = r.fields.status;
       if (!d.status) d.status = '1';
@@ -9155,6 +9179,8 @@ async function generateRechnungscheckPDF() {
     // Pending markieren — wird beim nächsten Speichern als ergebnis_pdf hochgeladen
     _pendingErgebnisPdfBlob = blob;
     _pendingErgebnisPdfName = filename;
+    // V12.3: "Antwort an Kunde"-CTA einblenden, wenn Check aus Email stammt
+    if (typeof _refreshReplyDraftBtnVisibility === 'function') _refreshReplyDraftBtnVisibility();
     showToast('Rechnungsprüfungs-PDF erstellt — beim nächsten Speichern wird sie ans Airtable angehängt.', 'ok');
   } catch(e) {
     console.error(e);
@@ -9421,6 +9447,8 @@ async function generatePDF() {
     // Mobile-Drawer: gleichen Button (text-flow-Variante) ebenfalls einblenden
     var mobileDl = document.getElementById('mobileDownloadFullBtn');
     if (mobileDl) mobileDl.style.display = 'flex';
+    // V12.3: "Antwort an Kunde"-CTA einblenden, wenn Check aus Email stammt
+    if (typeof _refreshReplyDraftBtnVisibility === 'function') _refreshReplyDraftBtnVisibility();
     const bar = document.getElementById('statusBar');
     bar.className = 'status-bar ok';
     bar.innerHTML = '<span>✅</span><span>Ergebnis erstellt und gespeichert. Vorschau geöffnet.</span>';
@@ -16563,30 +16591,86 @@ async function createCheckFromVorgang(recId, vIdx) {
     const hvEmail     = hasHv ? (v.assigned_org_email || v.kunde_email || '') : (v.kunde_email || '');
     const hvTel       = hasHv ? (v.assigned_org_tel || v.kunde_telefon || '') : (v.kunde_telefon || '');
     const hvAnsprech  = hasHv ? (v.assigned_org_gf || v.kunde_name || '') : (v.kunde_name || '');
+    const today       = new Date().toISOString().split('T')[0];
+    const apiKey      = APP_KEYS.user?.api_key || 'unknown';
 
-    const fields = {
-      id:                   newCheckId,
-      requestid:            newCheckId,
-      datum:                new Date().toISOString().split('T')[0],
-      typ:                  checkType,
-      status:               'in Bearbeitung',
-      f_hv_name:            hvFirma,
-      f_hv_anschrift:       hvAnschrift,
-      f_ansprechpartner:    hvAnsprech,
-      f_email:              hvEmail,
-      f_tel:                hvTel,
-      f_standort:           v.objekt_adresse || '',
-      f_anlage:             v.anlage_typ || '',
-      f_empfehlung:         v.anliegen_volltext || v.anliegen_kurz || '',
-      pipedrive_org_id:     v.assigned_org_id || '',
-      pipedrive_kundennr:   v.assigned_kundennr || '',
-      email_source_id:      recId,
-      email_from:           r.from_email || '',
-      email_subject:        r.subject || '',
-      source:               'email',
-      source_type:          isPriv ? 'email_privat' : 'email_hv',
+    // V12.3: Form-Daten als JSON-Blob (so wie saveCheck es speichert).
+    // loadCheck() liest aus formData; top-level-Felder sind nur Filter-Indizes.
+    const formData = {
+      id:                 newCheckId,
+      requestId:          newCheckId,
+      anfrageNr:          '',
+      datum:              today,
+      checkType:          checkType,
+      status:             '1',
+      firma:              hvFirma,
+      standort:           v.objekt_adresse || '',
+      fabrik:             '',
+      name:               hvAnsprech,
+      tel:                hvTel,
+      email:              hvEmail,
+      f_hv_anschrift:     hvAnschrift,
+      empfehlung:         v.anliegen_volltext || v.anliegen_kurz || '',
+      ap:                 'Samet Battal',
+      tl:                 '015888634515',
+      // Email-Quelle & Pipedrive-Verlinkung (auch in formData, damit nach Reload sichtbar)
+      email_source_id:    recId,
+      email_from:         r.from_email || '',
+      email_subject:      r.subject || '',
+      source:             'email',
+      source_type:        isPriv ? 'email_privat' : 'email_hv',
+      pipedrive_org_id:   v.assigned_org_id || '',
+      pipedrive_kundennr: v.assigned_kundennr || '',
     };
-    await atWrite('Checks', fields);
+
+    // Top-Level-Felder für Airtable (was loadChecksFromAirtable & Filter sehen)
+    const fields = {
+      id:                 newCheckId,
+      api_key:            apiKey,
+      savedAt:            new Date().toISOString(),
+      requestId:          newCheckId,
+      datum:              today,
+      checkType:          checkType,
+      standort:           v.objekt_adresse || '',
+      firma:              hvFirma,
+      status:             '1',
+      formData:           JSON.stringify(formData),
+      email_source_id:    recId,
+      email_from:         r.from_email || '',
+      email_subject:      r.subject || '',
+      source:             'email',
+      pipedrive_org_id:   v.assigned_org_id || '',
+      pipedrive_kundennr: v.assigned_kundennr || '',
+    };
+    const writeResult = await atWrite('Checks', fields);
+    const recordId = writeResult?.id;
+
+    // V12.3: Email-Anhang(e) automatisch in den neuen Check übernehmen (vorliegendes_pdf).
+    // → User muss nicht mehr aus der Email runterladen + manuell hochladen.
+    let attachedFiles = 0;
+    if (recordId && Array.isArray(r.attachments) && r.attachments.length > 0) {
+      // Bevorzugt PDFs, sonst alle (z.B. wenn Word/Bilder dabei sind)
+      const candidates = r.attachments.filter(a => {
+        const n = (a.filename || a.name || '').toLowerCase();
+        return /\.pdf$/.test(n) || a.type === 'application/pdf';
+      });
+      const toAttach = candidates.length ? candidates : r.attachments.slice(0, 1);
+      showToast(`Übernehme ${toAttach.length} Anhang${toAttach.length > 1 ? '(e)' : ''} aus Email …`, 'info', 2000);
+      for (const att of toAttach) {
+        try {
+          const url = att.url;
+          if (!url) continue;
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const blob = await resp.blob();
+          const fname = att.filename || att.name || `Anhang_${attachedFiles + 1}.pdf`;
+          await atUploadAttachment(recordId, 'vorliegendes_pdf', blob, fname);
+          attachedFiles++;
+        } catch(attErr) {
+          console.warn('Anhang-Übernahme fehlgeschlagen:', attErr.message);
+        }
+      }
+    }
 
     // Email-Record updaten: linked_check_ids + status
     const newLinks = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -16603,12 +16687,27 @@ async function createCheckFromVorgang(recId, vIdx) {
     r.linked_checks_count = newLinks.length;
     r.status              = 'in_bearbeitung';
 
-    showToast(`Check ${newCheckId} angelegt — wird jetzt geladen …`, 'success');
+    showToast(`Check ${newCheckId} angelegt${attachedFiles ? ` · ${attachedFiles} Anhang übernommen` : ''} — wird geladen …`, 'success');
     // Modal schließen + Check öffnen (atomar)
     closeEmailInboxModal();
-    if (typeof loadCheck === 'function') {
-      setTimeout(() => loadCheck(newCheckId), 300);
-    }
+
+    // V12.3: loadCheck braucht ein Datenobjekt, keine ID-Strings.
+    // Frisch aus Airtable laden (inkl. Attachment-URLs) und öffnen.
+    setTimeout(async () => {
+      try {
+        const all = await loadChecksFromAirtable();
+        window._checksCache = all;
+        const checkData = all.find(c => c.id === newCheckId);
+        if (checkData && typeof loadCheck === 'function') {
+          await loadCheck(checkData);
+        } else {
+          showToast(`Check ${newCheckId} gespeichert, konnte aber nicht direkt geöffnet werden — siehe "Meine Checks".`, 'error', 4500);
+        }
+      } catch(loadErr) {
+        console.error('Check-Reload fehlgeschlagen:', loadErr);
+        showToast('Check angelegt, Öffnen fehlgeschlagen: ' + loadErr.message, 'error');
+      }
+    }, 400);
     _refreshEmailInboxBadge();
   } catch (e) {
     console.error(e);
@@ -16867,6 +16966,73 @@ function _refreshEmailInboxBadge() {
       badge.style.display = 'none';
     }
   });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  V12.3: "Antwort an Kunde" — CTA aus dem Check-View
+//  Öffnet das Reply-Modal mit PDF-Anhang und triggert KI-Regen,
+//  damit der Entwurf das fertige Check-Ergebnis kennt.
+// ════════════════════════════════════════════════════════════════
+
+// Liefert die email_source_id des aktuell geladenen Checks (oder null).
+// Lookup-Reihenfolge: 1) window._currentCheckEmailSrc (von loadCheck gesetzt)
+//                     2) Cache via Form-ID (Fallback für direkten Deep-Link)
+function _currentCheckEmailSourceId() {
+  if (window._currentCheckEmailSrc) return window._currentCheckEmailSrc;
+  const rid = (document.getElementById('f_requestid')?.value || '').trim();
+  if (!rid) return null;
+  const checks = window._checksCache || [];
+  const c = checks.find(x => x.id === rid || x.requestId === rid);
+  return c?.email_source_id || null;
+}
+
+// Sichtbarkeits-Steuerung für die "Antwort an Kunde"-Buttons.
+// Bedingungen: aktuell geladener Check stammt aus einer Email
+// UND es gibt ein Ergebnis-PDF (entweder gerade generiert oder bereits gespeichert).
+function _refreshReplyDraftBtnVisibility() {
+  const emailSrc = _currentCheckEmailSourceId();
+  let hasPdf = !!_pendingErgebnisPdfBlob || !!window._currentCheckHasErgebnisPdf;
+  if (!hasPdf) {
+    const rid = (document.getElementById('f_requestid')?.value || '').trim();
+    if (rid) {
+      const checks = window._checksCache || [];
+      const c = checks.find(x => x.id === rid || x.requestId === rid);
+      if (c && Array.isArray(c._attErgebnis) && c._attErgebnis.length > 0) hasPdf = true;
+    }
+  }
+  const show = !!emailSrc && hasPdf;
+  const btn = document.getElementById('btnReplyDraft');
+  if (btn) btn.style.display = show ? 'inline-flex' : 'none';
+  const mBtn = document.getElementById('mobileReplyDraftBtn');
+  if (mBtn) mBtn.style.display = show ? 'flex' : 'none';
+}
+
+async function openReplyForCurrentCheck() {
+  const emailRecId = _currentCheckEmailSourceId();
+  if (!emailRecId) {
+    showToast('Dieser Check stammt nicht aus einer Email.', 'error');
+    return;
+  }
+  showToast('Öffne Antwort-Entwurf …', 'info', 1500);
+  // Email-Cache sicherstellen (Inbox war evtl. nie geöffnet)
+  if (!Array.isArray(_eiAllRecords) || _eiAllRecords.length === 0 || !_eiAllRecords.find(x => x._id === emailRecId)) {
+    try {
+      const recs = await atRead('Emails', null, { sort: false });
+      _eiAllRecords = (recs || []).map(rec => ({ _id: rec.id, ...rec.fields }));
+    } catch (e) {
+      showToast('Email-Inbox konnte nicht geladen werden: ' + e.message, 'error');
+      return;
+    }
+  }
+  // Reply-Modal öffnet sich + lädt das gespeicherte ergebnis_pdf als Anhang
+  await openEmailReplyModal(emailRecId);
+  // V12.3: Frischen KI-Text generieren — der kennt jetzt Ampel/Ersparnis/Empfehlung
+  setTimeout(() => {
+    const regenBtn = document.getElementById('erRegenBtn');
+    if (regenBtn) {
+      regenBtn.click();
+    }
+  }, 350);
 }
 
 // Beim App-Start: einmalig still laden, damit das Badge stimmt
