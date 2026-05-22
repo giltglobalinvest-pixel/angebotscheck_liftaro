@@ -554,21 +554,32 @@ export default async function (e: any): Promise<void> {
       console.log("[Emails] Attachment-Probe:", JSON.stringify(probe));
       debugInfo.push(JSON.stringify(probe, null, 2));
 
-      // Multi-Source-Content-Resolution: erst Properties, dann Methods
+      // Multi-Source-Content-Resolution. Reihenfolge:
+      //   1. att SELBST ist Blob/File (val.town liefert Web-File-Instances!)
+      //      → File extends Blob → direkt _toUint8Array(att) nutzen
+      //   2. Property-Felder probieren (skip wenn das Property eine Function ist —
+      //      sonst nehmen wir die Method-Referenz statt der Bytes)
+      //   3. Async Method-Calls probieren (arrayBuffer/text/bytes/stream)
       let rawContent: any = null;
-      for (const k of candidates) {
-        const v = (att as any)?.[k];
-        if (v != null) { rawContent = v; debugInfo.push(`USED: att.${k}`); break; }
-      }
-      if (rawContent == null) {
-        // Methods probieren
-        for (const m of methods) {
-          const fn = (att as any)?.[m];
-          if (typeof fn === "function") {
-            try {
-              rawContent = await fn.call(att);
-              if (rawContent != null) { debugInfo.push(`USED: att.${m}()`); break; }
-            } catch (e: any) { debugInfo.push(`FAILED: att.${m}() — ${e?.message}`); }
+      if (typeof Blob !== "undefined" && att instanceof Blob) {
+        rawContent = att;
+        debugInfo.push(`USED: att itself (instanceof Blob/File)`);
+      } else {
+        for (const k of candidates) {
+          const v = (att as any)?.[k];
+          if (v != null && typeof v !== "function") {
+            rawContent = v; debugInfo.push(`USED: att.${k}`); break;
+          }
+        }
+        if (rawContent == null) {
+          for (const m of methods) {
+            const fn = (att as any)?.[m];
+            if (typeof fn === "function") {
+              try {
+                rawContent = await fn.call(att);
+                if (rawContent != null) { debugInfo.push(`USED: att.${m}()`); break; }
+              } catch (e: any) { debugInfo.push(`FAILED: att.${m}() — ${e?.message}`); }
+            }
           }
         }
       }
