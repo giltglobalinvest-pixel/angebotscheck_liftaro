@@ -63,12 +63,18 @@ export const VERTRAG_EXTRACT_STRING_KEYS = ['vertragsbeginn', 'wartungen_pro_jah
 // Status-Feldern aggregiert, damit Filter-Views in Airtable funktionieren.
 // ──────────────────────────────────────────────────────────────────
 export const EMAILS_TARGET_FIELDS = [
-  // Empfangs-Header
+  // Empfangs-Header — bei Forward: Original-Absender (extrahiert aus Body)
   T('from_email'), T('from_name'),
   T('to_email'), T('reply_to'),
   T('subject'),
   D('received_at'),
   T('message_id'), T('in_reply_to'),
+  // Forward-Metadaten (wenn manuell von check@liftaro.de weitergeleitet)
+  C('is_forwarded'),
+  T('forwarded_via'),      // Adresse, über die weitergeleitet wurde (z.B. check@liftaro.de)
+  T('raw_from_email'),     // Was wirklich im SMTP-FROM stand
+  T('raw_from_name'),
+  T('raw_subject'),        // Original-Subject mit "Fwd: ..."-Prefix
   // Body (raw)
   M('body_text'), M('body_html'),
   // Attachments — Airtable speichert Datei direkt + Anzahl als Index
