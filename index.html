@@ -4590,7 +4590,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V11.7';
+const APP_VERSION = 'V12.0';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -15799,13 +15799,75 @@ function renderEmailInboxDetail() {
     vorgaenge.forEach((v, i) => {
       const typVariant = { wartung:'green', reparatur:'amber', rechnung:'purple' }[v.typ] || 'navy';
       const typColor = { wartung:'var(--dr-green)', reparatur:'var(--dr-amber)', rechnung:'var(--dr-purple)' }[v.typ] || 'var(--dr-ink-mute)';
+
+      // Zuordnungs-Status pro Vorgang
+      const assignedOrg     = (v.assigned_org_name || '').trim();
+      const assignedOrgId   = (v.assigned_org_id   || '').trim();
+      const assignedKundnr  = (v.assigned_kundennr || '').trim();
+      const isPrivate       = !!v.assigned_as_private;
+      const hasAssignment   = !!(assignedOrg || assignedOrgId || isPrivate);
+      const checkBtnDisabled = !hasAssignment;
+
+      // Render Zuordnungs-Block
+      let assignBlock;
+      if (assignedOrg || assignedOrgId) {
+        assignBlock = `<div style="background:var(--dr-green-soft);border:1px solid #8FD4A6;border-radius:var(--dr-r-md);padding:10px 14px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <svg width="16" height="16" fill="none" stroke="var(--dr-green-deep)" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+            <div style="min-width:0">
+              <div style="font-size:11px;font-weight:700;color:var(--dr-green-deep);text-transform:uppercase;letter-spacing:.05em">Hausverwaltung</div>
+              <div style="font-size:13.5px;font-weight:600;color:var(--dr-ink);overflow:hidden;text-overflow:ellipsis">${_esc(assignedOrg || '(unbenannt)')}</div>
+              <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em">Pipedrive-ID ${_esc(assignedOrgId)}${assignedKundnr ? ' · Kundennr. ' + _esc(assignedKundnr) : ''}</div>
+            </div>
+          </div>
+          <button class="dr-pill" onclick="clearVorgangAssignment('${r._id}', ${i})">Ändern</button>
+        </div>`;
+      } else if (isPrivate) {
+        assignBlock = `<div style="background:var(--dr-blue-soft);border:1px solid var(--dr-blue-light);border-radius:var(--dr-r-md);padding:10px 14px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px">
+            <svg width="16" height="16" fill="none" stroke="var(--dr-blue-deep)" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--dr-blue-deep);text-transform:uppercase;letter-spacing:.05em">Privatanfrage</div>
+              <div style="font-size:13.5px;font-weight:600;color:var(--dr-ink)">Direkter Eigentümer (keine HV)</div>
+            </div>
+          </div>
+          <button class="dr-pill" onclick="clearVorgangAssignment('${r._id}', ${i})">Ändern</button>
+        </div>`;
+      } else {
+        assignBlock = `<div style="background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:var(--dr-r-md);padding:12px 14px;margin:12px 0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <svg width="16" height="16" fill="none" stroke="#9A3412" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div style="font-size:12.5px;font-weight:700;color:#9A3412">Kunde noch nicht zugeordnet</div>
+          </div>
+          <div style="font-size:11.5px;color:#9A3412;line-height:1.5;margin-bottom:10px">Bevor du daraus einen Check erstellst, ordne den Vorgang einer Hausverwaltung zu (oder markiere als Privatanfrage).</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="dr-pill" style="background:var(--dr-blue);color:#fff;border-color:var(--dr-blue);font-weight:600" onclick="assignHvToVorgang('${r._id}', ${i})">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Hausverwaltung suchen
+            </button>
+            <button class="dr-pill" onclick="markVorgangPrivate('${r._id}', ${i})">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg>
+              Als Privatanfrage
+            </button>
+          </div>
+        </div>`;
+      }
+
+      // Check-Erstellen-Button — disabled wenn keine Zuordnung
+      const btnStyle = checkBtnDisabled
+        ? `background:var(--dr-surface-alt);color:var(--dr-ink-subtle);border:1px solid var(--dr-border-strong);cursor:not-allowed`
+        : `background:${typColor};color:#fff;border:none;cursor:pointer;box-shadow:0 1px 2px rgba(15,24,48,.1)`;
+
       html += `<div class="ei-vc-card">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
           <span class="ei-vc-typ-pill" style="background:${typColor}">${_esc(v.typ || '?')}</span>
           <span style="font-weight:700;font-size:14px;color:var(--dr-ink);letter-spacing:-.01em">${_esc(v.titel || '(ohne Titel)')}</span>
         </div>
+
+        ${assignBlock}
+
         <div style="font-size:12.5px;line-height:1.75;color:var(--dr-ink-soft);display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px 18px">
-          ${v.kunde_name || v.kunde_firma ? `<div>${monoMeta('Kunde:', _esc([v.kunde_name, v.kunde_firma].filter(Boolean).join(' — ')))}</div>` : ''}
+          ${v.kunde_name || v.kunde_firma ? `<div>${monoMeta('Kunde (KI):', _esc([v.kunde_name, v.kunde_firma].filter(Boolean).join(' — ')))}</div>` : ''}
           ${v.kunde_email   ? `<div>${monoMeta('Email:', _esc(v.kunde_email))}</div>` : ''}
           ${v.kunde_telefon ? `<div>${monoMeta('Telefon:', _esc(v.kunde_telefon))}</div>` : ''}
           ${v.objekt_adresse? `<div>${monoMeta('Objekt:', _esc(v.objekt_adresse))}</div>` : ''}
@@ -15813,7 +15875,7 @@ function renderEmailInboxDetail() {
         </div>
         ${v.anliegen_kurz ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--dr-divider);font-size:12.5px;color:var(--dr-ink);line-height:1.55"><span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-right:6px">Anliegen:</span>${_esc(v.anliegen_kurz)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-          <button onclick="createCheckFromVorgang('${r._id}', ${i})" style="background:${typColor};color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(15,24,48,.1)">
+          <button ${checkBtnDisabled ? 'disabled' : `onclick="createCheckFromVorgang('${r._id}', ${i})"`} style="${btnStyle};border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:7px" ${checkBtnDisabled ? 'title="Erst Kunde zuordnen"' : ''}>
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
             Check daraus erstellen
           </button>
@@ -16057,6 +16119,182 @@ async function dismissVorgang(recId, vIdx) {
   }
 }
 
+// ── Pipedrive-Zuordnung pro Vorgang ─────────────────────────────────
+// Workflow: Bearbeiter muss VOR Check-Erstellung den Vorgang einer HV zuordnen
+// (oder als Privatanfrage markieren). State in vorgaenge_json[].assigned_*.
+
+async function _saveVorgangAssignment(recId, vIdx, patchObj) {
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) return false;
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  if (vIdx < 0 || vIdx >= vorgaenge.length) return false;
+  Object.assign(vorgaenge[vIdx], patchObj, {
+    assigned_at: new Date().toISOString(),
+    assigned_by: _eiCurrentUserName(),
+  });
+  try {
+    await atUpdate('Emails', recId, { vorgaenge_json: JSON.stringify(vorgaenge, null, 2) });
+    r.vorgaenge_json = JSON.stringify(vorgaenge, null, 2);
+    renderEmailInboxDetail();
+    return true;
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+    return false;
+  }
+}
+
+async function assignHvToVorgang(recId, vIdx) {
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) return;
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  const v = vorgaenge[vIdx];
+  if (!v) return;
+
+  // Initial-Query: Firma aus KI-Extraktion bevorzugt, sonst Name
+  const initialQuery = (v.kunde_firma || v.kunde_name || '').trim();
+  if (!APP_KEYS.vorabcheckProxyUrl) {
+    showToast('Pipedrive-Proxy nicht konfiguriert (Vorabcheck-Hub → Setup)', 'error');
+    return;
+  }
+
+  // Initial-Search im Hintergrund
+  let initialHits = [];
+  if (initialQuery.length >= 3) {
+    showToast('Suche in Pipedrive …', 'info', 1500);
+    try {
+      const resp = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'find_property_manager', query: initialQuery }),
+      });
+      const d = await resp.json();
+      if (d.ok && Array.isArray(d.results)) initialHits = d.results;
+    } catch (e) { /* silent */ }
+  }
+
+  // Dialog öffnen — mit Initial-Hits, optional weitere Suche
+  const hit = await _eiHvSearchDialog(initialQuery, initialHits);
+  if (hit === false) return; // Abbruch
+  if (hit === null) return;  // User klickte "Trotzdem ohne HV" — wir bestehen aber jetzt darauf
+
+  // HV gewählt — Details laden + speichern
+  let details = null;
+  try { details = await _fetchOrgDetails(hit.org_id); } catch (_) {}
+  await _saveVorgangAssignment(recId, vIdx, {
+    assigned_org_id:    String(hit.org_id || ''),
+    assigned_org_name:  String(details?.firma || hit.name || ''),
+    assigned_kundennr:  String(details?.kundennr || hit.kundennr || ''),
+    assigned_org_email: String(details?.email || hit.email || ''),
+    assigned_org_tel:   String(details?.tel || ''),
+    assigned_org_addr:  [details?.strasse, [details?.plz, details?.ort || hit.city].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+    assigned_org_gf:    String(details?.gf || ''),
+    assigned_as_private:false,
+  });
+  showToast(`✓ "${hit.name}" zugeordnet`, 'success', 2200);
+}
+
+async function markVorgangPrivate(recId, vIdx) {
+  if (!confirm('Diesen Vorgang als Privatanfrage markieren?\n\nEs wird keine Hausverwaltung verknüpft. Der Check entsteht direkt aus den KI-Daten.')) return;
+  await _saveVorgangAssignment(recId, vIdx, {
+    assigned_org_id: '',
+    assigned_org_name: '',
+    assigned_kundennr: '',
+    assigned_as_private: true,
+  });
+  showToast('✓ Als Privatanfrage markiert', 'success', 1800);
+}
+
+async function clearVorgangAssignment(recId, vIdx) {
+  if (!confirm('Bestehende Zuordnung entfernen?')) return;
+  await _saveVorgangAssignment(recId, vIdx, {
+    assigned_org_id: '',
+    assigned_org_name: '',
+    assigned_kundennr: '',
+    assigned_as_private: false,
+  });
+  showToast('Zuordnung entfernt', 'info', 1500);
+}
+
+// HV-Such-Dialog mit Live-Search + initialer Trefferliste
+function _eiHvSearchDialog(initialQuery, initialHits) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px';
+    ov.innerHTML = `<div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(640px,96vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.4);overflow:hidden;border:1px solid var(--dr-border)">
+      <div style="background:var(--dr-surface);padding:18px 22px;border-bottom:1px solid var(--dr-border)">
+        <div style="font-size:16px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;margin-bottom:3px">Hausverwaltung zuordnen</div>
+        <div style="font-size:12px;color:var(--dr-ink-mute)">Suche in Pipedrive — klick auf einen Treffer zum Übernehmen</div>
+      </div>
+      <div style="padding:14px 22px;background:var(--dr-surface);border-bottom:1px solid var(--dr-border)">
+        <div style="position:relative">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="_eiHvQ" placeholder="Suchen nach Firma, GF, Adresse …" autocomplete="off" style="width:100%;padding:10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none">
+          <span id="_eiHvLoad" style="display:none;position:absolute;right:11px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--dr-ink-mute)">sucht …</span>
+        </div>
+      </div>
+      <div id="_eiHvList" style="flex:1;overflow-y:auto;padding:12px 22px;display:flex;flex-direction:column;gap:8px;background:var(--dr-bg-soft)"></div>
+      <div style="padding:12px 22px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:flex-end">
+        <button class="dr-pill dr-pill--reset" id="_eiHvCancel">Abbrechen</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+
+    const listEl = ov.querySelector('#_eiHvList');
+    const inputEl = ov.querySelector('#_eiHvQ');
+    const loadEl = ov.querySelector('#_eiHvLoad');
+
+    function renderHits(hits, query) {
+      if (!hits.length) {
+        listEl.innerHTML = `<div style="text-align:center;padding:24px 14px;color:var(--dr-ink-mute);font-size:12.5px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">${query ? `Keine Treffer für „${_esc(query)}".` : 'Tippe oben einen Suchbegriff (min. 3 Zeichen).'}</div>`;
+        return;
+      }
+      listEl.innerHTML = hits.map((h, idx) => `<button data-idx="${idx}" style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px;text-align:left;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--dr-blue-light)';this.style.background='var(--dr-blue-soft)'" onmouseout="this.style.borderColor='var(--dr-border)';this.style.background='var(--dr-surface)'">
+        <div style="font-weight:600;font-size:13.5px;color:var(--dr-ink)">${_esc(h.name || '')}</div>
+        <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-top:3px;letter-spacing:.04em">
+          ${h.city ? '📍 ' + _esc(h.city) + ' · ' : ''}Pipedrive-ID ${_esc(String(h.org_id))}${h.email ? ' · ' + _esc(h.email) : ''}${h.kundennr ? ' · Kunde ' + _esc(h.kundennr) : ''}
+        </div>
+      </button>`).join('');
+      [...listEl.querySelectorAll('button[data-idx]')].forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          document.body.removeChild(ov);
+          resolve(hits[idx]);
+        };
+      });
+    }
+    renderHits(initialHits, initialQuery);
+    inputEl.value = initialQuery;
+
+    // Live-Search
+    let debounceTimer;
+    inputEl.oninput = () => {
+      clearTimeout(debounceTimer);
+      const q = inputEl.value.trim();
+      if (q.length < 3) { renderHits([], q); return; }
+      debounceTimer = setTimeout(async () => {
+        loadEl.style.display = 'block';
+        try {
+          const resp = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'find_property_manager', query: q }),
+          });
+          const d = await resp.json();
+          renderHits(d.ok && Array.isArray(d.results) ? d.results : [], q);
+        } catch (e) {
+          renderHits([], q);
+        } finally {
+          loadEl.style.display = 'none';
+        }
+      }, 320);
+    };
+    inputEl.focus();
+
+    ov.querySelector('#_eiHvCancel').onclick = () => { document.body.removeChild(ov); resolve(false); };
+    ov.onclick = (e) => { if (e.target === ov) { document.body.removeChild(ov); resolve(false); } };
+  });
+}
+
 async function createCheckFromVorgang(recId, vIdx) {
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) return;
@@ -16065,38 +16303,12 @@ async function createCheckFromVorgang(recId, vIdx) {
   const v = vorgaenge[vIdx];
   if (!v) { showToast('Vorgang nicht gefunden', 'error'); return; }
 
-  // 1. Pipedrive-Match versuchen — Suche nach kunde_firma (Fallback kunde_name)
-  // Es kann (a) kein Treffer, (b) 1 eindeutiger Treffer, (c) mehrere Treffer geben.
-  let pdMatch = null;
-  let pdAll = [];
-  const searchName = (v.kunde_firma || v.kunde_name || '').trim();
-  if (searchName.length >= 3 && APP_KEYS.vorabcheckProxyUrl) {
-    showToast('Suche Hausverwaltung in Pipedrive …', 'info', 2000);
-    try {
-      const resp = await fetch(APP_KEYS.vorabcheckProxyUrl, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'find_property_manager', query: searchName }),
-      });
-      const d = await resp.json();
-      if (d.ok && Array.isArray(d.results)) pdAll = d.results;
-    } catch (e) { console.warn('Pipedrive-Suche fehlgeschlagen:', e); }
-  }
-
-  // 2. Bei mehreren Treffern: User auswählen lassen
-  if (pdAll.length > 1) {
-    pdMatch = await _eiChooseHvDialog(searchName, pdAll);
-    if (pdMatch === false) return; // User-Abbruch
-  } else if (pdAll.length === 1) {
-    pdMatch = pdAll[0];
-    showToast(`✓ Hausverwaltung "${pdMatch.name}" aus Pipedrive verknüpft`, 'success', 2500);
-  } else if (searchName) {
-    showToast(`Keine Pipedrive-HV zu "${searchName}" — Check wird ohne Verknüpfung angelegt`, 'info', 3000);
-  }
-
-  // 3. Optional: Volle HV-Details aus Pipedrive nachladen
-  let pdDetails = null;
-  if (pdMatch && pdMatch.org_id) {
-    try { pdDetails = await _fetchOrgDetails(pdMatch.org_id); } catch (_) {}
+  // Pflicht: Zuordnung muss vorhanden sein (HV oder privat markiert)
+  const hasHv = !!(v.assigned_org_id || v.assigned_org_name);
+  const isPriv = !!v.assigned_as_private;
+  if (!hasHv && !isPriv) {
+    showToast('Erst Kunden zuordnen (Hausverwaltung oder Privatanfrage)', 'error', 3500);
+    return;
   }
 
   showToast('Check wird erstellt …', 'info', 1500);
@@ -16105,39 +16317,35 @@ async function createCheckFromVorgang(recId, vIdx) {
     const newCheckId = await generateCheckId();
     const checkType = (v.typ === 'rechnung') ? 'rechnung' : (v.typ === 'reparatur' ? 'reparatur' : 'wartung');
 
-    // Anschrift aus Pipedrive bevorzugt — sonst aus KI-Extraktion
-    const hvFirma = (pdDetails && pdDetails.firma) || pdMatch?.name || v.kunde_firma || v.kunde_name || '';
-    const hvStrasse = (pdDetails && pdDetails.strasse) || '';
-    const hvPlz     = (pdDetails && pdDetails.plz) || '';
-    const hvOrt     = (pdDetails && pdDetails.ort) || pdMatch?.city || '';
-    const hvAnschrift = [hvStrasse, [hvPlz, hvOrt].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-    const hvEmail   = (pdDetails && pdDetails.email) || pdMatch?.email || v.kunde_email || '';
-    const hvTel     = (pdDetails && pdDetails.tel) || v.kunde_telefon || '';
+    // Werte: bei HV-Zuordnung aus assigned_*-Snapshot bevorzugt — sonst aus KI-Extraktion
+    const hvFirma     = hasHv ? (v.assigned_org_name || v.kunde_firma || v.kunde_name || '')
+                              : (v.kunde_name || v.kunde_firma || '');
+    const hvAnschrift = hasHv ? (v.assigned_org_addr || '') : '';
+    const hvEmail     = hasHv ? (v.assigned_org_email || v.kunde_email || '') : (v.kunde_email || '');
+    const hvTel       = hasHv ? (v.assigned_org_tel || v.kunde_telefon || '') : (v.kunde_telefon || '');
+    const hvAnsprech  = hasHv ? (v.assigned_org_gf || v.kunde_name || '') : (v.kunde_name || '');
 
-    // Check-Record anlegen mit prefilled Daten
     const fields = {
       id:                   newCheckId,
       requestid:            newCheckId,
       datum:                new Date().toISOString().split('T')[0],
       typ:                  checkType,
       status:               'in Bearbeitung',
-      // Prefill aus Pipedrive (bevorzugt) / Vorgang
       f_hv_name:            hvFirma,
       f_hv_anschrift:       hvAnschrift,
-      f_ansprechpartner:    (pdDetails && pdDetails.gf) || v.kunde_name || '',
+      f_ansprechpartner:    hvAnsprech,
       f_email:              hvEmail,
       f_tel:                hvTel,
       f_standort:           v.objekt_adresse || '',
       f_anlage:             v.anlage_typ || '',
       f_empfehlung:         v.anliegen_volltext || v.anliegen_kurz || '',
-      // Pipedrive-Verknüpfung
-      pipedrive_org_id:     pdMatch?.org_id || '',
-      pipedrive_kundennr:   (pdDetails && pdDetails.kundennr) || pdMatch?.kundennr || '',
-      // Email-Verknüpfung
+      pipedrive_org_id:     v.assigned_org_id || '',
+      pipedrive_kundennr:   v.assigned_kundennr || '',
       email_source_id:      recId,
       email_from:           r.from_email || '',
       email_subject:        r.subject || '',
       source:               'email',
+      source_type:          isPriv ? 'email_privat' : 'email_hv',
     };
     await atWrite('Checks', fields);
 
