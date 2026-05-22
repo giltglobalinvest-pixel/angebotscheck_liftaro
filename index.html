@@ -3492,6 +3492,18 @@ const pdfWorkerReady = Promise.resolve();</script>
   </button>
 </div>
 
+<!-- V12.5: Floating Save-Button bottom-right — immer sichtbar während Check geöffnet ist.
+     Auch beim Scrollen erreichbar (Topbar-Save ist beim Scrollen leicht zu übersehen). -->
+<div id="floatingSaveContainer" style="display:none;position:fixed;right:16px;bottom:16px;z-index:80;flex-direction:column;gap:8px;align-items:flex-end">
+  <button id="floatingSaveBtn" type="button" onclick="saveWithVisualization()" title="Check zwischenspeichern (⌘S)"
+    style="background:var(--dr-green,#16A34A);border:none;color:#fff;border-radius:999px;padding:13px 22px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:9px;box-shadow:0 2px 6px rgba(22,163,74,.35),0 8px 22px rgba(22,163,74,.30);transition:all .18s;letter-spacing:.2px"
+    onmouseover="this.style.background='#15803d';this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 10px rgba(22,163,74,.42),0 12px 28px rgba(22,163,74,.38)'"
+    onmouseout="this.style.background='var(--dr-green,#16A34A)';this.style.transform='translateY(0)';this.style.boxShadow='0 2px 6px rgba(22,163,74,.35),0 8px 22px rgba(22,163,74,.30)'">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Zwischenspeichern
+  </button>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════════════
      Dashboard-Redesign (V10.7) — Design-System aus FLP-Lagerverwaltung
      Alle Tokens + Klassen sind unter #dashboardView gescoped, damit der
@@ -4600,7 +4612,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.4';
+const APP_VERSION = 'V12.5';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -5520,6 +5532,9 @@ async function showApp() {
   // Floating-Reset einblenden (in Check-View)
   const fab = document.getElementById('floatingActions');
   if (fab) fab.style.display = 'flex';
+  // V12.5: Floating-Save (rechts unten) ebenfalls einblenden
+  const fabSave = document.getElementById('floatingSaveContainer');
+  if (fabSave) fabSave.style.display = 'flex';
 
   // Nach Login direkt das Dashboard zeigen (das Form bleibt im Hintergrund schon befüllt)
   setTimeout(() => { try { if (typeof showDashboardView === 'function') showDashboardView(); } catch(e) { console.warn('showDashboardView Init:', e); } }, 50);
@@ -13484,10 +13499,12 @@ function showDashboardView() {
   const app = document.getElementById('appContent');
   const dash = document.getElementById('dashboardView');
   const fab = document.getElementById('floatingActions');
+  const fabSave = document.getElementById('floatingSaveContainer');  // V12.5
   const actBar = document.getElementById('actionGroupCheck');
   if (app)  app.style.display  = 'none';
   if (dash) dash.style.display = 'block';
   if (fab)  fab.style.display  = 'none';
+  if (fabSave) fabSave.style.display = 'none';
   if (actBar) actBar.style.display = 'none';
   // aktive Nav-Pill markieren
   document.querySelectorAll('.nav-pill[data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === 'dashboard'));
@@ -13498,10 +13515,12 @@ function showCheckView() {
   const app = document.getElementById('appContent');
   const dash = document.getElementById('dashboardView');
   const fab = document.getElementById('floatingActions');
+  const fabSave = document.getElementById('floatingSaveContainer');  // V12.5
   const actBar = document.getElementById('actionGroupCheck');
   if (app)  app.style.display  = '';
   if (dash) dash.style.display = 'none';
   if (fab)  fab.style.display  = 'flex';
+  if (fabSave) fabSave.style.display = 'flex';
   if (actBar) actBar.style.display = '';
   document.querySelectorAll('.nav-pill[data-nav]').forEach(b => b.classList.remove('active'));
 }
