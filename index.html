@@ -4590,7 +4590,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.0';
+const APP_VERSION = 'V12.1';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -16176,7 +16176,25 @@ async function assignHvToVorgang(recId, vIdx) {
   // Dialog öffnen — mit Initial-Hits, optional weitere Suche
   const hit = await _eiHvSearchDialog(initialQuery, initialHits);
   if (hit === false) return; // Abbruch
-  if (hit === null) return;  // User klickte "Trotzdem ohne HV" — wir bestehen aber jetzt darauf
+  if (hit === null) return;  // User klickte "Trotzdem ohne HV"
+
+  // KI-Anlage-Flow: keine HV gefunden → KI extrahiert aus Email + Web, User bestätigt, anlegen
+  if (hit && hit.__ai_create) {
+    const created = await _eiAiCreateHvFlow(r, v, hit.suggested_name || initialQuery);
+    if (!created) return;
+    await _saveVorgangAssignment(recId, vIdx, {
+      assigned_org_id:    String(created.org_id || ''),
+      assigned_org_name:  String(created.name || ''),
+      assigned_kundennr:  '',
+      assigned_org_email: String(created.email || ''),
+      assigned_org_tel:   String(created.tel || ''),
+      assigned_org_addr:  [created.strasse, [created.plz, created.ort].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+      assigned_org_gf:    String(created.gf || ''),
+      assigned_as_private:false,
+    });
+    showToast(`✓ "${created.name}" in Pipedrive angelegt + zugeordnet`, 'success', 3000);
+    return;
+  }
 
   // HV gewählt — Details laden + speichern
   let details = null;
@@ -16192,6 +16210,198 @@ async function assignHvToVorgang(recId, vIdx) {
     assigned_as_private:false,
   });
   showToast(`✓ "${hit.name}" zugeordnet`, 'success', 2200);
+}
+
+// KI-Anlage-Flow: Extrahiert HV-Stammdaten aus Email-Body + Signatur (Claude),
+// reichert per Web-Suche an, zeigt Vorschau-Form, legt bei Bestätigung in
+// Pipedrive an. Resolves: created-object {org_id, name, ...} | null bei Abbruch
+async function _eiAiCreateHvFlow(emailRec, vorgang, suggestedName) {
+  if (!APP_KEYS.anthropicKey) {
+    showToast('Anthropic-Key fehlt — KI-Anlage nicht möglich', 'error');
+    return null;
+  }
+  showToast('KI extrahiert Daten aus Email-Signatur …', 'info', 2200);
+
+  // 1. KI-Extraktion aus Email-Body (Signatur enthält oft Adresse/Tel/Email)
+  const bodyContext = (emailRec.body_text || _stripHtml(emailRec.body_html || '') || '').slice(0, 4000);
+  const extracted = await _eiExtractHvFromBody(suggestedName, vorgang, bodyContext);
+  if (!extracted) {
+    showToast('KI konnte keine HV-Daten extrahieren', 'error');
+    return null;
+  }
+
+  // 2. Optional: Web-Anreicherung (via Backend) wenn Adresse fehlt
+  let webData = {};
+  if (extracted.name && (!extracted.strasse || !extracted.plz || !extracted.ort) && APP_KEYS.vorabcheckProxyUrl) {
+    try {
+      showToast('Suche im Web nach Stammdaten …', 'info', 2000);
+      const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enrich_property_manager', name: extracted.name, city: extracted.ort || '' }),
+      });
+      const d = await r.json();
+      if (d.ok && d.data) webData = d.data;
+    } catch (_) {}
+  }
+
+  // 3. Merge: Email-Signatur hat Priorität, Web füllt nur Lücken
+  const merged = {
+    name:     extracted.name    || suggestedName || '',
+    firma:    extracted.firma   || extracted.name || '',
+    gf:       extracted.gf      || '',
+    strasse:  extracted.strasse || webData.strasse || '',
+    plz:      extracted.plz     || webData.plz || '',
+    ort:      extracted.ort     || webData.ort || '',
+    tel:      extracted.tel     || webData.telefon || '',
+    email:    extracted.email   || webData.email || '',
+    website:  extracted.website || webData.website || '',
+  };
+
+  // 4. Vorschau-Form zeigen → User editiert + bestätigt
+  const confirmed = await _eiAiConfirmDialog(merged);
+  if (!confirmed) return null;
+
+  // 5. Pipedrive-Anlage via Backend
+  showToast('Lege Pipedrive-Eintrag an …', 'info', 2000);
+  try {
+    const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:  'create_pm',
+        name:    confirmed.name,
+        email:   confirmed.email,
+        strasse: confirmed.strasse,
+        city:    [confirmed.plz, confirmed.ort].filter(Boolean).join(' '),
+        tel:     confirmed.tel,
+        website: confirmed.website,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      showToast('Pipedrive-Anlage fehlgeschlagen: ' + (d.error || '?'), 'error', 4000);
+      return null;
+    }
+    return { ...confirmed, org_id: d.org_id };
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+    return null;
+  }
+}
+
+// Claude-Call zum Extrahieren der HV-Daten aus Email-Body + Vorgangs-Kontext
+async function _eiExtractHvFromBody(suggestedName, vorgang, bodyContext) {
+  const userMsg = `Vorgang-Daten (von vorheriger KI extrahiert):
+- Kunde-Name: ${vorgang.kunde_name || '?'}
+- Kunde-Firma: ${vorgang.kunde_firma || '?'}
+- Kunde-Email: ${vorgang.kunde_email || '?'}
+- Kunde-Telefon: ${vorgang.kunde_telefon || '?'}
+- Objekt-Adresse: ${vorgang.objekt_adresse || '?'}
+- Suggested-Name: ${suggestedName || '?'}
+
+Email-Body (gekürzt, Signatur enthalten):
+---
+${bodyContext}
+---
+
+Extrahiere die Hausverwaltungs-/Firmen-Stammdaten. Wichtig: Wenn der Absender eine PRIVATPERSON ist (kein Firmen-Bezug), versuche trotzdem Adresse/Tel/Email zu extrahieren — die werden dann als Privat-Kontakt angelegt.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 800,
+        system: `Du extrahierst HV-Stammdaten aus Email-Signaturen. Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):
+{
+  "name":    "Firmenname oder Vor+Nachname (falls Privatperson)",
+  "firma":   "Firmenname falls vorhanden, sonst gleich wie name",
+  "gf":      "Geschäftsführer oder Ansprechpartner (falls erkennbar)",
+  "strasse": "Straße + Hausnr.",
+  "plz":     "5-stellige PLZ",
+  "ort":     "Ort",
+  "tel":     "Telefon (international: +49…)",
+  "email":   "primäre Email-Adresse",
+  "website": "Website-URL (ohne https://)"
+}
+
+Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur das, was im Text steht.`,
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch (_) {
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} }
+    }
+    return parsed || null;
+  } catch (e) {
+    console.error('_eiExtractHvFromBody:', e);
+    return null;
+  }
+}
+
+// Vorschau-Dialog mit Edit-Feldern, vor Pipedrive-Anlage
+function _eiAiConfirmDialog(data) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px';
+    const f = (id, label, val, required) => `<div style="display:flex;flex-direction:column;gap:4px"><label style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700">${_esc(label)}${required?' <span style="color:var(--dr-red)">*</span>':''}</label><input id="${id}" type="text" value="${_esc(val||'')}" style="border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-sm);padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none"></div>`;
+    ov.innerHTML = `<div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(640px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.4);overflow:hidden;border:1px solid var(--dr-border)">
+      <div style="background:var(--dr-surface);padding:18px 22px;border-bottom:1px solid var(--dr-border)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg></div>
+          <div>
+            <div style="font-size:16px;font-weight:700;color:var(--dr-ink);letter-spacing:-.01em">KI-Vorschlag — bitte prüfen</div>
+            <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">Aus Email-Signatur extrahiert. Editieren oder bestätigen.</div>
+          </div>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:18px 22px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="grid-column:1/-1">${f('_aiName', 'Firmen-/Personenname', data.name, true)}</div>
+        ${f('_aiGf', 'Ansprechpartner / GF', data.gf)}
+        ${f('_aiEmail', 'Email', data.email)}
+        ${f('_aiStrasse', 'Straße + Hausnr.', data.strasse)}
+        ${f('_aiTel', 'Telefon', data.tel)}
+        ${f('_aiPlz', 'PLZ', data.plz)}
+        ${f('_aiOrt', 'Ort', data.ort)}
+        <div style="grid-column:1/-1">${f('_aiWebsite', 'Website (ohne https://)', data.website)}</div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:flex-end;gap:8px">
+        <button class="dr-pill dr-pill--reset" id="_aiCancel">Abbrechen</button>
+        <button id="_aiOk" style="background:var(--dr-green);color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(22,163,74,.3),0 4px 12px rgba(22,163,74,.22)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          In Pipedrive anlegen + zuordnen
+        </button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+
+    const get = (id) => document.getElementById(id).value.trim();
+    ov.querySelector('#_aiOk').onclick = () => {
+      const name = get('_aiName');
+      if (!name) { showToast('Name ist Pflicht', 'error'); return; }
+      document.body.removeChild(ov);
+      resolve({
+        name, gf: get('_aiGf'), email: get('_aiEmail'),
+        strasse: get('_aiStrasse'), plz: get('_aiPlz'), ort: get('_aiOrt'),
+        tel: get('_aiTel'), website: get('_aiWebsite'),
+      });
+    };
+    ov.querySelector('#_aiCancel').onclick = () => { document.body.removeChild(ov); resolve(null); };
+    ov.onclick = (e) => { if (e.target === ov) { document.body.removeChild(ov); resolve(null); } };
+    setTimeout(() => document.getElementById('_aiName')?.focus(), 50);
+  });
 }
 
 async function markVorgangPrivate(recId, vIdx) {
@@ -16246,7 +16456,19 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
 
     function renderHits(hits, query) {
       if (!hits.length) {
-        listEl.innerHTML = `<div style="text-align:center;padding:24px 14px;color:var(--dr-ink-mute);font-size:12.5px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">${query ? `Keine Treffer für „${_esc(query)}".` : 'Tippe oben einen Suchbegriff (min. 3 Zeichen).'}</div>`;
+        const ctxHint = query
+          ? `Keine Treffer für „${_esc(query)}" in Pipedrive.`
+          : 'Tippe oben einen Suchbegriff (min. 3 Zeichen).';
+        listEl.innerHTML = `<div style="text-align:center;padding:24px 14px;color:var(--dr-ink-mute);font-size:12.5px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md);margin-bottom:8px">${ctxHint}</div>` +
+          (query ? `<button id="_eiAiNew" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:var(--dr-r-md);padding:11px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-shadow:0 1px 2px rgba(124,58,237,.3),0 4px 12px rgba(124,58,237,.22)">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><circle cx="18" cy="18" r="2"/><circle cx="6" cy="18" r="2"/></svg>
+            KI-gestützt aus Email + Web anlegen
+          </button>` : '');
+        const aiBtn = document.getElementById('_eiAiNew');
+        if (aiBtn) aiBtn.onclick = async () => {
+          document.body.removeChild(ov);
+          resolve({ __ai_create: true, suggested_name: query });
+        };
         return;
       }
       listEl.innerHTML = hits.map((h, idx) => `<button data-idx="${idx}" style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px;text-align:left;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--dr-blue-light)';this.style.background='var(--dr-blue-soft)'" onmouseout="this.style.borderColor='var(--dr-border)';this.style.background='var(--dr-surface)'">
