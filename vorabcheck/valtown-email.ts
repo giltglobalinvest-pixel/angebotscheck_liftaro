@@ -518,29 +518,60 @@ export default async function (e: any): Promise<void> {
     try {
       const fname = String(att?.filename || att?.name || "anhang.bin");
       const ctype = String(att?.contentType || att?.type || "application/octet-stream");
-      // Detail-Logging zum Diagnostizieren des val.town-Email-Schemas
-      const attKeys = att ? Object.keys(att).slice(0, 12) : [];
-      const rawContent = att?.content ?? att?.body ?? att?.data ?? att?.buffer ?? att?.blob;
-      const contentInfo = {
-        fname,
-        ctype,
-        attKeys,
-        rawTypeof: typeof rawContent,
-        isNull: rawContent == null,
-        isUint8Array: rawContent instanceof Uint8Array,
-        isArrayBuffer: rawContent instanceof ArrayBuffer,
-        isBlob: typeof Blob !== "undefined" && rawContent instanceof Blob,
-        isReadableStream: typeof ReadableStream !== "undefined" && rawContent instanceof ReadableStream,
-        hasArrayBufferMethod: rawContent && typeof rawContent.arrayBuffer === "function",
-        hasLength: rawContent && typeof rawContent.length === "number" ? rawContent.length : null,
-        hasByteLength: rawContent && typeof rawContent.byteLength === "number" ? rawContent.byteLength : null,
-        hasSize: rawContent && typeof rawContent.size === "number" ? rawContent.size : null,
-        contentSubKeys: rawContent && typeof rawContent === "object" ? Object.keys(rawContent).slice(0, 8) : null,
-        stringPreview: typeof rawContent === "string" ? rawContent.slice(0, 80) : null,
-        constructorName: rawContent && rawContent.constructor ? rawContent.constructor.name : null,
-      };
-      console.log("[Emails] Attachment-Probe:", JSON.stringify(contentInfo));
-      debugInfo.push(JSON.stringify(contentInfo));
+
+      // val.town liefert Attachment als Class-Instance — Object.keys() ist leer,
+      // weil die Properties als Getters auf dem Prototype definiert sind.
+      // Wir sammeln aufzählbare + own + prototype-Properties.
+      const ownProps = att ? Object.getOwnPropertyNames(att) : [];
+      const protoProps = att ? Object.getOwnPropertyNames(Object.getPrototypeOf(att) || {}) : [];
+      const constructorName = att?.constructor?.name || null;
+      // Sample-Werte aller potenziellen Felder
+      const probe: any = { fname, ctype, constructorName, ownProps, protoProps };
+      const candidates = ["content","body","data","buffer","blob","file","attachment","bytes","stream","raw"];
+      for (const k of candidates) {
+        try {
+          const v = (att as any)?.[k];
+          probe[`has_${k}`] = v == null ? "null"
+            : v instanceof Uint8Array ? `Uint8Array(${v.byteLength})`
+            : v instanceof ArrayBuffer ? `ArrayBuffer(${v.byteLength})`
+            : (typeof Blob !== "undefined" && v instanceof Blob) ? `Blob(${v.size},${v.type})`
+            : (typeof ReadableStream !== "undefined" && v instanceof ReadableStream) ? "ReadableStream"
+            : typeof v === "string" ? `string(${v.length})`
+            : typeof v === "function" ? "function"
+            : typeof v === "object" ? `object(${v.constructor?.name || "?"})`
+            : typeof v;
+        } catch (e: any) { probe[`has_${k}`] = `ERROR:${e?.message}`; }
+      }
+      // Method-Calls testen
+      const methods = ["arrayBuffer","text","bytes","read","stream","blob","getContent"];
+      for (const m of methods) {
+        try {
+          const fn = (att as any)?.[m];
+          probe[`method_${m}`] = typeof fn === "function" ? "function" : (fn == null ? "null" : typeof fn);
+        } catch (_) {}
+      }
+
+      console.log("[Emails] Attachment-Probe:", JSON.stringify(probe));
+      debugInfo.push(JSON.stringify(probe, null, 2));
+
+      // Multi-Source-Content-Resolution: erst Properties, dann Methods
+      let rawContent: any = null;
+      for (const k of candidates) {
+        const v = (att as any)?.[k];
+        if (v != null) { rawContent = v; debugInfo.push(`USED: att.${k}`); break; }
+      }
+      if (rawContent == null) {
+        // Methods probieren
+        for (const m of methods) {
+          const fn = (att as any)?.[m];
+          if (typeof fn === "function") {
+            try {
+              rawContent = await fn.call(att);
+              if (rawContent != null) { debugInfo.push(`USED: att.${m}()`); break; }
+            } catch (e: any) { debugInfo.push(`FAILED: att.${m}() — ${e?.message}`); }
+          }
+        }
+      }
 
       const bytes = await _toUint8Array(rawContent);
       if (!bytes || bytes.byteLength === 0) {
