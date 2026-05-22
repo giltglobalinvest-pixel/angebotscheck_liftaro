@@ -4590,7 +4590,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.1';
+const APP_VERSION = 'V12.2';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -16387,20 +16387,37 @@ function _eiAiConfirmDialog(data) {
     </div>`;
     document.body.appendChild(ov);
 
-    const get = (id) => document.getElementById(id).value.trim();
-    ov.querySelector('#_aiOk').onclick = () => {
+    // Defensiv: Felder über ov.querySelector statt globaler ID-Suche
+    // (verhindert NULL-Crashes wenn IDs woanders im DOM kollidieren)
+    const get = (id) => {
+      const el = ov.querySelector('#' + id);
+      return el ? String(el.value || '').trim() : '';
+    };
+    ov.querySelector('#_aiOk').onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       const name = get('_aiName');
       if (!name) { showToast('Name ist Pflicht', 'error'); return; }
-      document.body.removeChild(ov);
-      resolve({
+      const result = {
         name, gf: get('_aiGf'), email: get('_aiEmail'),
         strasse: get('_aiStrasse'), plz: get('_aiPlz'), ort: get('_aiOrt'),
         tel: get('_aiTel'), website: get('_aiWebsite'),
-      });
+      };
+      try { document.body.removeChild(ov); } catch(_){}
+      resolve(result);
     };
-    ov.querySelector('#_aiCancel').onclick = () => { document.body.removeChild(ov); resolve(null); };
-    ov.onclick = (e) => { if (e.target === ov) { document.body.removeChild(ov); resolve(null); } };
-    setTimeout(() => document.getElementById('_aiName')?.focus(), 50);
+    ov.querySelector('#_aiCancel').onclick = (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      try { document.body.removeChild(ov); } catch(_){}
+      resolve(null);
+    };
+    ov.onclick = (e) => {
+      if (e.target === ov) {
+        try { document.body.removeChild(ov); } catch(_){}
+        resolve(null);
+      }
+    };
+    setTimeout(() => ov.querySelector('#_aiName')?.focus(), 50);
   });
 }
 
