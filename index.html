@@ -4600,7 +4600,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.3';
+const APP_VERSION = 'V12.4';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -5859,6 +5859,23 @@ async function generateCheckId() {
     }
   } catch(e) { console.warn('generateCheckId lookup failed:', e.message); }
   return 'C_' + (maxNr + 1);
+}
+
+// V12.4: Anfragenummer-Counter für Email-generierte Checks (ab 3450, durchlaufend).
+// Sucht den höchsten numerischen anfrageNr unter allen source='email'-Checks und
+// inkrementiert um 1. Wenn keine Email-Checks existieren: Start bei 3450.
+async function generateEmailAnfrageNr() {
+  const START = 3450;
+  let maxNr = START - 1;
+  try {
+    const recs = await atRead('Checks', "{source}='email'");
+    for (const r of recs) {
+      const raw = (r.fields?.anfrageNr || '').toString().trim();
+      const n = parseInt(raw, 10);
+      if (!isNaN(n) && n > maxNr) maxNr = n;
+    }
+  } catch(e) { console.warn('generateEmailAnfrageNr lookup failed:', e.message); }
+  return String(maxNr + 1);
 }
 
 async function saveCheck(reporter) {
@@ -16582,6 +16599,8 @@ async function createCheckFromVorgang(recId, vIdx) {
   try {
     // Neue Check-ID generieren
     const newCheckId = await generateCheckId();
+    // V12.4: Anfragenummer durchlaufend ab 3450 für Email-Checks
+    const newAnfrageNr = await generateEmailAnfrageNr();
     const checkType = (v.typ === 'rechnung') ? 'rechnung' : (v.typ === 'reparatur' ? 'reparatur' : 'wartung');
 
     // Werte: bei HV-Zuordnung aus assigned_*-Snapshot bevorzugt — sonst aus KI-Extraktion
@@ -16599,7 +16618,7 @@ async function createCheckFromVorgang(recId, vIdx) {
     const formData = {
       id:                 newCheckId,
       requestId:          newCheckId,
-      anfrageNr:          '',
+      anfrageNr:          newAnfrageNr,
       datum:              today,
       checkType:          checkType,
       status:             '1',
@@ -16629,6 +16648,7 @@ async function createCheckFromVorgang(recId, vIdx) {
       api_key:            apiKey,
       savedAt:            new Date().toISOString(),
       requestId:          newCheckId,
+      anfrageNr:          newAnfrageNr,
       datum:              today,
       checkType:          checkType,
       standort:           v.objekt_adresse || '',
@@ -16645,9 +16665,12 @@ async function createCheckFromVorgang(recId, vIdx) {
     const writeResult = await atWrite('Checks', fields);
     const recordId = writeResult?.id;
 
-    // V12.3: Email-Anhang(e) automatisch in den neuen Check übernehmen (vorliegendes_pdf).
+    // V12.3+V12.4: Email-Anhang(e) automatisch in den neuen Check übernehmen (vorliegendes_pdf).
     // → User muss nicht mehr aus der Email runterladen + manuell hochladen.
+    // V12.4: Erstes PDF wird zusätzlich als File-Objekt gemerkt → nach loadCheck
+    //        in Zone 1 plaziert + KI-Extraktion auto-getriggert (wie bei manuellem Upload).
     let attachedFiles = 0;
+    let firstPdfFileForKi = null;  // V12.4: File-Objekt für extractFromPDF nach loadCheck
     if (recordId && Array.isArray(r.attachments) && r.attachments.length > 0) {
       // Bevorzugt PDFs, sonst alle (z.B. wenn Word/Bilder dabei sind)
       const candidates = r.attachments.filter(a => {
@@ -16665,6 +16688,16 @@ async function createCheckFromVorgang(recId, vIdx) {
           const blob = await resp.blob();
           const fname = att.filename || att.name || `Anhang_${attachedFiles + 1}.pdf`;
           await atUploadAttachment(recordId, 'vorliegendes_pdf', blob, fname);
+          // V12.4: Ersten PDF-Anhang für KI-Auto-Trigger nach loadCheck merken
+          if (!firstPdfFileForKi) {
+            try {
+              firstPdfFileForKi = new File([blob], fname, { type: blob.type || 'application/pdf' });
+            } catch(_) {
+              // Falls File-Konstruktor in Safari/iOS bockt: Blob mit name-Property reicht
+              firstPdfFileForKi = blob;
+              firstPdfFileForKi.name = fname;
+            }
+          }
           attachedFiles++;
         } catch(attErr) {
           console.warn('Anhang-Übernahme fehlgeschlagen:', attErr.message);
@@ -16700,6 +16733,26 @@ async function createCheckFromVorgang(recId, vIdx) {
         const checkData = all.find(c => c.id === newCheckId);
         if (checkData && typeof loadCheck === 'function') {
           await loadCheck(checkData);
+          // V12.4: Email-Anhang in Zone 1 platzieren + KI-Extraktion auto-triggern
+          // → wirkt wie ein manueller Upload, KI füllt Vergleichstabelle automatisch.
+          if (firstPdfFileForKi && typeof uploadedFiles !== 'undefined') {
+            try {
+              uploadedFiles[1] = firstPdfFileForKi;
+              const zone1  = document.getElementById('zone1');
+              const fname1 = document.getElementById('fname1');
+              const pb1    = document.getElementById('previewBtn1');
+              if (zone1)  zone1.classList.add('has-file');
+              if (fname1) fname1.textContent = '✓ ' + (firstPdfFileForKi.name || 'Email-Anhang.pdf');
+              if (pb1)    pb1.classList.add('visible');
+              if (typeof updateStatus === 'function') updateStatus();
+              if (typeof extractFromPDF === 'function' && typeof requireApiKey === 'function') {
+                showToast('KI analysiert Email-Anhang …', 'info', 2500);
+                requireApiKey(() => extractFromPDF(1, firstPdfFileForKi));
+              }
+            } catch(extErr) {
+              console.warn('KI-Auto-Trigger fehlgeschlagen:', extErr.message);
+            }
+          }
         } else {
           showToast(`Check ${newCheckId} gespeichert, konnte aber nicht direkt geöffnet werden — siehe "Meine Checks".`, 'error', 4500);
         }
