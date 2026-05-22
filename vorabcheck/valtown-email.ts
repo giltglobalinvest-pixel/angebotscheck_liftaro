@@ -283,7 +283,7 @@ type ForwardInfo = {
 function _parseForwardedHeaders(subject: string, bodyText: string, defaultFromEmail: string): ForwardInfo {
   const subj = subject || "";
   const body = bodyText || "";
-  const startsLikeForward = /^\s*(fwd?|wg|weitergeleitet)[:\s]/i.test(subj);
+  const startsLikeForward = /^\s*(fwd?|wg|weitergeleitet|wtr)[:\s]/i.test(subj);
   const bodyHasForwardMarker =
     /^\s*-{3,}\s*(weitergeleitete?|forwarded)/im.test(body) ||
     /^\s*begin forwarded message/im.test(body) ||
@@ -295,40 +295,76 @@ function _parseForwardedHeaders(subject: string, bodyText: string, defaultFromEm
     return { is_forwarded: false, original_from_email: "", original_from_name: "", original_subject: "", forwarded_via: "" };
   }
 
-  // Suche nach "Von:" / "From:" mit Name + <email>
-  // Akzeptiert auch:
-  //   "> Von: ..." (Quote-Prefix von Apple Mail / Plain-Text-Forwards)
-  //   "*Von:*" (Markdown-Bold von Gmail)
-  //   Whitespace + Soft-Hyphen-Mix
+  // Wir suchen ALLE "Von:"/"From:"-Headers im Body (jeder Forward-Layer hat einen).
+  // Der UR-Absender ist immer der LETZTE/INNERSTE — d.h. der mit dem tiefsten
+  // Quote-Level (">", ">>", ">>>" usw.) bzw. der zuletzt im Text vorkommende.
+  // Doppel-Forwards (z.B. check@→check@→val.email) sind dadurch korrekt aufgelöst.
+  //
   // Regex-Komponenten:
-  //   ^[\s>*]*    → optionale Quote/Bold/Whitespace-Prefixe
-  //   (?:Von|From|Absender):   → Header-Name (multi-language)
+  //   ^[\s>*]*    → optionale Quote/Bold/Whitespace-Prefixe (auch ">>" usw.)
+  //   (?:Von|From|Absender):
   //   \s*"?       → optional gequoted
   //   ([^<\n"]+?) → Name (greedy bis < oder Zeilenende)
   //   "?\s*<([^>\n]+)>  → Email in spitzen Klammern
-  const fromMatchNameEmail = body.match(/^[\s>*]*(?:Von|From|Absender):\s*"?([^<\n"]+?)"?\s*<([^>\n]+)>/im);
-  // Fallback: nur "Von: email@host"
-  const fromMatchEmail = body.match(/^[\s>*]*(?:Von|From|Absender):\s*([^\s<\n>]+@[^\s<\n>]+)/im);
-  // Original-Subject extrahieren — auch mit Quote-Prefix
-  const subjMatch = body.match(/^[\s>*]*(?:Betreff|Subject):\s*(.+?)\s*$/im);
+  const allMatchesNameEmail = [...body.matchAll(/^[\s>*]*(?:Von|From|Absender):\s*"?([^<\n"]+?)"?\s*<([^>\n]+)>/gim)];
+  const allMatchesEmail     = [...body.matchAll(/^[\s>*]*(?:Von|From|Absender):\s*([^\s<\n>]+@[^\s<\n>]+)/gim)];
+  // Alle Subjects (das innerste ist das UR-Subject)
+  const allSubjects         = [...body.matchAll(/^[\s>*]*(?:Betreff|Subject):\s*(.+?)\s*$/gim)];
+
+  // Defaults der "via"-Domain — wir wollen die NICHT als UR-Absender
+  const viaDomain = (defaultFromEmail.split("@")[1] || "").toLowerCase();
+
+  // Helper: passt der Email-Match zur "via"-Domain? Dann ist es nicht der UR-Absender
+  const isViaAddr = (e: string) => {
+    const dom = (e.split("@")[1] || "").toLowerCase();
+    return viaDomain && dom === viaDomain;
+  };
 
   let orig_email = "", orig_name = "";
-  if (fromMatchNameEmail) {
-    orig_name = (fromMatchNameEmail[1] || "").trim();
-    orig_email = (fromMatchNameEmail[2] || "").trim();
-  } else if (fromMatchEmail) {
-    orig_email = (fromMatchEmail[1] || "").trim();
+
+  // Strategie: letzten Name+Email-Match nehmen, der NICHT zur via-Domain gehört
+  for (let i = allMatchesNameEmail.length - 1; i >= 0; i--) {
+    const m = allMatchesNameEmail[i];
+    const email = (m[2] || "").trim();
+    if (!isViaAddr(email)) {
+      orig_name  = (m[1] || "").trim();
+      orig_email = email;
+      break;
+    }
+  }
+  // Fallback: nur Email (auch hier letzten Non-via nehmen)
+  if (!orig_email) {
+    for (let i = allMatchesEmail.length - 1; i >= 0; i--) {
+      const e = (allMatchesEmail[i][1] || "").trim();
+      if (!isViaAddr(e)) { orig_email = e; break; }
+    }
+  }
+  // Letzter Fallback: nimm den letzten Match, egal ob via-Domain
+  if (!orig_email && allMatchesNameEmail.length) {
+    const m = allMatchesNameEmail[allMatchesNameEmail.length - 1];
+    orig_name  = (m[1] || "").trim();
+    orig_email = (m[2] || "").trim();
+  } else if (!orig_email && allMatchesEmail.length) {
+    orig_email = (allMatchesEmail[allMatchesEmail.length - 1][1] || "").trim();
   }
 
-  // Original-Email aus Adresse mit < > entpacken falls vorhanden
+  // Email aus < > entpacken
   const emailMatch = orig_email.match(/<?([^<>\s]+@[^<>\s]+)>?/);
   if (emailMatch) orig_email = emailMatch[1];
+
+  // UR-Subject: nimm das LETZTE Subject im Body (= innerste Forward-Ebene)
+  // und strippe alle "Fwd:"/"WG:"-Prefixes
+  let orig_subject = "";
+  if (allSubjects.length) {
+    orig_subject = (allSubjects[allSubjects.length - 1][1] || "").trim();
+    orig_subject = orig_subject.replace(/^(?:(?:fwd?|wg|weitergeleitet|wtr):\s*)+/i, "").trim();
+  }
 
   return {
     is_forwarded: true,
     original_from_email: orig_email,
     original_from_name: orig_name,
-    original_subject: subjMatch ? subjMatch[1].trim() : "",
+    original_subject: orig_subject,
     forwarded_via: defaultFromEmail,
   };
 }
@@ -409,10 +445,10 @@ export default async function (e: any): Promise<void> {
   const fwd = _parseForwardedHeaders(subject, text, fromEmail);
   const effectiveFromEmail = (fwd.is_forwarded && fwd.original_from_email) ? fwd.original_from_email : fromEmail;
   const effectiveFromName  = (fwd.is_forwarded && fwd.original_from_name)  ? fwd.original_from_name  : fromName;
-  // Original-Subject (ohne "Fwd:") für Inbox-Anzeige bevorzugen
+  // Original-Subject (ohne Fwd/Wtr/WG-Prefixe) für Inbox-Anzeige bevorzugen
   const cleanedSubject     = (fwd.is_forwarded && fwd.original_subject)
     ? fwd.original_subject
-    : subject.replace(/^\s*(fwd?|wg|weitergeleitet)[:\s]+/i, "");
+    : subject.replace(/^(?:(?:fwd?|wg|weitergeleitet|wtr):\s*)+/i, "").trim();
 
   if (fwd.is_forwarded) {
     console.log("[Emails] Forward erkannt:",
