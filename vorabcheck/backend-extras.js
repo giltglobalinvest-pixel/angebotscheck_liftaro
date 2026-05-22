@@ -80,6 +80,7 @@ export const EMAILS_TARGET_FIELDS = [
   // Attachments — Airtable speichert Datei direkt + Anzahl als Index
   { name: 'attachments', type: 'multipleAttachments' },
   N('attachment_count', 0),
+  M('attachment_debug'),    // JSON-Snapshot der att-Objekt-Struktur (Diagnose-Feld)
   // KI-Analyse
   M('ki_summary'),               // Kurzfassung der Email für Inbox-Liste
   S('ki_classification', ['wartung', 'reparatur', 'rechnung', 'korrespondenz', 'multiple', 'unklar', 'spam']),
