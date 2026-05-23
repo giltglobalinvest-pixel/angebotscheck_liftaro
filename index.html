@@ -4614,7 +4614,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.9';
+const APP_VERSION = 'V12.10';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13512,6 +13512,8 @@ function showDashboardView() {
   document.querySelectorAll('.nav-pill[data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === 'dashboard'));
   // Daten laden
   openDashboardData();
+  // V12.10: Auto-Refresh für Posteingang starten (60s, nur solange Dashboard sichtbar)
+  if (typeof startDashboardAutoRefresh === 'function') startDashboardAutoRefresh();
 }
 function showCheckView() {
   const app = document.getElementById('appContent');
@@ -13525,6 +13527,8 @@ function showCheckView() {
   if (fabSave) fabSave.style.display = 'flex';
   if (actBar) actBar.style.display = '';
   document.querySelectorAll('.nav-pill[data-nav]').forEach(b => b.classList.remove('active'));
+  // V12.10: Auto-Refresh stoppen — läuft nur auf Dashboard
+  if (typeof stopDashboardAutoRefresh === 'function') stopDashboardAutoRefresh();
 }
 
 // Backwards-compat: alter Aufruf von openDashboard() → leitet auf die neue Vollseite um
@@ -14386,6 +14390,65 @@ function openCheckFromDashboard(requestId) {
   setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
 }
 
+// V12.10: Manueller Refresh + Auto-Refresh des Posteingang-Blocks.
+//        Lädt _eiAllRecords frisch aus Airtable, re-rendert Dashboard + Topbar-Badge.
+async function refreshDashboardInbox(silent) {
+  const btn = document.getElementById('peRefreshBtn');
+  const icon = document.getElementById('peRefreshIcon');
+  const lbl  = document.getElementById('peRefreshLbl');
+  const tStart = Date.now();
+  if (btn) { btn.disabled = true; btn.style.opacity = '.7'; }
+  if (icon) icon.style.animation = 'spin .9s linear infinite';
+  if (lbl && !silent) lbl.textContent = 'Lädt …';
+  try {
+    const recs = await atRead('Emails', null, { sort: false });
+    _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
+      .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+    if (typeof _refreshEmailInboxBadge === 'function') _refreshEmailInboxBadge();
+    // Dashboard nur re-rendern, wenn aktuell sichtbar
+    const dash = document.getElementById('dashboardView');
+    if (dash && dash.style.display !== 'none' && typeof renderDashboard === 'function') {
+      renderDashboard();
+    }
+    if (!silent) showToast(`✓ ${_eiAllRecords.length} Email${_eiAllRecords.length===1?'':'s'} aktualisiert`, 'success', 1600);
+  } catch (e) {
+    console.warn('refreshDashboardInbox:', e.message);
+    if (!silent) showToast('Aktualisieren fehlgeschlagen: ' + e.message, 'error');
+  } finally {
+    // Mindestens 350ms Spinner zeigen, damit man sieht dass was passiert ist
+    const elapsed = Date.now() - tStart;
+    const finish = () => {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+      if (icon) icon.style.animation = '';
+      if (lbl)  lbl.textContent = 'Aktualisieren';
+    };
+    if (elapsed < 350) setTimeout(finish, 350 - elapsed); else finish();
+  }
+}
+
+// Auto-Refresh: Alle 60 Sekunden Emails neu laden, solange Dashboard sichtbar.
+// Tab-Sichtbarkeit wird respektiert (kein Refresh wenn Tab im Hintergrund).
+let _dashAutoRefreshTimer = null;
+function startDashboardAutoRefresh() {
+  stopDashboardAutoRefresh();
+  _dashAutoRefreshTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    const dash = document.getElementById('dashboardView');
+    if (!dash || dash.style.display === 'none') { stopDashboardAutoRefresh(); return; }
+    refreshDashboardInbox(/*silent*/true).catch(() => {});
+  }, 60000);
+}
+function stopDashboardAutoRefresh() {
+  if (_dashAutoRefreshTimer) { clearInterval(_dashAutoRefreshTimer); _dashAutoRefreshTimer = null; }
+}
+// Bei Tab-Wechsel zurück → kurzer Refresh (damit man nach Browser-Switch sofort frische Daten sieht)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const dash = document.getElementById('dashboardView');
+    if (dash && dash.style.display !== 'none') refreshDashboardInbox(true).catch(()=>{});
+  }
+});
+
 // V12.8: Toggle für Posteingang-KPI-Kacheln im Dashboard.
 // Klick auf eine Kachel klappt die Mails der Kategorie aus; erneuter Klick (oder
 // Klick auf eine andere) wechselt. Klick auf "Schließen" entfernt den Filter.
@@ -14844,10 +14907,16 @@ function renderDashboard() {
           📥 Posteingang
           <span class="dr-section-title__count">${peNeu} neu${emails.length ? ' · ' + emails.length + ' gesamt' : ''}</span>
         </div>
-        <button onclick="openEmailInboxModal()" style="background:var(--dr-blue);color:#fff;border:none;border-radius:var(--dr-r-md);padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(36,86,229,.25)">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          Inbox öffnen
-        </button>
+        <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
+          <button id="peRefreshBtn" onclick="refreshDashboardInbox()" title="Posteingang manuell aktualisieren (läuft sonst alle 60 s automatisch)" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface)';this.style.borderColor='var(--dr-border-strong)'">
+            <svg id="peRefreshIcon" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transform-origin:center"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+            <span id="peRefreshLbl">Aktualisieren</span>
+          </button>
+          <button onclick="openEmailInboxModal()" style="background:var(--dr-blue);color:#fff;border:none;border-radius:var(--dr-r-md);padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(36,86,229,.25)">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Inbox öffnen
+          </button>
+        </div>
       </div>
       ${peLinkedInfo}
       <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-bottom:10px;letter-spacing:.04em">Tipp: Auf eine Kachel klicken, um die Mails dieses Postfachs auszuklappen.</div>
@@ -16184,8 +16253,32 @@ function renderEmailInboxDetail() {
       </div>`;
     });
   } else {
+    // V12.10: Auch wenn KI keinen Vorgang erkannt hat (z.B. korrespondenz),
+    // soll der Bearbeiter manuell einen Check starten können.
     html += `<div style="padding:14px 16px;background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:var(--dr-r-md);margin-bottom:14px;font-size:12.5px;line-height:1.6;color:#9A3412">
       Die KI hat keinen konkreten Prüf-Vorgang erkannt (klassifiziert als <strong>${cls}</strong>).${r.reply_draft ? ' Ein Antwort-Entwurf wurde generiert (siehe unten).' : ''}
+    </div>
+    <div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+      <div class="dr-section-head" style="margin-bottom:10px">
+        <div class="dr-section-title">Manuell einen Check anlegen</div>
+      </div>
+      <div style="font-size:12.5px;color:var(--dr-ink-soft);line-height:1.55;margin-bottom:12px">
+        Trotzdem aus dieser Email einen Check starten. Wähle den Typ — danach kannst du die Hausverwaltung zuordnen und der Check wird mit Email-Anhang erstellt.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="addManualVorgangToEmail('${r._id}','wartung')" style="background:var(--dr-green);color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(22,163,74,.25)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Vertragscheck
+        </button>
+        <button onclick="addManualVorgangToEmail('${r._id}','reparatur')" style="background:var(--dr-amber);color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(217,119,6,.25)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          Reparaturcheck
+        </button>
+        <button onclick="addManualVorgangToEmail('${r._id}','rechnung')" style="background:#6B3EB8;color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(107,62,184,.25)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          Rechnungscheck
+        </button>
+      </div>
     </div>`;
   }
 
@@ -16832,6 +16925,52 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
     ov.querySelector('#_eiHvCancel').onclick = () => { document.body.removeChild(ov); resolve(false); };
     ov.onclick = (e) => { if (e.target === ov) { document.body.removeChild(ov); resolve(false); } };
   });
+}
+
+// V12.10: Manuell einen Vorgang aus Email-Daten erzeugen (wenn KI keinen erkannt hat).
+// Synthetisiert einen Vorgang aus from/subject/body und triggert dann den
+// regulären Flow (User ordnet HV zu → "Check daraus erstellen").
+async function addManualVorgangToEmail(recId, checkType) {
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  if (!Array.isArray(vorgaenge)) vorgaenge = [];
+  // Kunde-Defaults aus Email-Header
+  const fromName  = (r.from_name || '').trim();
+  const fromEmail = (r.from_email || '').trim();
+  const subject   = (r.subject || '').trim();
+  const bodySnip  = (r.body_text || '').trim().slice(0, 800);
+  const typLabels = { wartung: 'Vertragscheck', reparatur: 'Reparaturcheck', rechnung: 'Rechnungscheck' };
+  const synth = {
+    typ:               checkType,
+    titel:             `${typLabels[checkType] || 'Check'} — ${subject || (fromName || fromEmail || 'manuell')}`.slice(0, 120),
+    kunde_name:        fromName,
+    kunde_firma:       '',
+    kunde_email:       fromEmail,
+    kunde_telefon:     '',
+    objekt_adresse:    '',
+    anlage_typ:        '',
+    anliegen_kurz:     subject || `Manuell angelegter ${typLabels[checkType] || 'Check'}`,
+    anliegen_volltext: bodySnip || subject,
+    relevante_attachments: Array.isArray(r.attachments) ? r.attachments.map(a => a.filename || a.name || '').filter(Boolean) : [],
+    priorisierung:     'normal',
+    manually_added:    true,
+    manually_added_at: new Date().toISOString(),
+  };
+  vorgaenge.push(synth);
+  const newJson = JSON.stringify(vorgaenge);
+  try {
+    await atUpdate('Emails', recId, { vorgaenge_json: newJson, ki_vorgaenge_count: vorgaenge.length });
+    r.vorgaenge_json = newJson;
+    r.ki_vorgaenge_count = vorgaenge.length;
+    showToast(`Manuell ${typLabels[checkType] || 'Check'}-Vorgang angelegt — bitte Kunden zuordnen.`, 'success', 3000);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  } catch (e) {
+    console.error('addManualVorgangToEmail:', e);
+    showToast('Konnte Vorgang nicht speichern: ' + e.message, 'error');
+  }
 }
 
 // V12.6: Bereits verlinkten Check öffnen (statt erneut zu erstellen).
