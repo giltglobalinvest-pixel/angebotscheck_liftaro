@@ -4614,7 +4614,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.8';
+const APP_VERSION = 'V12.9';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -14774,31 +14774,33 @@ function renderDashboard() {
     return s + (auf * preis * 12);
   }, 0);
 
-  // V12.7+V12.8: Posteingang-Block (Top-Section, KPIs klickbar)
-  // Wichtigste Section: zeigt eingehende Mails von Kunden/HVs, die noch bearbeitet werden müssen.
-  // V12.8: Standardmäßig nur KPI-Kacheln sichtbar. Klick auf eine Kachel klappt die Mail-Liste
-  //        dieser Kategorie aus. Erneuter Klick / andere Kachel schließt/wechselt.
+  // V12.7+V12.8+V12.9: Posteingang-Block (Top-Section)
+  // V12.9: 4 Postfächer entlang des Workflows — mutually exclusive. Jede Email
+  //        landet in GENAU EINEM Postfach. "Mit Check verknüpft" wird zur
+  //        Section-Info-Zeile (Annotation) + bleibt als Badge auf jeder Karte.
   const emails = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
   const peNeu        = emails.filter(e => (e.status || 'neu') === 'neu').length;
   const peInBearb    = emails.filter(e => e.status === 'in_bearbeitung' || e.status === 'gesichtet').length;
-  const peGeantwortet= emails.filter(e => e.status === 'geantwortet').length;
-  const peLinked     = emails.filter(e => (parseInt(e.linked_checks_count || 0, 10) || 0) > 0).length;
+  const peErledigt   = emails.filter(e => e.status === 'geantwortet').length;
+  const peVerworfen  = emails.filter(e => e.status === 'verworfen').length;
+  // Annotation (NICHT als eigene Kategorie zählen — kann mit jedem Status koexistieren)
+  const peLinkedTotal = emails.filter(e => (parseInt(e.linked_checks_count || 0, 10) || 0) > 0).length;
 
   // Aktive Kategorie (null = keine Liste sichtbar)
   const peActiveFilter = window._dashPeFilter || null;
-  // Filter-Funktionen pro Kategorie
+  // Filter-Funktionen pro Postfach (exklusiv entlang Status)
   const peFilterFns = {
-    neu:    e => (e.status || 'neu') === 'neu',
-    bearb:  e => e.status === 'in_bearbeitung' || e.status === 'gesichtet',
-    geant:  e => e.status === 'geantwortet',
-    linked: e => (parseInt(e.linked_checks_count || 0, 10) || 0) > 0,
+    neu:        e => (e.status || 'neu') === 'neu',
+    bearb:      e => e.status === 'in_bearbeitung' || e.status === 'gesichtet',
+    erledigt:   e => e.status === 'geantwortet',
+    verworfen:  e => e.status === 'verworfen',
   };
   // Wenn ein Filter aktiv ist → Liste bauen
   let peListHtml = '';
   if (peActiveFilter && peFilterFns[peActiveFilter]) {
     const filtered = emails.filter(peFilterFns[peActiveFilter])
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
-    const labels = { neu: 'neue Email(s)', bearb: 'Email(s) in Bearbeitung', geant: 'beantwortete Email(s)', linked: 'Email(s) mit verknüpftem Check' };
+    const labels = { neu: 'neue Email(s)', bearb: 'Email(s) in Bearbeitung', erledigt: 'erledigte Email(s)', verworfen: 'verworfene Email(s)' };
     const PE_MAX = 10;
     const shown = filtered.slice(0, PE_MAX);
     peListHtml = `
@@ -14827,6 +14829,14 @@ function renderDashboard() {
     </button>`;
   };
 
+  // V12.9: Annotation-Zeile statt eigener KPI-Kachel — zeigt, wie viele Mails (über alle Status) einen Check haben
+  const peLinkedInfo = (emails.length > 0)
+    ? `<div style="display:inline-flex;align-items:center;gap:6px;background:var(--dr-green-soft);border:1px solid #8FD4A6;color:var(--dr-green-deep);border-radius:var(--dr-r-pill);padding:4px 11px;font-family:var(--dr-f-mono);font-size:10.5px;font-weight:700;letter-spacing:.04em;margin-bottom:10px">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        ${peLinkedTotal} von ${emails.length} Email(s) mit verknüpftem Check
+      </div>`
+    : '';
+
   const posteingangBlock = `
     <div class="dr-section">
       <div class="dr-section-head">
@@ -14839,12 +14849,13 @@ function renderDashboard() {
           Inbox öffnen
         </button>
       </div>
-      <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-bottom:10px;letter-spacing:.04em">Tipp: Auf eine Kachel klicken, um die Mails dieser Kategorie auszuklappen.</div>
+      ${peLinkedInfo}
+      <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-bottom:10px;letter-spacing:.04em">Tipp: Auf eine Kachel klicken, um die Mails dieses Postfachs auszuklappen.</div>
       <div class="dr-kpi-grid">
-        ${peKpi('Neue Emails',          peNeu,          '#2456E5', 'noch nicht gesichtet', 'neu')}
-        ${peKpi('In Bearbeitung',       peInBearb,      '#D97706', 'KI-klassifiziert',     'bearb')}
-        ${peKpi('Geantwortet',          peGeantwortet,  '#16A34A', 'Antwort gesendet',     'geant')}
-        ${peKpi('Mit Check verknüpft',  peLinked,       '#1740B8', 'Check erstellt',       'linked')}
+        ${peKpi('Neu',              peNeu,        '#2456E5', 'Triage nötig',                'neu')}
+        ${peKpi('In Bearbeitung',   peInBearb,    '#D97706', 'aktive Arbeit',               'bearb')}
+        ${peKpi('Erledigt',         peErledigt,   '#16A34A', 'Antwort versendet',           'erledigt')}
+        ${peKpi('Verworfen',        peVerworfen,  '#94A3B8', 'Spam / nicht relevant',       'verworfen')}
       </div>
       ${peListHtml}
       ${emails.length === 0 ? '<div style="background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md);padding:16px;text-align:center;color:var(--dr-ink-mute);font-style:italic;margin-top:14px;font-size:12.5px">Noch keine Emails. Mails an <strong style="color:var(--dr-ink);font-style:normal;font-family:var(--dr-f-mono)">check@liftaro.de</strong> erscheinen hier automatisch.</div>' : ''}
