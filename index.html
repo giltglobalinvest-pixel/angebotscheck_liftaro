@@ -3468,10 +3468,12 @@ const pdfWorkerReady = Promise.resolve();</script>
 .ei-status-verworfen       { background:var(--dr-surface-alt); color:var(--dr-ink-mute); text-decoration:line-through; }
 .ei-vc-card { background:var(--dr-surface); border:1px solid var(--dr-border); border-radius:var(--dr-r-md); padding:16px; margin-bottom:12px; box-shadow:var(--dr-elev-1); }
 .ei-vc-typ-pill { display:inline-block; padding:3px 10px; border-radius:var(--dr-r-pill); font-family:var(--dr-f-mono); font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.06em; margin-right:8px; }
+.ei-mobile-back { display:none; }
 @media (max-width: 768px) {
   #emailInboxBody { grid-template-columns: 1fr !important; }
   #emailInboxList.detail-open { display:none; }
   #emailInboxDetail.list-mode { display:none; }
+  .ei-mobile-back { display:inline-flex !important; }
 }
 </style>
 
@@ -4612,7 +4614,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.7';
+const APP_VERSION = 'V12.8';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -14384,6 +14386,19 @@ function openCheckFromDashboard(requestId) {
   setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
 }
 
+// V12.8: Toggle für Posteingang-KPI-Kacheln im Dashboard.
+// Klick auf eine Kachel klappt die Mails der Kategorie aus; erneuter Klick (oder
+// Klick auf eine andere) wechselt. Klick auf "Schließen" entfernt den Filter.
+function toggleDashPeFilter(filterKey) {
+  if (!filterKey) return;
+  if (window._dashPeFilter === filterKey) {
+    window._dashPeFilter = null;
+  } else {
+    window._dashPeFilter = filterKey;
+  }
+  if (typeof renderDashboard === 'function') renderDashboard();
+}
+
 // V12.7: Klick auf Posteingang-Karte → Inbox öffnen + diese Email selektieren.
 //        Filter wird auf 'alle' gesetzt, damit auch geantwortete Mails sichtbar sind.
 function openEmailInboxModalAt(recId) {
@@ -14759,20 +14774,59 @@ function renderDashboard() {
     return s + (auf * preis * 12);
   }, 0);
 
-  // V12.7: Posteingang-Block (NEU — Top-Section)
+  // V12.7+V12.8: Posteingang-Block (Top-Section, KPIs klickbar)
   // Wichtigste Section: zeigt eingehende Mails von Kunden/HVs, die noch bearbeitet werden müssen.
+  // V12.8: Standardmäßig nur KPI-Kacheln sichtbar. Klick auf eine Kachel klappt die Mail-Liste
+  //        dieser Kategorie aus. Erneuter Klick / andere Kachel schließt/wechselt.
   const emails = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
   const peNeu        = emails.filter(e => (e.status || 'neu') === 'neu').length;
   const peInBearb    = emails.filter(e => e.status === 'in_bearbeitung' || e.status === 'gesichtet').length;
   const peGeantwortet= emails.filter(e => e.status === 'geantwortet').length;
   const peLinked     = emails.filter(e => (parseInt(e.linked_checks_count || 0, 10) || 0) > 0).length;
-  // Top 6: Neue Mails zuerst, dann nach Datum desc
-  const peTop = [...emails].sort((a, b) => {
-    const sa = (a.status || 'neu') === 'neu' ? 0 : 1;
-    const sb = (b.status || 'neu') === 'neu' ? 0 : 1;
-    if (sa !== sb) return sa - sb;
-    return String(b.received_at || '').localeCompare(String(a.received_at || ''));
-  }).slice(0, 6);
+
+  // Aktive Kategorie (null = keine Liste sichtbar)
+  const peActiveFilter = window._dashPeFilter || null;
+  // Filter-Funktionen pro Kategorie
+  const peFilterFns = {
+    neu:    e => (e.status || 'neu') === 'neu',
+    bearb:  e => e.status === 'in_bearbeitung' || e.status === 'gesichtet',
+    geant:  e => e.status === 'geantwortet',
+    linked: e => (parseInt(e.linked_checks_count || 0, 10) || 0) > 0,
+  };
+  // Wenn ein Filter aktiv ist → Liste bauen
+  let peListHtml = '';
+  if (peActiveFilter && peFilterFns[peActiveFilter]) {
+    const filtered = emails.filter(peFilterFns[peActiveFilter])
+      .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+    const labels = { neu: 'neue Email(s)', bearb: 'Email(s) in Bearbeitung', geant: 'beantwortete Email(s)', linked: 'Email(s) mit verknüpftem Check' };
+    const PE_MAX = 10;
+    const shown = filtered.slice(0, PE_MAX);
+    peListHtml = `
+      <div style="margin-top:16px;background:var(--dr-bg-soft);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+          <div style="font-family:var(--dr-f-mono);font-size:10.5px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em">▸ ${filtered.length} ${labels[peActiveFilter] || 'Email(s)'}</div>
+          <button onclick="toggleDashPeFilter('${peActiveFilter}')" class="dr-pill" title="Liste einklappen">✕ Schließen</button>
+        </div>
+        ${filtered.length === 0
+          ? '<div style="padding:18px;text-align:center;color:var(--dr-ink-mute);font-style:italic;font-size:12.5px">Keine Emails in dieser Kategorie.</div>'
+          : '<div style="display:flex;flex-direction:column;gap:8px">' + shown.map(_renderPosteingangCard).join('') + (filtered.length > PE_MAX ? '<div style="text-align:center;margin-top:8px"><button onclick="openEmailInboxModal()" class="dr-pill">… und ' + (filtered.length - PE_MAX) + ' weitere · alle in der Inbox →</button></div>' : '') + '</div>'
+        }
+      </div>`;
+  }
+
+  // Klickbare KPI-Kachel — variant "active" zeigt, dass diese Kategorie gerade ausgeklappt ist
+  const peKpi = (label, value, color, sub, filterKey) => {
+    const v = _drVariant(color);
+    const active = peActiveFilter === filterKey;
+    const activeOutline = active ? 'box-shadow:0 0 0 2px var(--dr-blue),0 6px 18px rgba(36,86,229,.22) !important;' : '';
+    const activeBadge = active ? ' <span style="font-size:9.5px;background:var(--dr-blue);color:#fff;border-radius:999px;padding:1px 6px;margin-left:5px;letter-spacing:.04em;font-weight:700;font-family:var(--dr-f-mono);vertical-align:middle">aktiv ▾</span>' : '';
+    return `<button type="button" onclick="toggleDashPeFilter('${filterKey}')" class="dr-kpi dr-kpi--${v}" style="cursor:pointer;border:none;text-align:left;width:100%;font-family:inherit;transition:all .15s;${activeOutline}" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
+      <div class="dr-kpi__label">${label}${activeBadge}</div>
+      <div class="dr-kpi__val">${value}</div>
+      ${sub ? `<div class="dr-kpi__sub">${sub}</div>` : ''}
+    </button>`;
+  };
+
   const posteingangBlock = `
     <div class="dr-section">
       <div class="dr-section-head">
@@ -14785,16 +14839,15 @@ function renderDashboard() {
           Inbox öffnen
         </button>
       </div>
+      <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-bottom:10px;letter-spacing:.04em">Tipp: Auf eine Kachel klicken, um die Mails dieser Kategorie auszuklappen.</div>
       <div class="dr-kpi-grid">
-        ${kachel('Neue Emails',          peNeu,          '#2456E5', 'noch nicht gesichtet')}
-        ${kachel('In Bearbeitung',       peInBearb,      '#D97706', 'KI-klassifiziert')}
-        ${kachel('Geantwortet',          peGeantwortet,  '#16A34A', 'Antwort gesendet')}
-        ${kachel('Mit Check verknüpft',  peLinked,       '#1740B8', 'Check erstellt')}
+        ${peKpi('Neue Emails',          peNeu,          '#2456E5', 'noch nicht gesichtet', 'neu')}
+        ${peKpi('In Bearbeitung',       peInBearb,      '#D97706', 'KI-klassifiziert',     'bearb')}
+        ${peKpi('Geantwortet',          peGeantwortet,  '#16A34A', 'Antwort gesendet',     'geant')}
+        ${peKpi('Mit Check verknüpft',  peLinked,       '#1740B8', 'Check erstellt',       'linked')}
       </div>
-      ${peTop.length === 0
-        ? '<div style="background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md);padding:24px;text-align:center;color:var(--dr-ink-mute);font-style:italic;margin-top:16px;font-size:13px">Keine Emails im Posteingang. Neue Mails an <strong style="color:var(--dr-ink);font-style:normal;font-family:var(--dr-f-mono)">check@liftaro.de</strong> werden hier automatisch angezeigt.</div>'
-        : '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' + peTop.map(_renderPosteingangCard).join('') + (emails.length > peTop.length ? '<div style="text-align:center;margin-top:8px"><button onclick="openEmailInboxModal()" class="dr-pill">… und ' + (emails.length - peTop.length) + ' weitere</button></div>' : '') + '</div>'
-      }
+      ${peListHtml}
+      ${emails.length === 0 ? '<div style="background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md);padding:16px;text-align:center;color:var(--dr-ink-mute);font-style:italic;margin-top:14px;font-size:12.5px">Noch keine Emails. Mails an <strong style="color:var(--dr-ink);font-style:normal;font-family:var(--dr-f-mono)">check@liftaro.de</strong> erscheinen hier automatisch.</div>' : ''}
     </div>`;
 
   // Verträge-Block (Rahmen + Light parallel) — Dashboard-Redesign V10.7
@@ -15804,6 +15857,24 @@ function openEmailInboxModal() {
   document.getElementById('emailInboxModal').style.display = 'flex';
   setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
   loadEmailInbox();
+  // V12.8 mobile: Start im Listen-Mode (Detail komplett ausgeblendet, kein leerer Platzhalter unten)
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    const list = document.getElementById('emailInboxList');
+    const detail = document.getElementById('emailInboxDetail');
+    if (list)   list.classList.remove('detail-open');
+    if (detail) detail.classList.add('list-mode');
+  }
+}
+
+// V12.8: Zurück zur Liste (nur Mobile sinnvoll, aber harmlos auf Desktop)
+function backToInboxList() {
+  _eiSelectedId = null;
+  const list = document.getElementById('emailInboxList');
+  const detail = document.getElementById('emailInboxDetail');
+  if (list)   list.classList.remove('detail-open');
+  if (detail) detail.classList.add('list-mode');
+  if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
 }
 
 function closeEmailInboxModal() {
@@ -15908,6 +15979,15 @@ function selectEmailRow(recId) {
   _eiSelectedId = recId;
   renderEmailInboxList();
   renderEmailInboxDetail();
+  // V12.8 mobile: Beim Klick auf Email → Liste ausblenden, Detail full-screen zeigen
+  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    const list = document.getElementById('emailInboxList');
+    const detail = document.getElementById('emailInboxDetail');
+    if (list)   list.classList.add('detail-open');
+    if (detail) detail.classList.remove('list-mode');
+    // Scrollen zum oberen Detail-Bereich
+    if (detail) detail.scrollTop = 0;
+  }
 }
 
 function renderEmailInboxDetail() {
@@ -15938,6 +16018,12 @@ function renderEmailInboxDetail() {
   const monoMeta = (label, value) => `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-right:3px">${label}</span><span style="font-size:12px;color:var(--dr-ink)">${value}</span>`;
 
   let html = `<div style="padding:20px 24px">`;
+
+  // V12.8: "Zurück zur Liste"-Button — nur auf Mobile sichtbar via CSS (.ei-mobile-back)
+  html += `<button class="ei-mobile-back" onclick="backToInboxList()" style="background:var(--dr-surface);border:1px solid var(--dr-border);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;align-items:center;gap:7px;margin-bottom:14px;box-shadow:var(--dr-elev-1)">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    <span>Zurück zur Liste</span>
+  </button>`;
 
   // Email-Header-Block
   const isForwarded = !!r.is_forwarded;
