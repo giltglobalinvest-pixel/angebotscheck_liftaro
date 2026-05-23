@@ -4612,7 +4612,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.6';
+const APP_VERSION = 'V12.7';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13553,6 +13553,15 @@ async function openDashboardData() {
     lightWegs = (recs || []).map(r => r.fields);
   } catch(e) { console.warn('Light-WEGs load:', e.message); }
 
+  // V12.7: Emails für Dashboard-Posteingang laden (falls noch nicht durch _initEmailInboxBadge gefüllt)
+  try {
+    if (!Array.isArray(_eiAllRecords) || _eiAllRecords.length === 0) {
+      const recs = await atRead('Emails', null, { sort: false });
+      _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
+        .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+    }
+  } catch(e) { console.warn('Emails Dashboard-load:', e.message); }
+
   window._dashAllChecks = checks;
   window._dashAllVertraege = vertraege;
   window._dashAllVorabchecks = vorabchecks;
@@ -14375,6 +14384,70 @@ function openCheckFromDashboard(requestId) {
   setTimeout(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
 }
 
+// V12.7: Klick auf Posteingang-Karte → Inbox öffnen + diese Email selektieren.
+//        Filter wird auf 'alle' gesetzt, damit auch geantwortete Mails sichtbar sind.
+function openEmailInboxModalAt(recId) {
+  if (typeof openEmailInboxModal !== 'function') return;
+  openEmailInboxModal();
+  setTimeout(() => {
+    try {
+      if (typeof setEiFilter === 'function') setEiFilter('alle');
+      if (recId && typeof selectEmailRow === 'function') selectEmailRow(recId);
+    } catch(_) {}
+  }, 450);
+}
+
+// V12.7: Einzelne Email als kompakte Karte fürs Dashboard
+function _renderPosteingangCard(e) {
+  const st = (e.status || 'neu');
+  const stMap = {
+    neu:            { col: '#2456E5', label: 'Neu',         bg: 'var(--dr-blue-soft)' },
+    gesichtet:      { col: '#5C6E87', label: 'Gesichtet',   bg: 'var(--dr-surface-alt)' },
+    in_bearbeitung: { col: '#D97706', label: 'In Bearb.',   bg: 'var(--dr-amber-soft)' },
+    geantwortet:    { col: '#16A34A', label: 'Geantw.',     bg: 'var(--dr-green-soft)' },
+    verworfen:      { col: '#5C6E87', label: 'Verworfen',   bg: 'var(--dr-surface-alt)' },
+  };
+  const s = stMap[st] || stMap.neu;
+  const cls = (e.ki_classification || 'unklar');
+  const clsMap = {
+    wartung:       'var(--dr-green)',
+    reparatur:     'var(--dr-amber)',
+    rechnung:      '#6B3EB8',
+    multiple:      '#5B21B6',
+    korrespondenz: '#5C6E87',
+    spam:          '#94A3B8',
+    unklar:        '#94A3B8',
+  };
+  const clsCol = clsMap[cls] || '#5C6E87';
+  let dateStr = '–';
+  if (e.received_at) {
+    try {
+      dateStr = new Date(e.received_at).toLocaleString('de-DE', { dateStyle:'short', timeStyle:'short' });
+    } catch(_) {}
+  }
+  const from  = e.from_name || e.from_email || '(Unbekannt)';
+  const subj  = e.subject || '(Kein Betreff)';
+  const summary = e.ki_summary || '';
+  const linkedCount = parseInt(e.linked_checks_count || 0, 10) || 0;
+  const idEsc = (e._id || '').replace(/'/g, "\\'");
+  return `
+    <div onclick="openEmailInboxModalAt('${idEsc}')"
+      style="background:#fff;border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:13px 16px;display:flex;gap:14px;align-items:flex-start;cursor:pointer;transition:all .15s;box-shadow:var(--dr-elev-1)"
+      onmouseover="this.style.borderColor='var(--dr-blue-light)';this.style.boxShadow='var(--dr-elev-blue)'"
+      onmouseout="this.style.borderColor='var(--dr-border)';this.style.boxShadow='var(--dr-elev-1)'">
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;width:88px">
+        <span style="background:${s.col};color:#fff;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;text-align:center;letter-spacing:.02em">${s.label}</span>
+        <span style="background:${clsCol};color:#fff;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;text-align:center;text-transform:capitalize">${cls}</span>
+        ${linkedCount > 0 ? `<span style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:999px;padding:1px 7px;font-size:9.5px;font-weight:700;text-align:center;font-family:var(--dr-f-mono)">✓ ${linkedCount} Check</span>` : ''}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:700;color:var(--dr-ink);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(subj)}</div>
+        <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px;font-family:var(--dr-f-mono)">von ${_esc(from)} · ${dateStr}</div>
+        ${summary ? `<div style="font-size:12px;color:var(--dr-ink-soft);margin-top:6px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${_esc(summary)}</div>` : ''}
+      </div>
+    </div>`;
+}
+
 function renderDashboard() {
   const checksAll = window._dashAllChecks || [];
   const vertraege = window._dashAllVertraege || [];
@@ -14686,6 +14759,44 @@ function renderDashboard() {
     return s + (auf * preis * 12);
   }, 0);
 
+  // V12.7: Posteingang-Block (NEU — Top-Section)
+  // Wichtigste Section: zeigt eingehende Mails von Kunden/HVs, die noch bearbeitet werden müssen.
+  const emails = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  const peNeu        = emails.filter(e => (e.status || 'neu') === 'neu').length;
+  const peInBearb    = emails.filter(e => e.status === 'in_bearbeitung' || e.status === 'gesichtet').length;
+  const peGeantwortet= emails.filter(e => e.status === 'geantwortet').length;
+  const peLinked     = emails.filter(e => (parseInt(e.linked_checks_count || 0, 10) || 0) > 0).length;
+  // Top 6: Neue Mails zuerst, dann nach Datum desc
+  const peTop = [...emails].sort((a, b) => {
+    const sa = (a.status || 'neu') === 'neu' ? 0 : 1;
+    const sb = (b.status || 'neu') === 'neu' ? 0 : 1;
+    if (sa !== sb) return sa - sb;
+    return String(b.received_at || '').localeCompare(String(a.received_at || ''));
+  }).slice(0, 6);
+  const posteingangBlock = `
+    <div class="dr-section">
+      <div class="dr-section-head">
+        <div class="dr-section-title">
+          📥 Posteingang
+          <span class="dr-section-title__count">${peNeu} neu${emails.length ? ' · ' + emails.length + ' gesamt' : ''}</span>
+        </div>
+        <button onclick="openEmailInboxModal()" style="background:var(--dr-blue);color:#fff;border:none;border-radius:var(--dr-r-md);padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(36,86,229,.25)">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Inbox öffnen
+        </button>
+      </div>
+      <div class="dr-kpi-grid">
+        ${kachel('Neue Emails',          peNeu,          '#2456E5', 'noch nicht gesichtet')}
+        ${kachel('In Bearbeitung',       peInBearb,      '#D97706', 'KI-klassifiziert')}
+        ${kachel('Geantwortet',          peGeantwortet,  '#16A34A', 'Antwort gesendet')}
+        ${kachel('Mit Check verknüpft',  peLinked,       '#1740B8', 'Check erstellt')}
+      </div>
+      ${peTop.length === 0
+        ? '<div style="background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md);padding:24px;text-align:center;color:var(--dr-ink-mute);font-style:italic;margin-top:16px;font-size:13px">Keine Emails im Posteingang. Neue Mails an <strong style="color:var(--dr-ink);font-style:normal;font-family:var(--dr-f-mono)">check@liftaro.de</strong> werden hier automatisch angezeigt.</div>'
+        : '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' + peTop.map(_renderPosteingangCard).join('') + (emails.length > peTop.length ? '<div style="text-align:center;margin-top:8px"><button onclick="openEmailInboxModal()" class="dr-pill">… und ' + (emails.length - peTop.length) + ' weitere</button></div>' : '') + '</div>'
+      }
+    </div>`;
+
   // Verträge-Block (Rahmen + Light parallel) — Dashboard-Redesign V10.7
   const vertraegeBlock = `
     <div class="dr-section">
@@ -14701,10 +14812,10 @@ function renderDashboard() {
       </div>
     </div>`;
 
+  // V12.7: Neue Dashboard-Reihenfolge — Posteingang ganz oben (wichtigste Section),
+  // dann Checks-Übersicht, dann Fälligkeiten, dann Vorabchecks/Verträge/Ersparnisse weiter unten.
   content.innerHTML = `
-    ${vcBlock}
-
-    ${vertraegeBlock}
+    ${posteingangBlock}
 
     <div class="dr-section">
       <div class="dr-section-head">
@@ -14725,6 +14836,10 @@ function renderDashboard() {
     </div>
 
     ${billingBlock}
+
+    ${vcBlock}
+
+    ${vertraegeBlock}
 
     <div class="dr-section">
       <div class="dr-section-head">
