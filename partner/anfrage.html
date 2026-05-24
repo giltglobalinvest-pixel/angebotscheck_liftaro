@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e2440">
+<title>Liftaro — Anfrage Wartungsvertrag</title>
+<link rel="icon" type="image/png" href="https://giltglobalinvest-pixel.github.io/angebotscheck_liftaro/favicon.png">
+<style>
+  :root {
+    --navy: #0e2440;
+    --navy-2: #16345a;
+    --blue: #2456E5;
+    --blue-deep: #1740B8;
+    --blue-soft: #EBF1FE;
+    --green: #16A34A;
+    --green-soft: #DCFCE7;
+    --green-deep: #15803D;
+    --amber: #D97706;
+    --amber-soft: #FEF3C7;
+    --red: #E5484D;
+    --red-soft: #FBE5E6;
+    --bg: #DDE7F0;
+    --bg-soft: #E8EFF6;
+    --surface: #FFFFFF;
+    --surface-alt: #F4F7FB;
+    --ink: #0F1830;
+    --ink-soft: #3D4A66;
+    --ink-mute: #5C6E87;
+    --ink-subtle: #94A3B8;
+    --border: #E2E8F0;
+    --border-strong: #CBD5E1;
+    --r-sm: 7px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --r-pill: 999px;
+    --elev-1: 0 1px 2px rgba(15,24,48,.05), 0 2px 6px rgba(15,24,48,.06);
+    --elev-2: 0 2px 6px rgba(15,24,48,.07), 0 8px 22px rgba(15,24,48,.10);
+    --f-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --f-mono: 'DM Mono', 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--f-sans);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+  }
+  .topbar {
+    background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%);
+    padding: 18px 24px;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(15,24,48,.20);
+  }
+  .topbar-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .logo-box {
+    background: #fff;
+    color: var(--navy);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-weight: 800;
+    font-size: 16px;
+    letter-spacing: -.02em;
+    line-height: 1;
+  }
+  .logo-sub {
+    font-size: 10.5px;
+    color: rgba(255,255,255,.65);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    font-family: var(--f-mono);
+  }
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 18px 64px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: var(--elev-1);
+  }
+  .card h2 {
+    margin: 0 0 12px 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -.01em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2 .pill {
+    font-size: 10px;
+    background: var(--blue);
+    color: #fff;
+    border-radius: var(--r-pill);
+    padding: 2px 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    font-family: var(--f-mono);
+  }
+  .label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    display: block;
+    margin-bottom: 5px;
+    font-family: var(--f-mono);
+  }
+  .input, .textarea, .select {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 9px 12px;
+    font-family: var(--f-sans);
+    font-size: 13.5px;
+    background: var(--surface-alt);
+    color: var(--ink);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .input:focus, .textarea:focus, .select:focus {
+    border-color: var(--blue);
+    background: #fff;
+  }
+  .textarea { min-height: 80px; resize: vertical; line-height: 1.55; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .card { padding: 14px 16px; }
+    .container { padding: 16px 14px 64px; }
+  }
+  .field { margin-bottom: 11px; }
+  .meta-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .meta-row strong { color: var(--ink); }
+  .anfrage-box {
+    background: var(--blue-soft);
+    border: 1px solid #C5D4F2;
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    color: var(--blue-deep);
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .anfrage-box strong { color: var(--ink); }
+  .checkboxes { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 9px 11px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--ink);
+    transition: all .15s;
+  }
+  .check-row:hover { background: var(--blue-soft); border-color: #C5D4F2; }
+  .check-row input { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+  .btn {
+    border: none;
+    border-radius: var(--r-md);
+    padding: 11px 18px;
+    font-family: var(--f-sans);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: all .15s;
+    letter-spacing: -.01em;
+  }
+  .btn-primary {
+    background: var(--green);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(22,163,74,.25), 0 6px 18px rgba(22,163,74,.22);
+  }
+  .btn-primary:hover { background: var(--green-deep); transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+  .btn-secondary {
+    background: #fff;
+    color: var(--ink);
+    border: 1.5px solid var(--border-strong);
+  }
+  .btn-secondary:hover { background: var(--surface-alt); border-color: var(--blue); }
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid #f5c2c0;
+  }
+  .btn-danger:hover { background: var(--red-soft); }
+  .actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .actions .btn-primary { flex: 1; min-width: 200px; }
+  #status {
+    font-size: 13px;
+    padding: 14px;
+    border-radius: var(--r-md);
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  #status.loading { background: var(--blue-soft); color: var(--blue-deep); border: 1px solid #C5D4F2; }
+  #status.success { background: var(--green-soft); color: var(--green-deep); border: 1px solid #8FD4A6; }
+  #status.error   { background: var(--red-soft);   color: #9F1B1F;          border: 1px solid #f5c2c0; }
+  #status.warning { background: var(--amber-soft); color: #92400E;          border: 1px solid #FDBA74; }
+  .spin {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(36,86,229,.3);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pdf-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--r-md);
+    padding: 18px;
+    text-align: center;
+    background: var(--surface-alt);
+    color: var(--ink-mute);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .pdf-zone:hover, .pdf-zone.drag { border-color: var(--blue); background: var(--blue-soft); color: var(--blue-deep); }
+  .pdf-zone.has-file { border-style: solid; border-color: var(--green); background: var(--green-soft); color: var(--green-deep); }
+  .footer-info {
+    margin-top: 20px;
+    padding: 14px 18px;
+    background: var(--surface-alt);
+    border-radius: var(--r-md);
+    color: var(--ink-mute);
+    font-size: 11.5px;
+    line-height: 1.55;
+    text-align: center;
+  }
+  .footer-info a { color: var(--blue); text-decoration: none; }
+  .deadline-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--amber-soft);
+    color: #92400E;
+    border-radius: var(--r-pill);
+    padding: 3px 11px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    margin-left: 8px;
+  }
+  .status-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: var(--r-md);
+    margin-bottom: 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .status-banner.angeboten { background: var(--green-soft); color: var(--green-deep); border: 1px solid #8FD4A6; }
+  .status-banner.abgelehnt { background: var(--red-soft);   color: #9F1B1F;          border: 1px solid #f5c2c0; }
+  .status-banner.timeout   { background: var(--surface-alt); color: var(--ink-mute); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="logo-box">liftaro</div>
+      <div>
+        <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">Anfrage Wartungsvertrag</div>
+        <div class="logo-sub">Liftaro Partner-Plattform</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div id="status" class="loading"><span class="spin"></span>Anfrage wird geladen …</div>
+
+    <!-- Hauptcontent wird per JS gefüllt -->
+    <div id="content" style="display:none">
+      <!-- Anfrage-Details -->
+      <div class="card">
+        <h2>📋 Anfrage <span id="anfrageBadge" class="pill"></span></h2>
+        <div id="anfrageMeta"></div>
+        <div id="anfrageBox" class="anfrage-box"></div>
+        <div id="pdfDownload" style="margin-top:10px"></div>
+      </div>
+
+      <!-- Antwort-Formular (nur wenn Status erlaubt) -->
+      <div id="formSection" style="display:none">
+        <div class="card">
+          <h2>💼 Ihr Angebot</h2>
+          <p style="font-size:12.5px;color:var(--ink-mute);margin:0 0 14px 0;line-height:1.55">
+            Bitte geben Sie die Eckdaten Ihres Angebots ein. Das endgültige Angebot wird durch Liftaro auf eigenem Briefpapier ausgestellt; Sie agieren als Subunternehmer.
+          </p>
+
+          <div class="grid-2">
+            <div class="field">
+              <label class="label" for="f_offer_id">Ihre Angebots-Nr <span style="color:var(--ink-subtle);text-transform:none">(optional)</span></label>
+              <input type="text" id="f_offer_id" class="input" placeholder="z.B. ANG-2026-1234">
+            </div>
+            <div class="field">
+              <label class="label" for="f_preis_netto">Preis netto / Jahr (€) *</label>
+              <input type="text" id="f_preis_netto" class="input" placeholder="z.B. 1800" inputmode="decimal">
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div class="field">
+              <label class="label" for="f_laufzeit">Laufzeit (Jahre) *</label>
+              <input type="number" id="f_laufzeit" class="input" placeholder="3" min="1" max="10">
+            </div>
+            <div class="field">
+              <label class="label" for="f_kuendfrist">Kündigungsfrist (Monate)</label>
+              <input type="number" id="f_kuendfrist" class="input" placeholder="3" min="0" max="36">
+            </div>
+            <div class="field">
+              <label class="label" for="f_wartungen">Wartungen / Jahr</label>
+              <input type="number" id="f_wartungen" class="input" placeholder="2" min="1" max="12">
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="label">Leistungen inkludiert</label>
+            <div class="checkboxes">
+              <label class="check-row"><input type="checkbox" id="f_vollwartung"> Vollwartung (inkl. Verschleißteile)</label>
+              <label class="check-row"><input type="checkbox" id="f_notruf"> Notrufservice 24/7</label>
+              <label class="check-row"><input type="checkbox" id="f_tuev_begl"> TÜV-Begleitung</label>
+              <label class="check-row"><input type="checkbox" id="f_tuev_pruef"> TÜV-Hauptprüfung im Preis</label>
+              <label class="check-row"><input type="checkbox" id="f_entstoerung"> Entstörungen inkl.</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="f_kommentar">Anmerkungen / Konditionen <span style="color:var(--ink-subtle);text-transform:none">(optional)</span></label>
+            <textarea id="f_kommentar" class="textarea" placeholder="z.B. Anfahrtspauschale, Sonderkonditionen, gewünschter Vertragsbeginn …"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="label">PDF-Angebot anhängen <span style="color:var(--ink-subtle);text-transform:none">(optional, max 8 MB)</span></label>
+            <div id="pdfZone" class="pdf-zone" onclick="document.getElementById('pdfFile').click()">
+              <div id="pdfZoneText">📎 Klick hier um Ihr Angebots-PDF anzuhängen — oder Drag&amp;Drop</div>
+            </div>
+            <input type="file" id="pdfFile" accept="application/pdf" style="display:none" onchange="handlePdfSelect(this.files[0])">
+          </div>
+
+          <div class="actions">
+            <button id="submitBtn" class="btn btn-primary" onclick="submitOffer()">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Angebot absenden
+            </button>
+            <button class="btn btn-danger" onclick="openDeclineDialog()">Ablehnen</button>
+          </div>
+
+          <div id="submitStatus" style="margin-top:12px;font-size:12.5px;text-align:center;min-height:16px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-info">
+      Fragen? <a href="mailto:check@liftaro.de">check@liftaro.de</a> · Liftaro GmbH
+    </div>
+  </div>
+
+  <script>
+  // ════════════════════════════════════════════════════════════════
+  // Liftaro Partner-Landing — V1
+  // ════════════════════════════════════════════════════════════════
+  // Auth: One-Time-Token in der URL (?t=<32-hex>). Kein Login nötig.
+  // API: liftaroPartnerApi (val.town HTTP-Val)
+  // ════════════════════════════════════════════════════════════════
+  const API_BASE = 'https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run';
+
+  let _token = null;
+  let _anfrage = null;
+  let _pdfFile = null;
+  let _pdfBase64 = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+  function setStatus(text, cls) {
+    const s = $('status');
+    s.innerHTML = text;
+    s.className = cls || '';
+    s.style.display = text ? 'block' : 'none';
+  }
+
+  // 1) Token aus URL extrahieren
+  function getToken() {
+    const url = new URL(location.href);
+    return (url.searchParams.get('t') || '').trim();
+  }
+
+  // 2) Anfrage laden
+  async function loadAnfrage() {
+    _token = getToken();
+    if (!_token) {
+      setStatus('⚠ Kein Token in der URL — Link unvollständig.', 'error');
+      return;
+    }
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(_token)) {
+      setStatus('⚠ Token-Format ungültig.', 'error');
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/api/partner-anfragen/${encodeURIComponent(_token)}`);
+      if (!resp.ok) {
+        if (resp.status === 404) {
+          setStatus('⚠ Anfrage nicht gefunden. Der Link ist evtl. ungültig oder abgelaufen.', 'error');
+        } else {
+          setStatus(`⚠ Fehler beim Laden (HTTP ${resp.status}).`, 'error');
+        }
+        return;
+      }
+      const data = await resp.json();
+      _anfrage = data.anfrage || null;
+      if (!_anfrage) {
+        setStatus('⚠ Anfrage-Daten leer.', 'error');
+        return;
+      }
+      renderAnfrage();
+    } catch (e) {
+      console.error(e);
+      setStatus('⚠ Netzwerk-Fehler: ' + e.message, 'error');
+    }
+  }
+
+  function renderAnfrage() {
+    setStatus('', '');
+    $('content').style.display = 'block';
+
+    const a = _anfrage;
+    $('anfrageBadge').textContent = (a.anfrage_id || '').replace(/^PA-/, '');
+
+    const sentAt = a.sent_at ? new Date(a.sent_at).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' }) : '–';
+    const deadlineDate = a.deadline_at ? new Date(a.deadline_at) : null;
+    const now = new Date();
+    const isExpired = deadlineDate && deadlineDate < now;
+    const daysLeft = deadlineDate ? Math.ceil((deadlineDate - now) / 86400000) : null;
+
+    let deadlineHtml = '';
+    if (deadlineDate) {
+      const dStr = deadlineDate.toLocaleDateString('de-DE');
+      if (isExpired) deadlineHtml = `<span class="deadline-badge" style="background:var(--red-soft);color:#9F1B1F">⏰ Frist abgelaufen: ${dStr}</span>`;
+      else if (daysLeft <= 2) deadlineHtml = `<span class="deadline-badge">⏰ Antwortfrist: ${dStr} (in ${daysLeft} Tag${daysLeft===1?'':'en'})</span>`;
+      else deadlineHtml = `<span class="deadline-badge">📅 Antwortfrist: ${dStr}</span>`;
+    }
+
+    $('anfrageMeta').innerHTML = `
+      <div class="meta-row">
+        <div><strong>Eingegangen:</strong> ${esc(sentAt)}</div>
+        ${deadlineHtml}
+      </div>`;
+
+    const teile = [];
+    if (a.objekt_strasse) teile.push(esc(a.objekt_strasse));
+    const plzOrt = [a.objekt_plz, a.objekt_ort].filter(Boolean).join(' ');
+    if (plzOrt) teile.push(esc(plzOrt));
+    const objekt = teile.join(', ') || '(Objektadresse nicht angegeben)';
+
+    $('anfrageBox').innerHTML = `
+      <div style="margin-bottom:8px"><strong>📍 Objekt:</strong> ${objekt}</div>
+      <div style="margin-bottom:8px"><strong>🛗 Anzahl Aufzüge:</strong> ${esc(a.anzahl_aufzuege || '–')} · <strong>Anlagenart:</strong> ${esc(a.anlagenart || '–')}</div>
+      ${a.leistungsumfang_text ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #C5D4F2"><strong>Gewünschter Leistungsumfang:</strong><br>${esc(a.leistungsumfang_text).replace(/\n/g,'<br>')}</div>` : ''}`;
+
+    // Optional vorliegendes PDF
+    if (a.vorliegendes_pdf_url) {
+      $('pdfDownload').innerHTML = `
+        <a href="${esc(a.vorliegendes_pdf_url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 13px;font-size:12.5px;color:var(--ink);text-decoration:none;font-weight:600">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Vorliegendes Bestands-Angebot herunterladen ↓
+        </a>`;
+    }
+
+    // Status-spezifische Anzeige
+    if (a.status === 'angeboten') {
+      const respAt = a.responded_at ? new Date(a.responded_at).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' }) : '–';
+      const banner = document.createElement('div');
+      banner.className = 'status-banner angeboten';
+      banner.innerHTML = `
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+        <div>
+          <div>Angebot erfolgreich übermittelt</div>
+          <div style="font-weight:400;font-size:12px;margin-top:2px;color:rgba(0,0,0,.6)">Am ${esc(respAt)} eingegangen. Liftaro meldet sich bei Bedarf.</div>
+        </div>`;
+      $('content').insertBefore(banner, $('content').firstChild);
+      showSummaryReadonly();
+      return;
+    }
+    if (a.status === 'abgelehnt') {
+      const banner = document.createElement('div');
+      banner.className = 'status-banner abgelehnt';
+      banner.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Anfrage wurde abgelehnt.`;
+      $('content').insertBefore(banner, $('content').firstChild);
+      return;
+    }
+    if (isExpired) {
+      const banner = document.createElement('div');
+      banner.className = 'status-banner timeout';
+      banner.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Antwortfrist ist abgelaufen. Bitte Liftaro kontaktieren.`;
+      $('content').insertBefore(banner, $('content').firstChild);
+      return;
+    }
+
+    // Formular zeigen
+    $('formSection').style.display = 'block';
+  }
+
+  function showSummaryReadonly() {
+    // Bereits abgegebenes Angebot read-only anzeigen
+    const a = _anfrage;
+    const fs = $('formSection');
+    fs.style.display = 'block';
+    // Werte einsetzen
+    if (a.response_offer_id)               $('f_offer_id').value = a.response_offer_id;
+    if (a.response_preis_netto)            $('f_preis_netto').value = a.response_preis_netto;
+    if (a.response_laufzeit_jahre)         $('f_laufzeit').value = a.response_laufzeit_jahre;
+    if (a.response_kuendigungsfrist_monate) $('f_kuendfrist').value = a.response_kuendigungsfrist_monate;
+    if (a.response_wartungen_pro_jahr)     $('f_wartungen').value = a.response_wartungen_pro_jahr;
+    if (a.response_kommentar)              $('f_kommentar').value = a.response_kommentar;
+    // Alles deaktivieren
+    fs.querySelectorAll('input, textarea, button').forEach(el => { el.disabled = true; });
+    // Buttons-Container ausblenden
+    fs.querySelectorAll('.actions').forEach(el => el.style.display = 'none');
+    fs.querySelector('.pdf-zone').style.cursor = 'default';
+    fs.querySelector('.pdf-zone').onclick = null;
+  }
+
+  // PDF-Handling
+  function handlePdfSelect(file) {
+    if (!file) return;
+    if (file.type && file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+      alert('Nur PDF-Dateien erlaubt.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Datei zu groß (max 8 MB).');
+      return;
+    }
+    _pdfFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = String(e.target.result || '');
+      const idx = result.indexOf(',');
+      _pdfBase64 = idx >= 0 ? result.slice(idx + 1) : result;
+      const zone = $('pdfZone');
+      zone.classList.add('has-file');
+      $('pdfZoneText').innerHTML = `✓ <strong>${esc(file.name)}</strong> (${Math.round(file.size/1024)} KB) angehängt — <span style="color:var(--ink-mute);text-decoration:underline">klicken zum Ändern</span>`;
+    };
+    reader.onerror = () => alert('Fehler beim Lesen der Datei.');
+    reader.readAsDataURL(file);
+  }
+
+  // Drag&Drop für PDF
+  (function setupDragDrop() {
+    const zone = $('pdfZone');
+    if (!zone) return;
+    ['dragover', 'dragenter'].forEach(ev => zone.addEventListener(ev, (e) => {
+      e.preventDefault(); zone.classList.add('drag');
+    }));
+    ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, () => zone.classList.remove('drag')));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handlePdfSelect(file);
+    });
+  })();
+
+  // Hilfs-Parser für Preis-Eingaben (1.800,50 oder 1800.50 oder 1.800)
+  function parsePrice(s) {
+    if (!s) return NaN;
+    const cleaned = String(s).replace(/[^\d,.\-]/g, '').replace(/\./g, '').replace(',', '.');
+    return parseFloat(cleaned);
+  }
+
+  // Submit
+  async function submitOffer() {
+    const get = (id) => ($(id)?.value || '').trim();
+    const getBool = (id) => !!$(id)?.checked;
+    const preisRaw = get('f_preis_netto');
+    const preis    = parsePrice(preisRaw);
+    const laufzeit = parseInt(get('f_laufzeit'), 10);
+    if (!preisRaw || isNaN(preis) || preis <= 0) { showSubmitStatus('Bitte gültigen Preis netto eingeben', 'error'); return; }
+    if (!laufzeit || laufzeit < 1) { showSubmitStatus('Bitte Laufzeit (Jahre) eingeben', 'error'); return; }
+
+    const body = {
+      response_offer_id:               get('f_offer_id'),
+      response_preis_netto:            preis.toFixed(2),
+      response_laufzeit_jahre:         String(laufzeit),
+      response_kuendigungsfrist_monate: get('f_kuendfrist'),
+      response_wartungen_pro_jahr:     get('f_wartungen'),
+      response_vollwartung: getBool('f_vollwartung'),
+      response_notruf:      getBool('f_notruf'),
+      response_tuev_begl:   getBool('f_tuev_begl'),
+      response_tuev_pruef:  getBool('f_tuev_pruef'),
+      response_entstoerung: getBool('f_entstoerung'),
+      response_kommentar:   get('f_kommentar'),
+    };
+    if (_pdfBase64 && _pdfFile) {
+      body.pdf_base64 = _pdfBase64;
+      body.pdf_filename = _pdfFile.name;
+    }
+
+    const btn = $('submitBtn');
+    btn.disabled = true;
+    showSubmitStatus('<span class="spin"></span>Sende Angebot …', 'loading');
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/partner-anfragen/${encodeURIComponent(_token)}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        showSubmitStatus('⚠ ' + (data.error || `Fehler ${resp.status}`), 'error');
+        btn.disabled = false;
+        return;
+      }
+      showSubmitStatus('✓ Angebot erfolgreich übermittelt. Vielen Dank!', 'success');
+      setTimeout(() => location.reload(), 1800);
+    } catch (e) {
+      console.error(e);
+      showSubmitStatus('⚠ Netzwerk-Fehler: ' + e.message, 'error');
+      btn.disabled = false;
+    }
+  }
+
+  function showSubmitStatus(html, type) {
+    const el = $('submitStatus');
+    if (!el) return;
+    const colors = { loading: 'var(--blue-deep)', success: 'var(--green-deep)', error: '#9F1B1F' };
+    el.style.color = colors[type] || 'var(--ink-soft)';
+    el.innerHTML = html;
+  }
+
+  // Ablehnen
+  function openDeclineDialog() {
+    const reason = prompt('Optional: Grund für die Ablehnung (für Liftaro-Bearbeiter, nicht öffentlich):', '');
+    if (reason === null) return;
+    if (!confirm('Anfrage wirklich ablehnen? Das kann nicht rückgängig gemacht werden.')) return;
+    declineOffer(reason || '');
+  }
+
+  async function declineOffer(reason) {
+    showSubmitStatus('<span class="spin"></span>Sende Ablehnung …', 'loading');
+    try {
+      const resp = await fetch(`${API_BASE}/api/partner-anfragen/${encodeURIComponent(_token)}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        showSubmitStatus('⚠ ' + (data.error || `Fehler ${resp.status}`), 'error');
+        return;
+      }
+      showSubmitStatus('Anfrage abgelehnt. Vielen Dank.', 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      showSubmitStatus('⚠ Netzwerk-Fehler: ' + e.message, 'error');
+    }
+  }
+
+  // Start
+  loadAnfrage();
+  </script>
+</body>
+</html>
