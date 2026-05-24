@@ -2497,12 +2497,26 @@ const pdfWorkerReady = Promise.resolve();</script>
                   <div class="savings-display zero" id="savings-display">– €</div>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <label style="white-space:nowrap">Erfolgsprämie Liftaro (50%):</label>
-                <div class="savings-display zero" id="savings-liftaro" style="min-width:110px;background:var(--navy)">– €</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <label style="white-space:nowrap">Erfolgsprämie Liftaro:</label>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
+                    <input type="number" id="liftaro_pct" value="50" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
+                      style="width:54px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                    <span style="font-size:12.5px;color:var(--muted);font-weight:600">%</span>
+                  </div>
+                  <span style="font-size:11px;color:var(--muted);font-style:italic">oder</span>
+                  <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
+                    <input type="text" id="liftaro_eur" placeholder="absolut" oninput="calcSavings()" data-frozen-allow
+                      title="Absoluter €-Betrag — überschreibt den Prozent-Anteil"
+                      style="width:74px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                    <span style="font-size:12.5px;color:var(--muted);font-weight:600">€</span>
+                  </div>
+                  <div class="savings-display zero" id="savings-liftaro" style="min-width:110px;background:var(--navy)">– €</div>
+                </div>
               </div>
               <div style="font-size:11px;color:var(--muted);font-style:italic;border-top:1px solid var(--border);padding-top:8px" id="savings-note">
-                Liftaro stellt die Rechnung nach erfolgreich erfolgter Arbeit des Dienstleisters.
+                Liftaro stellt die Rechnung nach erfolgreich erfolgter Arbeit des Dienstleisters. Wenn ein absoluter Betrag gesetzt ist, überschreibt er den Prozent-Anteil.
               </div>
             </div>
           </div>
@@ -2578,12 +2592,26 @@ const pdfWorkerReady = Promise.resolve();</script>
                   <div class="savings-display zero" id="savings-display-w">– €</div>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <label style="white-space:nowrap">Erfolgsprämie Liftaro jährlich (50%):</label>
-                <div class="savings-display zero" id="savings-liftaro-w" style="min-width:110px;background:var(--navy)">– €</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <label style="white-space:nowrap">Erfolgsprämie Liftaro jährlich:</label>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
+                    <input type="number" id="liftaro_pct_w" value="50" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
+                      style="width:54px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                    <span style="font-size:12.5px;color:var(--muted);font-weight:600">%</span>
+                  </div>
+                  <span style="font-size:11px;color:var(--muted);font-style:italic">oder</span>
+                  <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
+                    <input type="text" id="liftaro_eur_w" placeholder="absolut" oninput="calcSavings()" data-frozen-allow
+                      title="Absoluter €-Betrag — überschreibt den Prozent-Anteil"
+                      style="width:74px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                    <span style="font-size:12.5px;color:var(--muted);font-weight:600">€</span>
+                  </div>
+                  <div class="savings-display zero" id="savings-liftaro-w" style="min-width:110px;background:var(--navy)">– €</div>
+                </div>
               </div>
               <div style="font-size:11px;color:var(--muted);font-style:italic;border-top:1px solid var(--border);padding-top:8px">
-                Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel.
+                Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel. Wenn ein absoluter Betrag gesetzt ist, überschreibt er den Prozent-Anteil.
               </div>
             </div>
           </div>
@@ -4614,7 +4642,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.10';
+const APP_VERSION = 'V12.11';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -5702,6 +5730,9 @@ function resetForm() {
     el.className = 'savings-display zero';
     if (id === 'savings-liftaro') el.style.background = '#8a9ab0';
   });
+  // V12.11: Provisions-Inputs auf Defaults zurücksetzen
+  ['liftaro_pct','liftaro_pct_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '50'; });
+  ['liftaro_eur','liftaro_eur_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -5789,6 +5820,11 @@ function collectFormData() {
     liftaroBet:  (checkType === 'wartung'
                   ? document.getElementById('savings-liftaro-w')?.textContent
                   : document.getElementById('savings-liftaro')?.textContent) || '',
+    // V12.11: Flexible Provision — Prozent + absoluter Override pro Check-Typ
+    liftaro_pct:    g('liftaro_pct'),
+    liftaro_eur:    g('liftaro_eur'),
+    liftaro_pct_w:  g('liftaro_pct_w'),
+    liftaro_eur_w:  g('liftaro_eur_w'),
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
@@ -6255,6 +6291,14 @@ async function loadCheck(data) {
   sc('wv_typ', data.wv_typ); sc('wa_typ', data.wa_typ);
   sc('wv_kosten', data.wv_kosten); sc('wa_kosten', data.wa_kosten);
   sc('wv_zusammen', data.wv_zusammen); sc('wa_zusammen', data.wa_zusammen);
+  // V12.11: Flexible Liftaro-Provision wiederherstellen (Reparatur + Wartung).
+  // Default 50% wenn nichts gespeichert. Absolut-Override bleibt leer wenn ungesetzt.
+  sc('liftaro_pct',   data.liftaro_pct   != null && data.liftaro_pct   !== '' ? data.liftaro_pct   : '50');
+  sc('liftaro_eur',   data.liftaro_eur   || '');
+  sc('liftaro_pct_w', data.liftaro_pct_w != null && data.liftaro_pct_w !== '' ? data.liftaro_pct_w : '50');
+  sc('liftaro_eur_w', data.liftaro_eur_w || '');
+  // Nach Werte-Restore neu berechnen, damit die Anzeige passt
+  if (typeof calcSavings === 'function') setTimeout(calcSavings, 30);
 
   // AHW panel
   set('ahw_firma',         data.ahw_firma);
@@ -8436,11 +8480,33 @@ function calcSavings() {
   pctEl.textContent   = (pct >= 0 ? '+' : '') + pct.toFixed(1) + ' %';
   pctEl.className     = 'savings-display ' + (pct > 0 ? 'positive' : pct < 0 ? 'negative' : 'zero');
 
-  if (savings > 0) {
-    liftaroEl.textContent = formatEuro(savings * 0.5);
-    liftaroEl.style.background = 'var(--navy)';
+  // V12.11: Flexible Liftaro-Provision — entweder Prozent (Default 50) oder absoluter Override.
+  const liftaroPctInputId = isWartung ? 'liftaro_pct_w' : 'liftaro_pct';
+  const liftaroEurInputId = isWartung ? 'liftaro_eur_w' : 'liftaro_eur';
+  const liftaroPctRaw = (document.getElementById(liftaroPctInputId)?.value || '').toString().trim();
+  const liftaroEurRaw = (document.getElementById(liftaroEurInputId)?.value || '').toString().trim();
+  const liftaroPctNum = liftaroPctRaw === '' ? 50 : parseFloat(liftaroPctRaw.replace(',', '.'));
+  const liftaroPct    = (!isNaN(liftaroPctNum) && liftaroPctNum >= 0) ? liftaroPctNum : 50;
+  const liftaroEurOverride = liftaroEurRaw ? parsePrice(liftaroEurRaw) : NaN;
+
+  let liftaroAmount;
+  let useOverride = false;
+  if (!isNaN(liftaroEurOverride) && liftaroEurOverride > 0) {
+    liftaroAmount = liftaroEurOverride;
+    useOverride = true;
+  } else if (savings > 0) {
+    liftaroAmount = savings * (liftaroPct / 100);
+  }
+
+  if (typeof liftaroAmount === 'number' && liftaroAmount > 0) {
+    liftaroEl.textContent = formatEuro(liftaroAmount);
+    liftaroEl.style.background = useOverride ? '#5b21b6' : 'var(--navy)';
+    liftaroEl.title = useOverride
+      ? `Absoluter Override: ${formatEuro(liftaroAmount)} (statt ${liftaroPct}% = ${formatEuro(savings * (liftaroPct / 100))})`
+      : `${liftaroPct}% von ${formatEuro(savings)} = ${formatEuro(liftaroAmount)}`;
   } else {
     liftaroEl.textContent = '– €'; liftaroEl.style.background = '#8a9ab0';
+    liftaroEl.title = '';
   }
 
   if (smileyV && smileyA) {
