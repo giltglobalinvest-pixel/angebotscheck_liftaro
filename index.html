@@ -2912,7 +2912,33 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
 
       <!-- Wartung fields -->
+      <!-- V12.12 Phase 0: Partner-Anfrage-Platzhalter — zeigt den künftigen Workflow.
+           Manuelle Eingaben bleiben als Übergangslösung über Toggle erreichbar. -->
+      <div id="ahw-wartung-placeholder" class="side-card-body" style="display:none;flex-direction:column;gap:12px;padding:16px 18px">
+        <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1.5px solid #d97706;border-radius:10px;padding:14px 16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <svg width="14" height="14" fill="none" stroke="#92400e" stroke-width="2.4" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <div style="font-size:11.5px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.06em">Partner-Anfrage in Vorbereitung</div>
+          </div>
+          <div style="font-size:12.5px;color:#78350f;line-height:1.55">
+            Bald fragt Liftaro mehrere Aufzugsunternehmen parallel nach Alternativangeboten. Die Eckdaten (Preis, Laufzeit, Leistungen) landen automatisch hier — du wählst dann eine Variante aus.
+          </div>
+        </div>
+        <div id="ahw-wartung-manual-hint" style="display:none;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:11.5px;color:var(--text);line-height:1.5">
+          <strong style="color:var(--navy)">Dieser Check hat schon manuelle Eckdaten</strong> — Klick unten, um sie anzuzeigen / zu bearbeiten.
+        </div>
+        <button onclick="toggleManualAhwWartung(true)" style="background:var(--dr-surface);border:1.5px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:8px;padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .15s" onmouseover="this.style.background='var(--sky)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Trotzdem manuell befüllen (Übergang)
+        </button>
+      </div>
+
       <div id="ahw-wartung-body" class="side-card-body" style="display:none;flex-direction:column;gap:9px">
+        <!-- V12.12: Zurück-Link in den Partner-Platzhalter-Modus -->
+        <button onclick="toggleManualAhwWartung(false)" style="background:transparent;border:none;color:var(--dr-ink-mute);font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:2px 0;align-self:flex-start;margin-bottom:2px" onmouseover="this.style.color='var(--dr-blue)'" onmouseout="this.style.color='var(--dr-ink-mute)'">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Zurück zur Partner-Anfrage-Vorschau
+        </button>
         <div class="field"><label>Vertragspartner (Firma/Hausverwaltung)</label><input type="text" id="wt_firma" placeholder="Firmenname"></div>
         <div class="field"><label>Anschrift (Straße, PLZ, Ort)</label><input type="text" id="wt_anschrift" placeholder="Musterstraße 1, 12345 Berlin"></div>
         <div class="field"><label>E-Mail</label><input type="text" id="wt_email" value="check@liftaro.de"></div>
@@ -4642,7 +4668,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.11';
+const APP_VERSION = 'V12.12';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6299,6 +6325,11 @@ async function loadCheck(data) {
   sc('liftaro_eur_w', data.liftaro_eur_w || '');
   // Nach Werte-Restore neu berechnen, damit die Anzeige passt
   if (typeof calcSavings === 'function') setTimeout(calcSavings, 30);
+  // V12.12: AHW-Wartungs-Sidebar nach Wert-Restore re-initialisieren
+  // (zeigt Hinweis wenn manuelle Daten bereits da sind).
+  if (typeof _initAhwWartungView === 'function' && data.checkType === 'wartung') {
+    setTimeout(_initAhwWartungView, 60);
+  }
 
   // AHW panel
   set('ahw_firma',         data.ahw_firma);
@@ -7680,7 +7711,15 @@ function switchTab(type) {
   const ahwCard = document.getElementById('ahwCardHeader')?.parentElement;
   if (ahwCard) ahwCard.style.display = isRechnung ? 'none' : '';
   document.getElementById('ahw-reparatur-body').style.display = (isWartung || isRechnung) ? 'none' : 'flex';
-  document.getElementById('ahw-wartung-body').style.display   = isWartung ? 'flex' : 'none';
+  // V12.12 Phase 0: Bei Vertragscheck Partner-Anfrage-Platzhalter zeigen; Body bleibt versteckt
+  // (Bei vorhandenen Daten oder nach Toggle umschaltbar — siehe _initAhwWartungView).
+  const ahwWartPh   = document.getElementById('ahw-wartung-placeholder');
+  const ahwWartBody = document.getElementById('ahw-wartung-body');
+  if (ahwWartPh)   ahwWartPh.style.display   = isWartung ? 'flex' : 'none';
+  if (ahwWartBody) ahwWartBody.style.display = 'none';
+  if (isWartung && typeof _initAhwWartungView === 'function') {
+    setTimeout(_initAhwWartungView, 20);
+  }
   if (!isRechnung) {
     document.getElementById('ahw-card-title').textContent = isWartung
       ? 'Aufzugshandwerk Wartungsvertrag' : 'Aufzugshandwerk Angebot';
@@ -9745,6 +9784,39 @@ async function buildAHWWartungPDF(angebotsnr) {
   const blob     = new Blob([outBytes], { type: 'application/pdf' });
   const filename = `AHW_Wartungsvertrag_${angebotsnr}_${(g('wt_firma') || 'Kunde').replace(/\s+/g,'_')}.pdf`;
   return { blob, filename };
+}
+
+// V12.12 Phase 0: Helper für die AHW-Wartungs-Sidebar
+// — Toggle zwischen Partner-Anfrage-Platzhalter und manueller Übergangslösung.
+function toggleManualAhwWartung(showManual) {
+  const ph   = document.getElementById('ahw-wartung-placeholder');
+  const body = document.getElementById('ahw-wartung-body');
+  if (ph)   ph.style.display   = showManual ? 'none' : 'flex';
+  if (body) body.style.display = showManual ? 'flex' : 'none';
+  window._ahwWartungManualOpen = !!showManual;
+}
+
+// Prüft, ob im aktuellen Check bereits manuelle Wartungs-Daten erfasst sind.
+function _hasAhwWartungManualData() {
+  const indicatorIds = ['wt_firma', 'wt_anschrift', 'wt_jahresbeitrag', 'wt_standort'];
+  return indicatorIds.some(id => ((document.getElementById(id)?.value || '').toString().trim()) !== '');
+}
+
+// Beim Wechsel auf Vertragscheck oder nach loadCheck: entscheide, ob Platzhalter
+// oder direkt das manuelle Formular gezeigt wird.
+function _initAhwWartungView() {
+  const ph   = document.getElementById('ahw-wartung-placeholder');
+  const body = document.getElementById('ahw-wartung-body');
+  if (!ph || !body) return;
+  // Wenn Check schon manuelle Daten hat → Hinweis im Platzhalter einblenden,
+  // aber dennoch erst Platzhalter zeigen, damit User die Wahl behält.
+  const hasData = _hasAhwWartungManualData();
+  const hint = document.getElementById('ahw-wartung-manual-hint');
+  if (hint) hint.style.display = hasData ? 'block' : 'none';
+  // Standard: Platzhalter zeigen, Body verstecken
+  ph.style.display   = 'flex';
+  body.style.display = 'none';
+  window._ahwWartungManualOpen = false;
 }
 
 async function previewAHWWartung() {
