@@ -4668,7 +4668,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.12';
+const APP_VERSION = 'V12.13';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -4808,7 +4808,9 @@ const APP_CONFIG = {
 let APP_KEYS = { airtableWriteKey: null, anthropicKey: null, user: null, appBaseId: null,
   valtownKey: null, vorabcheckValId: null, vorabcheckProxyUrl: null, vorabcheckLandingTheme: null, startseiteVariante: null,
   pipedriveDomain: null, pipedriveApiToken: null, serperApiKey: null,
-  emailSenderUrl: null, emailSenderSecret: null };
+  emailSenderUrl: null, emailSenderSecret: null,
+  // V12.13 Phase 1: Partner-Plattform-API
+  partnerApiUrl: null, partnerApiSecret: null };
 
 async function loginWithUserKey(userKey) {
   const headers = { 'Authorization': 'Bearer ' + APP_CONFIG.AIRTABLE_READ_KEY };
@@ -4840,6 +4842,9 @@ async function loginWithUserKey(userKey) {
     if (r.fields.key_name === 'serperApiKey')           APP_KEYS.serperApiKey           = r.fields.key_value;
     if (r.fields.key_name === 'emailSenderUrl')         APP_KEYS.emailSenderUrl         = r.fields.key_value;
     if (r.fields.key_name === 'emailSenderSecret')      APP_KEYS.emailSenderSecret      = r.fields.key_value;
+    // V12.13 Phase 1: Partner-API
+    if (r.fields.key_name === 'partnerApiUrl')          APP_KEYS.partnerApiUrl          = r.fields.key_value;
+    if (r.fields.key_name === 'partnerApiSecret')       APP_KEYS.partnerApiSecret       = r.fields.key_value;
     if (r.fields.key_name === 'vorabcheckMappingVertrag') {
       APP_KEYS.vorabcheckMappingVertrag        = r.fields.key_value;
       APP_KEYS.vorabcheckMappingVertragRecId   = r.id;
@@ -5472,6 +5477,18 @@ async function setupTables() {
       { name: 'periode_index',          type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('Rechnungen-Schema konnte nicht angelegt werden:', e.message); }
+
+  // V12.13 Phase 1: Partner-Plattform Schemas (Lazy-Create)
+  // Schemas werden aus backend-extras.js geladen (selber Source-of-Truth wie val.town).
+  try {
+    const extras = await import('./vorabcheck/backend-extras.js?v=12.13');
+    if (Array.isArray(extras.PARTNER_POOL_TARGET_FIELDS)) {
+      await ensureTable('Partner-Pool', extras.PARTNER_POOL_TARGET_FIELDS);
+    }
+    if (Array.isArray(extras.PARTNER_ANFRAGEN_TARGET_FIELDS)) {
+      await ensureTable('Partner-Anfragen', extras.PARTNER_ANFRAGEN_TARGET_FIELDS);
+    }
+  } catch(e) { console.warn('Partner-Schemas konnten nicht angelegt werden:', e.message); }
 }
 
 // ── App init ──────────────────────────────────────────────────────
