@@ -2912,24 +2912,37 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
 
       <!-- Wartung fields -->
-      <!-- V12.12 Phase 0: Partner-Anfrage-Platzhalter — zeigt den künftigen Workflow.
-           Manuelle Eingaben bleiben als Übergangslösung über Toggle erreichbar. -->
+      <!-- V12.12+V12.14 Phase 0+2: Partner-Anfrage-UI mit echter Anbindung -->
       <div id="ahw-wartung-placeholder" class="side-card-body" style="display:none;flex-direction:column;gap:12px;padding:16px 18px">
-        <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1.5px solid #d97706;border-radius:10px;padding:14px 16px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <svg width="14" height="14" fill="none" stroke="#92400e" stroke-width="2.4" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <div style="font-size:11.5px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.06em">Partner-Anfrage in Vorbereitung</div>
+        <div style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1.5px solid #2456E5;border-radius:10px;padding:14px 16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <svg width="14" height="14" fill="none" stroke="#1740B8" stroke-width="2.4" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <div style="font-size:11.5px;font-weight:700;color:#1740B8;text-transform:uppercase;letter-spacing:.06em">Partner-Anfragen-Marktplatz</div>
           </div>
-          <div style="font-size:12.5px;color:#78350f;line-height:1.55">
-            Bald fragt Liftaro mehrere Aufzugsunternehmen parallel nach Alternativangeboten. Die Eckdaten (Preis, Laufzeit, Leistungen) landen automatisch hier — du wählst dann eine Variante aus.
+          <div style="font-size:12.5px;color:#1e3a8a;line-height:1.55">
+            Frag mehrere Aufzugsunternehmen parallel an. Ihre Eckdaten landen hier — du wählst dann die beste Variante per Klick.
           </div>
+        </div>
+        <button id="ahw-partner-anfragen-btn" onclick="openPartnerAnfrageModal()" style="background:var(--dr-blue);color:#fff;border:none;border-radius:8px;padding:11px 14px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 2px rgba(36,86,229,.25),0 6px 18px rgba(36,86,229,.22);transition:all .15s" onmouseover="this.style.background='var(--dr-blue-deep)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='var(--dr-blue)';this.style.transform='translateY(0)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Partner anfragen
+        </button>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 2px 0">
+          <span style="font-family:var(--dr-f-mono);font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Laufende Anfragen</span>
+          <button onclick="refreshAnfragenListForCurrentCheck()" title="Status neu laden" style="background:transparent;border:none;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px" onmouseover="this.style.color='var(--dr-blue)';this.style.background='var(--dr-blue-soft)'" onmouseout="this.style.color='var(--muted)';this.style.background='transparent'">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+            Aktualisieren
+          </button>
+        </div>
+        <div id="ahw-anfragen-list" style="display:flex;flex-direction:column;gap:4px;min-height:24px">
+          <div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Noch keine Anfragen.</div>
         </div>
         <div id="ahw-wartung-manual-hint" style="display:none;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:11.5px;color:var(--text);line-height:1.5">
           <strong style="color:var(--navy)">Dieser Check hat schon manuelle Eckdaten</strong> — Klick unten, um sie anzuzeigen / zu bearbeiten.
         </div>
-        <button onclick="toggleManualAhwWartung(true)" style="background:var(--dr-surface);border:1.5px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:8px;padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .15s" onmouseover="this.style.background='var(--sky)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface)';this.style.borderColor='var(--dr-border-strong)'">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Trotzdem manuell befüllen (Übergang)
+        <button onclick="toggleManualAhwWartung(true)" style="background:transparent;border:1px dashed var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:8px;padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s" onmouseover="this.style.background='var(--sky)';this.style.color='var(--dr-ink)'" onmouseout="this.style.background='transparent';this.style.color='var(--dr-ink-mute)'">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Manuell befüllen (Übergang)
         </button>
       </div>
 
@@ -3486,6 +3499,80 @@ const pdfWorkerReady = Promise.resolve();</script>
         <button id="erSendBtn" onclick="doSendEmailReply()" style="background:#0e6655;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Antwort senden
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     V12.14 Phase 2: Modal "Partner-Anfrage starten"
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="partnerAnfrageModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:5090;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px">
+  <div style="background:#fff;border-radius:16px;width:min(720px,95vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--dr-navy,#0e2440);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;letter-spacing:-.01em">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <span>Partner-Anfrage starten</span>
+        </div>
+        <div style="color:rgba(255,255,255,.65);font-size:11.5px;margin-top:2px">Eine Anfrage pro gewählten Partner — Antworten erscheinen automatisch im Check</div>
+      </div>
+      <button onclick="closePartnerAnfrageModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1">
+      <!-- Objekt-Daten (anonymisiert) -->
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Objekt-Eckdaten (gehen an Partner)</div>
+        <div style="display:grid;grid-template-columns:1fr 100px 1fr;gap:8px">
+          <input type="text" id="pa_objekt_strasse" placeholder="Straße" style="border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--sky)">
+          <input type="text" id="pa_objekt_plz" placeholder="PLZ" style="border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--sky)">
+          <input type="text" id="pa_objekt_ort" placeholder="Ort" style="border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--sky)">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <input type="text" id="pa_anzahl_aufzuege" placeholder="Anzahl Aufzüge" style="border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--sky)">
+          <input type="text" id="pa_anlagenart" placeholder="Anlagenart (z.B. Personenaufzug)" style="border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--sky)">
+        </div>
+      </div>
+      <!-- Leistungsumfang -->
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Leistungsumfang (Soll-Beschreibung für Partner)</label>
+        <textarea id="pa_leistungsumfang" rows="3" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:12.5px;line-height:1.5;background:var(--sky);resize:vertical"></textarea>
+      </div>
+      <!-- Optionen -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Antwortfrist (Tage)</label>
+          <input type="number" id="pa_deadline_days" value="5" min="1" max="30" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--sky)">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Vorliegendes Angebot</label>
+          <label style="display:flex;align-items:center;gap:8px;background:var(--sky);border:1.5px solid var(--border);border-radius:7px;padding:7px 9px;cursor:pointer;font-size:12px">
+            <input type="checkbox" id="pa_include_pdf" style="width:14px;height:14px;accent-color:var(--dr-blue)">
+            <span>PDF an Partner mitsenden</span>
+          </label>
+        </div>
+      </div>
+      <!-- Partner-Auswahl -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Partner auswählen <span style="background:var(--dr-blue);color:#fff;border-radius:999px;padding:1px 7px;font-size:9.5px;margin-left:4px">Multi-Select</span></div>
+        </div>
+        <div id="pa_partner_list" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">
+          <div style="padding:18px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px">Lade Partner-Pool …</div>
+        </div>
+      </div>
+      <div id="pa_status" style="font-size:12px;min-height:16px"></div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc">
+      <div style="font-size:11px;color:var(--muted);line-height:1.4">Anfragen werden per Email mit One-Time-Link verschickt.<br>Antworten erscheinen automatisch im Check.</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="closePartnerAnfrageModal()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
+        <button id="pa_send_btn" onclick="submitPartnerAnfrageModal()" style="background:var(--dr-blue);border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Anfragen senden
         </button>
       </div>
     </div>
@@ -4668,7 +4755,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.13';
+const APP_VERSION = 'V12.14';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -9813,6 +9900,275 @@ function toggleManualAhwWartung(showManual) {
   window._ahwWartungManualOpen = !!showManual;
 }
 
+// ════════════════════════════════════════════════════════════════
+//  V12.14 Phase 2: Partner-Anfragen UI
+//  — Partner-Pool laden, Modal mit Multi-Select, POST Anfragen,
+//    Status-Liste pro Check, "Variante übernehmen" füllt Felder.
+// ════════════════════════════════════════════════════════════════
+let _partnerPoolCache = null;          // [{partner_id, name, email_kontakt, ...}]
+let _currentCheckAnfragen = [];        // [{...anfrage}] der gerade geladenen
+let _partnerAnfrageModalCtx = null;    // { checkId, returnFocusEl }
+
+async function loadPartnerPool(forceRefresh) {
+  if (_partnerPoolCache && !forceRefresh) return _partnerPoolCache;
+  try {
+    const recs = await atRead('Partner-Pool', null, { sort: false });
+    _partnerPoolCache = (recs || [])
+      .map(r => ({ _id: r.id, ...r.fields }))
+      .filter(p => p.active !== false && p.partner_id && p.name && p.email_kontakt)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return _partnerPoolCache;
+  } catch (e) {
+    console.warn('loadPartnerPool:', e.message);
+    return [];
+  }
+}
+
+async function loadAnfragenForCheck(checkId) {
+  if (!checkId) return [];
+  if (!APP_KEYS.partnerApiUrl || !APP_KEYS.partnerApiSecret) {
+    console.warn('partnerApiUrl/Secret nicht konfiguriert');
+    return [];
+  }
+  try {
+    const url = `${APP_KEYS.partnerApiUrl.replace(/\/+$/,'')}/api/checks/${encodeURIComponent(checkId)}/anfragen`;
+    const resp = await fetch(url, { headers: { 'X-App-Secret': APP_KEYS.partnerApiSecret } });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data.anfragen || []).sort((a, b) => String(b.sent_at||'').localeCompare(String(a.sent_at||'')));
+  } catch (e) {
+    console.warn('loadAnfragenForCheck:', e.message);
+    return [];
+  }
+}
+
+async function createPartnerAnfrage(partner, opts) {
+  if (!APP_KEYS.partnerApiUrl || !APP_KEYS.partnerApiSecret) {
+    throw new Error('Partner-API nicht konfiguriert (Master-Base partnerApiUrl/Secret fehlt)');
+  }
+  const url = `${APP_KEYS.partnerApiUrl.replace(/\/+$/,'')}/api/partner-anfragen`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.partnerApiSecret },
+    body: JSON.stringify({
+      check_id:                 opts.checkId,
+      partner_id:               partner.partner_id,
+      partner_name:             partner.name,
+      partner_email:            partner.email_kontakt,
+      deadline_days:            opts.deadlineDays || 5,
+      include_vorliegendes_pdf: !!opts.includeVorliegendes,
+      check_snapshot: {
+        objekt_plz:           opts.objektPlz || '',
+        objekt_ort:           opts.objektOrt || '',
+        objekt_strasse:       opts.objektStrasse || '',
+        anzahl_aufzuege:      opts.anzahlAufzuege || '',
+        anlagenart:           opts.anlagenart || '',
+        leistungsumfang_text: opts.leistungsumfang || '',
+      },
+    }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${t.slice(0,200)}`);
+  }
+  return resp.json();
+}
+
+// Modal öffnen: Partner-Pool laden, Defaults aus Check vorausfüllen, anzeigen
+async function openPartnerAnfrageModal() {
+  const checkId = (document.getElementById('f_requestid')?.value || '').trim();
+  if (!checkId) { showToast('Erst Check speichern (Anfrage-Nummer fehlt)', 'error'); return; }
+  if (!APP_KEYS.partnerApiUrl || !APP_KEYS.partnerApiSecret) {
+    showToast('Partner-API nicht konfiguriert (Master-Base partnerApiUrl/Secret fehlt)', 'error', 5000);
+    return;
+  }
+  _partnerAnfrageModalCtx = { checkId };
+  const modal = document.getElementById('partnerAnfrageModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  // Felder vorausfüllen: aus dem aktuellen Check übernehmen
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const standort = g('f_standort') || g('wt_standort') || '';
+  // Versuche PLZ + Ort aus Standort zu extrahieren
+  let plz = '', ort = '', strasse = '';
+  const m = standort.match(/^(.+?),\s*(\d{5})\s+(.+?)$/) ||
+           standort.match(/^(.+?)\s+(\d{5})\s+(.+?)$/);
+  if (m) { strasse = m[1].trim(); plz = m[2].trim(); ort = m[3].trim(); }
+  document.getElementById('pa_objekt_strasse').value = strasse;
+  document.getElementById('pa_objekt_plz').value     = plz;
+  document.getElementById('pa_objekt_ort').value     = ort;
+  document.getElementById('pa_anzahl_aufzuege').value = g('wt_anzahl_aufzuege') || g('f_anzahl_aufzuege') || '1';
+  document.getElementById('pa_anlagenart').value     = g('f_anlage') || 'Personenaufzug';
+  // Leistungsumfang aus vorliegendem Vertrag ableiten
+  const leistungsTeile = [];
+  if (document.getElementById('wv_anzahl')?.value) leistungsTeile.push(`${g('wv_anzahl')} Wartungen pro Jahr`);
+  if (document.getElementById('wv_typ')?.value)    leistungsTeile.push(`Wartungstyp: ${g('wv_typ')}`);
+  if (document.getElementById('wv_tuev_begl')?.checked)  leistungsTeile.push('TÜV-Begleitung');
+  if (document.getElementById('wv_tuev_pruef')?.checked) leistungsTeile.push('TÜV-Prüfung');
+  if (document.getElementById('wv_notruf')?.checked)     leistungsTeile.push('Notrufservice');
+  if (document.getElementById('wv_entstoer')?.checked)   leistungsTeile.push('Entstörung inkl.');
+  document.getElementById('pa_leistungsumfang').value = leistungsTeile.join(', ') || 'Standard-Wartung 2× pro Jahr inkl. Notruf';
+  document.getElementById('pa_deadline_days').value = '5';
+  document.getElementById('pa_include_pdf').checked = false;
+  document.getElementById('pa_status').textContent = '';
+  // Partner-Pool laden
+  const listEl = document.getElementById('pa_partner_list');
+  listEl.innerHTML = '<div style="padding:18px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px"><span class="spin" style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>Lade Partner-Pool …</div>';
+  const partners = await loadPartnerPool(true);
+  if (!partners.length) {
+    listEl.innerHTML = `<div style="padding:16px;background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:8px;font-size:12.5px;color:#9A3412;line-height:1.55">
+      <strong>Keine Partner im Pool.</strong><br>Lege in der App-Base, Tabelle <code style="background:#fff;padding:1px 5px;border-radius:3px">Partner-Pool</code>, mindestens einen aktiven Partner an (partner_id, name, email_kontakt, active=✓).
+    </div>`;
+    return;
+  }
+  listEl.innerHTML = partners.map(p => `
+    <label style="display:flex;gap:10px;align-items:flex-start;background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--dr-blue-light)';this.style.background='var(--dr-blue-soft)'" onmouseout="this.style.borderColor='var(--dr-border)';this.style.background='var(--dr-surface)'">
+      <input type="checkbox" class="pa-partner-cb" data-pid="${_esc(p.partner_id)}" style="margin-top:3px;cursor:pointer;width:16px;height:16px;accent-color:var(--dr-blue)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--dr-ink);letter-spacing:-.01em">${_esc(p.name || p.partner_id)}</div>
+        <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px;font-family:var(--dr-f-mono)">${_esc(p.email_kontakt || '–')}</div>
+        ${p.plz_region ? `<div style="font-size:10.5px;color:var(--dr-ink-mute);margin-top:2px">PLZ: ${_esc(p.plz_region)}</div>` : ''}
+        ${p.spezialisierungen ? `<div style="font-size:10.5px;color:var(--dr-ink-mute);margin-top:2px">Spezialisiert auf: ${_esc(p.spezialisierungen)}</div>` : ''}
+      </div>
+    </label>
+  `).join('');
+}
+
+function closePartnerAnfrageModal() {
+  const m = document.getElementById('partnerAnfrageModal');
+  if (m) m.style.display = 'none';
+  _partnerAnfrageModalCtx = null;
+}
+
+async function submitPartnerAnfrageModal() {
+  if (!_partnerAnfrageModalCtx) return;
+  const checkId = _partnerAnfrageModalCtx.checkId;
+  const checkboxes = Array.from(document.querySelectorAll('.pa-partner-cb:checked'));
+  if (!checkboxes.length) { showToast('Bitte mindestens einen Partner wählen', 'error'); return; }
+  const partners = (_partnerPoolCache || []).filter(p => checkboxes.some(cb => cb.dataset.pid === p.partner_id));
+  if (!partners.length) { showToast('Partner nicht im Pool gefunden', 'error'); return; }
+  const opts = {
+    checkId,
+    objektStrasse:     (document.getElementById('pa_objekt_strasse').value || '').trim(),
+    objektPlz:         (document.getElementById('pa_objekt_plz').value || '').trim(),
+    objektOrt:         (document.getElementById('pa_objekt_ort').value || '').trim(),
+    anzahlAufzuege:    (document.getElementById('pa_anzahl_aufzuege').value || '').trim(),
+    anlagenart:        (document.getElementById('pa_anlagenart').value || '').trim(),
+    leistungsumfang:   (document.getElementById('pa_leistungsumfang').value || '').trim(),
+    deadlineDays:      parseInt(document.getElementById('pa_deadline_days').value || '5', 10) || 5,
+    includeVorliegendes: !!document.getElementById('pa_include_pdf').checked,
+  };
+  const statusEl = document.getElementById('pa_status');
+  const sendBtn  = document.getElementById('pa_send_btn');
+  sendBtn.disabled = true;
+  statusEl.innerHTML = '<span style="color:var(--dr-blue)">⏳ Sende Anfragen …</span>';
+  let okCount = 0, failCount = 0;
+  for (const p of partners) {
+    try {
+      await createPartnerAnfrage(p, opts);
+      okCount++;
+    } catch(e) {
+      console.warn('Anfrage an', p.partner_id, 'fehlgeschlagen:', e.message);
+      failCount++;
+    }
+  }
+  if (okCount > 0) {
+    statusEl.innerHTML = `<span style="color:var(--dr-green-deep);font-weight:600">✓ ${okCount} Anfrage${okCount===1?'':'n'} versendet${failCount?` · ${failCount} Fehlschlag`:''}</span>`;
+    showToast(`${okCount} Partner-Anfrage${okCount===1?'':'n'} versendet`, 'success', 3000);
+    setTimeout(() => { closePartnerAnfrageModal(); refreshAnfragenListForCurrentCheck(); }, 1200);
+  } else {
+    statusEl.innerHTML = `<span style="color:#9F1B1F">⚠ Alle ${failCount} Anfragen fehlgeschlagen</span>`;
+    sendBtn.disabled = false;
+  }
+}
+
+async function refreshAnfragenListForCurrentCheck() {
+  const checkId = (document.getElementById('f_requestid')?.value || '').trim();
+  const listEl = document.getElementById('ahw-anfragen-list');
+  if (!listEl) return;
+  if (!checkId) { listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Check-ID fehlt — erst speichern.</div>'; return; }
+  if (!APP_KEYS.partnerApiUrl || !APP_KEYS.partnerApiSecret) {
+    listEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Partner-API nicht konfiguriert.</div>';
+    return;
+  }
+  listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px"><span class="spin" style="display:inline-block;width:11px;height:11px;border:2px solid #ccc;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></span>Lade Anfragen …</div>';
+  _currentCheckAnfragen = await loadAnfragenForCheck(checkId);
+  if (!_currentCheckAnfragen.length) {
+    listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Noch keine Anfragen — klick „🚀 Partner anfragen".</div>';
+    return;
+  }
+  listEl.innerHTML = _currentCheckAnfragen.map(_renderAnfrageCard).join('');
+}
+
+function _renderAnfrageCard(a) {
+  const stMap = {
+    gesendet:  { col: '#2456E5', bg: 'var(--dr-blue-soft)',  label: 'Versendet' },
+    geoeffnet: { col: '#D97706', bg: 'var(--dr-amber-soft)', label: 'Geöffnet' },
+    angeboten: { col: '#16A34A', bg: 'var(--dr-green-soft)', label: 'Angebot da' },
+    abgelehnt: { col: '#9F1B1F', bg: '#FBE5E6',              label: 'Abgelehnt' },
+    timeout:   { col: '#5C6E87', bg: 'var(--dr-surface-alt)', label: 'Timeout' },
+  };
+  const s = stMap[a.status] || stMap.gesendet;
+  const sentAtShort = a.sent_at ? new Date(a.sent_at).toLocaleString('de-DE', { dateStyle:'short', timeStyle:'short' }) : '–';
+  const deadlineShort = a.deadline_at ? new Date(a.deadline_at).toLocaleDateString('de-DE') : '–';
+  const idEsc = String(a._id || '').replace(/'/g,"\\'");
+  const isAngeboten = a.status === 'angeboten';
+  const tokenLanding = a.token ? `${(APP_KEYS.landingBaseUrl || 'https://check.liftaro.de/partner/anfrage.html')}?t=${a.token}` : '';
+  return `
+    <div style="background:#fff;border:1px solid var(--dr-border);border-left:3px solid ${s.col};border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;line-height:1.45">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <strong style="color:var(--dr-ink);font-size:12.5px">${_esc(a.partner_name || a.partner_id || '?')}</strong>
+        <span style="background:${s.bg};color:${s.col};border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">${s.label}</span>
+      </div>
+      <div style="color:var(--muted);font-family:var(--dr-f-mono);font-size:10.5px">Sent: ${sentAtShort} · Frist: ${deadlineShort}</div>
+      ${isAngeboten ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--dr-border);font-size:11.5px;color:var(--dr-ink)">
+          ${a.response_preis_netto ? `<div><strong>${_esc(a.response_preis_netto)} €</strong> netto / Jahr</div>` : ''}
+          ${a.response_laufzeit_jahre ? `<div>Laufzeit: ${_esc(a.response_laufzeit_jahre)} Jahre</div>` : ''}
+          ${a.response_kuendigungsfrist_monate ? `<div>Kündigungsfrist: ${_esc(a.response_kuendigungsfrist_monate)} Monate</div>` : ''}
+        </div>
+        <button onclick="applyPartnerAnfrageVariant('${idEsc}')" style="margin-top:8px;width:100%;background:var(--dr-green);color:#fff;border:none;border-radius:6px;padding:7px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer">✓ Diese Variante übernehmen</button>
+      ` : ''}
+      ${tokenLanding && !isAngeboten ? `
+        <div style="margin-top:6px"><a href="${_esc(tokenLanding)}" target="_blank" style="font-size:10.5px;color:var(--dr-blue);text-decoration:none;font-family:var(--dr-f-mono)">↗ Landing-Link öffnen</a></div>
+      ` : ''}
+    </div>`;
+}
+
+function applyPartnerAnfrageVariant(anfrageId) {
+  const a = (_currentCheckAnfragen || []).find(x => x._id === anfrageId);
+  if (!a) { showToast('Anfrage nicht gefunden', 'error'); return; }
+  if (a.status !== 'angeboten') { showToast('Anfrage hat noch kein Angebot', 'error'); return; }
+  // Übernehme Eckdaten in die Vergleichstabelle (wa_*) UND in AHW-Wartung (wt_*)
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && String(v).trim() !== '') el.value = String(v); };
+  const setCb = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  // Vergleichstabelle Alternativ-Spalte
+  set('wa_anzahl',      a.response_wartungen_pro_jahr);
+  set('wa_kosten',      a.response_preis_netto);
+  set('wa_laufzeit',    a.response_laufzeit_jahre);
+  set('wa_kuendfrist',  a.response_kuendigungsfrist_monate);
+  set('wa_typ',         a.response_vollwartung ? 'Vollwartung' : 'Systemwartung');
+  setCb('wa_tuev_begl',  a.response_tuev_begl);
+  setCb('wa_tuev_pruef', a.response_tuev_pruef);
+  setCb('wa_entstoer',   a.response_entstoerung);
+  setCb('wa_notruf',     a.response_notruf);
+  // AHW-Wartung-Sidebar (für PDF-Generierung)
+  set('wt_wartungen_pro_jahr', a.response_wartungen_pro_jahr);
+  set('wt_jahresbeitrag',      a.response_preis_netto);
+  setCb('wt_vollwartung', a.response_vollwartung);
+  setCb('wt_notruf',      a.response_notruf);
+  if (a.response_kommentar) {
+    const erg = document.getElementById('wt_ergaenzungen');
+    if (erg) erg.value = String(a.response_kommentar);
+  }
+  // Calc + Save-Toast
+  if (typeof calcSavings === 'function') calcSavings();
+  if (typeof recomputeWartungKuendigung === 'function') {
+    try { recomputeWartungKuendigung('a'); } catch (_) {}
+  }
+  showToast(`Variante von ${a.partner_name || a.partner_id} übernommen — Vergleichstabelle gefüllt`, 'success', 3500);
+}
+
 // Prüft, ob im aktuellen Check bereits manuelle Wartungs-Daten erfasst sind.
 function _hasAhwWartungManualData() {
   const indicatorIds = ['wt_firma', 'wt_anschrift', 'wt_jahresbeitrag', 'wt_standort'];
@@ -9834,6 +10190,10 @@ function _initAhwWartungView() {
   ph.style.display   = 'flex';
   body.style.display = 'none';
   window._ahwWartungManualOpen = false;
+  // V12.14 Phase 2: Laufende Anfragen für diesen Check laden
+  if (typeof refreshAnfragenListForCurrentCheck === 'function') {
+    setTimeout(refreshAnfragenListForCurrentCheck, 100);
+  }
 }
 
 async function previewAHWWartung() {
