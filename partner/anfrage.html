@@ -429,21 +429,44 @@
     s.style.display = text ? 'block' : 'none';
   }
 
-  // 1) Token aus URL extrahieren
+  // 1) Token aus URL extrahieren — toleriert query (?t=…), hash (#t=…) und unsaubere Zeichen
   function getToken() {
-    const url = new URL(location.href);
-    return (url.searchParams.get('t') || '').trim();
+    let t = '';
+    try {
+      const url = new URL(location.href);
+      t = url.searchParams.get('t') || '';
+    } catch(_) {}
+    if (!t) {
+      // Fallback: Hash-Parameter (z.B. wenn URL aus Markdown-Bold/-Link kopiert wurde)
+      const h = String(location.hash || '').replace(/^#/, '');
+      const m = h.match(/(?:^|[?&])t=([^&]+)/);
+      if (m) t = decodeURIComponent(m[1]);
+    }
+    if (!t) {
+      // Letzter Fallback: irgendwo im Querystring/Hash nach t=… suchen
+      const raw = location.search + location.hash;
+      const m = raw.match(/[?&#]t=([A-Za-z0-9_-]+)/);
+      if (m) t = m[1];
+    }
+    // Trailing-Müll abschneiden (z.B. ** aus Markdown-Bold, Klammern, Punkte)
+    t = String(t).trim().replace(/[^A-Za-z0-9_-]+$/, '').replace(/^[^A-Za-z0-9_-]+/, '');
+    return t;
   }
 
   // 2) Anfrage laden
   async function loadAnfrage() {
     _token = getToken();
     if (!_token) {
-      setStatus('⚠ Kein Token in der URL — Link unvollständig.', 'error');
+      setStatus('⚠ Kein Token in der URL — Link unvollständig. (URL: ' + esc(location.href) + ')', 'error');
       return;
     }
-    if (!/^[A-Za-z0-9_-]{16,64}$/.test(_token)) {
-      setStatus('⚠ Token-Format ungültig.', 'error');
+    // Großzügige Validierung — nur Mindestlänge und kein offensichtlicher Schrott
+    if (_token.length < 16 || _token.length > 128) {
+      setStatus(`⚠ Token-Länge ungewöhnlich (${_token.length} Zeichen): ${esc(_token.slice(0,12))}…`, 'error');
+      return;
+    }
+    if (!/^[A-Za-z0-9_-]+$/.test(_token)) {
+      setStatus(`⚠ Token enthält unerlaubte Zeichen: ${esc(_token.slice(0,16))}…`, 'error');
       return;
     }
     try {
