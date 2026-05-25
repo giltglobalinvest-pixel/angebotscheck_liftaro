@@ -340,8 +340,13 @@
         </div>
 
         <div style="background:var(--surface-alt);border-left:3px solid var(--green);border-radius:6px;padding:12px 14px;margin:8px 0">
-          <strong style="color:var(--ink)">Phase 3 — Finaler Vertrag</strong><br>
-          Sie erstellen den finalen Wartungsvertrag — diesmal mit der echten HV als Adressat — und schicken ihn direkt zur Unterschrift. <strong>Der Vertrag entsteht zwischen Ihnen und der HV.</strong> Liftaro tritt heraus, erhält eine Vermittlungsprovision.
+          <strong style="color:var(--ink)">Phase 3 — Finaler Vertrag (über Liftaro)</strong><br>
+          Sie erstellen den finalen Wartungsvertrag — diesmal mit der echten HV als Adressat — und schicken ihn <strong>zurück an Liftaro</strong> (per API <code style="background:var(--blue-soft);padding:1px 5px;border-radius:3px;font-family:var(--f-mono);font-size:11.5px">POST /api/v2/checks/{id}/final-vertrag</code> oder per Email an <a href="mailto:check@liftaro.de" style="color:var(--blue)">check@liftaro.de</a>). <strong>Liftaro leitet ihn an die HV zur Unterschrift weiter.</strong>
+        </div>
+
+        <div style="background:var(--surface-alt);border-left:3px solid var(--navy);border-radius:6px;padding:12px 14px;margin:8px 0">
+          <strong style="color:var(--ink)">Phase 4 — Unterschrift + Aktivierung</strong><br>
+          HV unterschreibt → Liftaro leitet den unterschriebenen Vertrag an Sie zurück. <strong>Der Vertrag entsteht zwischen Ihnen und der HV.</strong> Liftaro tritt heraus, erhält die Vermittlungsprovision. Sie kommunizieren ab jetzt direkt mit der HV zur Wartungsausführung.
         </div>
 
         <h3 style="margin:18px 0 8px;font-size:14px;font-weight:700;color:var(--ink)">⚖️ Rechtlich</h3>
@@ -349,6 +354,7 @@
           <li>Liftaro ist <strong>nur Vermittler</strong> — wird nicht selbst Vertragspartner.</li>
           <li>Der Platzhalter-Adressat „Liftaro GmbH (vermittelnd)" dient ausschließlich der Anonymisierung in der Angebotsphase.</li>
           <li>Bei Auftragserteilung erhalten Sie die HV-Daten + erstellen den finalen Vertrag.</li>
+          <li><strong>Während der gesamten Anbahnung und Vertragsschließung läuft die Kommunikation ÜBER Liftaro</strong> — bitte nicht direkt mit der HV kommunizieren bis Vertrag unterschrieben.</li>
           <li>Vermittlungsprovision wird im Rahmenvertrag zwischen Liftaro und Ihnen geregelt.</li>
         </ul>
 
