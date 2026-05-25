@@ -2607,8 +2607,8 @@ const pdfWorkerReady = Promise.resolve();</script>
                 </div>
               </div>
               <!-- V12.23: Vergütungs-Mode-Switch — Erfolgsbasiert vs Service-Pauschale -->
-              <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:12px">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div id="lv_verguetung_section_w" style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:12px">
+                <div id="lv_mode_switch_row_w" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                   <label style="white-space:nowrap;font-weight:600;color:var(--text)">Liftaro-Vergütung:</label>
                   <div style="display:inline-flex;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:2px;gap:0">
                     <button type="button" id="lv_mode_erfolg_w" onclick="setLiftaroVerguetungMode('w','erfolg')"
@@ -2616,6 +2616,11 @@ const pdfWorkerReady = Promise.resolve();</script>
                     <button type="button" id="lv_mode_pauschale_w" onclick="setLiftaroVerguetungMode('w','pauschale')"
                       style="border:none;background:transparent;color:var(--muted);border-radius:6px;padding:5px 13px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer">Service-Pauschale</button>
                   </div>
+                </div>
+
+                <!-- V12.25: PDF-Only Summary — wird nur während PDF-Gen eingeblendet; zeigt sauber den gewählten Modus -->
+                <div id="lv_pdf_summary_w" style="display:none;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;line-height:1.6">
+                  <div id="lv_pdf_summary_w_body"></div>
                 </div>
 
                 <!-- Modus: Erfolgsbasiert -->
@@ -5042,7 +5047,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.24';
+const APP_VERSION = 'V12.25';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6354,6 +6359,59 @@ async function generateEmailAnfrageNr() {
     }
   } catch(e) { console.warn('generateEmailAnfrageNr lookup failed:', e.message); }
   return String(maxNr + 1);
+}
+
+// V12.25: PDF-Summary für Vergütung — wird vor html2canvas eingeblendet, nach Restore wieder versteckt
+function _renderLvPdfSummary(show) {
+  const sumEl  = document.getElementById('lv_pdf_summary_w');
+  const bodyEl = document.getElementById('lv_pdf_summary_w_body');
+  if (!sumEl || !bodyEl) return;
+  if (!show) { sumEl.style.display = 'none'; return; }
+  const mode = window._liftaroVerguetungModeW || 'erfolg';
+  const g = id => (document.getElementById(id)?.value || '').toString().trim();
+  // Laufzeit-Jahre aus wa_laufzeit ableiten
+  const lzMatch = String(g('wa_laufzeit') || '').match(/(\d+)/);
+  const laufzeitJahre = lzMatch ? parseInt(lzMatch[1], 10) : 0;
+  // Aktuell berechneter Wert
+  const liftaroJahrText = (document.getElementById('savings-liftaro-w')?.textContent || '– €').trim();
+  if (mode === 'pauschale') {
+    const total = (laufzeitJahre > 0) ? ` · über ${laufzeitJahre} Jahre = ${(function(){
+      const num = parsePrice(g('liftaro_jahresgebuehr_w'));
+      return isNaN(num) ? '–' : formatEuro(num * laufzeitJahre);
+    })()}` : '';
+    bodyEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+        <strong style="color:var(--text);font-size:14px">Service-Pauschale (Liftaro-Vergütung)</strong>
+        <strong style="color:var(--navy);font-size:15px">${_esc(liftaroJahrText)} / Jahr${_esc(total)}</strong>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);line-height:1.55">
+        <strong style="color:var(--text)">Gegenleistung — Liftaro Service-Paket über die Vertragslaufzeit:</strong>
+        <ul style="margin:4px 0 0;padding-left:18px">
+          <li>Prüfung eingehender Wartungs-/Reparatur-Angebote auf inhaltliche, fachliche und preisliche Plausibilität</li>
+          <li>Beratung zu sonstigen Aufzug-bezogenen Fragen</li>
+          <li>Hinweise zur Betriebssicherheitsverordnung (BetrSichV) und zugehöriger Vorschriften</li>
+        </ul>
+      </div>`;
+  } else {
+    // Erfolgsbasiert
+    const pct = g('liftaro_pct_w') || '50';
+    const eurO = g('liftaro_eur_w');
+    const basisInfo = eurO ? `(absoluter Festbetrag)` : `(${pct} % von Ersparnis)`;
+    const total = (laufzeitJahre > 0 && liftaroJahrText !== '– €') ? ` · über ${laufzeitJahre} J. = ${(function(){
+      // Aus Anzeige-Text Zahl extrahieren ist heikel — wir lassen den Hinweis weg, wenn nicht eindeutig
+      const num = parsePrice(liftaroJahrText);
+      return isNaN(num) ? '–' : formatEuro(num * laufzeitJahre);
+    })()}` : '';
+    bodyEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap">
+        <strong style="color:var(--text);font-size:14px">Erfolgsprämie Liftaro <span style="font-weight:400;color:var(--muted);font-size:12px">${_esc(basisInfo)}</span></strong>
+        <strong style="color:var(--navy);font-size:15px">${_esc(liftaroJahrText)} / Jahr${_esc(total)}</strong>
+      </div>
+      <div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:6px">
+        Vergütung wird einmalig bzw. anteilig nach Vertragsabschluss fällig.
+      </div>`;
+  }
+  sumEl.style.display = 'block';
 }
 
 // V12.23: Vergütungs-Modus-Switch (Wartung) — Erfolgsbasiert vs Service-Pauschale
@@ -9071,7 +9129,14 @@ async function previewErgebnis() {
     document.getElementById('btnSyncWart'),
     document.getElementById('invoiceBtnRow'),
     document.getElementById('vorabcheckLinkBanner'),
+    // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
+    document.getElementById('vertragInvoiceHistory'),
+    document.getElementById('lv_mode_switch_row_w'),
+    document.getElementById('lv_panel_erfolg_w'),
+    document.getElementById('lv_panel_pauschale_w'),
   ];
+  // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
+  _renderLvPdfSummary(true);
   const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
   let restoreLayout = () => {};
 
@@ -9143,6 +9208,8 @@ async function previewErgebnis() {
     if (empTA)  empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
     hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
+    // V12.25: PDF-Summary wieder verstecken
+    if (typeof _renderLvPdfSummary === 'function') _renderLvPdfSummary(false);
   }
 }
 
@@ -9914,7 +9981,14 @@ async function generatePDF() {
     document.getElementById('btnSyncWart'),
     document.getElementById('invoiceBtnRow'),
     document.getElementById('vorabcheckLinkBanner'),
+    // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
+    document.getElementById('vertragInvoiceHistory'),
+    document.getElementById('lv_mode_switch_row_w'),
+    document.getElementById('lv_panel_erfolg_w'),
+    document.getElementById('lv_panel_pauschale_w'),
   ];
+  // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
+  _renderLvPdfSummary(true);
   const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
   let restoreLayout = () => {};
   let canvas;
@@ -9958,6 +10032,7 @@ async function generatePDF() {
     if (empTA) empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
     hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
+    if (typeof _renderLvPdfSummary === 'function') _renderLvPdfSummary(false);
 
     setProgress('PDF wird zusammengestellt …');
     const { PDFDocument } = PDFLib;
@@ -10081,6 +10156,7 @@ async function generatePDF() {
     if (empTA) empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
     hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
+    if (typeof _renderLvPdfSummary === 'function') _renderLvPdfSummary(false);
   }
   btn.disabled = false;
 }
@@ -16782,7 +16858,14 @@ async function buildCheckCoverBlob() {
     document.getElementById('btnSyncWart'),
     document.getElementById('invoiceBtnRow'),
     document.getElementById('vorabcheckLinkBanner'),
+    // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
+    document.getElementById('vertragInvoiceHistory'),
+    document.getElementById('lv_mode_switch_row_w'),
+    document.getElementById('lv_panel_erfolg_w'),
+    document.getElementById('lv_panel_pauschale_w'),
   ];
+  // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
+  _renderLvPdfSummary(true);
   const prev = hideForPdf.map(el => el ? el.style.display : null);
   hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
