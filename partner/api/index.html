@@ -398,12 +398,12 @@
 
       <h2 id="workflow">Workflow</h2>
       <ol>
-        <li>Liftaro-Sachbearbeiter erstellt einen Check und löst eine Partner-Anfrage aus</li>
-        <li>Anfrage wird euch im System sichtbar (über <code>GET /api/v2/checks?status=offen</code>)</li>
-        <li>Eure Software zeigt sie in eurem internen Menü „Liftaro Checks"</li>
-        <li>Ihr pickt ein passendes Angebot aus eurer Offer-DB</li>
-        <li>Submit via <code>POST /api/v2/checks/{id}/offer</code> mit den Eckdaten + optional PDF</li>
-        <li>Liftaro übernimmt euer Angebot automatisch in den Check, vergleicht mit Bestandsvertrag und entscheidet</li>
+        <li><strong>Anfrage</strong>: Liftaro-Sachbearbeiter löst Partner-Anfrage aus → ihr seht sie via Polling oder Webhook (<code>anfrage.created</code>)</li>
+        <li><strong>Angebot abgeben</strong>: Ihr pickt aus eurer Offer-DB ein passendes Angebot + submittet via <code>POST /api/v2/checks/{id}/offer</code> mit Eckdaten + optional PDF.<br>⚠ <strong>Vertragsentwurf bitte mit „Liftaro GmbH (vermittelnd)" als Platzhalter-Adressat ausstellen.</strong></li>
+        <li><strong>HV-Entscheidung</strong>: Liftaro zeigt dem HV alle Varianten. HV wählt eine aus.</li>
+        <li><strong>Auftrag erteilt</strong>: Bei eurer Variante → Webhook <code>anfrage.auftrag_erteilt</code> mit echten HV-Daten (Name, Anschrift, Email, Telefon, Ansprechpartner).</li>
+        <li><strong>Finaler Vertrag</strong>: Ihr erstellt den finalen Wartungsvertrag — diesmal mit der echten HV als Adressat — und schickt ihn direkt zur Unterschrift. <strong>Der Vertrag entsteht zwischen euch und der HV.</strong></li>
+        <li><strong>Provision</strong>: Liftaro tritt aus dem Vertrag heraus, erhält die im Rahmenvertrag vereinbarte Vermittlungsprovision.</li>
       </ol>
 
       <div class="key-banner" id="keyBanner">
@@ -626,7 +626,7 @@
         <li><code>X-Liftaro-Event: anfrage.created</code> — Event-Name</li>
         <li><code>User-Agent: liftaroPartnerApi/1.0 (+https://check.liftaro.de)</code></li>
       </ul>
-      <pre><code><span class="comment"># Body bei "anfrage.created"</span>
+      <pre><code><span class="comment"># Body bei "anfrage.created" (= neue Anfrage von Liftaro)</span>
 {
   <span class="string">"event"</span>:           <span class="string">"anfrage.created"</span>,
   <span class="string">"timestamp"</span>:       <span class="string">"2026-05-25T12:34:56.789Z"</span>,
@@ -641,6 +641,25 @@
   <span class="string">"anlagenart"</span>:      <span class="string">"Personenaufzug"</span>,
   <span class="string">"leistungsumfang_text"</span>: <span class="string">"Standard-Wartung 2x/J inkl. Notruf"</span>,
   <span class="string">"landing_url"</span>:     <span class="string">"https://check.liftaro.de/partner/anfrage.html?t=…"</span>
+}
+
+<span class="comment"># Body bei "anfrage.auftrag_erteilt" (= HV hat zugestimmt, hier die HV-Daten)</span>
+<span class="comment"># → Jetzt finalen Vertrag mit final_hv_* Daten erstellen und an HV schicken</span>
+{
+  <span class="string">"event"</span>:                    <span class="string">"anfrage.auftrag_erteilt"</span>,
+  <span class="string">"timestamp"</span>:                <span class="string">"2026-05-26T09:00:00.000Z"</span>,
+  <span class="string">"anfrage_id"</span>:               <span class="string">"PA-2026-6d0e"</span>,
+  <span class="string">"partner_id"</span>:               <span class="string">"ahw"</span>,
+  <span class="string">"auftrag_erteilt_at"</span>:       <span class="string">"2026-05-26T09:00:00.000Z"</span>,
+  <span class="string">"final_hv_name"</span>:            <span class="string">"Hausverwaltung Müller GmbH"</span>,
+  <span class="string">"final_hv_anschrift"</span>:       <span class="string">"Bahnhofstr. 12, 89075 Ulm"</span>,
+  <span class="string">"final_hv_email"</span>:           <span class="string">"info@hv-mueller.de"</span>,
+  <span class="string">"final_hv_telefon"</span>:         <span class="string">"+49 731 555-123"</span>,
+  <span class="string">"final_hv_ansprechpartner"</span>: <span class="string">"Frau Müller"</span>,
+  <span class="string">"objekt_plz"</span>:               <span class="string">"70173"</span>,
+  <span class="string">"objekt_ort"</span>:               <span class="string">"Stuttgart"</span>,
+  <span class="string">"response_preis_netto"</span>:     <span class="string">"1980.00"</span>,
+  <span class="string">"next_step"</span>:                <span class="string">"Bitte erstellen Sie den finalen Wartungsvertrag mit '…' als Adressat und schicken Sie ihn zur Unterschrift."</span>
 }</code></pre>
 
       <h3>Signature-Verifikation</h3>
