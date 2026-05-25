@@ -3580,17 +3580,20 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div id="pa_status" style="font-size:12px;min-height:16px"></div>
     </div>
-    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc;flex-wrap:wrap">
-      <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
-        <div style="font-size:11px;color:var(--muted);line-height:1.4">Anfragen werden per Email mit One-Time-Link verschickt.<br>Antworten erscheinen automatisch im Check.</div>
-        <button onclick="closePartnerAnfrageModal();setTimeout(openPartnerPoolAdmin,200)" style="background:transparent;border:none;color:var(--dr-blue,#2456E5);font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left;padding:2px 0;display:inline-flex;align-items:center;gap:4px;text-decoration:underline" onmouseover="this.style.color='var(--dr-blue-deep)'" onmouseout="this.style.color='var(--dr-blue)'">📂 Partner-Pool verwalten →</button>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="closePartnerAnfrageModal()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
-        <button id="pa_send_btn" onclick="submitPartnerAnfrageModal()" style="background:var(--dr-blue);border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Anfragen senden
-        </button>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;flex-shrink:0;background:#fafbfc">
+      <div id="pa_footer_status" style="font-size:12px;font-weight:600;text-align:center;min-height:16px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+          <div style="font-size:11px;color:var(--muted);line-height:1.4">Anfragen werden per Email mit One-Time-Link verschickt.<br>Antworten erscheinen automatisch im Check.</div>
+          <button onclick="closePartnerAnfrageModal();setTimeout(openPartnerPoolAdmin,200)" style="background:transparent;border:none;color:var(--dr-blue,#2456E5);font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left;padding:2px 0;display:inline-flex;align-items:center;gap:4px;text-decoration:underline" onmouseover="this.style.color='var(--dr-blue-deep)'" onmouseout="this.style.color='var(--dr-blue)'">📂 Partner-Pool verwalten →</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="closePartnerAnfrageModal()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
+          <button id="pa_send_btn" onclick="submitPartnerAnfrageModal()" style="background:var(--dr-blue);border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Anfragen senden
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -4926,7 +4929,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.18';
+const APP_VERSION = 'V12.19';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10496,12 +10499,22 @@ function closePartnerAnfrageModal() {
 }
 
 async function submitPartnerAnfrageModal() {
-  if (!_partnerAnfrageModalCtx) return;
+  // V12.19: Sofort-Feedback — Toast als Klick-Bestätigung + Console-Log für Diagnose
+  console.log('[Liftaro] submitPartnerAnfrageModal CLICK');
+  showToast('⏳ Anfrage wird gesendet …', 'info', 1800);
+  if (!_partnerAnfrageModalCtx) {
+    showToast('Modal-Kontext verloren — bitte Modal schließen und neu öffnen', 'error', 4000);
+    return;
+  }
   const checkId = _partnerAnfrageModalCtx.checkId;
   const checkboxes = Array.from(document.querySelectorAll('.pa-partner-cb:checked'));
   if (!checkboxes.length) { showToast('Bitte mindestens einen Partner wählen', 'error'); return; }
   const partners = (_partnerPoolCache || []).filter(p => checkboxes.some(cb => cb.dataset.pid === p.partner_id));
-  if (!partners.length) { showToast('Partner nicht im Pool gefunden', 'error'); return; }
+  if (!partners.length) {
+    console.warn('[Liftaro] partner-cache mismatch. Cache:', _partnerPoolCache?.length, 'Selected pids:', checkboxes.map(c => c.dataset.pid));
+    showToast('Partner-Cache leer — Modal schließen und neu öffnen', 'error', 4000);
+    return;
+  }
   const opts = {
     checkId,
     objektStrasse:     (document.getElementById('pa_objekt_strasse').value || '').trim(),
@@ -10515,25 +10528,36 @@ async function submitPartnerAnfrageModal() {
   };
   const statusEl = document.getElementById('pa_status');
   const sendBtn  = document.getElementById('pa_send_btn');
+  const footerStatus = document.getElementById('pa_footer_status');
   sendBtn.disabled = true;
-  statusEl.innerHTML = '<span style="color:var(--dr-blue)">⏳ Sende Anfragen …</span>';
+  sendBtn.textContent = '⏳ Sende …';
+  const setBothStatus = (html) => {
+    if (statusEl) statusEl.innerHTML = html;
+    if (footerStatus) footerStatus.innerHTML = html;
+  };
+  setBothStatus('<span style="color:var(--dr-blue);font-weight:600">⏳ Sende an ' + partners.length + ' Partner …</span>');
   let okCount = 0, failCount = 0;
+  const errors = [];
   for (const p of partners) {
     try {
       await createPartnerAnfrage(p, opts);
+      console.log('[Liftaro] Anfrage an', p.partner_id, 'OK');
       okCount++;
     } catch(e) {
-      console.warn('Anfrage an', p.partner_id, 'fehlgeschlagen:', e.message);
+      console.warn('[Liftaro] Anfrage an', p.partner_id, 'fehlgeschlagen:', e.message);
+      errors.push(`${p.partner_id}: ${e.message}`);
       failCount++;
     }
   }
   if (okCount > 0) {
-    statusEl.innerHTML = `<span style="color:var(--dr-green-deep);font-weight:600">✓ ${okCount} Anfrage${okCount===1?'':'n'} versendet${failCount?` · ${failCount} Fehlschlag`:''}</span>`;
+    setBothStatus(`<span style="color:var(--dr-green-deep);font-weight:600">✓ ${okCount} Anfrage${okCount===1?'':'n'} versendet${failCount?` · ${failCount} Fehlschlag`:''}</span>`);
     showToast(`${okCount} Partner-Anfrage${okCount===1?'':'n'} versendet`, 'success', 3000);
     setTimeout(() => { closePartnerAnfrageModal(); refreshAnfragenListForCurrentCheck(); }, 1200);
   } else {
-    statusEl.innerHTML = `<span style="color:#9F1B1F">⚠ Alle ${failCount} Anfragen fehlgeschlagen</span>`;
+    setBothStatus(`<span style="color:#9F1B1F;font-weight:600">⚠ Alle ${failCount} fehlgeschlagen: ${errors.join(' · ').slice(0, 200)}</span>`);
+    showToast('Alle Anfragen fehlgeschlagen — siehe Status oder Console (F12)', 'error', 5000);
     sendBtn.disabled = false;
+    sendBtn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Anfragen senden';
   }
 }
 
