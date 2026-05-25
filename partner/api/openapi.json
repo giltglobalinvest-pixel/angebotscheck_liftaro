@@ -31,6 +31,12 @@
         "in": "header",
         "name": "X-Partner-Key",
         "description": "Dauerhafter API-Key, von Liftaro vergeben. Wird in der Liftaro-Admin (Partner-Pool) als `api_key` gespeichert."
+      },
+      "appSecret": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-App-Secret",
+        "description": "Shared Secret zwischen Liftaro-Frontend und diesem Backend. Nur für Liftaro-interne Endpoints. Partner haben keinen Zugriff."
       }
     },
     "schemas": {
@@ -264,6 +270,38 @@
           "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "409": { "description": "Status bereits final (angeboten oder abgelehnt)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "410": { "description": "Anfrage ist abgelaufen (timeout)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/partner-anfragen/{anfrage_id}/auftrag": {
+      "post": {
+        "tags": ["Anfragen"],
+        "summary": "Auftrag erteilen (Liftaro → Partner, intern)",
+        "description": "**Wird von Liftaro aufgerufen, NICHT vom Partner.** Sobald die HV die Variante eines Partners angenommen hat, schickt Liftaro die echten HV-Daten an den Partner. Backend setzt `auftrag_erteilt_at` + `final_hv_*` Felder und löst einen Webhook `anfrage.auftrag_erteilt` an den Partner aus.\n\n**Authentifizierung:** `X-App-Secret` (Liftaro-Backend). Partner erhalten die Auftragsdaten via Webhook oder beim nächsten `GET /api/v2/checks/{id}`.",
+        "security": [{ "appSecret": [] }],
+        "parameters": [
+          { "name": "anfrage_id", "in": "path", "required": true, "schema": { "type": "string", "example": "PA-2026-6d0e" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["final_hv_name"],
+            "properties": {
+              "final_hv_name":            { "type": "string", "example": "Hausverwaltung Müller GmbH" },
+              "final_hv_anschrift":       { "type": "string", "example": "Bahnhofstr. 12, 89075 Ulm" },
+              "final_hv_email":           { "type": "string", "format": "email", "example": "info@hv-mueller.de" },
+              "final_hv_telefon":         { "type": "string", "example": "+49 731 555-123" },
+              "final_hv_ansprechpartner": { "type": "string", "example": "Frau Müller" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "Auftrag erteilt, Webhook ausgelöst (falls webhook_url gesetzt)", "content": { "application/json": { "example": { "ok": true, "anfrage_id": "PA-2026-6d0e", "auftrag_erteilt_at": "2026-05-26T09:00:00.000Z", "webhook_sent": true } } } },
+          "400": { "description": "final_hv_name fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "X-App-Secret fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Status nicht angeboten ODER Auftrag bereits erteilt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
