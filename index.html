@@ -5047,7 +5047,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.28';
+const APP_VERSION = 'V12.29';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -9233,6 +9233,10 @@ async function previewErgebnis() {
     document.getElementById('lv_mode_switch_row_w'),
     document.getElementById('lv_panel_erfolg_w'),
     document.getElementById('lv_panel_pauschale_w'),
+    // V12.29: Mobile-only Inline-PDF-Viewer NIE in die generierte PDF rendern
+    document.getElementById('mobileResultViewer'),
+    document.getElementById('mobileVorliegendViewer'),
+    document.getElementById('mobileAlternativViewer'),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -10103,6 +10107,10 @@ async function generatePDF() {
     document.getElementById('lv_mode_switch_row_w'),
     document.getElementById('lv_panel_erfolg_w'),
     document.getElementById('lv_panel_pauschale_w'),
+    // V12.29: Mobile-only Inline-PDF-Viewer NIE in die generierte PDF rendern
+    document.getElementById('mobileResultViewer'),
+    document.getElementById('mobileVorliegendViewer'),
+    document.getElementById('mobileAlternativViewer'),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -16980,6 +16988,10 @@ async function buildCheckCoverBlob() {
     document.getElementById('lv_mode_switch_row_w'),
     document.getElementById('lv_panel_erfolg_w'),
     document.getElementById('lv_panel_pauschale_w'),
+    // V12.29: Mobile-only Inline-PDF-Viewer NIE in die generierte PDF rendern
+    document.getElementById('mobileResultViewer'),
+    document.getElementById('mobileVorliegendViewer'),
+    document.getElementById('mobileAlternativViewer'),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -16989,10 +17001,14 @@ async function buildCheckCoverBlob() {
   const restoreLayout = _forcePdfLayout();
   try {
     const _isMob3 = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
+    // V12.29: scrollHeight auf Mobile auf 6000px kappen (sonst crasht html2canvas
+    // bei sehr langen Formularen mit eingeblendeten Sub-Sections auf iOS Safari).
+    const _maxH = _isMob3 ? 6000 : printArea.scrollHeight;
+    const _useH = Math.min(printArea.scrollHeight, _maxH);
     const canvas = await html2canvas(printArea, {
       scale: _isMob3 ? 1 : 2,
       useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
-      width: printArea.scrollWidth, height: printArea.scrollHeight,
+      width: printArea.scrollWidth, height: _useH,
       windowWidth: 1400, windowHeight: 2000,
       ignoreElements: (el) => {
         if (!el || !el.classList) return false;
