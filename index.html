@@ -2825,13 +2825,21 @@ const pdfWorkerReady = Promise.resolve();</script>
 
         <!-- Ergebnis Liftaro -->
         <div class="section" id="section-ergebnis" style="margin-top:20px">
-          <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
-            Ergebnis Liftaro
-            <button id="btnEmpfehlung" onclick="requireApiKey(generateEmpfehlung)"
-              style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;
-              font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer"
-              onmouseover="this.style.background='var(--green2)'"
-              onmouseout="this.style.background='var(--green)'">✨ Generieren</button>
+          <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <span>Ergebnis Liftaro</span>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <!-- V12.35: Optionaler Ergebnis-Block in der PDF -->
+              <label id="ergebnisPdfToggleRow" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;color:#fff;user-select:none" title="Ergebnis-Liftaro-Block in der generierten PDF anzeigen oder ausblenden">
+                <input type="checkbox" id="cb_ergebnis_in_pdf" checked
+                  style="width:14px;height:14px;margin:0;cursor:pointer;accent-color:var(--green)">
+                In PDF anzeigen
+              </label>
+              <button id="btnEmpfehlung" onclick="requireApiKey(generateEmpfehlung)"
+                style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;
+                font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer"
+                onmouseover="this.style.background='var(--green2)'"
+                onmouseout="this.style.background='var(--green)'">✨ Generieren</button>
+            </div>
           </div>
           <div class="section-inner" style="padding:10px 18px;display:flex;flex-direction:column;gap:10px">
             <div id="f_empfehlung" contenteditable="true"
@@ -5119,7 +5127,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.34';
+const APP_VERSION = 'V12.35';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6232,6 +6240,8 @@ function resetForm() {
   // V12.23: Vergütungs-Modus zurück auf "erfolg" + Pauschale leeren
   const pj = document.getElementById('liftaro_jahresgebuehr_w'); if (pj) pj.value = '';
   if (typeof setLiftaroVerguetungMode === 'function') setLiftaroVerguetungMode('w', 'erfolg');
+  // V12.35: "Ergebnis-Liftaro in PDF anzeigen" zurück auf Default (an)
+  const cbErgPdf = document.getElementById('cb_ergebnis_in_pdf'); if (cbErgPdf) cbErgPdf.checked = true;
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6302,6 +6312,8 @@ function collectFormData() {
     beauftragt_am:  g('f_beauftragt_am'),
     beauftragt_wie: g('f_beauftragt_wie'),
     auftrag_ausgefuehrt: g('f_auftrag_ausgefuehrt'),
+    // V12.35: Ergebnistext in PDF anzeigen
+    ergebnis_in_pdf: (document.getElementById('cb_ergebnis_in_pdf')?.checked ? '1' : '0'),
     // Vertragscheck-Jahresabrechnung
     naechste_abrechnung_am: g('f_naechste_abrechnung_am'),
     letzte_abrechnung_am:   g('f_letzte_abrechnung_am'),
@@ -6958,6 +6970,9 @@ async function loadCheck(data) {
 
   // Ergebnis
   set('f_empfehlung',  data.empfehlung);
+  // V12.35: Checkbox "Ergebnis in PDF" wiederherstellen — Default = an wenn fehlt
+  const _cbErgPdf = document.getElementById('cb_ergebnis_in_pdf');
+  if (_cbErgPdf) _cbErgPdf.checked = (data.ergebnis_in_pdf == null || data.ergebnis_in_pdf === '' || data.ergebnis_in_pdf === '1' || data.ergebnis_in_pdf === true);
 
   // Restore check type and switch tab
   if (data.checkType && data.checkType !== checkType) switchTab(data.checkType);
@@ -10092,23 +10107,39 @@ function _sanitizeClonedDocForCanvas(clonedDoc) {
 // V12.33: Helper — splittet ein langes Canvas in mehrere echte A4-Seiten
 // statt einer überlangen "long page". So skaliert html2canvas in Originalgröße
 // (Texte bleiben groß und lesbar), und das PDF folgt dem A4-Standard.
-async function _canvasToA4Pages(doc, canvas) {
+// V12.35: Option { fitToOnePage: true } — komprimiert proportional auf genau
+// 1 A4-Seite (für Vertragscheck, der lieber kompakt als seitenoptimiert sein soll).
+async function _canvasToA4Pages(doc, canvas, opts) {
   const A4_W = 595.28, A4_H = 841.89;
   if (!canvas || !canvas.width || !canvas.height) return;
-  // Wie viele Canvas-Pixel entsprechen 1 PDF-Punkt (bei A4-Breite voll)?
+  const fitOne = !!(opts && opts.fitToOnePage);
+
+  // ── Mode 1: alles auf EINE A4-Seite proportional skalieren ──
+  if (fitOne) {
+    const png = await doc.embedPng(canvas.toDataURL('image/png'));
+    // Skala so wählen, dass weder Breite noch Höhe überschritten werden
+    const scaleW = A4_W / canvas.width;
+    const scaleH = A4_H / canvas.height;
+    const s = Math.min(scaleW, scaleH);
+    const drawW = canvas.width  * s;
+    const drawH = canvas.height * s;
+    const page = doc.addPage([A4_W, A4_H]);
+    // Horizontal zentriert, vertikal am Top
+    page.drawImage(png, { x: (A4_W - drawW) / 2, y: A4_H - drawH, width: drawW, height: drawH });
+    return;
+  }
+
+  // ── Mode 2: Multi-Page (Standard) — slicen pro A4-Höhe ──
   const pxPerPt = canvas.width / A4_W;
-  // Pixel-Höhe einer einzelnen A4-Seite im Quell-Canvas
   const pageHeightPx = Math.floor(A4_H * pxPerPt);
   const numPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
   for (let i = 0; i < numPages; i++) {
     const sliceY = i * pageHeightPx;
     const sliceH = Math.min(pageHeightPx, canvas.height - sliceY);
-    // Sub-Canvas für genau diese Seite erzeugen
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width  = canvas.width;
     sliceCanvas.height = sliceH;
     const ctx = sliceCanvas.getContext('2d');
-    // Weißer Hintergrund (falls letzte Seite kürzer als A4 → Bottom bleibt weiß)
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
     ctx.drawImage(canvas, 0, -sliceY);
@@ -10116,7 +10147,6 @@ async function _canvasToA4Pages(doc, canvas) {
     const page = doc.addPage([A4_W, A4_H]);
     const drawW = A4_W;
     const drawH = sliceH / pxPerPt;
-    // Bild oben auf der Seite platzieren (y = A4_H - drawH)
     page.drawImage(slicePng, { x: 0, y: A4_H - drawH, width: drawW, height: drawH });
   }
 }
@@ -10207,6 +10237,9 @@ async function generatePDF() {
     document.getElementById('mobileResultViewer'),
     document.getElementById('mobileVorliegendViewer'),
     document.getElementById('mobileAlternativViewer'),
+    // V12.35: Checkbox-Toggle-Row "In PDF anzeigen" + optional Ergebnis-Section
+    document.getElementById('ergebnisPdfToggleRow'),
+    (function(){ var cb = document.getElementById('cb_ergebnis_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-ergebnis') : null; })(),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -10259,8 +10292,9 @@ async function generatePDF() {
     const { PDFDocument } = PDFLib;
     const mergedDoc = await PDFDocument.create();
 
-    // V12.33: Canvas in echte A4-Seiten splitten statt eine überlange Seite
-    await _canvasToA4Pages(mergedDoc, canvas);
+    // V12.35: Vertragscheck → 1 A4 Seite (kompakt), sonst Multi-Page-Split
+    const _fitOnePdf = (checkType === 'wartung');
+    await _canvasToA4Pages(mergedDoc, canvas, { fitToOnePage: _fitOnePdf });
 
     for (const [num, label] of [[2,'Alternativangebot'],[1,'Vorliegendes Angebot']]) {
       if (!uploadedFiles[num]) continue;
@@ -17082,6 +17116,9 @@ async function buildCheckCoverBlob() {
     document.getElementById('mobileResultViewer'),
     document.getElementById('mobileVorliegendViewer'),
     document.getElementById('mobileAlternativViewer'),
+    // V12.35: Checkbox-Toggle-Row "In PDF anzeigen" + optional Ergebnis-Section
+    document.getElementById('ergebnisPdfToggleRow'),
+    (function(){ var cb = document.getElementById('cb_ergebnis_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-ergebnis') : null; })(),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -17110,8 +17147,10 @@ async function buildCheckCoverBlob() {
     restoreLayout();
     const { PDFDocument } = PDFLib;
     const doc = await PDFDocument.create();
-    // V12.33: Canvas in echte A4-Seiten splitten statt eine überlange Seite
-    await _canvasToA4Pages(doc, canvas);
+    // V12.35: Beim Vertragscheck (wartung) immer auf 1 A4-Seite skalieren —
+    // sonst Multi-Page. Reparatur/Rechnung nutzen aktuell auch Multi-Page-Default.
+    const _fitOne = (checkType === 'wartung');
+    await _canvasToA4Pages(doc, canvas, { fitToOnePage: _fitOne });
     const bytes = await doc.save();
     return new Blob([bytes], { type: 'application/pdf' });
   } finally {
