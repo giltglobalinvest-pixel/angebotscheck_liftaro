@@ -3686,8 +3686,12 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">API-Key (Kanal 2)</label>
-          <input type="text" id="pp_api_key" placeholder="leer = nur Email-Kanal" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:12px;background:var(--sky)">
-          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Nur setzen, wenn Partner-Software direkt integriert</div>
+          <div style="display:flex;gap:6px;align-items:stretch">
+            <input type="text" id="pp_api_key" placeholder="🎲 Generieren oder leer lassen" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11.5px;background:var(--sky)">
+            <button type="button" onclick="generatePartnerApiKey()" title="Neuen Zufalls-API-Key generieren (64 hex chars, 256 bit)" style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:7px;padding:8px 11px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">🎲</button>
+            <button type="button" onclick="copyPartnerApiKey()" title="In Zwischenablage kopieren" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 11px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">📋</button>
+          </div>
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Klick 🎲 für neuen Random-Key. Nach Speichern an Partner schicken (Email/Slack).</div>
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Aktivierung</label>
@@ -4922,7 +4926,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.17';
+const APP_VERSION = 'V12.18';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10266,6 +10270,41 @@ async function togglePartnerActive(recId, makeActive) {
     showToast(makeActive ? 'Partner aktiviert' : 'Partner deaktiviert', 'success', 2000);
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// V12.18: API-Key generieren — 32 zufällige Bytes als 64-Zeichen-Hex
+function generatePartnerApiKey() {
+  const inp = document.getElementById('pp_api_key');
+  if (!inp) return;
+  const existing = (inp.value || '').trim();
+  if (existing && !confirm('Bestehenden API-Key überschreiben? Der alte Key wird damit ungültig — wenn der Partner ihn schon nutzt, geht seine Integration kaputt, bis du den neuen Key zuschickst.')) return;
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  inp.value = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  showToast('Neuer API-Key generiert. 1) Speichern · 2) Key kopieren · 3) an Partner schicken.', 'info', 6000);
+}
+
+// V12.18: API-Key in Zwischenablage kopieren
+async function copyPartnerApiKey() {
+  const k = (document.getElementById('pp_api_key').value || '').trim();
+  if (!k) { showToast('Kein Key zum Kopieren — erst 🎲 klicken', 'error'); return; }
+  try {
+    await navigator.clipboard.writeText(k);
+    showToast('✓ API-Key in Zwischenablage (' + k.length + ' Zeichen)', 'success', 2500);
+  } catch (e) {
+    // Fallback: temporäres Textarea
+    const ta = document.createElement('textarea');
+    ta.value = k; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('✓ API-Key in Zwischenablage', 'success', 2500);
+    } catch (e2) {
+      showToast('Kopieren fehlgeschlagen: ' + (e.message || e2.message), 'error');
+    } finally {
+      document.body.removeChild(ta);
+    }
   }
 }
 
