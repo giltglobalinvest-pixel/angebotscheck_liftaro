@@ -2880,6 +2880,10 @@ const pdfWorkerReady = Promise.resolve();</script>
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download
           </button>
+          <button class="btn-preview" id="reanalyzeBtn1" onclick="reanalyzeUploadedFile(1)" title="KI-Analyse erneut ausführen — Felder werden aus dem PDF neu befüllt">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><polyline points="21 3 21 8 16 8"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><polyline points="3 21 3 16 8 16"/></svg>
+            KI neu
+          </button>
         </div>
       </div>
     </div>
@@ -2905,6 +2909,10 @@ const pdfWorkerReady = Promise.resolve();</script>
           <button class="btn-preview" id="downloadBtn2" onclick="downloadUploadedFile(2)">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download
+          </button>
+          <button class="btn-preview" id="reanalyzeBtn2" onclick="reanalyzeUploadedFile(2)" title="KI-Analyse erneut ausführen — Felder werden aus dem PDF neu befüllt">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><polyline points="21 3 21 8 16 8"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><polyline points="3 21 3 16 8 16"/></svg>
+            KI neu
           </button>
         </div>
       </div>
@@ -5047,7 +5055,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.29';
+const APP_VERSION = 'V12.30';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6189,6 +6197,9 @@ function resetForm() {
     document.getElementById('fname' + n).textContent = '';
     const pb = document.getElementById('previewBtn' + n);
     if (pb) pb.classList.remove('visible');
+    // V12.30: Re-Analyze-Button beim Reset ebenfalls verstecken
+    const rb = document.getElementById('reanalyzeBtn' + n);
+    if (rb) rb.classList.remove('visible');
     const st = document.getElementById('aiStatus' + n);
     if (st) { st.style.display = 'none'; st.textContent = ''; }
     // Reset file input so same file can be re-uploaded
@@ -7006,6 +7017,9 @@ async function loadCheck(data) {
       if (fname) fname.textContent = '✓ ' + file.name;
       const pb = document.getElementById('previewBtn' + a.slot);
       if (pb) pb.classList.add('visible');
+      // V12.30: Re-Analyze-Button für aus Airtable geladene Files einblenden
+      const rb = document.getElementById('reanalyzeBtn' + a.slot);
+      if (rb) rb.classList.add('visible');
       r.done(a.key, `${(blob.size/1024).toFixed(0)} KB · ${file.name}`);
       loadedFromAirtable = true;
     } catch(e) {
@@ -7068,6 +7082,9 @@ async function loadCheck(data) {
             document.getElementById('fname' + num).textContent = '✓ ' + fname;
             const pb = document.getElementById('previewBtn' + num);
             if (pb) pb.classList.add('visible');
+            // V12.30: Re-Analyze-Button für aus lokalem Ordner geladene Files
+            const rb = document.getElementById('reanalyzeBtn' + num);
+            if (rb) rb.classList.add('visible');
           } catch(e) { console.warn(`File ${fname} not found`); }
         }
 
@@ -9937,10 +9954,46 @@ function handleFile(num, input) {
   document.getElementById('fname' + num).textContent = '✓ ' + file.name;
   const pb = document.getElementById('previewBtn' + num);
   if (pb) pb.classList.add('visible');
+  // V12.30: Re-Analyze-Button ebenfalls einblenden
+  const rb = document.getElementById('reanalyzeBtn' + num);
+  if (rb) rb.classList.add('visible');
   updateStatus();
   // Auto-save to folder if selected
   saveFileToFolder(file, file.name);
   // Trigger AI extraction
+  requireApiKey(() => extractFromPDF(num, file));
+}
+
+// V12.30: Manuelle Re-Analyse der bereits hochgeladenen Datei
+// Use-Case: User hat einen bestehenden Check geladen oder Reset gemacht und
+// will die KI-Extraktion erneut auf das vorliegende PDF laufen lassen, ohne
+// das File neu hochladen zu müssen.
+async function reanalyzeUploadedFile(num) {
+  const file = uploadedFiles[num];
+  if (!file) {
+    showToast('Keine Datei hochgeladen — zuerst PDF hochladen.', 'error');
+    return;
+  }
+  // Felder die durch KI-Extraktion potenziell überschrieben werden — wenn da
+  // schon Werte drin sind, vor dem Override bestätigen lassen.
+  const isVorliegendes = (num === 1);
+  const checkFieldIds = (checkType === 'rechnung')
+    ? ['rc_rechnungsnr','rc_rechnungsdatum','rc_ersteller','rc_netto','rc_brutto']
+    : (checkType === 'wartung')
+      ? (isVorliegendes
+          ? ['wv_kosten','wv_laufzeit','wv_kuendigung','wv_vertragsbeginn','wv_kuendfrist','wv_anzahl','wv_typ']
+          : ['wa_kosten','wa_laufzeit','wa_kuendigung','wa_vertragsbeginn','wa_kuendfrist','wa_anzahl','wa_typ'])
+      : (isVorliegendes
+          ? ['cv_angebotnr','cv_anbieter','cv_lieferzeit','cv_gwl','cv_preis']
+          : ['ca_angebotnr','ca_anbieter','ca_lieferzeit','ca_gwl','ca_preis']);
+  const filled = checkFieldIds.filter(id => {
+    const el = document.getElementById(id);
+    return el && el.value && String(el.value).trim() !== '';
+  });
+  if (filled.length > 0) {
+    const ok = confirm(`KI-Analyse erneut auf "${file.name}" ausführen?\n\nEs sind bereits ${filled.length} Felder befüllt — diese werden mit den neu extrahierten Werten überschrieben.\n\nFortfahren?`);
+    if (!ok) return;
+  }
   requireApiKey(() => extractFromPDF(num, file));
 }
 
@@ -12425,6 +12478,9 @@ Aufgabe — sehr WICHTIG:
       document.getElementById('fname' + num).textContent = '✓ ' + file.name;
       const pb = document.getElementById('previewBtn' + num);
       if (pb) pb.classList.add('visible');
+      // V12.30: Re-Analyze-Button auch bei Drag-and-Drop einblenden
+      const rb = document.getElementById('reanalyzeBtn' + num);
+      if (rb) rb.classList.add('visible');
       updateStatus();
       saveFileToFolder(file, file.name);
       requireApiKey(() => extractFromPDF(num, file));
@@ -18751,6 +18807,9 @@ async function createCheckFromVorgang(recId, vIdx) {
               if (zone1)  zone1.classList.add('has-file');
               if (fname1) fname1.textContent = '✓ ' + (firstPdfFileForKi.name || 'Email-Anhang.pdf');
               if (pb1)    pb1.classList.add('visible');
+              // V12.30: Re-Analyze-Button für Email-Anhang
+              const rb1 = document.getElementById('reanalyzeBtn1');
+              if (rb1) rb1.classList.add('visible');
               if (typeof updateStatus === 'function') updateStatus();
               if (typeof extractFromPDF === 'function' && typeof requireApiKey === 'function') {
                 showToast('KI analysiert Email-Anhang …', 'info', 2500);
@@ -19857,6 +19916,9 @@ async function createCheckFromVorabcheck(checkNr, type) {
           if (fname1) fname1.textContent = '✓ ' + fname;
           const pb1 = document.getElementById('previewBtn1');
           if (pb1) pb1.classList.add('visible');
+          // V12.30: Re-Analyze-Button für aus Vorabcheck-Verwalter-Response geladene Datei
+          const rb1 = document.getElementById('reanalyzeBtn1');
+          if (rb1) rb1.classList.add('visible');
           if (typeof updateStatus === 'function') updateStatus();
           // KI-Extraktion automatisch starten (nur wenn Anthropic-API-Key konfiguriert)
           if (typeof extractFromPDF === 'function' && typeof requireApiKey === 'function') {
