@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e2440">
+<title>Liftaro · Konzept Partner-Plattform</title>
+<meta name="description" content="Liftaro Partner-Plattform — das Vermittlungs-Modell für Wartungsverträge: Phasen, rechtliche Konstruktion, Datenfluss, Kommunikationswege.">
+<link rel="icon" type="image/png" href="https://giltglobalinvest-pixel.github.io/angebotscheck_liftaro/favicon.png">
+<style>
+  :root {
+    --navy: #0e2440; --navy-2: #16345a;
+    --blue: #2456E5; --blue-deep: #1740B8; --blue-soft: #EBF1FE; --blue-light: #C5D4F2;
+    --green: #16A34A; --green-soft: #DCFCE7; --green-deep: #15803D;
+    --amber: #D97706; --amber-soft: #FEF3C7;
+    --red: #E5484D; --red-soft: #FBE5E6;
+    --bg: #DDE7F0; --bg-soft: #E8EFF6;
+    --surface: #FFFFFF; --surface-alt: #F4F7FB;
+    --ink: #0F1830; --ink-soft: #3D4A66; --ink-mute: #5C6E87; --ink-subtle: #94A3B8;
+    --border: #E2E8F0; --border-strong: #CBD5E1;
+    --f-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --f-mono: 'DM Mono', 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--f-sans);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14.5px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+  .topbar {
+    background: linear-gradient(180deg, var(--navy), var(--navy-2));
+    color: #fff;
+    padding: 18px 28px;
+    box-shadow: 0 4px 16px rgba(15,24,48,.20);
+  }
+  .topbar-inner {
+    max-width: 880px; margin: 0 auto;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .logo-box {
+    background: #fff; color: var(--navy);
+    border-radius: 8px; padding: 6px 14px;
+    font-weight: 800; font-size: 16px;
+    letter-spacing: -.02em; line-height: 1;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .topbar small { font-family: var(--f-mono); font-size: 10.5px; color: rgba(255,255,255,.65); letter-spacing: .06em; text-transform: uppercase; }
+  .top-actions { margin-left: auto; display: flex; gap: 8px; }
+  .top-actions button, .top-actions a {
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.22);
+    color: #fff;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-family: var(--f-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .15s;
+  }
+  .top-actions button:hover, .top-actions a:hover { background: rgba(255,255,255,.20); }
+  .container {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 24px 28px 64px;
+  }
+  @media (max-width: 700px) { .container { padding: 16px 18px 48px; } }
+  .doc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 44px;
+    box-shadow: 0 1px 2px rgba(15,24,48,.05), 0 2px 6px rgba(15,24,48,.06);
+  }
+  @media (max-width: 700px) { .doc { padding: 22px 18px; } }
+  .doc h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 4px; color: var(--navy); }
+  .doc .lead {
+    color: var(--ink-soft);
+    font-size: 16px;
+    margin: 8px 0 24px;
+    line-height: 1.6;
+  }
+  .doc h2 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    margin: 36px 0 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--ink);
+  }
+  .doc h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .doc h3 { font-size: 15.5px; font-weight: 700; margin: 18px 0 6px; color: var(--ink); }
+  .doc p { margin: 8px 0; color: var(--ink-soft); }
+  .doc ul, .doc ol { color: var(--ink-soft); padding-left: 22px; }
+  .doc li { margin: 5px 0; }
+  .doc strong { color: var(--ink); }
+  .doc code {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: var(--f-mono);
+    font-size: 12.5px;
+    color: var(--blue-deep);
+  }
+  .doc a { color: var(--blue); font-weight: 500; }
+  .doc a:hover { text-decoration: underline; }
+
+  /* Print-Bar oben über Dokument */
+  .meta-line {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin: 4px 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Phasen-Blöcke */
+  .phase {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--blue);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+  }
+  .phase.phase-2 { border-left-color: var(--amber); }
+  .phase.phase-3 { border-left-color: var(--green); }
+  .phase.phase-4 { border-left-color: var(--navy); }
+  .phase-head {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-bottom: 8px;
+  }
+  .phase-num {
+    background: var(--blue);
+    color: #fff;
+    font-family: var(--f-mono);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 4px;
+    letter-spacing: .04em;
+  }
+  .phase.phase-2 .phase-num { background: var(--amber); }
+  .phase.phase-3 .phase-num { background: var(--green); }
+  .phase.phase-4 .phase-num { background: var(--navy); }
+  .phase-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -.01em;
+  }
+  .phase-body { color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+  .phase-body ul { margin: 6px 0; padding-left: 18px; }
+
+  /* Flow-Diagram */
+  .flow-diagram {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 14px 0;
+    font-family: var(--f-mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--ink);
+  }
+
+  /* Boxen für Anmerkungen */
+  .note {
+    background: var(--blue-soft);
+    border: 1px solid var(--blue-light);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    color: var(--blue-deep);
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+  .note strong { color: var(--ink); }
+  .warning {
+    background: var(--amber-soft);
+    border: 1px solid #FDBA74;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    color: #92400e;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+
+  /* Tabellen */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink-soft);
+    vertical-align: top;
+  }
+  th { font-weight: 700; color: var(--ink); background: var(--surface-alt); }
+
+  /* Trennlinie */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 30px 0;
+  }
+
+  /* Druck-Stil */
+  @media print {
+    @page { margin: 14mm 14mm 18mm; size: A4 portrait; }
+    html, body {
+      background: #fff !important;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #000;
+    }
+    .topbar { display: none !important; }
+    .container { max-width: 100%; padding: 0 !important; margin: 0 !important; }
+    .doc {
+      background: #fff !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+    .doc h1 { font-size: 22pt; color: #000 !important; }
+    .doc h2 { font-size: 15pt; page-break-after: avoid; }
+    .doc h3 { font-size: 12.5pt; page-break-after: avoid; }
+    .doc p, .doc li { font-size: 10.5pt; color: #333 !important; line-height: 1.45; }
+    .phase {
+      page-break-inside: avoid;
+      background: #fafbfc !important;
+      box-shadow: none !important;
+      margin: 8px 0;
+    }
+    .flow-diagram {
+      font-size: 9pt;
+      background: #f8f9fb !important;
+      page-break-inside: avoid;
+    }
+    .note, .warning { page-break-inside: avoid; }
+    table { font-size: 10pt; page-break-inside: avoid; }
+    a { color: #000 !important; text-decoration: none; }
+    /* URLs ausgeben in print */
+    .doc a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: #666; }
+    .print-only { display: block; }
+    .screen-only { display: none !important; }
+    .footer-print {
+      margin-top: 28px;
+      padding-top: 14px;
+      border-top: 1px solid #ddd;
+      font-size: 9pt;
+      color: #666;
+      text-align: center;
+    }
+  }
+  /* Screen-Only: Footer-Print verstecken */
+  .footer-print { display: none; }
+  @media print {
+    .footer-print { display: block !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="logo-box">liftaro</div>
+      <div>
+        <h1>Konzept Partner-Plattform</h1>
+        <small>Liftaro · Stand 2026-05 · v1.0</small>
+      </div>
+      <div class="top-actions">
+        <button onclick="window.print()" title="Diese Seite drucken oder als PDF speichern">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Drucken / PDF
+        </button>
+        <a href="anfrage.html" title="Zurück zur Anfrage-Landing">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Zurück
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="doc">
+
+      <h1>Liftaro Partner-Plattform</h1>
+      <div class="meta-line">Konzept-Beschreibung · Vermittlungsmodell für Wartungsverträge · Stand 2026-05</div>
+
+      <p class="lead">
+        Dieses Dokument beschreibt das Geschäftsmodell, den Prozessablauf und die rechtliche Konstruktion
+        zwischen <strong>Liftaro</strong> (Vermittlungsplattform), <strong>Aufzugsunternehmen</strong> (Partner) und
+        <strong>Hausverwaltungen / Eigentümergemeinschaften</strong> (Endkunden).
+      </p>
+
+      <div class="note">
+        <strong>Hinweis:</strong> Das Modell ist iterativ und kann sich ändern. Dieses Dokument hält den
+        aktuellen Stand fest. Vertragliche Details werden im Rahmenvertrag zwischen Liftaro und Partner separat geregelt.
+      </div>
+
+      <h2>1. Die Rolle von Liftaro</h2>
+      <p>
+        Liftaro ist eine <strong>unabhängige Vermittlungsplattform</strong>. Hausverwaltungen reichen ihren
+        bestehenden Wartungsvertrag oder ein Angebot zur Prüfung ein. Liftaro analysiert die Konditionen
+        und vermittelt eine Anfrage an mehrere Aufzugsunternehmen (Partner). Die Partner geben anonymisierte
+        Alternativangebote ab; die Hausverwaltung wählt das beste aus.
+      </p>
+      <p>
+        Wichtig: <strong>Liftaro wird nicht selbst Vertragspartner</strong> der Wartungsbeziehung. Liftaro
+        fungiert ausschließlich als Vermittler und Kommunikations-Mittelsmann. Der Wartungsvertrag entsteht
+        zwischen <strong>Partner</strong> und <strong>Hausverwaltung</strong>.
+      </p>
+
+      <h2>2. Das 4-Phasen-Modell</h2>
+
+      <div class="phase phase-1">
+        <div class="phase-head">
+          <span class="phase-num">PHASE 1</span>
+          <span class="phase-title">Anonyme Anfrage</span>
+        </div>
+        <div class="phase-body">
+          <p>Liftaro versendet anonymisierte Anfragen an ausgewählte Partner. Die Hausverwaltung bleibt in dieser
+          Phase namentlich unbekannt — Partner erhalten lediglich:</p>
+          <ul>
+            <li>Objektadresse (PLZ, Ort, Straße – ggf. anonymisiert)</li>
+            <li>Anzahl Aufzüge, Anlagenart</li>
+            <li>Gewünschter Leistungsumfang (Wartungen/Jahr, TÜV, Notruf, etc.)</li>
+            <li>Optional: vorliegender Bestands-Vertrag als PDF</li>
+            <li>Antwortfrist (Default 5 Werktage)</li>
+          </ul>
+          <p>Versand wahlweise via <strong>Email mit One-Time-Link zur Landing-Page</strong> oder via <strong>REST-API + Webhook</strong>
+          an die Software des Partners (siehe API-Doku).</p>
+        </div>
+      </div>
+
+      <div class="phase phase-2">
+        <div class="phase-head">
+          <span class="phase-num">PHASE 2</span>
+          <span class="phase-title">Angebot mit Platzhalter-Adressat</span>
+        </div>
+        <div class="phase-body">
+          <p>Der Partner erstellt sein <strong>Standard-Angebot mit seinem Briefpapier, seinen Preisen, seinen Konditionen</strong>.
+          Im Adressat-Feld trägt er den Platzhalter <code>Liftaro GmbH (vermittelnd)</code> ein.</p>
+          <p>Eckdaten (Preis netto/Jahr, Laufzeit, Kündigungsfrist, Leistungen) werden über die Landing-Page
+          oder via API an Liftaro übermittelt. Optional kann der unterschriebene Vertragsentwurf als PDF
+          angehängt werden.</p>
+          <div class="note" style="margin-top:8px">
+            <strong>Warum Platzhalter-Adressat?</strong> Damit der Partner-Workflow unverändert bleibt — er
+            erstellt einen vollständigen Vertragsentwurf, nur das Adressat-Feld bleibt vorerst offen. Bei
+            Auftragserteilung wird der echte Adressat (Hausverwaltung) eingesetzt.
+          </div>
+        </div>
+      </div>
+
+      <div class="phase phase-3">
+        <div class="phase-head">
+          <span class="phase-num">PHASE 3</span>
+          <span class="phase-title">Auswahl + Auftragserteilung</span>
+        </div>
+        <div class="phase-body">
+          <p>Liftaro vergleicht die eingegangenen Angebote, präsentiert sie der Hausverwaltung. Sobald die
+          Hausverwaltung sich für ein Angebot entscheidet:</p>
+          <ul>
+            <li>Liftaro erteilt dem ausgewählten Partner den Auftrag</li>
+            <li>Partner erhält die echten <strong>HV-Daten</strong>: Name, Anschrift, Email, Telefon, Ansprechpartner</li>
+            <li>Übermittlung wahlweise via <strong>Webhook</strong> (Push) oder beim nächsten Polling</li>
+          </ul>
+          <p>Die anderen angefragten Partner werden über die Nichtauswahl informiert.</p>
+        </div>
+      </div>
+
+      <div class="phase phase-4">
+        <div class="phase-head">
+          <span class="phase-num">PHASE 4</span>
+          <span class="phase-title">Finaler Vertrag — über Liftaro</span>
+        </div>
+        <div class="phase-body">
+          <p>Der Partner erstellt den finalen Wartungsvertrag — diesmal mit der echten Hausverwaltung als
+          Adressat — und unterschreibt ihn. <strong>Anschließend wird der Vertrag NICHT direkt an die HV
+          versendet, sondern zurück an Liftaro</strong> (per API-Upload oder Email an check@liftaro.de).</p>
+          <p>Liftaro leitet den Vertrag zur Unterschrift an die HV weiter. Nach Unterschrift erhält der Partner
+          den signierten Vertrag zurück. <strong>Der Wartungsvertrag besteht ab jetzt zwischen Partner und
+          Hausverwaltung.</strong> Die Wartungsausführung erfolgt direkt zwischen den beiden, Liftaro tritt
+          heraus und erhält die Vermittlungsprovision.</p>
+          <div class="warning" style="margin-top:8px">
+            <strong>Wichtig für Partner:</strong> Bis der Vertrag unterschrieben zurück ist, läuft die gesamte
+            Kommunikation über Liftaro. Bitte erst nach Vertragsunterschrift direkt mit der HV
+            kommunizieren (Wartungstermine, Anlagenzugang etc.).
+          </div>
+        </div>
+      </div>
+
+      <h2>3. Datenfluss + Anonymität</h2>
+
+      <table>
+        <thead><tr><th>Phase</th><th>Wer sieht was?</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1 — Anfrage</td>
+            <td>Partner sieht: Objektdaten, Leistungsumfang. <strong>NICHT</strong>: HV-Name, HV-Kontakt, andere Partner-Angebote</td>
+          </tr>
+          <tr>
+            <td>2 — Angebot</td>
+            <td>Liftaro sieht: Eckdaten + PDF. HV sieht: Vergleichstabelle aller eingegangenen Varianten</td>
+          </tr>
+          <tr>
+            <td>3 — Auftragserteilung</td>
+            <td>Gewählter Partner erhält: HV-Daten. Andere Partner: Statusmeldung „nicht gewählt"</td>
+          </tr>
+          <tr>
+            <td>4 — Finaler Vertrag</td>
+            <td>Volle Transparenz zwischen Partner und HV — beide sehen das finale Vertragsdokument vor Unterschrift</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>4. Kommunikationswege</h2>
+
+      <div class="flow-diagram">
+   HV ──Anfrage──► Liftaro ──Anfrage (anonym)──► Partner
+                                                   │
+   HV ◄──Vergleich──── Liftaro ◄──Angebot────── Partner
+       │
+   HV ──Wahl──► Liftaro ──Auftragserteilung──► Partner
+                                                   │
+   HV ◄──Vertrag──── Liftaro ◄──finaler Vertrag── Partner
+       │                                         (mit HV-Adressat,
+       └──Unterschrift──► Liftaro ──Rückleitung──► Partner
+
+   Ab Unterschrift: Direktbeziehung HV ↔ Partner für Wartung
+   Liftaro tritt aus, behält nur Provisions-Tracking
+      </div>
+
+      <p>Die zentrale Eigenschaft des Modells: <strong>Liftaro bleibt während der gesamten Anbahnung der
+      Kommunikations-Knotenpunkt</strong>. Erst nach Vertragsunterschrift kommunizieren Partner und HV direkt.</p>
+
+      <h2>5. Rechtliche Konstruktion</h2>
+
+      <p>Liftaro fungiert als <strong>Maklerin</strong> nach §§ 652 ff BGB. Der konkrete Vermittlungsvertrag
+      zwischen Liftaro und jedem Partner wird in einem Rahmenvertrag geregelt. Wesentliche Punkte:</p>
+
+      <ul>
+        <li><strong>Vertragsparteien</strong>: Wartungsvertrag entsteht ausschließlich zwischen Partner und HV. Liftaro ist nicht Partei.</li>
+        <li><strong>Vermittlungsprovision</strong>: Vereinbart im Rahmenvertrag (z.B. 10% des Erstjahres-Nettos, einmalig fällig nach 1. Zahlung der HV)</li>
+        <li><strong>Anti-Umgehung</strong>: Partner darf den von Liftaro vermittelten HV-Kunden für eine Frist (z.B. 24 Monate)
+        nicht ohne Liftaro für weitere Wartungsverträge kontaktieren. Konventionalstrafe bei Verstoß.</li>
+        <li><strong>Haftung</strong>: Liftaro haftet nicht für die Wartungsausführung. Haftung liegt beim Partner als Vertragspartner.</li>
+        <li><strong>Datenschutz (DSGVO)</strong>: Liftaro gibt HV-Daten erst nach Auftragserteilung an den Partner weiter (Art. 6 Abs. 1 lit. b — Vertragsanbahnung).</li>
+        <li><strong>Anonymisierung Phase 1</strong>: Liftaro entscheidet pro Anfrage, ob Straße/Hausnummer mitgesendet oder nur PLZ.</li>
+      </ul>
+
+      <div class="warning">
+        <strong>Hinweis zur Verbindung verbundener Gesellschaften:</strong> Falls Partner-Unternehmen
+        gesellschaftsrechtlich oder durch Eigentümer-Beziehung mit Liftaro verbunden sind, gilt: Sie sind
+        rechtlich, steuerlich und operativ <strong>vollständig getrennt</strong> (eigene Buchhaltung, eigene Bankkonten, eigene
+        Versicherungen, keine Personalunion in der Geschäftsführung). Im Außenauftritt wird dies transparent
+        kommuniziert.
+      </div>
+
+      <h2>6. Provisions-Modell</h2>
+
+      <p>Die Vermittlungsprovision wird im individuellen Rahmenvertrag zwischen Liftaro und jedem Partner
+      vereinbart. Übliche Modelle:</p>
+
+      <table>
+        <thead><tr><th>Modell</th><th>Beschreibung</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Einmal-Provision</strong></td>
+            <td>Z.B. 10% des Erstjahres-Nettos, fällig nach 1. Zahlung der HV an Partner</td>
+          </tr>
+          <tr>
+            <td><strong>Recurring</strong></td>
+            <td>Z.B. 5% pro Jahr über die ersten 3 Vertragsjahre, fällig jährlich</td>
+          </tr>
+          <tr>
+            <td><strong>Storno-Klausel</strong></td>
+            <td>Bei HV-Kündigung innerhalb 6–12 Monaten: anteilige Rückzahlung der Provision durch Partner</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>7. Technische Integration für Partner</h2>
+
+      <p>Zwei Anbindungs-Optionen — Partner wählt was passt:</p>
+
+      <h3>Option A: Email + Landing-Page (kein technisches Setup)</h3>
+      <ul>
+        <li>Liftaro sendet Anfrage-Email mit One-Time-Link</li>
+        <li>Partner klickt Link → öffnet anonymisierte Anfrage-Page im Browser</li>
+        <li>Partner trägt Eckdaten ein, lädt Vertragsentwurf-PDF hoch, sendet ab</li>
+        <li>Bei Auftragserteilung: erneute Email mit HV-Daten</li>
+        <li>Finaler Vertrag wird per Email zurück an Liftaro geschickt</li>
+      </ul>
+
+      <h3>Option B: REST-API + Webhook (für integrierte Software)</h3>
+      <ul>
+        <li>Partner erhält dauerhaften API-Key</li>
+        <li>Seine Software registriert Webhook-URL bei Liftaro</li>
+        <li>Bei neuer Anfrage: Push via Webhook (HMAC-signiert) an Partner-Endpoint</li>
+        <li>Partner reagiert via <code>POST /api/v2/checks/:id/offer</code></li>
+        <li>Bei Auftragserteilung: Webhook <code>anfrage.auftrag_erteilt</code> mit HV-Daten</li>
+        <li>Finaler Vertrag via <code>POST /api/v2/checks/:id/final-vertrag</code> als Base64-PDF</li>
+      </ul>
+
+      <p>Vollständige API-Dokumentation + OpenAPI 3.0 Spec: <a href="https://check.liftaro.de/partner/api/" target="_blank">check.liftaro.de/partner/api/</a></p>
+
+      <h2>8. Vorteile für Partner</h2>
+
+      <ul>
+        <li><strong>Vorqualifizierte Anfragen</strong> — Liftaro filtert vorab</li>
+        <li><strong>Keine Akquise-Kosten</strong> — Hausverwaltungen kommen aktiv auf Liftaro zu</li>
+        <li><strong>Faire Vergleichsbasis</strong> — alle Partner konkurrieren mit gleichen Leistungsdaten</li>
+        <li><strong>Schnelle Antwort</strong> — Eckdaten in &lt; 5 Minuten eingegeben</li>
+        <li><strong>Anonymität in der Anbahnung</strong> — kein direkter Vergleich „Anbieter A vs. B" für den Kunden</li>
+        <li><strong>Wartung weiterhin selbstständig</strong> — Liftaro tritt nach Vertragsabschluss heraus</li>
+      </ul>
+
+      <h2>9. Was vom Partner erwartet wird</h2>
+
+      <ul>
+        <li>Eckdaten zum Angebot in <strong>5–7 Werktagen</strong> liefern</li>
+        <li>Vertragsentwurf in Phase 2 auf <code>Liftaro GmbH (vermittelnd)</code> ausstellen</li>
+        <li>Finalen Vertrag in Phase 4 <strong>zurück an Liftaro</strong>, nicht direkt an HV senden</li>
+        <li>Bis zur Vertragsunterschrift <strong>nicht direkt mit der HV kommunizieren</strong></li>
+        <li>Wartungsausführung gemäß angebotener Konditionen + DIN 13015</li>
+        <li>Provisionsabrechnung mit Liftaro gemäß Rahmenvertrag</li>
+      </ul>
+
+      <hr>
+
+      <h2>10. Kontakt</h2>
+
+      <p>
+        <strong>Liftaro GmbH</strong><br>
+        Email: <a href="mailto:check@liftaro.de">check@liftaro.de</a><br>
+        Web: <a href="https://liftaro.de">liftaro.de</a><br>
+        Partner-Portal: <a href="https://check.liftaro.de/partner/api/">check.liftaro.de/partner/api/</a>
+      </p>
+
+      <div class="footer-print">
+        Liftaro Partner-Plattform · Konzept-Beschreibung · Stand 2026-05 · v1.0 · liftaro.de
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
