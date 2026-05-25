@@ -3580,8 +3580,11 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div id="pa_status" style="font-size:12px;min-height:16px"></div>
     </div>
-    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc">
-      <div style="font-size:11px;color:var(--muted);line-height:1.4">Anfragen werden per Email mit One-Time-Link verschickt.<br>Antworten erscheinen automatisch im Check.</div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+        <div style="font-size:11px;color:var(--muted);line-height:1.4">Anfragen werden per Email mit One-Time-Link verschickt.<br>Antworten erscheinen automatisch im Check.</div>
+        <button onclick="closePartnerAnfrageModal();setTimeout(openPartnerPoolAdmin,200)" style="background:transparent;border:none;color:var(--dr-blue,#2456E5);font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left;padding:2px 0;display:inline-flex;align-items:center;gap:4px;text-decoration:underline" onmouseover="this.style.color='var(--dr-blue-deep)'" onmouseout="this.style.color='var(--dr-blue)'">📂 Partner-Pool verwalten →</button>
+      </div>
       <div style="display:flex;gap:8px">
         <button onclick="closePartnerAnfrageModal()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
         <button id="pa_send_btn" onclick="submitPartnerAnfrageModal()" style="background:var(--dr-blue);border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
@@ -3592,6 +3595,131 @@ const pdfWorkerReady = Promise.resolve();</script>
     </div>
   </div>
 </div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     V12.16 Phase 5: Partner-Pool Admin-Modal
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="partnerPoolAdminModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px">
+  <div style="background:#fff;border-radius:16px;width:min(840px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#0e2440,#16345a);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;letter-spacing:-.01em">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="10" cy="13" r="2"/><path d="M16 18a4 4 0 0 0-8 0"/></svg>
+          <span>Partner-Pool</span>
+        </div>
+        <div style="color:rgba(255,255,255,.65);font-size:11.5px;margin-top:2px">Aufzugsunternehmen für Anfragen verwalten</div>
+      </div>
+      <button onclick="closePartnerPoolAdmin()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <!-- Listen-Ansicht -->
+    <div id="pp_list_view" style="padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.5">Aktive Partner werden bei „🚀 Partner anfragen" zur Auswahl angeboten. Deaktivierte bleiben für Statistik / spätere Wiederaufnahme erhalten.</div>
+        <button onclick="openPartnerEditForm(null)" style="background:var(--dr-blue);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(36,86,229,.25)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Neuen Partner anlegen
+        </button>
+      </div>
+      <div id="pp_list_content" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+    <!-- Edit/Form-Ansicht (versteckt initial) -->
+    <div id="pp_form_view" style="display:none;padding:18px 22px;overflow-y:auto;flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <button onclick="closePartnerEditForm()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.color='var(--dr-blue)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Zurück
+        </button>
+        <h3 id="pp_form_title" style="margin:0;font-size:15px;font-weight:700;color:var(--dr-ink);letter-spacing:-.01em">Partner anlegen</h3>
+      </div>
+      <input type="hidden" id="pp_recId">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Partner-ID (Slug) *</label>
+          <input type="text" id="pp_partner_id" placeholder="z.B. ahw oder schmitt-stuttgart" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:13px;background:var(--sky)">
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Kleinbuchstaben, Bindestriche — Slug-Format</div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Anzeigename *</label>
+          <input type="text" id="pp_name" placeholder="z.B. Aufzugshandwerk GmbH" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Email-Kontakt *</label>
+          <input type="email" id="pp_email_kontakt" placeholder="vertrieb@firma.de" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Telefon</label>
+          <input type="text" id="pp_telefon" placeholder="z.B. +49 711 …" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Website</label>
+          <input type="text" id="pp_website" placeholder="https://firma.de" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">PLZ-Region</label>
+          <input type="text" id="pp_plz_region" placeholder="z.B. 70,71,80 oder 7" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Komma-getrennte PLZ-Anfänge (optional)</div>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Spezialisierungen</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="pp-spec-chip" data-val="wartung" onclick="this.classList.toggle('on');this.querySelector('input').checked=this.classList.contains('on')" style="background:var(--surface-alt);border:1.5px solid var(--border);border-radius:var(--dr-r-pill,999px);padding:6px 14px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
+            <input type="checkbox" value="wartung" style="display:none">
+            <span>🔧 Wartung</span>
+          </label>
+          <label class="pp-spec-chip" data-val="reparatur" onclick="this.classList.toggle('on');this.querySelector('input').checked=this.classList.contains('on')" style="background:var(--surface-alt);border:1.5px solid var(--border);border-radius:var(--dr-r-pill,999px);padding:6px 14px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
+            <input type="checkbox" value="reparatur" style="display:none">
+            <span>🛠 Reparatur</span>
+          </label>
+          <label class="pp-spec-chip" data-val="modernisierung" onclick="this.classList.toggle('on');this.querySelector('input').checked=this.classList.contains('on')" style="background:var(--surface-alt);border:1.5px solid var(--border);border-radius:var(--dr-r-pill,999px);padding:6px 14px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
+            <input type="checkbox" value="modernisierung" style="display:none">
+            <span>⬆ Modernisierung</span>
+          </label>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">API-Key (Kanal 2)</label>
+          <input type="text" id="pp_api_key" placeholder="leer = nur Email-Kanal" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:12px;background:var(--sky)">
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Nur setzen, wenn Partner-Software direkt integriert</div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Aktivierung</label>
+          <label style="display:flex;align-items:center;gap:8px;background:var(--sky);border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="pp_active" checked style="width:16px;height:16px;accent-color:var(--dr-green,#16A34A)">
+            <span>Partner ist aktiv — wird angefragt</span>
+          </label>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Notizen</label>
+        <textarea id="pp_notes" rows="3" placeholder="Konditionen, Ansprechpartner, interne Hinweise …" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);resize:vertical;line-height:1.5"></textarea>
+      </div>
+      <div id="pp_form_status" style="font-size:12.5px;margin-top:14px;min-height:16px"></div>
+    </div>
+    <!-- Footer (geteilter Footer, je nach View anders) -->
+    <div id="pp_list_footer" style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc">
+      <div style="font-size:11.5px;color:var(--muted)" id="pp_list_count">–</div>
+      <button onclick="closePartnerPoolAdmin()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Schließen</button>
+    </div>
+    <div id="pp_form_footer" style="display:none;padding:12px 22px;border-top:1px solid var(--border);justify-content:flex-end;align-items:center;gap:10px;flex-shrink:0;background:#fafbfc">
+      <button onclick="closePartnerEditForm()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
+      <button id="pp_save_btn" onclick="savePartner()" style="background:var(--dr-green,#16A34A);color:#fff;border:none;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Speichern
+      </button>
+    </div>
+  </div>
+</div>
+<style>
+  .pp-spec-chip.on { background: var(--dr-blue-soft) !important; border-color: var(--dr-blue) !important; color: var(--dr-blue-deep) !important; }
+</style>
 
 <!-- CSS für Inbox — V10.8 Redesign (dr-* System) -->
 <style id="emailInboxStyles">
@@ -4637,6 +4765,18 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
       </div>
 
+      <!-- V12.16 Phase 5: Partner-Pool Schnellzugang -->
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">📂 Partner-Pool</h4>
+          <div style="font-size:12px;color:var(--muted);line-height:1.5">Aufzugsunternehmen, die für Vertragscheck-Angebote angefragt werden. Anlegen, bearbeiten, deaktivieren.</div>
+        </div>
+        <button onclick="document.getElementById('settingsAdminModal').style.display='none';setTimeout(openPartnerPoolAdmin,150)" style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;box-shadow:0 1px 2px rgba(36,86,229,.25)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Pool verwalten →
+        </button>
+      </div>
+
       <!-- VAL.TOWN PROXY-SETUP -->
       <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">
         <h4 style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 4px">🔌 val.town — Backend-Proxy</h4>
@@ -4769,7 +4909,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.15';
+const APP_VERSION = 'V12.16';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -9923,6 +10063,193 @@ let _partnerPoolCache = null;          // [{partner_id, name, email_kontakt, ...
 let _currentCheckAnfragen = [];        // [{...anfrage}] der gerade geladenen
 let _partnerAnfrageModalCtx = null;    // { checkId, returnFocusEl }
 
+// ════════════════════════════════════════════════════════════════
+//  V12.16 Phase 5: Partner-Pool Admin-UI (CRUD)
+// ════════════════════════════════════════════════════════════════
+let _partnerPoolAllCache = null;  // ALLE Partner (auch inaktive) für Admin-View
+
+async function openPartnerPoolAdmin() {
+  document.getElementById('partnerPoolAdminModal').style.display = 'flex';
+  // Beide Views resetten
+  document.getElementById('pp_list_view').style.display   = 'flex';
+  document.getElementById('pp_form_view').style.display   = 'none';
+  document.getElementById('pp_list_footer').style.display = 'flex';
+  document.getElementById('pp_form_footer').style.display = 'none';
+  await refreshPartnerPoolAdmin();
+}
+function closePartnerPoolAdmin() {
+  document.getElementById('partnerPoolAdminModal').style.display = 'none';
+}
+
+async function refreshPartnerPoolAdmin() {
+  const listEl = document.getElementById('pp_list_content');
+  const cntEl  = document.getElementById('pp_list_count');
+  listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:12.5px"><span class="spin" style="display:inline-block;width:13px;height:13px;border:2px solid #ccc;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>Lade Partner-Pool …</div>';
+  let recs = [];
+  try {
+    recs = await atRead('Partner-Pool', null, { sort: false });
+  } catch (e) {
+    listEl.innerHTML = `<div style="background:var(--dr-amber-soft,#FEF3C7);border:1px solid #FB923C44;border-radius:8px;padding:14px;font-size:12.5px;color:#9A3412;line-height:1.55"><strong>Tabelle fehlt?</strong><br>${_esc(e.message || 'Konnte Partner-Pool nicht laden.')}<br><br>Wahrscheinlich App noch nicht mit V12.13+ neu geladen → setupTables() musste die Tabelle anlegen.</div>`;
+    cntEl.textContent = '–';
+    return;
+  }
+  _partnerPoolAllCache = (recs || []).map(r => ({ _id: r.id, ...r.fields }));
+  // Cache für andere Funktionen aktualisieren (active-only)
+  _partnerPoolCache = _partnerPoolAllCache.filter(p => p.active !== false && p.partner_id && p.name && p.email_kontakt);
+  const aktive   = _partnerPoolAllCache.filter(p => p.active);
+  const inaktive = _partnerPoolAllCache.filter(p => !p.active);
+  cntEl.textContent = `${_partnerPoolAllCache.length} Partner gesamt · ${aktive.length} aktiv · ${inaktive.length} inaktiv`;
+  if (!_partnerPoolAllCache.length) {
+    listEl.innerHTML = `<div style="background:var(--surface-alt);border:1px dashed var(--dr-border-strong,#CBD5E1);border-radius:10px;padding:24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.55">
+      <div style="font-size:34px;margin-bottom:8px">📂</div>
+      <strong style="color:var(--dr-ink)">Noch keine Partner</strong><br>
+      Lege deinen ersten Partner an — Klick oben „Neuen Partner anlegen".
+    </div>`;
+    return;
+  }
+  const renderGroup = (title, items, color) => {
+    if (!items.length) return '';
+    return `<div style="margin-top:4px">
+      <div style="font-family:var(--dr-f-mono,monospace);font-size:10.5px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-left:2px">${title} (${items.length})</div>
+      <div style="display:flex;flex-direction:column;gap:8px">${items.map(_renderPartnerRow).join('')}</div>
+    </div>`;
+  };
+  listEl.innerHTML = renderGroup('Aktiv', aktive, 'var(--dr-green-deep,#15803D)') + renderGroup('Inaktiv', inaktive, 'var(--dr-ink-mute,#5C6E87)');
+}
+
+function _renderPartnerRow(p) {
+  const isActive = !!p.active;
+  const idEsc = String(p._id || '').replace(/'/g, "\\'");
+  const specs = String(p.spezialisierungen || '').split(',').map(s => s.trim()).filter(Boolean);
+  const specChips = specs.map(s => `<span style="background:var(--dr-blue-soft,#EBF1FE);color:var(--dr-blue-deep,#1740B8);border:1px solid #C5D4F2;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;font-family:var(--dr-f-mono,monospace);margin-right:3px">${_esc(s)}</span>`).join('');
+  return `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;${isActive ? '' : 'opacity:0.65'}">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <strong style="font-size:14px;color:var(--dr-ink);letter-spacing:-.01em">${_esc(p.name || '(unbenannt)')}</strong>
+          <span style="background:var(--surface-alt);color:var(--ink-mute,#5C6E87);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-family:var(--dr-f-mono,monospace);font-size:10.5px;font-weight:700">${_esc(p.partner_id || '–')}</span>
+          ${p.api_key ? '<span style="background:var(--dr-purple-soft,#F3E8FF);color:var(--dr-purple,#7c3aed);border:1px solid #DDD6FE;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono,monospace)">API</span>' : ''}
+        </div>
+        <div style="font-size:12px;color:var(--text);margin-bottom:3px">${_esc(p.email_kontakt || '(keine Email)')}${p.telefon ? ' · ' + _esc(p.telefon) : ''}</div>
+        ${p.plz_region ? `<div style="font-size:11.5px;color:var(--muted);font-family:var(--dr-f-mono,monospace);margin-bottom:4px">PLZ: ${_esc(p.plz_region)}</div>` : ''}
+        ${specChips ? `<div style="margin-top:5px">${specChips}</div>` : ''}
+        ${p.notes ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.45;font-style:italic">${_esc(String(p.notes).slice(0,180))}${(p.notes||'').length>180 ? '…' : ''}</div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+        <button onclick="openPartnerEditForm('${idEsc}')" style="background:transparent;border:1px solid var(--border);color:var(--dr-blue,#2456E5);border-radius:5px;padding:5px 11px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='transparent';this.style.borderColor='var(--border)'">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Bearbeiten
+        </button>
+        <button onclick="togglePartnerActive('${idEsc}',${!isActive})" style="background:transparent;border:1px solid var(--border);color:${isActive ? '#a8312f' : 'var(--dr-green-deep,#15803D)'};border-radius:5px;padding:5px 11px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap" onmouseover="this.style.background='${isActive ? '#fff5f5' : 'var(--dr-green-soft,#DCFCE7)'}'" onmouseout="this.style.background='transparent'">
+          ${isActive ? '⊘ Deaktivieren' : '✓ Aktivieren'}
+        </button>
+      </div>
+    </div>`;
+}
+
+function openPartnerEditForm(recId) {
+  document.getElementById('pp_list_view').style.display   = 'none';
+  document.getElementById('pp_form_view').style.display   = 'block';
+  document.getElementById('pp_list_footer').style.display = 'none';
+  document.getElementById('pp_form_footer').style.display = 'flex';
+  document.getElementById('pp_form_status').textContent = '';
+  // Spec-Chips zurücksetzen
+  document.querySelectorAll('.pp-spec-chip').forEach(c => { c.classList.remove('on'); const cb = c.querySelector('input'); if (cb) cb.checked = false; });
+  if (recId) {
+    document.getElementById('pp_form_title').textContent = 'Partner bearbeiten';
+    const p = (_partnerPoolAllCache || []).find(x => x._id === recId);
+    if (!p) { closePartnerEditForm(); return; }
+    document.getElementById('pp_recId').value         = recId;
+    document.getElementById('pp_partner_id').value    = p.partner_id || '';
+    document.getElementById('pp_name').value          = p.name || '';
+    document.getElementById('pp_email_kontakt').value = p.email_kontakt || '';
+    document.getElementById('pp_telefon').value       = p.telefon || '';
+    document.getElementById('pp_website').value       = p.website || '';
+    document.getElementById('pp_plz_region').value    = p.plz_region || '';
+    document.getElementById('pp_api_key').value       = p.api_key || '';
+    document.getElementById('pp_active').checked      = p.active !== false;
+    document.getElementById('pp_notes').value         = p.notes || '';
+    // Spec-Chips setzen
+    const specs = String(p.spezialisierungen || '').split(',').map(s => s.trim()).filter(Boolean);
+    document.querySelectorAll('.pp-spec-chip').forEach(c => {
+      if (specs.includes(c.dataset.val)) { c.classList.add('on'); const cb = c.querySelector('input'); if (cb) cb.checked = true; }
+    });
+  } else {
+    document.getElementById('pp_form_title').textContent = 'Neuen Partner anlegen';
+    ['pp_recId','pp_partner_id','pp_name','pp_email_kontakt','pp_telefon','pp_website','pp_plz_region','pp_api_key','pp_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('pp_active').checked = true;
+  }
+}
+function closePartnerEditForm() {
+  document.getElementById('pp_list_view').style.display   = 'flex';
+  document.getElementById('pp_form_view').style.display   = 'none';
+  document.getElementById('pp_list_footer').style.display = 'flex';
+  document.getElementById('pp_form_footer').style.display = 'none';
+}
+
+async function savePartner() {
+  const get = (id) => (document.getElementById(id)?.value || '').trim();
+  const recId       = get('pp_recId');
+  const partner_id  = get('pp_partner_id').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const name        = get('pp_name');
+  const email       = get('pp_email_kontakt');
+  const setStatus = (html, color) => {
+    const el = document.getElementById('pp_form_status');
+    el.style.color = color || 'var(--dr-ink-soft,#3D4A66)';
+    el.innerHTML = html;
+  };
+  if (!partner_id) { setStatus('⚠ Partner-ID ist Pflicht (Slug-Format)', '#9F1B1F'); return; }
+  if (!name)       { setStatus('⚠ Anzeigename ist Pflicht', '#9F1B1F'); return; }
+  if (!email)      { setStatus('⚠ Email-Kontakt ist Pflicht', '#9F1B1F'); return; }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setStatus('⚠ Email-Format ungültig', '#9F1B1F'); return; }
+  // Eindeutigkeit der partner_id prüfen (außer bei Edit auf sich selbst)
+  const existing = (_partnerPoolAllCache || []).find(p => p.partner_id === partner_id && p._id !== recId);
+  if (existing) { setStatus('⚠ Partner-ID ist bereits vergeben: ' + partner_id, '#9F1B1F'); return; }
+  // Spec-Chips einsammeln
+  const specs = Array.from(document.querySelectorAll('.pp-spec-chip.on')).map(c => c.dataset.val);
+  const fields = {
+    partner_id,
+    name,
+    email_kontakt:     email,
+    telefon:           get('pp_telefon'),
+    website:           get('pp_website'),
+    plz_region:        get('pp_plz_region'),
+    spezialisierungen: specs.join(','),
+    api_key:           get('pp_api_key'),
+    active:            !!document.getElementById('pp_active').checked,
+    notes:             get('pp_notes'),
+  };
+  if (!recId) fields.created_at = new Date().toISOString();
+  const btn = document.getElementById('pp_save_btn');
+  btn.disabled = true;
+  setStatus('<span class="spin" style="display:inline-block;width:11px;height:11px;border:2px solid #ccc;border-top-color:var(--dr-blue,#2456E5);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:5px"></span>Speichere …', 'var(--dr-blue-deep,#1740B8)');
+  try {
+    if (recId) {
+      await atUpdate('Partner-Pool', recId, fields);
+    } else {
+      await atWrite('Partner-Pool', fields);
+    }
+    setStatus('✓ Gespeichert', 'var(--dr-green-deep,#15803D)');
+    await refreshPartnerPoolAdmin();
+    setTimeout(closePartnerEditForm, 600);
+  } catch (e) {
+    setStatus('⚠ ' + (e.message || 'Speichern fehlgeschlagen'), '#9F1B1F');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function togglePartnerActive(recId, makeActive) {
+  if (!confirm(makeActive ? 'Partner wieder aktivieren?' : 'Partner deaktivieren? (Bleibt erhalten, wird aber nicht mehr angefragt)')) return;
+  try {
+    await atUpdate('Partner-Pool', recId, { active: !!makeActive });
+    await refreshPartnerPoolAdmin();
+    showToast(makeActive ? 'Partner aktiviert' : 'Partner deaktiviert', 'success', 2000);
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
 async function loadPartnerPool(forceRefresh) {
   if (_partnerPoolCache && !forceRefresh) return _partnerPoolCache;
   try {
@@ -10030,8 +10357,14 @@ async function openPartnerAnfrageModal() {
   listEl.innerHTML = '<div style="padding:18px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px"><span class="spin" style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>Lade Partner-Pool …</div>';
   const partners = await loadPartnerPool(true);
   if (!partners.length) {
-    listEl.innerHTML = `<div style="padding:16px;background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:8px;font-size:12.5px;color:#9A3412;line-height:1.55">
-      <strong>Keine Partner im Pool.</strong><br>Lege in der App-Base, Tabelle <code style="background:#fff;padding:1px 5px;border-radius:3px">Partner-Pool</code>, mindestens einen aktiven Partner an (partner_id, name, email_kontakt, active=✓).
+    listEl.innerHTML = `<div style="padding:18px;background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:10px;font-size:12.5px;color:#9A3412;line-height:1.55;text-align:center">
+      <div style="font-size:34px;margin-bottom:6px">📂</div>
+      <strong style="font-size:13px;display:block;margin-bottom:4px">Noch keine Partner im Pool</strong>
+      <div style="margin-bottom:12px">Lege jetzt deinen ersten Partner an, dann kannst du Anfragen senden.</div>
+      <button onclick="closePartnerAnfrageModal();setTimeout(openPartnerPoolAdmin,200)" style="background:var(--dr-blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Partner-Pool öffnen
+      </button>
     </div>`;
     return;
   }
