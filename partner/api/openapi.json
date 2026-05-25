@@ -1,0 +1,294 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Liftaro Partner API",
+    "description": "REST-API für Aufzugsunternehmen, die als Partner für Liftaro Wartungsvertrag-Anfragen empfangen und beantworten. Diese API ist Kanal 2 — direkter Software-zu-Software-Integration. Kanal 1 ist die Email-Landing-Page (kein Login nötig, getrennt dokumentiert).\n\nLiftaro fungiert als unabhängige Vergleichsplattform für Aufzugsunternehmen. Wenn ein Liftaro-Kunde einen bestehenden Wartungsvertrag prüfen lässt, fragt Liftaro mehrere Partner um Alternativangebote. Der finale Vertrag wird auf Liftaro-Briefpapier ausgestellt — Partner agieren als Subunternehmer.\n\n**Authentifizierung:** Header `X-Partner-Key` mit dem von Liftaro vergebenen API-Key. Der Key ist dauerhaft pro Partner, kann von Liftaro jederzeit rotiert werden.",
+    "version": "v2",
+    "contact": {
+      "name": "Liftaro GmbH",
+      "email": "check@liftaro.de",
+      "url": "https://liftaro.de"
+    },
+    "license": {
+      "name": "Proprietary"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run",
+      "description": "Produktion"
+    }
+  ],
+  "tags": [
+    { "name": "Auth",     "description": "Authentifizierung + Self-Identify" },
+    { "name": "Anfragen", "description": "Anfragen abrufen, beantworten, ablehnen" },
+    { "name": "Meta",     "description": "Health-Check + Service-Info" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "partnerKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Partner-Key",
+        "description": "Dauerhafter API-Key, von Liftaro vergeben. Wird in der Liftaro-Admin (Partner-Pool) als `api_key` gespeichert."
+      }
+    },
+    "schemas": {
+      "Anfrage": {
+        "type": "object",
+        "description": "Eine Anfrage an einen Partner für ein Alternativangebot zu einem Liftaro-Wartungs-Check.",
+        "properties": {
+          "anfrage_id": {
+            "type": "string",
+            "description": "Eindeutige ID der Anfrage (z.B. PA-2026-1234)",
+            "example": "PA-2026-6d0e"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["gesendet", "geoeffnet", "angeboten", "abgelehnt", "timeout"],
+            "description": "Workflow-Status der Anfrage. gesendet=neu erstellt · geoeffnet=Partner hat zumindest GET-Detail aufgerufen · angeboten=Partner hat ein Angebot abgegeben · abgelehnt=Partner hat abgelehnt · timeout=Deadline überschritten",
+            "example": "geoeffnet"
+          },
+          "sent_at":      { "type": "string", "format": "date-time", "description": "Zeitpunkt der Erstellung durch Liftaro" },
+          "opened_at":    { "type": "string", "format": "date-time", "nullable": true, "description": "Wann der Partner die Anfrage zum ersten Mal abgerufen hat" },
+          "responded_at": { "type": "string", "format": "date-time", "nullable": true, "description": "Wann der Partner geantwortet hat (Angebot oder Ablehnung)" },
+          "deadline_at":  { "type": "string", "format": "date-time", "description": "Antwortfrist — danach wechselt status auto auf timeout" },
+          "objekt_plz":      { "type": "string", "description": "Postleitzahl des Aufzug-Objekts", "example": "70173" },
+          "objekt_ort":      { "type": "string", "description": "Ort", "example": "Stuttgart" },
+          "objekt_strasse":  { "type": "string", "description": "Straße + Hausnummer (kann leer sein, wenn Liftaro anonymisiert hat)", "example": "Mustergasse 12" },
+          "anzahl_aufzuege": { "type": "string", "description": "Anzahl Aufzüge im Objekt (als String, da Liftaro auch '2-3' o.ä. speichern kann)", "example": "2" },
+          "anlagenart":      { "type": "string", "description": "Typ-Beschreibung, z.B. 'Personenaufzug, 8 Personen, 6 Haltestellen'", "example": "Personenaufzug" },
+          "leistungsumfang_text": {
+            "type": "string",
+            "description": "Soll-Leistungsumfang in Freitext. Hier steht, was der Kunde von einem Wartungsvertrag erwartet.",
+            "example": "Wartungsvertrag mit:\n- 2 Wartungen/Jahr (DIN 13015)\n- Notrufservice 24/7\n- TÜV-Begleitung"
+          },
+          "include_vorliegendes_pdf": {
+            "type": "boolean",
+            "description": "Ob das vorliegende Bestands-Angebot mit angehängt ist"
+          },
+          "vorliegendes_pdf_url": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Signierte URL zum vorliegenden Bestands-Angebot (PDF). Achtung: Link läuft nach Stunden ab."
+          },
+          "response_offer_id":               { "type": "string", "nullable": true, "description": "Partner-eigene Angebots-Nr (falls bereits abgegeben)" },
+          "response_preis_netto":            { "type": "string", "nullable": true, "description": "Preis netto pro Jahr in €" },
+          "response_laufzeit_jahre":         { "type": "string", "nullable": true, "description": "Laufzeit in Jahren" },
+          "response_kuendigungsfrist_monate": { "type": "string", "nullable": true, "description": "Kündigungsfrist in Monaten" },
+          "response_wartungen_pro_jahr":     { "type": "string", "nullable": true, "description": "Anzahl Wartungen pro Jahr" },
+          "response_vollwartung":            { "type": "boolean", "description": "Vollwartung inklusive Verschleißteile" },
+          "response_notruf":                 { "type": "boolean", "description": "Notrufservice 24/7 inkludiert" },
+          "response_tuev_begl":              { "type": "boolean", "description": "TÜV-Begleitung inkludiert" },
+          "response_tuev_pruef":             { "type": "boolean", "description": "TÜV-Hauptprüfung im Preis inkludiert" },
+          "response_entstoerung":            { "type": "boolean", "description": "Entstörungen inkludiert" },
+          "response_kommentar":              { "type": "string", "nullable": true, "description": "Freitext-Anmerkungen des Partners (Konditionen, Sonderfälle)" }
+        }
+      },
+      "OfferRequest": {
+        "type": "object",
+        "description": "Payload für POST /api/v2/checks/{anfrage_id}/offer. Mindestens response_preis_netto + response_laufzeit_jahre sind sinnvoll. Alle Felder optional, fehlende werden auf Defaults gesetzt.",
+        "properties": {
+          "response_offer_id":                { "type": "string", "description": "Eure interne Angebots-Nr", "example": "ANG-2026-9911" },
+          "response_preis_netto":             { "type": "string", "description": "Preis netto € pro Jahr — als String mit Punkt oder Komma als Dezimal, z.B. '1980.00' oder '1980,00'", "example": "1980.00" },
+          "response_laufzeit_jahre":          { "type": "string", "description": "Laufzeit in Jahren", "example": "3" },
+          "response_kuendigungsfrist_monate": { "type": "string", "description": "Kündigungsfrist in Monaten", "example": "3" },
+          "response_wartungen_pro_jahr":      { "type": "string", "description": "Anzahl Wartungen pro Jahr", "example": "2" },
+          "response_vollwartung":             { "type": "boolean", "example": true },
+          "response_notruf":                  { "type": "boolean", "example": true },
+          "response_tuev_begl":               { "type": "boolean", "example": true },
+          "response_tuev_pruef":              { "type": "boolean", "example": false },
+          "response_entstoerung":             { "type": "boolean", "example": true },
+          "response_kommentar":               { "type": "string", "description": "Anmerkungen für Liftaro, max 4000 Zeichen", "example": "Standardvertrag, Anfahrt inkl. Stuttgart-Raum." },
+          "pdf_base64":                       { "type": "string", "description": "Optional: PDF-Angebot als Base64 (ohne data: Prefix), max 8 MB" },
+          "pdf_filename":                     { "type": "string", "description": "Dateiname für das PDF", "example": "angebot.pdf" }
+        }
+      },
+      "DeclineRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Optional: Begründung für Liftaro (intern, max 1000 Zeichen)",
+            "example": "Anlagen-Typ außerhalb unseres Service-Gebiets"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "X-Partner-Key fehlt oder ungültig" }
+        },
+        "required": ["error"]
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Meta"],
+        "summary": "Health-Check",
+        "description": "Verifiziert dass der Service läuft. Kein Auth nötig.",
+        "responses": {
+          "200": {
+            "description": "Service läuft",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "service": "liftaroPartnerApi",
+                  "version": "v1",
+                  "base_configured": true,
+                  "smtp_configured": true,
+                  "channels": ["landing", "api"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Self-Identify",
+        "description": "Verifiziert den API-Key und gibt die Partner-Metadaten zurück. Erster Aufruf zur Validierung empfohlen.",
+        "security": [{ "partnerKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Authentifiziert",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "partner_id": "ahw",
+                  "name": "Aufzugshandwerk GmbH",
+                  "email_kontakt": "vertrieb@ahw.de",
+                  "active": true,
+                  "api_version": "v2"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Key fehlt oder ungültig",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v2/checks": {
+      "get": {
+        "tags": ["Anfragen"],
+        "summary": "Anfragen für diesen Partner listen",
+        "description": "Standard-Polling-Endpoint. Gibt alle Anfragen zurück, die für den authentifizierten Partner bestimmt sind. Filterbar nach Status. Sortiert nach `sent_at desc`.",
+        "security": [{ "partnerKey": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter: `offen` (Default, = gesendet + geoeffnet) · `alle` · `angeboten` · `abgelehnt` · `timeout`",
+            "schema": { "type": "string", "enum": ["offen", "alle", "gesendet", "geoeffnet", "angeboten", "abgelehnt", "timeout"], "default": "offen" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste der Anfragen",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "count": 2,
+                  "anfragen": [
+                    { "anfrage_id": "PA-2026-6d0e", "status": "geoeffnet", "objekt_ort": "Stuttgart", "anzahl_aufzuege": "3", "deadline_at": "2026-05-31T20:00:00.000Z" },
+                    { "anfrage_id": "PA-2026-5a21", "status": "gesendet", "objekt_ort": "München", "anzahl_aufzuege": "1", "deadline_at": "2026-06-02T20:00:00.000Z" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "description": "Auth fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v2/checks/{anfrage_id}": {
+      "get": {
+        "tags": ["Anfragen"],
+        "summary": "Anfrage-Details abrufen",
+        "description": "Volle Details einer Anfrage. Setzt beim ersten Aufruf `opened_at` und ändert Status von `gesendet` → `geoeffnet`. Sicherheitsprüfung: Anfrage muss zu eurem Partner gehören (sonst 403).",
+        "security": [{ "partnerKey": [] }],
+        "parameters": [
+          {
+            "name": "anfrage_id",
+            "in": "path",
+            "required": true,
+            "description": "Anfrage-ID (Format PA-YYYY-XXXX)",
+            "schema": { "type": "string", "example": "PA-2026-6d0e" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Anfrage gefunden",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "anfrage": { "$ref": "#/components/schemas/Anfrage" } } } } }
+          },
+          "401": { "description": "Auth fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Anfrage gehört nicht zu eurem Partner-Account", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v2/checks/{anfrage_id}/offer": {
+      "post": {
+        "tags": ["Anfragen"],
+        "summary": "Angebot abgeben",
+        "description": "Submittet euer Angebot zur Anfrage. Status wechselt auf `angeboten`. Optional kann ein PDF als Base64 angehängt werden. Doppel-Submit wird mit 409 abgelehnt.",
+        "security": [{ "partnerKey": [] }],
+        "parameters": [
+          { "name": "anfrage_id", "in": "path", "required": true, "schema": { "type": "string", "example": "PA-2026-6d0e" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OfferRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Angebot abgegeben",
+            "content": { "application/json": { "example": { "ok": true, "status": "angeboten", "channel": "api" } } }
+          },
+          "400": { "description": "Body nicht parsbar", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Auth fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Cross-Tenant blocked", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Status bereits final (angeboten oder abgelehnt)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "410": { "description": "Anfrage ist abgelaufen (timeout)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v2/checks/{anfrage_id}/decline": {
+      "post": {
+        "tags": ["Anfragen"],
+        "summary": "Anfrage ablehnen",
+        "description": "Markiert die Anfrage als `abgelehnt`. Optional kann ein Grund mitgegeben werden. Liftaro sieht das im Admin.",
+        "security": [{ "partnerKey": [] }],
+        "parameters": [
+          { "name": "anfrage_id", "in": "path", "required": true, "schema": { "type": "string", "example": "PA-2026-6d0e" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeclineRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Abgelehnt",
+            "content": { "application/json": { "example": { "ok": true, "status": "abgelehnt", "channel": "api" } } }
+          },
+          "401": { "description": "Auth fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Cross-Tenant blocked", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Status bereits final", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}
