@@ -306,9 +306,67 @@
   <div class="topbar">
     <div class="topbar-inner">
       <div class="logo-box">liftaro</div>
-      <div>
+      <div style="flex:1">
         <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">Anfrage Wartungsvertrag</div>
         <div class="logo-sub">Liftaro Partner-Plattform</div>
+      </div>
+      <button onclick="openKonzeptModal()" title="Wie funktioniert die Zusammenarbeit?" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:8px;padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap" onmouseover="this.style.background='rgba(255,255,255,.20)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Wie funktioniert's?
+      </button>
+    </div>
+  </div>
+
+  <!-- Konzept-Modal -->
+  <div id="konzeptModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:18px" onclick="if(event.target===this) closeKonzeptModal()">
+    <div style="background:#fff;border-radius:14px;width:min(640px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+      <div style="background:linear-gradient(180deg,var(--navy),var(--navy-2));padding:16px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff;flex-shrink:0">
+        <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">So funktioniert die Zusammenarbeit</div>
+        <button onclick="closeKonzeptModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div style="padding:20px 24px;overflow-y:auto;line-height:1.6;color:var(--ink-soft);font-size:13.5px">
+        <p><strong style="color:var(--ink)">Liftaro</strong> ist eine unabhängige Vermittlungsplattform für Wartungsverträge. Wir bringen Hausverwaltungen mit qualifizierten Aufzug-Servicefirmen wie Ihnen zusammen — anonym in der Anbahnungsphase, transparent im Vertragsschluss.</p>
+
+        <h3 style="margin:18px 0 8px;font-size:14px;font-weight:700;color:var(--ink)">📋 Drei-Phasen-Modell</h3>
+
+        <div style="background:var(--surface-alt);border-left:3px solid var(--blue);border-radius:6px;padding:12px 14px;margin:8px 0">
+          <strong style="color:var(--ink)">Phase 1 — Anfrage (anonym)</strong><br>
+          Sie erhalten Eckdaten zum Objekt (PLZ, Ort, Anlagentyp, Leistungsumfang). Die Identität der Hausverwaltung bleibt geheim. Sie erstellen Ihr Angebot — als Vertragsentwurf mit <strong>„Liftaro GmbH (vermittelnd)" als Platzhalter-Adressat</strong>.
+        </div>
+
+        <div style="background:var(--surface-alt);border-left:3px solid var(--amber);border-radius:6px;padding:12px 14px;margin:8px 0">
+          <strong style="color:var(--ink)">Phase 2 — Auswahl + Auftragserteilung</strong><br>
+          Falls die HV Ihre Variante wählt, schickt Liftaro Ihnen die echten HV-Daten (Name, Anschrift, Email, Ansprechpartner) — entweder per Webhook (Push) oder via Polling (<code style="background:var(--blue-soft);padding:1px 5px;border-radius:3px;font-family:var(--f-mono);font-size:11.5px">GET /api/v2/checks</code>).
+        </div>
+
+        <div style="background:var(--surface-alt);border-left:3px solid var(--green);border-radius:6px;padding:12px 14px;margin:8px 0">
+          <strong style="color:var(--ink)">Phase 3 — Finaler Vertrag</strong><br>
+          Sie erstellen den finalen Wartungsvertrag — diesmal mit der echten HV als Adressat — und schicken ihn direkt zur Unterschrift. <strong>Der Vertrag entsteht zwischen Ihnen und der HV.</strong> Liftaro tritt heraus, erhält eine Vermittlungsprovision.
+        </div>
+
+        <h3 style="margin:18px 0 8px;font-size:14px;font-weight:700;color:var(--ink)">⚖️ Rechtlich</h3>
+        <ul style="margin:6px 0;padding-left:20px">
+          <li>Liftaro ist <strong>nur Vermittler</strong> — wird nicht selbst Vertragspartner.</li>
+          <li>Der Platzhalter-Adressat „Liftaro GmbH (vermittelnd)" dient ausschließlich der Anonymisierung in der Angebotsphase.</li>
+          <li>Bei Auftragserteilung erhalten Sie die HV-Daten + erstellen den finalen Vertrag.</li>
+          <li>Vermittlungsprovision wird im Rahmenvertrag zwischen Liftaro und Ihnen geregelt.</li>
+        </ul>
+
+        <h3 style="margin:18px 0 8px;font-size:14px;font-weight:700;color:var(--ink)">💡 Vorteile für Sie</h3>
+        <ul style="margin:6px 0;padding-left:20px">
+          <li><strong>Vorqualifizierte Anfragen</strong> — Liftaro filtert vorher</li>
+          <li><strong>Schnelle Reaktion</strong> — Sie sehen die Eckdaten sofort, geben Ihr Angebot in 5 Minuten ab</li>
+          <li><strong>Keine Akquise-Kosten</strong> — die HV kommt zu Ihnen, nicht umgekehrt</li>
+          <li><strong>Faire Vergleichsbasis</strong> — Sie konkurrieren mit gleichem Leistungsumfang</li>
+        </ul>
+
+        <h3 style="margin:18px 0 8px;font-size:14px;font-weight:700;color:var(--ink)">🔌 Integration</h3>
+        <p>Sie können Anfragen entweder über die <strong>Landing-Page</strong> (wie hier — keine Integration nötig) oder direkt über die <strong>REST-API</strong> aus Ihrer eigenen Angebotssoftware bearbeiten.</p>
+        <p>Doku: <a href="https://check.liftaro.de/partner/api/" target="_blank" style="color:var(--blue)">check.liftaro.de/partner/api/</a></p>
+
+        <div style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--ink-mute);text-align:center">
+          Fragen? <a href="mailto:check@liftaro.de" style="color:var(--blue)">check@liftaro.de</a>
+        </div>
       </div>
     </div>
   </div>
@@ -376,6 +434,10 @@
             <textarea id="f_kommentar" class="textarea" placeholder="z.B. Anfahrtspauschale, Sonderkonditionen, gewünschter Vertragsbeginn …"></textarea>
           </div>
 
+          <div class="field" style="background:var(--blue-soft);border:1px solid #C5D4F2;border-radius:8px;padding:12px 14px;color:var(--blue-deep);line-height:1.55;font-size:12.5px">
+            <strong>💡 Wichtig zum Vertragsentwurf:</strong> Falls Sie einen Vertragsentwurf als PDF anhängen, stellen Sie ihn bitte mit <strong>„Liftaro GmbH (vermittelnd)"</strong> als Adressat-Platzhalter aus. Bei Auftragserteilung erhalten Sie die echten HV-Daten und erstellen damit den finalen Vertrag direkt mit der Hausverwaltung. <a href="javascript:openKonzeptModal()" style="color:var(--blue-deep);font-weight:600;text-decoration:underline">Konzept ansehen</a>
+          </div>
+
           <div class="field">
             <label class="label">PDF-Angebot anhängen <span style="color:var(--ink-subtle);text-transform:none">(optional, max 8 MB)</span></label>
             <div id="pdfZone" class="pdf-zone" onclick="document.getElementById('pdfFile').click()">
@@ -422,6 +484,10 @@
     if (s == null) return '';
     return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   }
+
+  // Konzept-Modal
+  function openKonzeptModal() { document.getElementById('konzeptModal').style.display = 'flex'; }
+  function closeKonzeptModal() { document.getElementById('konzeptModal').style.display = 'none'; }
   function setStatus(text, cls) {
     const s = $('status');
     s.innerHTML = text;
