@@ -5047,7 +5047,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.26';
+const APP_VERSION = 'V12.27';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6548,6 +6548,40 @@ async function saveCheck(reporter) {
 
     // PDF-Anhänge hochladen (Vorliegendes + Alternativangebot, sofern vorhanden)
     if (recordId) {
+      // ── V12.27: Auto-Regenerate Ergebnis-PDF ─────────────────────────
+      // Garantiert, dass das in Airtable gespeicherte ergebnis_pdf immer
+      // exakt dem aktuellen Formular-Stand entspricht (z.B. nach Toggle
+      // Service-Pauschale ↔ Erfolgsprämie). Wenn der User keine neue PDF
+      // explizit erstellt hat (_pendingErgebnisPdfBlob === null), aber
+      // der Check bereits ein gespeichertes Ergebnis-PDF hat, regenerieren
+      // wir es jetzt frisch aus dem aktuellen DOM.
+      const _ctype = data.checkType || 'reparatur';
+      // _currentCheckHasErgebnisPdf wird beim Check-Load gesetzt (Zeile ~6798)
+      const _hadStoredErgebnis = !!window._currentCheckHasErgebnisPdf;
+      if (!_pendingErgebnisPdfBlob && _hadStoredErgebnis) {
+        r.step('autopdf', 'Ergebnis-PDF wird auf aktuellen Stand neu generiert …');
+        try {
+          let freshBlob = null;
+          let freshName = `Liftaro_Check_${data.requestId || data.id || 'neu'}.pdf`;
+          if (_ctype === 'rechnung' && typeof buildRechnungscheckPDF === 'function') {
+            const out = await buildRechnungscheckPDF();
+            freshBlob = out && out.blob;
+            if (out && out.filename) freshName = out.filename;
+          } else if (typeof buildCheckCoverBlob === 'function') {
+            freshBlob = await buildCheckCoverBlob();
+          }
+          if (freshBlob) {
+            _pendingErgebnisPdfBlob = freshBlob;
+            _pendingErgebnisPdfName = freshName;
+            r.done('autopdf', `${(freshBlob.size/1024).toFixed(0)} KB frisch generiert`);
+          } else {
+            r.error('autopdf', 'kein Blob erzeugt (Builder lieferte null)');
+          }
+        } catch(e) {
+          console.warn('Auto-PDF-Regenerate fehlgeschlagen:', e.message);
+          r.error('autopdf', e.message);
+        }
+      }
       const uploads = [];
       if (uploadedFiles[1]) uploads.push({ field: 'vorliegendes_pdf', blob: uploadedFiles[1], name: uploadedFiles[1].name });
       if (uploadedFiles[2]) uploads.push({ field: 'alternativ_pdf',   blob: uploadedFiles[2], name: uploadedFiles[2].name });
@@ -9341,10 +9375,16 @@ async function renderMobilePdfViewer(opts) {
     const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
 
     // Kachel mit echtem Vollbild-Button neu rendern (jetzt url vorhanden)
-    wrap.innerHTML = tileShell('<div id="' + wrapId + '_canvasSlot"></div>' +
-      (pdf.numPages > 1
-        ? `<div style="margin-top:8px;font-size:11px;color:var(--muted);text-align:center;font-style:italic">Seite 1 von ${pdf.numPages} · für weitere Seiten Vollbild öffnen</div>`
-        : ''));
+    // V12.27: Für Ergebnis-Viewer expliziter Hinweis, dass das Thumbnail den
+    // gespeicherten Stand zeigt und Vollbild eine LIVE-Vorschau aus dem
+    // aktuellen Formular regeneriert.
+    const _isResult = (wrapId === 'mobileResultViewer');
+    const _caption = _isResult
+      ? `<div style="margin-top:8px;font-size:11px;color:var(--muted);text-align:center;font-style:italic;line-height:1.5">Gespeicherter Stand · Tipp / Vollbild regeneriert eine <strong>Live-Vorschau</strong> aus dem aktuellen Formular</div>`
+      : (pdf.numPages > 1
+          ? `<div style="margin-top:8px;font-size:11px;color:var(--muted);text-align:center;font-style:italic">Seite 1 von ${pdf.numPages} · für weitere Seiten Vollbild öffnen</div>`
+          : '');
+    wrap.innerHTML = tileShell('<div id="' + wrapId + '_canvasSlot"></div>' + _caption);
 
     const slot = document.getElementById(wrapId + '_canvasSlot');
     const containerWidth = Math.max(260, (slot ? slot.clientWidth : wrap.clientWidth) - 4);
@@ -9420,6 +9460,18 @@ function clearMobileResultPdf() {
 
 // Generisches Vollbild-Öffnen für Mobile-Inline-PDFs
 async function openMobilePdfFullscreen(blobKey, title) {
+  // V12.27: Für das Ergebnis-PDF NIEMALS das (potenziell veraltete) gespeicherte
+  // Blob aus Airtable öffnen — stattdessen frisch aus dem aktuellen DOM regenerieren.
+  // So entspricht die Vollbild-Vorschau immer 1:1 dem aktuellen Formularstand
+  // (z.B. nach Toggle Service-Pauschale ↔ Erfolgsprämie).
+  if (blobKey === '_mobileResultBlob' && typeof previewErgebnis === 'function') {
+    try {
+      await previewErgebnis();
+    } catch(e) {
+      showToast('Fehler beim Öffnen der Vorschau: ' + e.message, 'error');
+    }
+    return;
+  }
   const blob = window[blobKey];
   if (!blob) {
     showToast('PDF nicht geladen.', 'error');
