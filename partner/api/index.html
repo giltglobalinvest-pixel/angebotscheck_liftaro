@@ -236,6 +236,109 @@
   .tab-row button:hover { color: var(--blue); }
   .tab-content > div { display: none; }
   .tab-content > div.active { display: block; }
+
+  /* Try-it-out */
+  .try {
+    margin-top: 14px;
+    background: #fff;
+    border: 1.5px solid var(--blue-soft);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .try summary {
+    background: var(--blue-soft);
+    color: var(--blue-deep);
+    padding: 10px 14px;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .try summary::-webkit-details-marker { display: none; }
+  .try summary::before { content: "▸"; margin-right: 8px; transition: transform .15s; display: inline-block; }
+  .try[open] summary::before { transform: rotate(90deg); }
+  .try summary:hover { background: #d6e4fc; }
+  .try-body { padding: 14px 16px; }
+  .try-body label { display: block; font-size: 10.5px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; margin-top: 10px; font-family: var(--f-mono); }
+  .try-body label:first-child { margin-top: 0; }
+  .try-body input, .try-body textarea, .try-body select {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 11px;
+    font-family: var(--f-sans);
+    font-size: 13px;
+    background: var(--surface-alt);
+    color: var(--ink);
+    outline: none;
+  }
+  .try-body input:focus, .try-body textarea:focus, .try-body select:focus { border-color: var(--blue); background: #fff; }
+  .try-body textarea { min-height: 60px; font-family: var(--f-mono); font-size: 12px; resize: vertical; }
+  .try-body .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .try-body .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  @media (max-width: 640px) { .try-body .row-2, .try-body .row-3 { grid-template-columns: 1fr; } }
+  .try-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .try-checks label.cb { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--r-pill, 999px); padding: 5px 11px; cursor: pointer; font-size: 12px; font-weight: 500; color: var(--ink); margin: 0; text-transform: none; letter-spacing: 0; }
+  .try-checks label.cb input { width: auto; }
+  .try-send {
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-family: var(--f-sans);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .try-send:hover { background: var(--green-deep); }
+  .try-send:disabled { opacity: .6; cursor: not-allowed; }
+  .try-response {
+    margin-top: 12px;
+    background: #0F1830;
+    color: #E8EFF6;
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: var(--f-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 320px;
+    overflow-y: auto;
+    display: none;
+  }
+  .try-response.shown { display: block; }
+  .try-response .status-ok    { color: #9FE0B4; font-weight: 700; }
+  .try-response .status-err   { color: #FFB67A; font-weight: 700; }
+  .try-response .status-fatal { color: #ff8a8a; font-weight: 700; }
+
+  /* Key-Banner */
+  .key-banner {
+    background: linear-gradient(135deg, var(--surface), var(--blue-soft));
+    border: 1.5px solid var(--blue-soft);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 16px 0 22px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .key-banner .key-label { font-size: 11px; font-weight: 700; color: var(--blue-deep); text-transform: uppercase; letter-spacing: .06em; font-family: var(--f-mono); flex-shrink: 0; }
+  .key-banner input { flex: 1; min-width: 200px; border: 1.5px solid var(--border); border-radius: 6px; padding: 8px 11px; font-family: var(--f-mono); font-size: 13px; background: #fff; outline: none; color: var(--ink); }
+  .key-banner input:focus { border-color: var(--blue); }
+  .key-banner .key-status { font-size: 11px; color: var(--ink-mute); font-family: var(--f-mono); }
+  .key-banner .key-status.ok { color: var(--green-deep); font-weight: 700; }
+  .key-banner .key-status.err { color: #9F1B1F; font-weight: 700; }
+  .key-banner button { background: var(--blue); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-family: var(--f-sans); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .key-banner button:hover { background: var(--blue-deep); }
 </style>
 </head>
 <body>
@@ -269,6 +372,8 @@
         <li><a href="#ep-detail" class="h2">/api/v2/checks/:id</a></li>
         <li><a href="#ep-offer"  class="h2">…/offer</a></li>
         <li><a href="#ep-decline" class="h2">…/decline</a></li>
+        <li><a href="#webhooks">Webhooks</a></li>
+        <li><a href="#ep-webhook-test" class="h2">…/webhook-test</a></li>
         <li><a href="#datamodel">Datenmodell</a></li>
         <li><a href="#errors">Status-Codes</a></li>
         <li><a href="#examples">Code-Beispiele</a></li>
@@ -301,6 +406,13 @@
         <li>Liftaro übernimmt euer Angebot automatisch in den Check, vergleicht mit Bestandsvertrag und entscheidet</li>
       </ol>
 
+      <div class="key-banner" id="keyBanner">
+        <span class="key-label">🔑 Try-it-out API-Key</span>
+        <input type="text" id="liveApiKey" placeholder="Hier API-Key einfügen — wird nur lokal gespeichert (localStorage)">
+        <button onclick="saveLiveKey()">Übernehmen</button>
+        <span class="key-status" id="keyStatus">kein Key gesetzt</span>
+      </div>
+
       <h2 id="auth">Authentifizierung</h2>
       <p>Jeder Request muss den Header <code>X-Partner-Key</code> mitsenden:</p>
       <pre><code>X-Partner-Key: <span class="string">&lt;euer-api-key&gt;</span></code></pre>
@@ -327,8 +439,17 @@
   <span class="string">"name"</span>: <span class="string">"Aufzugshandwerk GmbH"</span>,
   <span class="string">"email_kontakt"</span>: <span class="string">"vertrieb@ahw.de"</span>,
   <span class="string">"active"</span>: <span class="keyword">true</span>,
-  <span class="string">"api_version"</span>: <span class="string">"v2"</span>
+  <span class="string">"api_version"</span>: <span class="string">"v2"</span>,
+  <span class="string">"webhook_url"</span>: <span class="keyword">null</span>,
+  <span class="string">"webhook_configured"</span>: <span class="keyword">false</span>
 }</code></pre>
+        <details class="try">
+          <summary>🚀 Try it out</summary>
+          <div class="try-body">
+            <button class="try-send" onclick="tryEndpoint('me', this)">Send GET /api/v2/me</button>
+            <div class="try-response" id="resp-me"></div>
+          </div>
+        </details>
       </div>
 
       <div class="endpoint" id="ep-list">
@@ -356,6 +477,23 @@
     }
   ]
 }</code></pre>
+        <details class="try">
+          <summary>🚀 Try it out</summary>
+          <div class="try-body">
+            <label>Status-Filter</label>
+            <select id="try-list-status">
+              <option value="offen" selected>offen (Default)</option>
+              <option value="alle">alle</option>
+              <option value="gesendet">gesendet</option>
+              <option value="geoeffnet">geoeffnet</option>
+              <option value="angeboten">angeboten</option>
+              <option value="abgelehnt">abgelehnt</option>
+              <option value="timeout">timeout</option>
+            </select>
+            <button class="try-send" onclick="tryEndpoint('list', this)">Send GET /api/v2/checks</button>
+            <div class="try-response" id="resp-list"></div>
+          </div>
+        </details>
       </div>
 
       <div class="endpoint" id="ep-detail">
@@ -382,6 +520,15 @@
     <span class="string">"response_kommentar"</span>: <span class="keyword">null</span>
   }
 }</code></pre>
+        <details class="try">
+          <summary>🚀 Try it out</summary>
+          <div class="try-body">
+            <label>Anfrage-ID</label>
+            <input type="text" id="try-detail-id" placeholder="PA-2026-XXXX">
+            <button class="try-send" onclick="tryEndpoint('detail', this)">Send GET</button>
+            <div class="try-response" id="resp-detail"></div>
+          </div>
+        </details>
       </div>
 
       <div class="endpoint" id="ep-offer">
@@ -409,6 +556,34 @@
         </table>
         <pre><code><span class="comment"># Response 200</span>
 { <span class="string">"ok"</span>: <span class="keyword">true</span>, <span class="string">"status"</span>: <span class="string">"angeboten"</span>, <span class="string">"channel"</span>: <span class="string">"api"</span> }</code></pre>
+        <details class="try">
+          <summary>🚀 Try it out</summary>
+          <div class="try-body">
+            <label>Anfrage-ID</label>
+            <input type="text" id="try-offer-id" placeholder="PA-2026-XXXX">
+            <div class="row-2">
+              <div><label>Preis netto / Jahr €</label><input type="text" id="try-offer-preis" placeholder="1980.00"></div>
+              <div><label>Laufzeit (Jahre)</label><input type="text" id="try-offer-laufzeit" placeholder="3"></div>
+            </div>
+            <div class="row-3">
+              <div><label>Kündigungsfrist (Monate)</label><input type="text" id="try-offer-kuend" placeholder="3"></div>
+              <div><label>Wartungen / Jahr</label><input type="text" id="try-offer-wartungen" placeholder="2"></div>
+              <div><label>Offer-ID (intern)</label><input type="text" id="try-offer-id-intern" placeholder="ANG-2026-…"></div>
+            </div>
+            <label>Leistungen</label>
+            <div class="try-checks">
+              <label class="cb"><input type="checkbox" id="try-offer-vollwartung"> Vollwartung</label>
+              <label class="cb"><input type="checkbox" id="try-offer-notruf"> Notruf</label>
+              <label class="cb"><input type="checkbox" id="try-offer-tuev-begl"> TÜV-Begl.</label>
+              <label class="cb"><input type="checkbox" id="try-offer-tuev-pruef"> TÜV-Prüf.</label>
+              <label class="cb"><input type="checkbox" id="try-offer-entstoer"> Entstörung</label>
+            </div>
+            <label>Kommentar</label>
+            <textarea id="try-offer-kommentar" placeholder="Optional — z.B. Anfahrt inkl., Sonderkonditionen"></textarea>
+            <button class="try-send" onclick="tryEndpoint('offer', this)">Send POST</button>
+            <div class="try-response" id="resp-offer"></div>
+          </div>
+        </details>
       </div>
 
       <div class="endpoint" id="ep-decline">
@@ -420,6 +595,135 @@
 
 <span class="comment"># Response 200</span>
 { <span class="string">"ok"</span>: <span class="keyword">true</span>, <span class="string">"status"</span>: <span class="string">"abgelehnt"</span>, <span class="string">"channel"</span>: <span class="string">"api"</span> }</code></pre>
+        <details class="try">
+          <summary>🚀 Try it out</summary>
+          <div class="try-body">
+            <label>Anfrage-ID</label>
+            <input type="text" id="try-decline-id" placeholder="PA-2026-XXXX">
+            <label>Grund (optional)</label>
+            <textarea id="try-decline-reason" placeholder="z.B. Anlagen-Typ außerhalb unseres Service-Gebiets"></textarea>
+            <button class="try-send" onclick="tryEndpoint('decline', this)">Send POST</button>
+            <div class="try-response" id="resp-decline"></div>
+          </div>
+        </details>
+      </div>
+
+      <h2 id="webhooks">Webhooks</h2>
+      <p>Statt aktiv zu pollen, könnt ihr eine <strong>Webhook-URL</strong> hinterlegen. Sobald eine neue Anfrage für euren Partner-Account erstellt wird, sendet Liftaro automatisch einen <code>POST</code> an eure URL — mit allen Eckdaten + signiertem Body.</p>
+
+      <h3>Einrichtung</h3>
+      <p>Liftaro hinterlegt eure Webhook-URL im Partner-Pool. Sag uns:</p>
+      <ul>
+        <li>Eure HTTPS-Empfänger-URL (z.B. <code>https://your-crm.example.com/integrations/liftaro</code>)</li>
+        <li>Optional: Dass wir den Signature-Header mit einem bestimmten Secret signieren (Default: euer API-Key wird als HMAC-Secret verwendet)</li>
+      </ul>
+
+      <h3>Webhook-Payload</h3>
+      <p>POST mit JSON-Body. Header:</p>
+      <ul>
+        <li><code>Content-Type: application/json</code></li>
+        <li><code>X-Liftaro-Signature: sha256=&lt;hex&gt;</code> — HMAC-SHA256 des Body, signiert mit eurem <code>api_key</code></li>
+        <li><code>X-Liftaro-Event: anfrage.created</code> — Event-Name</li>
+        <li><code>User-Agent: liftaroPartnerApi/1.0 (+https://check.liftaro.de)</code></li>
+      </ul>
+      <pre><code><span class="comment"># Body bei "anfrage.created"</span>
+{
+  <span class="string">"event"</span>:           <span class="string">"anfrage.created"</span>,
+  <span class="string">"timestamp"</span>:       <span class="string">"2026-05-25T12:34:56.789Z"</span>,
+  <span class="string">"anfrage_id"</span>:      <span class="string">"PA-2026-6d0e"</span>,
+  <span class="string">"partner_id"</span>:      <span class="string">"ahw"</span>,
+  <span class="string">"sent_at"</span>:         <span class="string">"2026-05-25T12:34:56.789Z"</span>,
+  <span class="string">"deadline_at"</span>:     <span class="string">"2026-05-30T12:34:56.789Z"</span>,
+  <span class="string">"objekt_plz"</span>:      <span class="string">"70173"</span>,
+  <span class="string">"objekt_ort"</span>:      <span class="string">"Stuttgart"</span>,
+  <span class="string">"objekt_strasse"</span>:  <span class="string">"Mustergasse 12"</span>,
+  <span class="string">"anzahl_aufzuege"</span>: <span class="string">"2"</span>,
+  <span class="string">"anlagenart"</span>:      <span class="string">"Personenaufzug"</span>,
+  <span class="string">"leistungsumfang_text"</span>: <span class="string">"Standard-Wartung 2x/J inkl. Notruf"</span>,
+  <span class="string">"landing_url"</span>:     <span class="string">"https://check.liftaro.de/partner/anfrage.html?t=…"</span>
+}</code></pre>
+
+      <h3>Signature-Verifikation</h3>
+      <p>So prüft ihr in eurem Endpoint, ob der Request echt von Liftaro kommt (verhindert gefälschte Webhooks):</p>
+      <div class="tab-row" style="margin-top:14px">
+        <button class="active" onclick="showTab(event,'wh-node')">Node.js</button>
+        <button onclick="showTab(event,'wh-py')">Python</button>
+        <button onclick="showTab(event,'wh-php')">PHP</button>
+      </div>
+      <div class="tab-content">
+        <div class="active" data-tab="wh-node">
+<pre><code><span class="keyword">import</span> crypto <span class="keyword">from</span> <span class="string">'crypto'</span>;
+
+app.post(<span class="string">'/integrations/liftaro'</span>, express.raw({ type: <span class="string">'application/json'</span> }), (req, res) =&gt; {
+  <span class="keyword">const</span> signature = req.header(<span class="string">'X-Liftaro-Signature'</span>) || <span class="string">''</span>;
+  <span class="keyword">const</span> expected  = <span class="string">'sha256='</span> + crypto
+    .createHmac(<span class="string">'sha256'</span>, process.env.LIFTARO_API_KEY)
+    .update(req.body)
+    .digest(<span class="string">'hex'</span>);
+  <span class="keyword">if</span> (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    <span class="keyword">return</span> res.status(<span class="number">401</span>).send(<span class="string">'Invalid signature'</span>);
+  }
+  <span class="keyword">const</span> payload = JSON.parse(req.body);
+  <span class="comment">// payload.event, payload.anfrage_id, etc.</span>
+  res.json({ ok: <span class="keyword">true</span> });
+});</code></pre>
+        </div>
+        <div data-tab="wh-py">
+<pre><code><span class="keyword">import</span> hmac, hashlib
+<span class="keyword">from</span> flask <span class="keyword">import</span> request
+
+@app.route(<span class="string">'/integrations/liftaro'</span>, methods=[<span class="string">'POST'</span>])
+<span class="keyword">def</span> liftaro_webhook():
+    body = request.get_data()
+    sig  = request.headers.get(<span class="string">'X-Liftaro-Signature'</span>, <span class="string">''</span>)
+    expected = <span class="string">'sha256='</span> + hmac.new(
+        os.environ[<span class="string">'LIFTARO_API_KEY'</span>].encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    <span class="keyword">if not</span> hmac.compare_digest(sig, expected):
+        <span class="keyword">return</span> <span class="string">'Invalid signature'</span>, <span class="number">401</span>
+    payload = request.get_json()
+    <span class="comment"># payload['event'], payload['anfrage_id'], ...</span>
+    <span class="keyword">return</span> {<span class="string">'ok'</span>: <span class="keyword">True</span>}</code></pre>
+        </div>
+        <div data-tab="wh-php">
+<pre><code>&lt;?php
+$body = file_get_contents(<span class="string">'php://input'</span>);
+$signature = $_SERVER[<span class="string">'HTTP_X_LIFTARO_SIGNATURE'</span>] ?? <span class="string">''</span>;
+$expected  = <span class="string">'sha256='</span> . hash_hmac(<span class="string">'sha256'</span>, $body, getenv(<span class="string">'LIFTARO_API_KEY'</span>));
+<span class="keyword">if</span> (!hash_equals($signature, $expected)) {
+    http_response_code(<span class="number">401</span>);
+    <span class="keyword">exit</span>(<span class="string">'Invalid signature'</span>);
+}
+$payload = json_decode($body, <span class="keyword">true</span>);
+<span class="comment">// $payload['event'], $payload['anfrage_id'], ...</span>
+<span class="keyword">echo</span> json_encode([<span class="string">'ok'</span> =&gt; <span class="keyword">true</span>]);</code></pre>
+        </div>
+      </div>
+
+      <h3>Anforderungen an euren Endpoint</h3>
+      <ul>
+        <li><strong>HTTPS</strong> only (kein HTTP)</li>
+        <li><strong>Antwortzeit &lt; 8s</strong> — sonst Timeout, Webhook gilt als gescheitert</li>
+        <li><strong>Idempotent</strong>: ihr könntet denselben Webhook mehrfach empfangen (Re-Try-Logik geplant). Speichert <code>anfrage_id</code> als Idempotency-Key.</li>
+        <li><strong>200/201/202 = ok</strong>, alles andere = fail (Liftaro loggt, kein automatisches Retry derzeit)</li>
+      </ul>
+
+      <div class="endpoint" id="ep-webhook-test">
+        <span class="method post">POST</span>
+        <span class="path">/api/v2/webhook-test</span>
+        <p class="desc">Sendet einen <code>webhook.test</code>-Payload an die im Partner-Pool hinterlegte <code>webhook_url</code> — zur Verifikation bei Einrichtung. Kein Body nötig.</p>
+        <pre><code><span class="comment"># Response 200</span>
+{ <span class="string">"ok"</span>: <span class="keyword">true</span>, <span class="string">"sent_to"</span>: <span class="string">"https://your-crm.example.com/integrations/liftaro"</span>, <span class="string">"event"</span>: <span class="string">"webhook.test"</span> }</code></pre>
+        <details class="try">
+          <summary>🚀 Try it out</summary>
+          <div class="try-body">
+            <p style="font-size:12px;color:var(--ink-mute);margin:0 0 10px">Voraussetzung: Liftaro hat im Partner-Pool für euren Account die <code>webhook_url</code> gesetzt.</p>
+            <button class="try-send" onclick="tryEndpoint('webhookTest', this)">Send POST /api/v2/webhook-test</button>
+            <div class="try-response" id="resp-webhookTest"></div>
+          </div>
+        </details>
       </div>
 
       <h2 id="datamodel">Datenmodell</h2>
@@ -646,11 +950,163 @@ http.DefaultRequestHeaders.Add(<span class="string">"X-Partner-Key"</span>, Envi
 
   <script>
     function showTab(ev, name) {
-      document.querySelectorAll('.tab-row button').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content > div').forEach(d => d.classList.remove('active'));
+      // Nur Tabs der aktuellen tab-row schalten (sonst springt der erste Tab überall mit)
+      const row = ev.target.closest('.tab-row');
+      const tc  = row?.nextElementSibling;
+      if (!row || !tc || !tc.classList.contains('tab-content')) {
+        document.querySelectorAll('.tab-row button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content > div').forEach(d => d.classList.remove('active'));
+        ev.target.classList.add('active');
+        const t = document.querySelector('.tab-content > div[data-tab="' + name + '"]');
+        if (t) t.classList.add('active');
+        return;
+      }
+      row.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      tc.querySelectorAll(':scope > div').forEach(d => d.classList.remove('active'));
       ev.target.classList.add('active');
-      const target = document.querySelector('.tab-content > div[data-tab="' + name + '"]');
+      const target = tc.querySelector(':scope > div[data-tab="' + name + '"]');
       if (target) target.classList.add('active');
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  Try-it-out — direkt aus dem Browser an die Live-API
+    // ══════════════════════════════════════════════════════════════
+    const API_BASE = 'https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run';
+    const KEY_STORAGE = 'liftaro_partner_try_key';
+
+    function $(id) { return document.getElementById(id); }
+
+    function getLiveKey() { return (localStorage.getItem(KEY_STORAGE) || '').trim(); }
+    function setKeyStatus(text, cls) {
+      const el = $('keyStatus');
+      el.textContent = text;
+      el.className = 'key-status ' + (cls || '');
+    }
+    function saveLiveKey() {
+      const v = ($('liveApiKey').value || '').trim();
+      if (!v) {
+        localStorage.removeItem(KEY_STORAGE);
+        setKeyStatus('kein Key gesetzt');
+        return;
+      }
+      if (v.length < 12) {
+        setKeyStatus('Key sieht zu kurz aus (min 12 Zeichen)', 'err');
+        return;
+      }
+      localStorage.setItem(KEY_STORAGE, v);
+      setKeyStatus('Key übernommen (lokal gespeichert) · gleich kannst du Try-it-out nutzen', 'ok');
+      // Self-Check automatisch ausführen
+      fetch(API_BASE + '/api/v2/me', { headers: { 'X-Partner-Key': v } })
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok && d.partner_id) {
+            setKeyStatus('✓ Authentifiziert als „' + d.name + '" (' + d.partner_id + ')', 'ok');
+          } else {
+            setKeyStatus('⚠ Key wurde übernommen, aber API meldet: ' + (d.error || 'unbekannt'), 'err');
+          }
+        })
+        .catch(e => setKeyStatus('⚠ Netzwerk-Fehler bei Self-Check: ' + e.message, 'err'));
+    }
+
+    // Init: Key aus localStorage laden
+    (function initKey() {
+      const k = getLiveKey();
+      if (k) {
+        const el = $('liveApiKey');
+        if (el) el.value = k;
+        setKeyStatus('Key gefunden — wird für Try-it-out verwendet', 'ok');
+      }
+    })();
+
+    function renderResponse(targetId, status, headers, body, error) {
+      const el = $(targetId);
+      if (!el) return;
+      el.classList.add('shown');
+      let cls = 'status-ok';
+      if (error) cls = 'status-fatal';
+      else if (status >= 400) cls = 'status-err';
+      const head = `<span class="${cls}">HTTP ${status || '—'}${error ? ' · NETWORK ERROR' : ''}</span>\n`;
+      let bodyStr = '';
+      try { bodyStr = typeof body === 'string' ? body : JSON.stringify(body, null, 2); } catch(_) { bodyStr = String(body); }
+      el.textContent = '';
+      el.innerHTML = head + (bodyStr ? '\n' + bodyStr.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) : '');
+    }
+
+    async function tryEndpoint(name, btn) {
+      const key = getLiveKey();
+      if (!key) {
+        alert('Bitte oben einen API-Key eintragen und „Übernehmen" klicken.');
+        $('liveApiKey').focus();
+        return;
+      }
+      btn.disabled = true;
+      const origText = btn.textContent;
+      btn.textContent = '⏳ wird gesendet …';
+      const headers = { 'X-Partner-Key': key, 'Content-Type': 'application/json' };
+      let url = '', method = 'GET', body = null, respTarget = '';
+      try {
+        if (name === 'me') {
+          url = API_BASE + '/api/v2/me'; respTarget = 'resp-me';
+        } else if (name === 'list') {
+          const s = ($('try-list-status')?.value || 'offen');
+          url = API_BASE + '/api/v2/checks?status=' + encodeURIComponent(s); respTarget = 'resp-list';
+        } else if (name === 'detail') {
+          const aId = ($('try-detail-id')?.value || '').trim();
+          if (!aId) { alert('Anfrage-ID bitte eintragen.'); btn.disabled = false; btn.textContent = origText; return; }
+          url = API_BASE + '/api/v2/checks/' + encodeURIComponent(aId); respTarget = 'resp-detail';
+        } else if (name === 'offer') {
+          const aId = ($('try-offer-id')?.value || '').trim();
+          if (!aId) { alert('Anfrage-ID bitte eintragen.'); btn.disabled = false; btn.textContent = origText; return; }
+          url = API_BASE + '/api/v2/checks/' + encodeURIComponent(aId) + '/offer';
+          method = 'POST';
+          body = {
+            response_offer_id:                ($('try-offer-id-intern')?.value || '').trim(),
+            response_preis_netto:             ($('try-offer-preis')?.value || '').trim(),
+            response_laufzeit_jahre:          ($('try-offer-laufzeit')?.value || '').trim(),
+            response_kuendigungsfrist_monate: ($('try-offer-kuend')?.value || '').trim(),
+            response_wartungen_pro_jahr:      ($('try-offer-wartungen')?.value || '').trim(),
+            response_vollwartung: !!$('try-offer-vollwartung')?.checked,
+            response_notruf:      !!$('try-offer-notruf')?.checked,
+            response_tuev_begl:   !!$('try-offer-tuev-begl')?.checked,
+            response_tuev_pruef:  !!$('try-offer-tuev-pruef')?.checked,
+            response_entstoerung: !!$('try-offer-entstoer')?.checked,
+            response_kommentar:   ($('try-offer-kommentar')?.value || '').trim(),
+          };
+          respTarget = 'resp-offer';
+        } else if (name === 'decline') {
+          const aId = ($('try-decline-id')?.value || '').trim();
+          if (!aId) { alert('Anfrage-ID bitte eintragen.'); btn.disabled = false; btn.textContent = origText; return; }
+          url = API_BASE + '/api/v2/checks/' + encodeURIComponent(aId) + '/decline';
+          method = 'POST';
+          body = { reason: ($('try-decline-reason')?.value || '').trim() };
+          respTarget = 'resp-decline';
+        } else if (name === 'webhookTest') {
+          url = API_BASE + '/api/v2/webhook-test'; method = 'POST'; body = {};
+          respTarget = 'resp-webhookTest';
+        } else {
+          alert('Unbekannter Endpoint: ' + name);
+          btn.disabled = false; btn.textContent = origText;
+          return;
+        }
+        const opts = { method, headers };
+        if (body !== null) opts.body = JSON.stringify(body);
+        try {
+          const r = await fetch(url, opts);
+          const ct = r.headers.get('content-type') || '';
+          let data;
+          if (/json/i.test(ct)) {
+            data = await r.json();
+          } else {
+            data = await r.text();
+          }
+          renderResponse(respTarget, r.status, null, data, false);
+        } catch (e) {
+          renderResponse(respTarget, 0, null, { error: e.message }, true);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = origText;
+      }
     }
   </script>
 </body>
