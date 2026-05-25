@@ -5047,7 +5047,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.25';
+const APP_VERSION = 'V12.26';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6361,6 +6361,39 @@ async function generateEmailAnfrageNr() {
   return String(maxNr + 1);
 }
 
+// V12.26: Dynamische Legal-Block-Texte je nach Vergütungsmodus
+function _wartungLegalBlockText() {
+  const mode = window._liftaroVerguetungModeW || 'erfolg';
+  const g = id => (document.getElementById(id)?.value || '').toString().trim();
+  if (mode === 'pauschale') {
+    const j = parsePrice(g('liftaro_jahresgebuehr_w'));
+    const jahresGeb = isNaN(j) ? '–' : formatEuro(j);
+    return `Die Vergütung von Liftaro ist eine Service-Pauschale von ${jahresGeb}/Jahr über die Vertragslaufzeit. Gegenleistung: Prüfung eingehender Wartungs-/Reparatur-Angebote auf inhaltliche, fachliche und preisliche Plausibilität; Beratung zu sonstigen Aufzug-bezogenen Fragen; Hinweise zur Betriebssicherheitsverordnung (BetrSichV) und zugehöriger Vorschriften. Liftaro übernimmt die Organisation der Beauftragung und überwacht den Wartungsvertrag.`;
+  }
+  // Erfolgsbasiert: Prozentwert oder absoluter Festbetrag aus dem Input lesen
+  const pct = g('liftaro_pct_w') || '50';
+  const eurO = g('liftaro_eur_w');
+  const basis = eurO ? `als fester Jahresbetrag von ${formatEuro(parsePrice(eurO))}` : `jährlich ${pct} % der realisierten Einsparung`;
+  return `Die Vergütung von Liftaro beträgt ${basis} und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht den Wartungsvertrag.`;
+}
+function _reparaturLegalBlockText() {
+  const g = id => (document.getElementById(id)?.value || '').toString().trim();
+  const pct = g('liftaro_pct') || '50';
+  const eurO = g('liftaro_eur');
+  const basis = eurO ? `als fester Betrag von ${formatEuro(parsePrice(eurO))}` : `${pct} % der realisierten Einsparung`;
+  return `Die Vergütung von Liftaro beträgt ${basis} und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.`;
+}
+
+// Auch beim Mode-Switch + bei calcSavings sofort legal-block aktualisieren — sonst zeigt's
+// erst nach nächstem Tab-Wechsel die richtige Beschreibung.
+function _refreshLegalBlock() {
+  const el = document.getElementById('legal-block');
+  if (!el) return;
+  const cType = (typeof checkType !== 'undefined') ? checkType : (typeof currentFormCheckType === 'function' ? currentFormCheckType() : '');
+  if (cType === 'wartung')   el.textContent = _wartungLegalBlockText();
+  else if (cType === 'reparatur') el.textContent = _reparaturLegalBlockText();
+}
+
 // V12.25: PDF-Summary für Vergütung — wird vor html2canvas eingeblendet, nach Restore wieder versteckt
 function _renderLvPdfSummary(show) {
   const sumEl  = document.getElementById('lv_pdf_summary_w');
@@ -6443,8 +6476,9 @@ function setLiftaroVerguetungMode(checkType, mode) {
   if (note) note.innerHTML = isErfolg
     ? 'Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel. Bei „Erfolgsbasiert" überschreibt ein absoluter Betrag den Prozent-Anteil.'
     : 'Liftaro stellt die Rechnung als <strong>Service-Pauschale</strong> über die Vertragslaufzeit — unabhängig von der konkreten Ersparnis. Gegenleistung: laufende Aufzug-Betreuung (siehe oben).';
-  // Werte neu berechnen
+  // Werte neu berechnen + Legal-Block aktualisieren (für nächstes PDF)
   if (typeof calcSavings === 'function') calcSavings();
+  if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
 }
 
 async function saveCheck(reporter) {
@@ -8272,11 +8306,12 @@ function switchTab(type) {
       ? 'Plausibilitätsprüfung Ihrer Rechnung – <span>Transparent. Effizient. Klar bewertet.</span>'
       : 'Ihr Angebot im Detail – <span>Transparent. Effizient. Optimiert.</span>';
 
+  // V12.26: legal-block dynamisch je nach Modus (Wartung: Pauschale vs Erfolgsbasiert)
   document.getElementById('legal-block').textContent = isWartung
-    ? 'Die Vergütung von Liftaro beträgt jährlich 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht den Wartungsvertrag.'
+    ? _wartungLegalBlockText()
     : isRechnung
       ? 'Diese Rechnungsprüfung ist eine fachliche Einschätzung von Liftaro. Sie ersetzt keine rechtliche oder steuerliche Beratung. Die Freigabeentscheidung obliegt dem Auftraggeber.'
-      : 'Die Vergütung von Liftaro beträgt 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.';
+      : _reparaturLegalBlockText();
 
   calcSavings();
   // Status-Dropdown im Hauptform an den Typ anpassen
@@ -9089,6 +9124,8 @@ function calcSavings() {
     smileyA.textContent = aSmiley.icon; smileyA.parentElement.style.background = aSmiley.bg;
     smileyV.textContent = vSmiley.icon; smileyV.parentElement.style.background = vSmiley.bg;
   }
+  // V12.26: Legal-Block live aktualisieren (für nächstes PDF)
+  if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
 }
 
 // ── Ergebnis-Vorschau ─────────────────────────────────────────────
