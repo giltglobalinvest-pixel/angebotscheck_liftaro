@@ -5119,7 +5119,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.32';
+const APP_VERSION = 'V12.33';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10168,6 +10168,38 @@ function _sanitizeClonedDocForCanvas(clonedDoc) {
   }
 }
 
+// V12.33: Helper — splittet ein langes Canvas in mehrere echte A4-Seiten
+// statt einer überlangen "long page". So skaliert html2canvas in Originalgröße
+// (Texte bleiben groß und lesbar), und das PDF folgt dem A4-Standard.
+async function _canvasToA4Pages(doc, canvas) {
+  const A4_W = 595.28, A4_H = 841.89;
+  if (!canvas || !canvas.width || !canvas.height) return;
+  // Wie viele Canvas-Pixel entsprechen 1 PDF-Punkt (bei A4-Breite voll)?
+  const pxPerPt = canvas.width / A4_W;
+  // Pixel-Höhe einer einzelnen A4-Seite im Quell-Canvas
+  const pageHeightPx = Math.floor(A4_H * pxPerPt);
+  const numPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
+  for (let i = 0; i < numPages; i++) {
+    const sliceY = i * pageHeightPx;
+    const sliceH = Math.min(pageHeightPx, canvas.height - sliceY);
+    // Sub-Canvas für genau diese Seite erzeugen
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width  = canvas.width;
+    sliceCanvas.height = sliceH;
+    const ctx = sliceCanvas.getContext('2d');
+    // Weißer Hintergrund (falls letzte Seite kürzer als A4 → Bottom bleibt weiß)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+    ctx.drawImage(canvas, 0, -sliceY);
+    const slicePng = await doc.embedPng(sliceCanvas.toDataURL('image/png'));
+    const page = doc.addPage([A4_W, A4_H]);
+    const drawW = A4_W;
+    const drawH = sliceH / pxPerPt;
+    // Bild oben auf der Seite platzieren (y = A4_H - drawH)
+    page.drawImage(slicePng, { x: 0, y: A4_H - drawH, width: drawW, height: drawH });
+  }
+}
+
 function _forcePdfLayout() {
   const printArea = document.getElementById('print-area');
   if (!printArea) return () => {};
@@ -10306,17 +10338,8 @@ async function generatePDF() {
     const { PDFDocument } = PDFLib;
     const mergedDoc = await PDFDocument.create();
 
-    const imgData = canvas.toDataURL('image/png');
-    const pngImg = await mergedDoc.embedPng(imgData);
-    const A4_W = 595.28, A4_H = 841.89;
-    // Breite voll ausnutzen: Skalierung anhand der Breite, Höhe wird proportional skaliert
-    // Falls dadurch die Höhe größer als A4 wird, vergrößern wir die Seite entsprechend.
-    const widthScale = A4_W / pngImg.width;
-    const drawW = A4_W;
-    const drawH = pngImg.height * widthScale;
-    const pageH = Math.max(A4_H, drawH);
-    const formPage = mergedDoc.addPage([A4_W, pageH]);
-    formPage.drawImage(pngImg, { x: 0, y: pageH - drawH, width: drawW, height: drawH });
+    // V12.33: Canvas in echte A4-Seiten splitten statt eine überlange Seite
+    await _canvasToA4Pages(mergedDoc, canvas);
 
     for (const [num, label] of [[2,'Alternativangebot'],[1,'Vorliegendes Angebot']]) {
       if (!uploadedFiles[num]) continue;
@@ -17166,14 +17189,8 @@ async function buildCheckCoverBlob() {
     restoreLayout();
     const { PDFDocument } = PDFLib;
     const doc = await PDFDocument.create();
-    const png = await doc.embedPng(canvas.toDataURL('image/png'));
-    const A4_W = 595.28, A4_H = 841.89;
-    const widthScale = A4_W / png.width;
-    const drawW = A4_W;
-    const drawH = png.height * widthScale;
-    const pageH = Math.max(A4_H, drawH);
-    const page = doc.addPage([A4_W, pageH]);
-    page.drawImage(png, { x: 0, y: pageH - drawH, width: drawW, height: drawH });
+    // V12.33: Canvas in echte A4-Seiten splitten statt eine überlange Seite
+    await _canvasToA4Pages(doc, canvas);
     const bytes = await doc.save();
     return new Blob([bytes], { type: 'application/pdf' });
   } finally {
