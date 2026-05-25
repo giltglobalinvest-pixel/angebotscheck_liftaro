@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e2440">
+<meta name="description" content="Liftaro Partner-API — REST-Endpoints für Aufzugsunternehmen zur Software-Integration. Wartungsvertrag-Anfragen abrufen, Angebote zurückspielen.">
+<title>Liftaro Partner API — Doku</title>
+<link rel="icon" type="image/png" href="https://giltglobalinvest-pixel.github.io/angebotscheck_liftaro/favicon.png">
+<style>
+  :root {
+    --navy: #0e2440; --navy-2: #16345a;
+    --blue: #2456E5; --blue-deep: #1740B8; --blue-soft: #EBF1FE;
+    --green: #16A34A; --green-soft: #DCFCE7; --green-deep: #15803D;
+    --amber: #D97706; --amber-soft: #FEF3C7;
+    --red: #E5484D; --red-soft: #FBE5E6;
+    --purple: #7c3aed; --purple-soft: #F3E8FF;
+    --bg: #DDE7F0; --bg-soft: #E8EFF6;
+    --surface: #FFFFFF; --surface-alt: #F4F7FB;
+    --ink: #0F1830; --ink-soft: #3D4A66; --ink-mute: #5C6E87; --ink-subtle: #94A3B8;
+    --border: #E2E8F0; --border-strong: #CBD5E1;
+    --f-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --f-mono: 'DM Mono', 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--f-sans);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .topbar {
+    background: linear-gradient(180deg, var(--navy), var(--navy-2));
+    color: #fff;
+    padding: 18px 28px;
+    box-shadow: 0 4px 16px rgba(15,24,48,.20);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar-inner {
+    max-width: 1080px; margin: 0 auto;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .logo-box {
+    background: #fff; color: var(--navy);
+    border-radius: 8px; padding: 6px 14px;
+    font-weight: 800; font-size: 16px;
+    letter-spacing: -.02em; line-height: 1;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .topbar small { font-family: var(--f-mono); font-size: 10.5px; color: rgba(255,255,255,.65); letter-spacing: .06em; text-transform: uppercase; }
+  .layout {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 28px 64px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 32px;
+  }
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; padding: 16px; gap: 14px; }
+    .toc { position: static; max-height: none; }
+  }
+  .toc {
+    position: sticky; top: 84px;
+    align-self: start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 14px;
+    box-shadow: 0 1px 2px rgba(15,24,48,.05), 0 2px 6px rgba(15,24,48,.06);
+  }
+  .toc h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-mute); margin: 0 0 10px; font-family: var(--f-mono); }
+  .toc ul { list-style: none; padding: 0; margin: 0; }
+  .toc li { margin: 3px 0; }
+  .toc a {
+    display: block;
+    padding: 4px 8px;
+    border-radius: 5px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 12.5px;
+    transition: all .12s;
+  }
+  .toc a:hover { background: var(--blue-soft); color: var(--blue-deep); }
+  .toc a.h2 { padding-left: 16px; font-size: 12px; }
+  .content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px 36px;
+    box-shadow: 0 1px 2px rgba(15,24,48,.05), 0 2px 6px rgba(15,24,48,.06);
+  }
+  @media (max-width: 800px) { .content { padding: 20px 18px; } }
+  .content h1 { font-size: 30px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 8px; color: var(--navy); }
+  .content h2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 36px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--ink); }
+  .content h2:first-of-type { border-top: none; padding-top: 0; }
+  .content h3 { font-size: 16px; font-weight: 700; margin: 24px 0 8px; color: var(--ink); }
+  .content p { margin: 12px 0; color: var(--ink-soft); }
+  .content code {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: var(--f-mono);
+    font-size: 13px;
+    color: var(--blue-deep);
+  }
+  .content a { color: var(--blue); text-decoration: none; font-weight: 500; }
+  .content a:hover { text-decoration: underline; }
+  .content ul, .content ol { color: var(--ink-soft); }
+  .content li { margin: 4px 0; }
+  pre {
+    background: #0F1830;
+    color: #E8EFF6;
+    border-radius: 8px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-family: var(--f-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin: 14px 0;
+  }
+  pre code { background: transparent; border: none; padding: 0; color: #E8EFF6; }
+  pre .keyword { color: #C5D4F2; }
+  pre .string  { color: #9FE0B4; }
+  pre .number  { color: #FFB67A; }
+  pre .comment { color: #6c7a8c; font-style: italic; }
+  .endpoint {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--blue);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 16px 0;
+  }
+  .endpoint .method {
+    display: inline-block;
+    padding: 3px 11px;
+    border-radius: 4px;
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    margin-right: 8px;
+    color: #fff;
+    vertical-align: middle;
+  }
+  .endpoint .method.get  { background: var(--blue); }
+  .endpoint .method.post { background: var(--green); }
+  .endpoint .path {
+    font-family: var(--f-mono);
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .endpoint .desc {
+    color: var(--ink-soft);
+    margin: 6px 0 0;
+    font-size: 13.5px;
+  }
+  .lead {
+    background: var(--blue-soft);
+    border: 1px solid #C5D4F2;
+    border-radius: 8px;
+    padding: 14px 16px;
+    color: var(--blue-deep);
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 16px 0;
+  }
+  .lead strong { color: var(--ink); }
+  .warning {
+    background: var(--amber-soft);
+    border: 1px solid #FDBA74;
+    border-radius: 8px;
+    padding: 14px 16px;
+    color: #92400e;
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 16px 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink-soft);
+  }
+  th { font-weight: 700; color: var(--ink); background: var(--surface-alt); }
+  td code { font-size: 12px; }
+  .status-table .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .04em;
+  }
+  .status-table .s-200 { background: var(--green-soft); color: var(--green-deep); }
+  .status-table .s-401, .status-table .s-403, .status-table .s-404, .status-table .s-409, .status-table .s-410 { background: var(--amber-soft); color: #92400e; }
+  .status-table .s-500 { background: var(--red-soft); color: #9F1B1F; }
+  .footer-bar {
+    text-align: center;
+    color: var(--ink-mute);
+    font-size: 12px;
+    padding: 18px;
+    margin-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .footer-bar a { color: var(--blue); text-decoration: none; }
+  .tab-row { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-top: 14px; }
+  .tab-row button {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 14px;
+    font-family: var(--f-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-mute);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .tab-row button.active { color: var(--blue-deep); border-bottom-color: var(--blue); }
+  .tab-row button:hover { color: var(--blue); }
+  .tab-content > div { display: none; }
+  .tab-content > div.active { display: block; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="logo-box">liftaro</div>
+      <div>
+        <h1>Partner API — Doku</h1>
+        <small>REST · Kanal 2 · v2</small>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <a href="openapi.json" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          OpenAPI Spec
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="toc">
+      <h3>Inhalt</h3>
+      <ul>
+        <li><a href="#overview">Überblick</a></li>
+        <li><a href="#workflow">Workflow</a></li>
+        <li><a href="#auth">Authentifizierung</a></li>
+        <li><a href="#base">Basis-URL</a></li>
+        <li><a href="#endpoints">Endpoints</a></li>
+        <li><a href="#ep-me"     class="h2">/api/v2/me</a></li>
+        <li><a href="#ep-list"   class="h2">/api/v2/checks</a></li>
+        <li><a href="#ep-detail" class="h2">/api/v2/checks/:id</a></li>
+        <li><a href="#ep-offer"  class="h2">…/offer</a></li>
+        <li><a href="#ep-decline" class="h2">…/decline</a></li>
+        <li><a href="#datamodel">Datenmodell</a></li>
+        <li><a href="#errors">Status-Codes</a></li>
+        <li><a href="#examples">Code-Beispiele</a></li>
+        <li><a href="#integration">Integrations-Pattern</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+    </nav>
+
+    <main class="content">
+      <h1 id="overview">Liftaro Partner API</h1>
+      <p style="font-size:16px;color:var(--ink-soft);margin-top:0">
+        REST-API für Aufzugsunternehmen zur direkten Software-Integration mit der Liftaro Vergleichsplattform.
+        Empfangt Anfragen, gebt Angebote zurück — alles aus eurem eigenen CRM / Quote-System.
+      </p>
+
+      <div class="lead">
+        <strong>Was ist Liftaro?</strong>
+        Liftaro ist eine unabhängige Vergleichsplattform. Hausverwaltungen reichen ihren Bestands-Wartungsvertrag ein,
+        Liftaro fragt mehrere Aufzugsunternehmen nach Alternativangeboten. Der finale Vertrag wird auf Liftaro-Briefpapier ausgestellt —
+        ihr agiert als <strong>Subunternehmer</strong>, eure Konditionen bleiben anonym gegenüber dem Endkunden.
+      </div>
+
+      <h2 id="workflow">Workflow</h2>
+      <ol>
+        <li>Liftaro-Sachbearbeiter erstellt einen Check und löst eine Partner-Anfrage aus</li>
+        <li>Anfrage wird euch im System sichtbar (über <code>GET /api/v2/checks?status=offen</code>)</li>
+        <li>Eure Software zeigt sie in eurem internen Menü „Liftaro Checks"</li>
+        <li>Ihr pickt ein passendes Angebot aus eurer Offer-DB</li>
+        <li>Submit via <code>POST /api/v2/checks/{id}/offer</code> mit den Eckdaten + optional PDF</li>
+        <li>Liftaro übernimmt euer Angebot automatisch in den Check, vergleicht mit Bestandsvertrag und entscheidet</li>
+      </ol>
+
+      <h2 id="auth">Authentifizierung</h2>
+      <p>Jeder Request muss den Header <code>X-Partner-Key</code> mitsenden:</p>
+      <pre><code>X-Partner-Key: <span class="string">&lt;euer-api-key&gt;</span></code></pre>
+      <p>Den API-Key bekommt ihr von Liftaro (Email an <a href="mailto:check@liftaro.de">check@liftaro.de</a>).
+        Er ist <strong>dauerhaft</strong>, kann aber bei Verdacht auf Kompromittierung rotiert werden.</p>
+      <div class="warning">
+        <strong>Sicherheit:</strong> Speichert den Key serverseitig (env-Variable / Secret-Manager). Niemals im Frontend / Mobile-Client einbetten.
+      </div>
+
+      <h2 id="base">Basis-URL</h2>
+      <pre><code>https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run</code></pre>
+      <p>Health-Check ohne Auth: <code>GET /api/health</code> → <code>{"ok":true, ...}</code></p>
+
+      <h2 id="endpoints">Endpoints</h2>
+
+      <div class="endpoint" id="ep-me">
+        <span class="method get">GET</span>
+        <span class="path">/api/v2/me</span>
+        <p class="desc">Verifiziert den API-Key und gibt die Partner-Metadaten zurück. Erster Aufruf zur Validierung empfohlen.</p>
+        <pre><code><span class="comment"># Response 200</span>
+{
+  <span class="string">"ok"</span>: <span class="keyword">true</span>,
+  <span class="string">"partner_id"</span>: <span class="string">"ahw"</span>,
+  <span class="string">"name"</span>: <span class="string">"Aufzugshandwerk GmbH"</span>,
+  <span class="string">"email_kontakt"</span>: <span class="string">"vertrieb@ahw.de"</span>,
+  <span class="string">"active"</span>: <span class="keyword">true</span>,
+  <span class="string">"api_version"</span>: <span class="string">"v2"</span>
+}</code></pre>
+      </div>
+
+      <div class="endpoint" id="ep-list">
+        <span class="method get">GET</span>
+        <span class="path">/api/v2/checks?status=offen</span>
+        <p class="desc">Listet alle Anfragen für euren Partner-Account. Standard-Filter: <code>offen</code> (= gesendet + geoeffnet). Sortiert nach Versand-Datum absteigend.</p>
+        <h3>Query-Parameter</h3>
+        <table>
+          <thead><tr><th>Name</th><th>Werte</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>status</code></td><td><code>offen</code>, <code>alle</code>, <code>gesendet</code>, <code>geoeffnet</code>, <code>angeboten</code>, <code>abgelehnt</code>, <code>timeout</code></td><td><code>offen</code></td></tr>
+          </tbody>
+        </table>
+        <pre><code><span class="comment"># Response 200</span>
+{
+  <span class="string">"ok"</span>: <span class="keyword">true</span>,
+  <span class="string">"count"</span>: <span class="number">2</span>,
+  <span class="string">"anfragen"</span>: [
+    {
+      <span class="string">"anfrage_id"</span>: <span class="string">"PA-2026-6d0e"</span>,
+      <span class="string">"status"</span>: <span class="string">"geoeffnet"</span>,
+      <span class="string">"objekt_ort"</span>: <span class="string">"Stuttgart"</span>,
+      <span class="string">"anzahl_aufzuege"</span>: <span class="string">"3"</span>,
+      <span class="string">"deadline_at"</span>: <span class="string">"2026-05-31T20:00:00.000Z"</span>
+    }
+  ]
+}</code></pre>
+      </div>
+
+      <div class="endpoint" id="ep-detail">
+        <span class="method get">GET</span>
+        <span class="path">/api/v2/checks/{anfrage_id}</span>
+        <p class="desc">Volle Details. Beim ersten Aufruf wird Status <code>gesendet</code> → <code>geoeffnet</code> und <code>opened_at</code> gesetzt. Sicherheit: Anfrage muss zu eurem Partner gehören (sonst <code>403</code>).</p>
+        <pre><code><span class="comment"># Response 200</span>
+{
+  <span class="string">"ok"</span>: <span class="keyword">true</span>,
+  <span class="string">"anfrage"</span>: {
+    <span class="string">"anfrage_id"</span>: <span class="string">"PA-2026-6d0e"</span>,
+    <span class="string">"status"</span>: <span class="string">"geoeffnet"</span>,
+    <span class="string">"sent_at"</span>: <span class="string">"2026-05-24T20:00:00.000Z"</span>,
+    <span class="string">"deadline_at"</span>: <span class="string">"2026-05-31T20:00:00.000Z"</span>,
+    <span class="string">"objekt_plz"</span>: <span class="string">"70173"</span>,
+    <span class="string">"objekt_ort"</span>: <span class="string">"Stuttgart"</span>,
+    <span class="string">"objekt_strasse"</span>: <span class="string">"Mustergasse 12"</span>,
+    <span class="string">"anzahl_aufzuege"</span>: <span class="string">"2"</span>,
+    <span class="string">"anlagenart"</span>: <span class="string">"Personenaufzug"</span>,
+    <span class="string">"leistungsumfang_text"</span>: <span class="string">"Standard-Wartung 2x/J inkl. Notruf"</span>,
+    <span class="string">"include_vorliegendes_pdf"</span>: <span class="keyword">false</span>,
+    <span class="string">"vorliegendes_pdf_url"</span>: <span class="keyword">null</span>,
+    <span class="string">"response_preis_netto"</span>: <span class="keyword">null</span>,
+    <span class="string">"response_kommentar"</span>: <span class="keyword">null</span>
+  }
+}</code></pre>
+      </div>
+
+      <div class="endpoint" id="ep-offer">
+        <span class="method post">POST</span>
+        <span class="path">/api/v2/checks/{anfrage_id}/offer</span>
+        <p class="desc">Submittet euer Angebot. Status wechselt auf <code>angeboten</code>. Optional PDF als Base64 (max 8 MB). Doppel-Submit wird mit <code>409</code> abgelehnt.</p>
+        <h3>Request-Body</h3>
+        <table>
+          <thead><tr><th>Feld</th><th>Typ</th><th>Pflicht?</th><th>Beispiel</th></tr></thead>
+          <tbody>
+            <tr><td><code>response_offer_id</code></td><td>string</td><td>nein</td><td><code>"ANG-2026-9911"</code></td></tr>
+            <tr><td><code>response_preis_netto</code></td><td>string (€/Jahr)</td><td>empfohlen</td><td><code>"1980.00"</code></td></tr>
+            <tr><td><code>response_laufzeit_jahre</code></td><td>string</td><td>empfohlen</td><td><code>"3"</code></td></tr>
+            <tr><td><code>response_kuendigungsfrist_monate</code></td><td>string</td><td>nein</td><td><code>"3"</code></td></tr>
+            <tr><td><code>response_wartungen_pro_jahr</code></td><td>string</td><td>nein</td><td><code>"2"</code></td></tr>
+            <tr><td><code>response_vollwartung</code></td><td>boolean</td><td>nein</td><td><code>true</code></td></tr>
+            <tr><td><code>response_notruf</code></td><td>boolean</td><td>nein</td><td><code>true</code></td></tr>
+            <tr><td><code>response_tuev_begl</code></td><td>boolean</td><td>nein</td><td><code>true</code></td></tr>
+            <tr><td><code>response_tuev_pruef</code></td><td>boolean</td><td>nein</td><td><code>false</code></td></tr>
+            <tr><td><code>response_entstoerung</code></td><td>boolean</td><td>nein</td><td><code>true</code></td></tr>
+            <tr><td><code>response_kommentar</code></td><td>string (max 4000)</td><td>nein</td><td><code>"Anfahrt inkl. Region Stuttgart"</code></td></tr>
+            <tr><td><code>pdf_base64</code></td><td>string (Base64)</td><td>nein</td><td><code>"JVBERi0xLjQK…"</code></td></tr>
+            <tr><td><code>pdf_filename</code></td><td>string</td><td>nein</td><td><code>"angebot.pdf"</code></td></tr>
+          </tbody>
+        </table>
+        <pre><code><span class="comment"># Response 200</span>
+{ <span class="string">"ok"</span>: <span class="keyword">true</span>, <span class="string">"status"</span>: <span class="string">"angeboten"</span>, <span class="string">"channel"</span>: <span class="string">"api"</span> }</code></pre>
+      </div>
+
+      <div class="endpoint" id="ep-decline">
+        <span class="method post">POST</span>
+        <span class="path">/api/v2/checks/{anfrage_id}/decline</span>
+        <p class="desc">Markiert die Anfrage als <code>abgelehnt</code>. Optional Grund.</p>
+        <pre><code><span class="comment"># Request</span>
+{ <span class="string">"reason"</span>: <span class="string">"Anlagen-Typ außerhalb unseres Service-Gebiets"</span> }
+
+<span class="comment"># Response 200</span>
+{ <span class="string">"ok"</span>: <span class="keyword">true</span>, <span class="string">"status"</span>: <span class="string">"abgelehnt"</span>, <span class="string">"channel"</span>: <span class="string">"api"</span> }</code></pre>
+      </div>
+
+      <h2 id="datamodel">Datenmodell</h2>
+      <p>Eine vollständige Anfrage (Object <code>anfrage</code>):</p>
+      <table>
+        <thead><tr><th>Feld</th><th>Typ</th><th>Beschreibung</th></tr></thead>
+        <tbody>
+          <tr><td><code>anfrage_id</code></td><td>string</td><td>Eindeutige ID, Format <code>PA-YYYY-XXXX</code></td></tr>
+          <tr><td><code>status</code></td><td>enum</td><td><code>gesendet</code>, <code>geoeffnet</code>, <code>angeboten</code>, <code>abgelehnt</code>, <code>timeout</code></td></tr>
+          <tr><td><code>sent_at</code></td><td>ISO-8601</td><td>Erstellt am</td></tr>
+          <tr><td><code>opened_at</code></td><td>ISO-8601 / null</td><td>Erstmals abgerufen am</td></tr>
+          <tr><td><code>responded_at</code></td><td>ISO-8601 / null</td><td>Beantwortet/abgelehnt am</td></tr>
+          <tr><td><code>deadline_at</code></td><td>ISO-8601</td><td>Antwortfrist</td></tr>
+          <tr><td><code>objekt_plz</code>, <code>_ort</code>, <code>_strasse</code></td><td>string</td><td>Objektadresse (Straße evtl. anonymisiert)</td></tr>
+          <tr><td><code>anzahl_aufzuege</code></td><td>string</td><td>Anzahl Aufzüge (als String, da auch "2-3" möglich)</td></tr>
+          <tr><td><code>anlagenart</code></td><td>string</td><td>z.B. "Personenaufzug, 8 Personen"</td></tr>
+          <tr><td><code>leistungsumfang_text</code></td><td>multiline string</td><td>Freitext-Soll-Beschreibung</td></tr>
+          <tr><td><code>vorliegendes_pdf_url</code></td><td>signierte URL / null</td><td>Bestands-Angebot zum Vergleich (falls Liftaro mitsendet) — Link läuft nach Stunden ab</td></tr>
+          <tr><td><code>response_*</code></td><td>verschieden</td><td>Eure Antwort, falls bereits abgegeben (read-only nach Submit)</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="errors">Status-Codes</h2>
+      <table class="status-table">
+        <thead><tr><th>Code</th><th>Bedeutung</th><th>Wann</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge s-200">200</span></td><td>Success</td><td>Alles ok</td></tr>
+          <tr><td><span class="badge s-401">400</span></td><td>Bad Request</td><td>JSON nicht parsbar oder Pflichtfeld fehlt</td></tr>
+          <tr><td><span class="badge s-401">401</span></td><td>Unauthorized</td><td>X-Partner-Key fehlt oder ungültig</td></tr>
+          <tr><td><span class="badge s-403">403</span></td><td>Forbidden</td><td>Anfrage gehört nicht zu eurem Partner-Account</td></tr>
+          <tr><td><span class="badge s-404">404</span></td><td>Not Found</td><td>Anfrage-ID existiert nicht</td></tr>
+          <tr><td><span class="badge s-409">409</span></td><td>Conflict</td><td>Status bereits final (angeboten oder abgelehnt)</td></tr>
+          <tr><td><span class="badge s-410">410</span></td><td>Gone</td><td>Anfrage abgelaufen (timeout)</td></tr>
+          <tr><td><span class="badge s-500">500</span></td><td>Server Error</td><td>Backend-Fehler — Retry mit Exponential-Backoff</td></tr>
+        </tbody>
+      </table>
+      <p>Alle Fehler haben die Form <code>{ "error": "Beschreibung" }</code>.</p>
+
+      <h2 id="examples">Code-Beispiele</h2>
+      <div class="tab-row">
+        <button class="active" onclick="showTab(event,'curl')">curl</button>
+        <button onclick="showTab(event,'js')">JavaScript (Node)</button>
+        <button onclick="showTab(event,'py')">Python</button>
+        <button onclick="showTab(event,'php')">PHP</button>
+        <button onclick="showTab(event,'csharp')">C# (.NET)</button>
+      </div>
+      <div class="tab-content">
+        <div class="active" data-tab="curl">
+<pre><code><span class="comment"># 1) Self-Check</span>
+curl -H <span class="string">"X-Partner-Key: $KEY"</span> \
+  https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run/api/v2/me
+
+<span class="comment"># 2) Offene Anfragen pollen (alle 5 Min)</span>
+curl -H <span class="string">"X-Partner-Key: $KEY"</span> \
+  <span class="string">"https://.../api/v2/checks?status=offen"</span>
+
+<span class="comment"># 3) Details holen</span>
+curl -H <span class="string">"X-Partner-Key: $KEY"</span> \
+  https://.../api/v2/checks/PA-2026-1234
+
+<span class="comment"># 4) Angebot abgeben</span>
+curl -X POST -H <span class="string">"X-Partner-Key: $KEY"</span> -H <span class="string">"Content-Type: application/json"</span> \
+  https://.../api/v2/checks/PA-2026-1234/offer \
+  -d <span class="string">'{
+    "response_offer_id":"ANG-2026-9911",
+    "response_preis_netto":"1980.00",
+    "response_laufzeit_jahre":"3",
+    "response_kuendigungsfrist_monate":"3",
+    "response_wartungen_pro_jahr":"2",
+    "response_vollwartung":true,
+    "response_notruf":true,
+    "response_tuev_begl":true,
+    "response_kommentar":"Standardvertrag, Anfahrt inkl."
+  }'</span></code></pre>
+        </div>
+        <div data-tab="js">
+<pre><code><span class="keyword">const</span> API   = <span class="string">'https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run'</span>;
+<span class="keyword">const</span> KEY   = process.env.LIFTARO_PARTNER_KEY;
+<span class="keyword">const</span> HEAD  = { <span class="string">'X-Partner-Key'</span>: KEY, <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span> };
+
+<span class="comment">// Offene Anfragen abrufen</span>
+<span class="keyword">const</span> resp = <span class="keyword">await</span> fetch(<span class="string">`${API}/api/v2/checks?status=offen`</span>, { headers: HEAD });
+<span class="keyword">const</span> { anfragen } = <span class="keyword">await</span> resp.json();
+
+<span class="keyword">for</span> (<span class="keyword">const</span> a <span class="keyword">of</span> anfragen) {
+  console.log(a.anfrage_id, a.objekt_ort, a.deadline_at);
+}
+
+<span class="comment">// Angebot abgeben</span>
+<span class="keyword">await</span> fetch(<span class="string">`${API}/api/v2/checks/PA-2026-1234/offer`</span>, {
+  method: <span class="string">'POST'</span>,
+  headers: HEAD,
+  body: JSON.stringify({
+    response_offer_id: <span class="string">'ANG-2026-9911'</span>,
+    response_preis_netto: <span class="string">'1980.00'</span>,
+    response_laufzeit_jahre: <span class="string">'3'</span>,
+    response_wartungen_pro_jahr: <span class="string">'2'</span>,
+    response_vollwartung: <span class="keyword">true</span>,
+    response_notruf: <span class="keyword">true</span>,
+  }),
+});</code></pre>
+        </div>
+        <div data-tab="py">
+<pre><code><span class="keyword">import</span> os, requests
+
+API = <span class="string">'https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run'</span>
+KEY = os.environ[<span class="string">'LIFTARO_PARTNER_KEY'</span>]
+HEAD = {<span class="string">'X-Partner-Key'</span>: KEY}
+
+<span class="comment"># Offene Anfragen pollen</span>
+r = requests.get(<span class="string">f'{API}/api/v2/checks?status=offen'</span>, headers=HEAD)
+<span class="keyword">for</span> a <span class="keyword">in</span> r.json()[<span class="string">'anfragen'</span>]:
+    <span class="keyword">print</span>(a[<span class="string">'anfrage_id'</span>], a[<span class="string">'objekt_ort'</span>], a[<span class="string">'deadline_at'</span>])
+
+<span class="comment"># Angebot abgeben</span>
+requests.post(
+    <span class="string">f'{API}/api/v2/checks/PA-2026-1234/offer'</span>,
+    headers={**HEAD, <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span>},
+    json={
+        <span class="string">'response_offer_id'</span>: <span class="string">'ANG-2026-9911'</span>,
+        <span class="string">'response_preis_netto'</span>: <span class="string">'1980.00'</span>,
+        <span class="string">'response_laufzeit_jahre'</span>: <span class="string">'3'</span>,
+        <span class="string">'response_wartungen_pro_jahr'</span>: <span class="string">'2'</span>,
+        <span class="string">'response_vollwartung'</span>: <span class="keyword">True</span>,
+        <span class="string">'response_notruf'</span>: <span class="keyword">True</span>,
+    },
+)</code></pre>
+        </div>
+        <div data-tab="php">
+<pre><code>&lt;?php
+$API = <span class="string">'https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run'</span>;
+$KEY = getenv(<span class="string">'LIFTARO_PARTNER_KEY'</span>);
+
+<span class="comment">// Offene Anfragen pollen</span>
+$ch = curl_init(<span class="string">"$API/api/v2/checks?status=offen"</span>);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [<span class="string">"X-Partner-Key: $KEY"</span>]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, <span class="keyword">true</span>);
+$response = json_decode(curl_exec($ch), <span class="keyword">true</span>);
+
+<span class="keyword">foreach</span> ($response[<span class="string">'anfragen'</span>] <span class="keyword">as</span> $a) {
+    <span class="keyword">echo</span> $a[<span class="string">'anfrage_id'</span>] . <span class="string">' '</span> . $a[<span class="string">'objekt_ort'</span>] . PHP_EOL;
+}
+
+<span class="comment">// Angebot abgeben</span>
+$ch = curl_init(<span class="string">"$API/api/v2/checks/PA-2026-1234/offer"</span>);
+curl_setopt($ch, CURLOPT_POST, <span class="keyword">true</span>);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [<span class="string">"X-Partner-Key: $KEY"</span>, <span class="string">"Content-Type: application/json"</span>]);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+    <span class="string">'response_preis_netto'</span> =&gt; <span class="string">'1980.00'</span>,
+    <span class="string">'response_laufzeit_jahre'</span> =&gt; <span class="string">'3'</span>,
+    <span class="string">'response_vollwartung'</span> =&gt; <span class="keyword">true</span>,
+]));
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, <span class="keyword">true</span>);
+$result = curl_exec($ch);</code></pre>
+        </div>
+        <div data-tab="csharp">
+<pre><code><span class="keyword">using</span> System.Net.Http;
+<span class="keyword">using</span> System.Net.Http.Json;
+
+<span class="keyword">var</span> http = <span class="keyword">new</span> HttpClient { BaseAddress = <span class="keyword">new</span> Uri(<span class="string">"https://giltglobalinvest--4c42aaf257b611f19fa0ee650bb23af1.web.val.run"</span>) };
+http.DefaultRequestHeaders.Add(<span class="string">"X-Partner-Key"</span>, Environment.GetEnvironmentVariable(<span class="string">"LIFTARO_PARTNER_KEY"</span>));
+
+<span class="comment">// Offene Anfragen pollen</span>
+<span class="keyword">var</span> resp = <span class="keyword">await</span> http.GetFromJsonAsync&lt;<span class="keyword">dynamic</span>&gt;(<span class="string">"/api/v2/checks?status=offen"</span>);
+<span class="keyword">foreach</span> (<span class="keyword">var</span> a <span class="keyword">in</span> resp.anfragen) {
+    Console.WriteLine($<span class="string">"{a.anfrage_id} {a.objekt_ort}"</span>);
+}
+
+<span class="comment">// Angebot abgeben</span>
+<span class="keyword">await</span> http.PostAsJsonAsync(<span class="string">"/api/v2/checks/PA-2026-1234/offer"</span>, <span class="keyword">new</span> {
+    response_preis_netto = <span class="string">"1980.00"</span>,
+    response_laufzeit_jahre = <span class="string">"3"</span>,
+    response_vollwartung = <span class="keyword">true</span>,
+    response_notruf = <span class="keyword">true</span>,
+});</code></pre>
+        </div>
+      </div>
+
+      <h2 id="integration">Integrations-Pattern</h2>
+      <h3>Empfohlen: Polling alle 5 Minuten</h3>
+      <p>Eure Software ruft <code>GET /api/v2/checks?status=offen</code> alle 5 Minuten auf. Neue Anfragen werden in eurem internen Menü (z.B. „Liftaro Checks") sichtbar.</p>
+      <pre><code><span class="comment"># Pseudo-Code</span>
+<span class="keyword">every</span> 5 minutes:
+  open_anfragen = GET /api/v2/checks?status=offen
+  <span class="keyword">for</span> a <span class="keyword">in</span> open_anfragen:
+    <span class="keyword">if</span> a.anfrage_id <span class="keyword">not in</span> known:
+      show_notification(<span class="string">"Neue Liftaro-Anfrage"</span>, a)
+      known.add(a.anfrage_id)</code></pre>
+
+      <h3>Optional: Webhooks (geplant)</h3>
+      <p>Push-Notifications statt Polling sind in Vorbereitung. Sobald verfügbar, könnt ihr eine Callback-URL bei Liftaro registrieren.</p>
+
+      <h3>Test-Modus</h3>
+      <p>Für Sandbox-Tests fragt ihr Liftaro nach einem zweiten <em>Test-API-Key</em>. Damit könnt ihr alle Endpoints durchspielen ohne echte Anfragen.</p>
+
+      <h2 id="faq">FAQ</h2>
+
+      <h3>Wie ist die SLA?</h3>
+      <p>Antwortzeit innerhalb der <code>deadline_at</code> (Standard 5 Werktage). Bei Nicht-Antwort wechselt die Anfrage auf <code>timeout</code> und ist nicht mehr beantwortbar.</p>
+
+      <h3>Können wir das vorliegende Bestands-Angebot sehen?</h3>
+      <p>Nur wenn Liftaro es explizit mitsendet (<code>include_vorliegendes_pdf=true</code>). Default ist nein, weil Marktbenchmarking fair bleiben soll.</p>
+
+      <h3>Bekommen wir den Endkunden-Kontakt?</h3>
+      <p>Erst nach Annahme eures Angebots durch den Endkunden. Bis dahin: nur anonymisierte Objektdaten.</p>
+
+      <h3>Wer stellt den Vertrag aus?</h3>
+      <p>Liftaro. Ihr seid Subunternehmer. Die Abrechnung läuft zwischen Liftaro und euch separat.</p>
+
+      <h3>Was passiert bei Doppel-Submit?</h3>
+      <p>Zweiter <code>POST /offer</code> mit demselben Anfrage-ID liefert <code>409 Conflict</code>. Ihr könnt mit <code>GET /api/v2/checks/{id}</code> den aktuellen Stand abrufen.</p>
+
+      <h3>Können wir Anfragen löschen?</h3>
+      <p>Nein. Ihr könnt aber <code>POST /decline</code> aufrufen, dann wird sie als abgelehnt markiert. Liftaro fragt eventuell einen anderen Partner.</p>
+
+      <h3>Rate-Limits?</h3>
+      <p>Aktuell keine harten Limits. Bei missbräuchlicher Last (>1 Req/sec über längere Zeit) kann der Key gesperrt werden. Reasonable Polling (alle 5 Min) ist absolut ok.</p>
+
+      <div class="footer-bar">
+        Fragen oder Key beantragen: <a href="mailto:check@liftaro.de">check@liftaro.de</a> · <a href="https://liftaro.de">liftaro.de</a> · <a href="openapi.json">OpenAPI Spec</a>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function showTab(ev, name) {
+      document.querySelectorAll('.tab-row button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content > div').forEach(d => d.classList.remove('active'));
+      ev.target.classList.add('active');
+      const target = document.querySelector('.tab-content > div[data-tab="' + name + '"]');
+      if (target) target.classList.add('active');
+    }
+  </script>
+</body>
+</html>
