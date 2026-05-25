@@ -1915,6 +1915,70 @@ const pdfWorkerReady = Promise.resolve();</script>
     }
     #mobileMenuBtn { order: -1; }
   }
+
+  /* ═════════════════════════════════════════════════════════════════
+     V12.31: PDF-Rendering-Overrides
+     Wird in _forcePdfLayout() via body.pdf-rendering aktiviert.
+     Auf iOS Safari evaluiert html2canvas @media-Queries gegen die echte
+     Viewport-Breite (~390px), NICHT gegen die im Tool gesetzte windowWidth.
+     Dadurch greifen die @media (max-width:768px)-Regeln auch bei PDF-Gen
+     und zerschießen das Layout (Vergleichstabelle wird zur Mobile-Card,
+     Sidebar-Cards bleiben im print-area als Layout-Geister).
+     Diese Overrides neutralisieren die Mobile-Stack-Versionen für PDFs.
+     ───────────────────────────────────────────────────────────────── */
+  body.pdf-rendering .compare-table { display: table !important; width: 100% !important; min-width: 0 !important; }
+  body.pdf-rendering .compare-table thead { display: table-header-group !important; }
+  body.pdf-rendering .compare-table tbody { display: table-row-group !important; }
+  body.pdf-rendering .compare-table tr {
+    display: table-row !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  body.pdf-rendering .compare-table td {
+    display: table-cell !important;
+    padding: 8px 10px !important;
+    border: 1px solid #e0e0e0 !important;
+    position: static !important;
+    font-weight: normal !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    font-size: 13px !important;
+    color: inherit !important;
+    border-bottom: 1px solid #e0e0e0 !important;
+    margin-bottom: 0 !important;
+  }
+  body.pdf-rendering .compare-table td::before { content: none !important; display: none !important; }
+  body.pdf-rendering .compare-table input:not([type="checkbox"]):not([type="radio"]),
+  body.pdf-rendering .compare-table select {
+    min-height: 0 !important;
+    font-size: 13px !important;
+    padding: 4px 6px !important;
+    border: 1px solid #ddd !important;
+    width: 100% !important;
+  }
+  body.pdf-rendering .compare-table input[type="checkbox"],
+  body.pdf-rendering .compare-table input.w-check {
+    width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+  }
+  /* Mobile-attached Sidebar-Cards komplett aus dem Layout entfernen — sonst
+     produzieren sie riesige Leerräume am Ende der PDF, weil html2canvas's
+     ignoreElements nur das Rendern überspringt, nicht den Layout-Platz. */
+  body.pdf-rendering .side-card.mobile-attached-here,
+  body.pdf-rendering .mobile-slots-anchor,
+  body.pdf-rendering #mobileResultViewer,
+  body.pdf-rendering #mobileVorliegendViewer,
+  body.pdf-rendering #mobileAlternativViewer {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 </style>
 </head>
 <body>
@@ -5055,7 +5119,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.30';
+const APP_VERSION = 'V12.31';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10092,6 +10156,12 @@ function _forcePdfLayout() {
   const formCard = printArea.closest('.form-card');
   const prevPrintCss = printArea.style.cssText;
   const prevFormCss  = formCard ? formCard.style.cssText : null;
+  // V12.31: body.pdf-rendering setzen — aktiviert die Desktop-Overrides für
+  // Vergleichstabelle + Mobile-attached Sidebar-Cards (verhindert kaputtes
+  // PDF-Layout auf iOS Safari, wo @media (max-width:768px) auch im html2canvas
+  // -Klon gegen die echte Viewport-Breite evaluiert wird).
+  const _hadPdfClass = document.body.classList.contains('pdf-rendering');
+  if (!_hadPdfClass) document.body.classList.add('pdf-rendering');
   // Element-Breiten zwingen — überschreibt jede Container-Constraint
   if (formCard) {
     formCard.style.setProperty('width', '1200px', 'important');
@@ -10125,6 +10195,8 @@ function _forcePdfLayout() {
     if (formCard) formCard.style.cssText = prevFormCss;
     rowsRestore.forEach(({ el, css }) => { el.style.cssText = css; });
     if (banner) banner.style.cssText = bannerRestore || '';
+    // V12.31: pdf-rendering-Klasse wieder entfernen (nur falls wir sie selbst gesetzt haben)
+    if (!_hadPdfClass) document.body.classList.remove('pdf-rendering');
   };
 }
 
