@@ -2524,6 +2524,20 @@ const pdfWorkerReady = Promise.resolve();</script>
 
         <!-- WARTUNG SECTION -->
         <div id="section-wartung" style="display:none">
+          <!-- V12.15 Phase 4: Multi-Variant-Karten der eingegangenen Partner-Angebote -->
+          <div id="wartung-variants-section" class="section" style="margin-top:20px;display:none">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <span>📥 Eingegangene Partner-Angebote <span id="wartung-variants-count" style="background:var(--dr-blue);color:#fff;border-radius:999px;padding:2px 10px;font-family:'DM Mono',monospace;font-size:11.5px;font-weight:700;margin-left:6px"></span></span>
+              <button onclick="refreshAnfragenListForCurrentCheck()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Status neu laden" onmouseover="this.style.color='var(--dr-blue)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                Aktualisieren
+              </button>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
+              Klick auf eine Karte → die Variante wird in die Vergleichstabelle unten übernommen. Aktive Variante ist farblich markiert.
+            </div>
+            <div id="wartung-variants-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px"></div>
+          </div>
           <div class="section" style="margin-top:20px">
             <div class="section-title">Vertragsvergleich</div>
             <div style="overflow:hidden">
@@ -4755,7 +4769,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.14';
+const APP_VERSION = 'V12.15';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10086,18 +10100,76 @@ async function refreshAnfragenListForCurrentCheck() {
   const checkId = (document.getElementById('f_requestid')?.value || '').trim();
   const listEl = document.getElementById('ahw-anfragen-list');
   if (!listEl) return;
-  if (!checkId) { listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Check-ID fehlt — erst speichern.</div>'; return; }
+  if (!checkId) { listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Check-ID fehlt — erst speichern.</div>'; _renderVariantsRow([]); return; }
   if (!APP_KEYS.partnerApiUrl || !APP_KEYS.partnerApiSecret) {
     listEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Partner-API nicht konfiguriert.</div>';
+    _renderVariantsRow([]);
     return;
   }
   listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px"><span class="spin" style="display:inline-block;width:11px;height:11px;border:2px solid #ccc;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></span>Lade Anfragen …</div>';
   _currentCheckAnfragen = await loadAnfragenForCheck(checkId);
   if (!_currentCheckAnfragen.length) {
     listEl.innerHTML = '<div style="font-size:11.5px;color:var(--muted);text-align:center;padding:8px;font-style:italic">Noch keine Anfragen — klick „🚀 Partner anfragen".</div>';
+    _renderVariantsRow([]);
     return;
   }
   listEl.innerHTML = _currentCheckAnfragen.map(_renderAnfrageCard).join('');
+  // V12.15 Phase 4: Multi-Variant-Karten oberhalb der Vergleichstabelle rendern
+  const angebote = _currentCheckAnfragen.filter(a => a.status === 'angeboten');
+  _renderVariantsRow(angebote);
+}
+
+// V12.15 Phase 4: Karten-Reihe oberhalb der Vergleichstabelle
+function _renderVariantsRow(angebote) {
+  const section = document.getElementById('wartung-variants-section');
+  const row     = document.getElementById('wartung-variants-row');
+  const cnt     = document.getElementById('wartung-variants-count');
+  if (!section || !row) return;
+  if (!angebote || !angebote.length) {
+    section.style.display = 'none';
+    row.innerHTML = '';
+    return;
+  }
+  section.style.display = 'block';
+  if (cnt) cnt.textContent = String(angebote.length);
+  // Welche Karte ist aktiv? — wenn selected_by_liftaro gesetzt, sonst keine
+  const activeId = (angebote.find(a => a.selected_by_liftaro) || {})._id || null;
+  row.innerHTML = angebote.map(a => _renderVariantCard(a, a._id === activeId)).join('');
+}
+
+function _renderVariantCard(a, isActive) {
+  const idEsc = String(a._id || '').replace(/'/g, "\\'");
+  const partnerEsc = _esc(a.partner_name || a.partner_id || 'Partner');
+  const preisFmt = a.response_preis_netto ? (parseFloat(String(a.response_preis_netto).replace(/\./g,'').replace(',', '.')).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.')) : '–';
+  const respAt = a.responded_at ? new Date(a.responded_at).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+  const accent = isActive ? 'var(--dr-blue)' : 'var(--border)';
+  const accentBg = isActive ? 'var(--dr-blue-soft)' : '#fff';
+  const badge = isActive
+    ? '<span style="background:var(--dr-blue);color:#fff;border-radius:999px;padding:2px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">✓ AKTIV</span>'
+    : '<span style="background:var(--dr-surface-alt);color:var(--dr-ink-mute);border:1px solid var(--dr-border);border-radius:999px;padding:1px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">wählen</span>';
+  const checkRow = (label, val) => val ? `<div style="display:flex;justify-content:space-between;gap:6px;font-size:11.5px;padding:2px 0"><span style="color:var(--muted)">${label}</span><strong style="color:var(--dr-ink)">${_esc(val)}</strong></div>` : '';
+  const featChip = (label, on) => on ? `<span style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;font-family:var(--dr-f-mono);margin:1px">${_esc(label)}</span>` : '';
+  return `
+    <div onclick="applyPartnerAnfrageVariant('${idEsc}')" style="background:${accentBg};border:1.5px solid ${accent};border-radius:var(--dr-r-md,10px);padding:14px 16px;cursor:pointer;transition:all .15s;box-shadow:${isActive ? '0 4px 14px rgba(36,86,229,.18)' : 'var(--elev-1, 0 1px 2px rgba(15,24,48,.05))'}" onmouseover="this.style.borderColor='var(--dr-blue)';this.style.boxShadow='0 4px 14px rgba(36,86,229,.18)'" onmouseout="this.style.borderColor='${accent}';this.style.boxShadow='${isActive ? '0 4px 14px rgba(36,86,229,.18)' : 'var(--elev-1, 0 1px 2px rgba(15,24,48,.05))'}'">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+        <strong style="font-size:13px;color:var(--dr-ink);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${partnerEsc}</strong>
+        ${badge}
+      </div>
+      <div style="font-size:22px;font-weight:800;color:${isActive ? 'var(--dr-blue-deep)' : 'var(--dr-ink)'};letter-spacing:-.02em;margin-bottom:4px">${preisFmt} €<span style="font-size:11px;font-weight:600;color:var(--muted);margin-left:4px">/ Jahr</span></div>
+      <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:6px">
+        ${checkRow('Laufzeit', a.response_laufzeit_jahre ? a.response_laufzeit_jahre + ' Jahre' : '')}
+        ${checkRow('Kündigungsfrist', a.response_kuendigungsfrist_monate ? a.response_kuendigungsfrist_monate + ' Mon.' : '')}
+        ${checkRow('Wartungen / Jahr', a.response_wartungen_pro_jahr)}
+      </div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:2px">
+        ${featChip('Vollwartung', a.response_vollwartung)}
+        ${featChip('Notruf', a.response_notruf)}
+        ${featChip('TÜV-Begl.', a.response_tuev_begl)}
+        ${featChip('TÜV-Prüf.', a.response_tuev_pruef)}
+        ${featChip('Entstörung', a.response_entstoerung)}
+      </div>
+      ${respAt ? `<div style="font-size:10px;color:var(--muted);font-family:var(--dr-f-mono);margin-top:8px;text-align:right">${respAt}</div>` : ''}
+    </div>`;
 }
 
 function _renderAnfrageCard(a) {
@@ -10135,7 +10207,7 @@ function _renderAnfrageCard(a) {
     </div>`;
 }
 
-function applyPartnerAnfrageVariant(anfrageId) {
+async function applyPartnerAnfrageVariant(anfrageId) {
   const a = (_currentCheckAnfragen || []).find(x => x._id === anfrageId);
   if (!a) { showToast('Anfrage nicht gefunden', 'error'); return; }
   if (a.status !== 'angeboten') { showToast('Anfrage hat noch kein Angebot', 'error'); return; }
@@ -10167,6 +10239,22 @@ function applyPartnerAnfrageVariant(anfrageId) {
     try { recomputeWartungKuendigung('a'); } catch (_) {}
   }
   showToast(`Variante von ${a.partner_name || a.partner_id} übernommen — Vergleichstabelle gefüllt`, 'success', 3500);
+  // V12.15 Phase 4: aktive Wahl in Airtable markieren (und andere Varianten desselben Checks unmarkieren)
+  try {
+    const now = new Date().toISOString();
+    const others = (_currentCheckAnfragen || []).filter(x => x._id !== anfrageId && x.selected_by_liftaro);
+    // Lokal sofort umflaggen für sofortiges Re-Render
+    (_currentCheckAnfragen || []).forEach(x => {
+      x.selected_by_liftaro = (x._id === anfrageId);
+      if (x._id === anfrageId) x.selected_at = now;
+    });
+    _renderVariantsRow((_currentCheckAnfragen || []).filter(x => x.status === 'angeboten'));
+    // Server-Update — asynchron, kein Block
+    atUpdate('Partner-Anfragen', anfrageId, { selected_by_liftaro: true, selected_at: now }).catch(e => console.warn('mark selected:', e.message));
+    for (const o of others) {
+      atUpdate('Partner-Anfragen', o._id, { selected_by_liftaro: false }).catch(e => console.warn('unmark selected:', e.message));
+    }
+  } catch (e) { console.warn('Variant-Selection-Sync fehlgeschlagen:', e.message); }
 }
 
 // Prüft, ob im aktuellen Check bereits manuelle Wartungs-Daten erfasst sind.
