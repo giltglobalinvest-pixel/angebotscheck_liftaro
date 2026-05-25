@@ -5119,7 +5119,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.31';
+const APP_VERSION = 'V12.32';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10145,6 +10145,24 @@ function _sanitizeClonedDocForCanvas(clonedDoc) {
         }
       } catch(_) {}
     });
+    // (3) V12.32: Font-Family im Klon auf System-Font erzwingen.
+    // Hintergrund: Wir haben gerade die Google-Fonts (DM Sans) aus dem Klon
+    // entfernt — der Klon nutzt also Fallback-Fonts. ABER: html2canvas misst
+    // Wort-Breiten manchmal mit den Original-Font-Metriken und rendert dann
+    // mit Fallback → Mismatch → Spaces zwischen Wörtern kollabieren auf iOS
+    // ("Liftaroübernimmtdie", "stelltdie", "fachlicheund...").
+    // Lösung: Ein fix-Style-Tag das font-family für ALLES auf system-ui
+    // setzt — so ist die Messung garantiert gleich dem Rendering.
+    var fontFix = clonedDoc.createElement('style');
+    fontFix.textContent =
+      '*, *::before, *::after { ' +
+        'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif !important; ' +
+        'font-feature-settings: normal !important; ' +
+        'font-variant-ligatures: none !important; ' +
+        'letter-spacing: normal !important; ' +
+        'word-spacing: normal !important; ' +
+      '}';
+    clonedDoc.head.appendChild(fontFix);
   } catch(e) {
     console.warn('_sanitizeClonedDocForCanvas:', e.message);
   }
