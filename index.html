@@ -2606,26 +2606,69 @@ const pdfWorkerReady = Promise.resolve();</script>
                   <div class="savings-display zero" id="savings-display-w">– €</div>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                <label style="white-space:nowrap">Erfolgsprämie Liftaro jährlich:</label>
+              <!-- V12.23: Vergütungs-Mode-Switch — Erfolgsbasiert vs Service-Pauschale -->
+              <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:12px">
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
-                    <input type="number" id="liftaro_pct_w" value="50" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
-                      style="width:54px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
-                    <span style="font-size:12.5px;color:var(--muted);font-weight:600">%</span>
+                  <label style="white-space:nowrap;font-weight:600;color:var(--text)">Liftaro-Vergütung:</label>
+                  <div style="display:inline-flex;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:2px;gap:0">
+                    <button type="button" id="lv_mode_erfolg_w" onclick="setLiftaroVerguetungMode('w','erfolg')"
+                      style="border:none;background:var(--green,#7dc242);color:#fff;border-radius:6px;padding:5px 13px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer">Erfolgsbasiert</button>
+                    <button type="button" id="lv_mode_pauschale_w" onclick="setLiftaroVerguetungMode('w','pauschale')"
+                      style="border:none;background:transparent;color:var(--muted);border-radius:6px;padding:5px 13px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer">Service-Pauschale</button>
                   </div>
-                  <span style="font-size:11px;color:var(--muted);font-style:italic">oder</span>
-                  <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
-                    <input type="text" id="liftaro_eur_w" placeholder="absolut" oninput="calcSavings()" data-frozen-allow
-                      title="Absoluter €-Betrag — überschreibt den Prozent-Anteil"
-                      style="width:74px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
-                    <span style="font-size:12.5px;color:var(--muted);font-weight:600">€</span>
+                </div>
+
+                <!-- Modus: Erfolgsbasiert -->
+                <div id="lv_panel_erfolg_w" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                  <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">% von Ersparnis oder Festbetrag:</span>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
+                      <input type="number" id="liftaro_pct_w" value="50" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
+                        style="width:54px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                      <span style="font-size:12.5px;color:var(--muted);font-weight:600">%</span>
+                    </div>
+                    <span style="font-size:11px;color:var(--muted);font-style:italic">oder</span>
+                    <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
+                      <input type="text" id="liftaro_eur_w" placeholder="absolut" oninput="calcSavings()" data-frozen-allow
+                        title="Absoluter €-Betrag (jährlich) — überschreibt den Prozent-Anteil"
+                        style="width:74px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                      <span style="font-size:12.5px;color:var(--muted);font-weight:600">€</span>
+                    </div>
                   </div>
-                  <div class="savings-display zero" id="savings-liftaro-w" style="min-width:110px;background:var(--navy)">– €</div>
+                </div>
+
+                <!-- Modus: Service-Pauschale (NEU) -->
+                <div id="lv_panel_pauschale_w" style="display:none;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                    <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">Fixe Jahresgebühr:</span>
+                    <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1.5px solid var(--green);border-radius:7px;padding:2px 6px 2px 8px">
+                      <input type="text" id="liftaro_jahresgebuehr_w" placeholder="z.B. 500" oninput="calcSavings()" data-frozen-allow
+                        title="Fixe Jahresgebühr unabhängig von der Ersparnis — fällig über die Vertragslaufzeit"
+                        style="width:90px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-align:right;padding:4px 2px;outline:none">
+                      <span style="font-size:12.5px;color:var(--muted);font-weight:600">€ / Jahr</span>
+                    </div>
+                  </div>
+                  <div style="background:var(--green-soft,#dcfce7);border:1px solid #8FD4A6;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#0e6655;line-height:1.55">
+                    <strong>Gegenleistung — Liftaro Service-Paket über die Vertragslaufzeit:</strong>
+                    <ul style="margin:4px 0 0;padding-left:18px">
+                      <li>Prüfung eingehender Wartungs-/Reparatur-Angebote auf inhaltliche, fachliche und preisliche Plausibilität</li>
+                      <li>Beratung zu sonstigen Aufzug-bezogenen Fragen</li>
+                      <li>Hinweise zur Betriebssicherheitsverordnung (BetrSichV) und zugehöriger Vorschriften</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- Berechnetes Ergebnis (beide Modi) -->
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:6px">
+                  <span id="lv_result_label_w" style="font-size:12.5px;color:var(--text);font-weight:600">Liftaro-Vergütung jährlich:</span>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="savings-display zero" id="savings-liftaro-w" style="min-width:110px;background:var(--navy)">– €</div>
+                    <div id="lv_result_total_w" style="font-size:11px;color:var(--muted);font-style:italic;text-align:right;display:none"></div>
+                  </div>
                 </div>
               </div>
-              <div style="font-size:11px;color:var(--muted);font-style:italic;border-top:1px solid var(--border);padding-top:8px">
-                Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel. Wenn ein absoluter Betrag gesetzt ist, überschreibt er den Prozent-Anteil.
+              <div id="lv_footer_note_w" style="font-size:11px;color:var(--muted);font-style:italic;border-top:1px solid var(--border);padding-top:8px;line-height:1.5">
+                Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel. Bei „Erfolgsbasiert" überschreibt ein absoluter Betrag den Prozent-Anteil.
               </div>
             </div>
           </div>
@@ -4999,7 +5042,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.22';
+const APP_VERSION = 'V12.23';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6107,6 +6150,9 @@ function resetForm() {
   // V12.11: Provisions-Inputs auf Defaults zurücksetzen
   ['liftaro_pct','liftaro_pct_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '50'; });
   ['liftaro_eur','liftaro_eur_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // V12.23: Vergütungs-Modus zurück auf "erfolg" + Pauschale leeren
+  const pj = document.getElementById('liftaro_jahresgebuehr_w'); if (pj) pj.value = '';
+  if (typeof setLiftaroVerguetungMode === 'function') setLiftaroVerguetungMode('w', 'erfolg');
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6199,6 +6245,9 @@ function collectFormData() {
     liftaro_eur:    g('liftaro_eur'),
     liftaro_pct_w:  g('liftaro_pct_w'),
     liftaro_eur_w:  g('liftaro_eur_w'),
+    // V12.23: Service-Pauschale (nur Wartung) — alternativer Vergütungsmodus
+    liftaro_verguetung_typ_w: window._liftaroVerguetungModeW || 'erfolg',
+    liftaro_jahresgebuehr_w:  g('liftaro_jahresgebuehr_w'),
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
@@ -6303,6 +6352,39 @@ async function generateEmailAnfrageNr() {
     }
   } catch(e) { console.warn('generateEmailAnfrageNr lookup failed:', e.message); }
   return String(maxNr + 1);
+}
+
+// V12.23: Vergütungs-Modus-Switch (Wartung) — Erfolgsbasiert vs Service-Pauschale
+function setLiftaroVerguetungMode(checkType, mode) {
+  if (checkType !== 'w') return; // aktuell nur Wartung
+  window._liftaroVerguetungModeW = mode === 'pauschale' ? 'pauschale' : 'erfolg';
+  // Tab-Buttons stylen
+  const isErfolg = window._liftaroVerguetungModeW === 'erfolg';
+  const erfBtn = document.getElementById('lv_mode_erfolg_w');
+  const pauBtn = document.getElementById('lv_mode_pauschale_w');
+  if (erfBtn) {
+    erfBtn.style.background = isErfolg ? 'var(--green,#7dc242)' : 'transparent';
+    erfBtn.style.color      = isErfolg ? '#fff' : 'var(--muted)';
+  }
+  if (pauBtn) {
+    pauBtn.style.background = !isErfolg ? 'var(--green,#7dc242)' : 'transparent';
+    pauBtn.style.color      = !isErfolg ? '#fff' : 'var(--muted)';
+  }
+  // Panels umschalten
+  const erfPanel = document.getElementById('lv_panel_erfolg_w');
+  const pauPanel = document.getElementById('lv_panel_pauschale_w');
+  if (erfPanel) erfPanel.style.display = isErfolg ? 'flex' : 'none';
+  if (pauPanel) pauPanel.style.display = isErfolg ? 'none' : 'flex';
+  // Result-Label anpassen
+  const lbl = document.getElementById('lv_result_label_w');
+  if (lbl) lbl.textContent = isErfolg ? 'Liftaro-Vergütung jährlich:' : 'Liftaro-Pauschale jährlich:';
+  // Footer-Hinweistext anpassen
+  const note = document.getElementById('lv_footer_note_w');
+  if (note) note.innerHTML = isErfolg
+    ? 'Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel. Bei „Erfolgsbasiert" überschreibt ein absoluter Betrag den Prozent-Anteil.'
+    : 'Liftaro stellt die Rechnung als <strong>Service-Pauschale</strong> über die Vertragslaufzeit — unabhängig von der konkreten Ersparnis. Gegenleistung: laufende Aufzug-Betreuung (siehe oben).';
+  // Werte neu berechnen
+  if (typeof calcSavings === 'function') calcSavings();
 }
 
 async function saveCheck(reporter) {
@@ -6671,6 +6753,11 @@ async function loadCheck(data) {
   sc('liftaro_eur',   data.liftaro_eur   || '');
   sc('liftaro_pct_w', data.liftaro_pct_w != null && data.liftaro_pct_w !== '' ? data.liftaro_pct_w : '50');
   sc('liftaro_eur_w', data.liftaro_eur_w || '');
+  // V12.23: Service-Pauschale-Modus wiederherstellen (nur Wartung)
+  sc('liftaro_jahresgebuehr_w', data.liftaro_jahresgebuehr_w || '');
+  if (typeof setLiftaroVerguetungMode === 'function') {
+    setLiftaroVerguetungMode('w', data.liftaro_verguetung_typ_w === 'pauschale' ? 'pauschale' : 'erfolg');
+  }
   // Nach Werte-Restore neu berechnen, damit die Anzeige passt
   if (typeof calcSavings === 'function') setTimeout(calcSavings, 30);
   // V12.12: AHW-Wartungs-Sidebar nach Wert-Restore re-initialisieren
@@ -8072,6 +8159,10 @@ function switchTab(type) {
     document.getElementById('ahw-card-title').textContent = isWartung
       ? 'Aufzugshandwerk Wartungsvertrag' : 'Aufzugshandwerk Angebot';
   }
+  // V12.23: Bei Wechsel auf Wartung initial Vergütungsmodus anzeigen
+  if (isWartung && typeof setLiftaroVerguetungMode === 'function') {
+    setTimeout(() => setLiftaroVerguetungMode('w', window._liftaroVerguetungModeW || 'erfolg'), 20);
+  }
 
   // Alternativangebot Sidebar bei Rechnungscheck ausblenden (es gibt nur eine vorliegende Rechnung)
   const sideCards = document.querySelectorAll('.sidebar .side-card');
@@ -8867,7 +8958,10 @@ function calcSavings() {
   pctEl.textContent   = (pct >= 0 ? '+' : '') + pct.toFixed(1) + ' %';
   pctEl.className     = 'savings-display ' + (pct > 0 ? 'positive' : pct < 0 ? 'negative' : 'zero');
 
-  // V12.11: Flexible Liftaro-Provision — entweder Prozent (Default 50) oder absoluter Override.
+  // V12.11+V12.23: Flexible Liftaro-Vergütung
+  //   - Modus "erfolg": % von Ersparnis (Default 50) ODER absoluter Override
+  //   - Modus "pauschale" (nur Wartung): fixe Jahresgebühr unabhängig von Ersparnis
+  const verguetungMode = isWartung ? (window._liftaroVerguetungModeW || 'erfolg') : 'erfolg';
   const liftaroPctInputId = isWartung ? 'liftaro_pct_w' : 'liftaro_pct';
   const liftaroEurInputId = isWartung ? 'liftaro_eur_w' : 'liftaro_eur';
   const liftaroPctRaw = (document.getElementById(liftaroPctInputId)?.value || '').toString().trim();
@@ -8875,25 +8969,56 @@ function calcSavings() {
   const liftaroPctNum = liftaroPctRaw === '' ? 50 : parseFloat(liftaroPctRaw.replace(',', '.'));
   const liftaroPct    = (!isNaN(liftaroPctNum) && liftaroPctNum >= 0) ? liftaroPctNum : 50;
   const liftaroEurOverride = liftaroEurRaw ? parsePrice(liftaroEurRaw) : NaN;
+  const liftaroPauschaleRaw = (document.getElementById('liftaro_jahresgebuehr_w')?.value || '').toString().trim();
+  const liftaroPauschale = liftaroPauschaleRaw ? parsePrice(liftaroPauschaleRaw) : NaN;
 
   let liftaroAmount;
   let useOverride = false;
-  if (!isNaN(liftaroEurOverride) && liftaroEurOverride > 0) {
+  let usePauschale = false;
+  if (isWartung && verguetungMode === 'pauschale') {
+    // Fixe Jahresgebühr — unabhängig von Ersparnis
+    if (!isNaN(liftaroPauschale) && liftaroPauschale > 0) {
+      liftaroAmount = liftaroPauschale;
+      usePauschale = true;
+    }
+  } else if (!isNaN(liftaroEurOverride) && liftaroEurOverride > 0) {
     liftaroAmount = liftaroEurOverride;
     useOverride = true;
   } else if (savings > 0) {
     liftaroAmount = savings * (liftaroPct / 100);
   }
 
+  // Gesamtsumme über Laufzeit (nur bei Wartung): wenn wa_laufzeit-Jahre vorhanden
+  let laufzeitJahre = 0;
+  if (isWartung) {
+    const lzRaw = (document.getElementById('wa_laufzeit')?.value || '').toString();
+    const lzMatch = lzRaw.match(/(\d+)/);
+    laufzeitJahre = lzMatch ? parseInt(lzMatch[1], 10) : 0;
+  }
+  const totalEl = document.getElementById('lv_result_total_w');
+
   if (typeof liftaroAmount === 'number' && liftaroAmount > 0) {
     liftaroEl.textContent = formatEuro(liftaroAmount);
-    liftaroEl.style.background = useOverride ? '#5b21b6' : 'var(--navy)';
-    liftaroEl.title = useOverride
-      ? `Absoluter Override: ${formatEuro(liftaroAmount)} (statt ${liftaroPct}% = ${formatEuro(savings * (liftaroPct / 100))})`
-      : `${liftaroPct}% von ${formatEuro(savings)} = ${formatEuro(liftaroAmount)}`;
+    liftaroEl.style.background = usePauschale ? 'var(--green,#7dc242)' : (useOverride ? '#5b21b6' : 'var(--navy)');
+    if (usePauschale) {
+      liftaroEl.title = `Service-Pauschale: ${formatEuro(liftaroAmount)}/Jahr` + (laufzeitJahre > 0 ? ` · über ${laufzeitJahre} Jahre = ${formatEuro(liftaroAmount * laufzeitJahre)}` : '');
+    } else if (useOverride) {
+      liftaroEl.title = `Absoluter Override: ${formatEuro(liftaroAmount)} (statt ${liftaroPct}% = ${formatEuro(savings * (liftaroPct / 100))})`;
+    } else {
+      liftaroEl.title = `${liftaroPct}% von ${formatEuro(savings)} = ${formatEuro(liftaroAmount)}`;
+    }
+    if (totalEl) {
+      if (isWartung && laufzeitJahre > 0) {
+        totalEl.style.display = 'block';
+        totalEl.textContent = `über ${laufzeitJahre} J. = ${formatEuro(liftaroAmount * laufzeitJahre)}`;
+      } else {
+        totalEl.style.display = 'none';
+      }
+    }
   } else {
     liftaroEl.textContent = '– €'; liftaroEl.style.background = '#8a9ab0';
     liftaroEl.title = '';
+    if (totalEl) totalEl.style.display = 'none';
   }
 
   if (smileyV && smileyA) {
