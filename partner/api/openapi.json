@@ -273,6 +273,36 @@
         }
       }
     },
+    "/api/v2/checks/{anfrage_id}/final-vertrag": {
+      "post": {
+        "tags": ["Anfragen"],
+        "summary": "Finalen Vertrag an Liftaro zurücksenden",
+        "description": "**Nach Auftragserteilung** schickt ihr den finalen Wartungsvertrag (mit echter HV als Adressat, bereits eurerseits unterschrieben) **zurück an Liftaro** — Liftaro leitet ihn zur Unterschrift an die HV weiter.\n\n**Bitte nicht direkt mit der HV kommunizieren** bis der Vertrag unterschrieben zurück ist.",
+        "security": [{ "partnerKey": [] }],
+        "parameters": [
+          { "name": "anfrage_id", "in": "path", "required": true, "schema": { "type": "string", "example": "PA-2026-6d0e" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["pdf_base64"],
+            "properties": {
+              "pdf_base64":   { "type": "string", "description": "Finaler Vertrag als Base64 (ohne data:-Prefix), partner-seitig bereits unterschrieben, HV als Adressat" },
+              "pdf_filename": { "type": "string", "example": "wartungsvertrag-final.pdf" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "Vertrag eingegangen, wird an HV weitergeleitet", "content": { "application/json": { "example": { "ok": true, "final_vertrag_received_at": "2026-05-27T08:00:00.000Z", "note": "Finaler Vertrag bei Liftaro eingegangen. Liftaro leitet ihn an die HV zur Unterschrift weiter." } } } },
+          "400": { "description": "pdf_base64 fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Auth fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Cross-Tenant blocked", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Auftrag wurde noch nicht erteilt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/partner-anfragen/{anfrage_id}/auftrag": {
       "post": {
         "tags": ["Anfragen"],
