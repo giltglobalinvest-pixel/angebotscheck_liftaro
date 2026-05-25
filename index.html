@@ -5156,7 +5156,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.38';
+const APP_VERSION = 'V12.39';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7574,11 +7574,38 @@ function renderChecksList(checks, query) {
           const lockedStyle = locked ? ';cursor:not-allowed;opacity:.6' : '';
           return `<select${lockedAttrs} onchange="event.stopPropagation();setCheckStatus(${i}, this.value)" onclick="event.stopPropagation()" title="${lockedTitle}" style="border:1.5px solid ${sm.color};color:${sm.color};background:${sm.color}11;border-radius:var(--dr-r-pill);padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none${lockedStyle}">${opts}</select>`;
         })()
+      + (() => {
+          // V12.39: Direkter Archivieren/Wiederherstellen-Button (f\u00fcr alle User)
+          const isArch = getCheckStatus(c) === '9';
+          const archLabel = isArch ? '\u21a9 Wiederherstellen' : '\ud83d\udce6 Archivieren';
+          const archTitle = isArch ? 'Check wieder aus dem Archiv holen (Status zur\u00fcck auf 1)' : 'Check archivieren (aus Default-Liste ausblenden, bleibt erhalten)';
+          const archColor = isArch ? '#1740B8' : '#5C6E87';
+          return '<button onclick="event.stopPropagation();archiveCheckAt(' + i + ')" title="' + archTitle + '" class="dr-pill" style="color:' + archColor + ';padding:3px 9px;font-size:11px">' + archLabel + '</button>';
+        })()
       + (isAdmin()
           ? '<button onclick="event.stopPropagation();deleteCheckAt(' + i + ')" title="Check l\u00f6schen (Admin)" class="dr-pill dr-pill--reset" style="color:#9F1B1F;padding:3px 9px;font-size:11px">\ud83d\uddd1 L\u00f6schen</button>'
           : '')
       + '</div></div>';
   }).join('');
+}
+
+// V12.39: One-Click Archivieren/Wiederherstellen aus der Checks-Liste
+async function archiveCheckAt(i) {
+  const cache = window._checksCache || [];
+  const c = cache[i];
+  if (!c) return;
+  const isArch = getCheckStatus(c) === '9';
+  const target = isArch ? '1' : '9';
+  const verb   = isArch ? 'wiederherstellen' : 'archivieren';
+  const nr = c.requestId || c.id || '(ohne Nummer)';
+  if (!confirm(`Check ${nr} ${verb}?`)) return;
+  try {
+    await setCheckStatus(i, target);
+    showToast(`Check ${nr} ${isArch ? 'wiederhergestellt' : 'archiviert'}.`, 'ok');
+  } catch(e) {
+    console.error('archiveCheckAt:', e);
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 // Inline-Status-Update aus der Check-Übersicht
