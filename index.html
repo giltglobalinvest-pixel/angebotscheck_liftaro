@@ -5156,7 +5156,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.37';
+const APP_VERSION = 'V12.38';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7377,14 +7377,17 @@ function renderChecksStatusChips() {
   const items = window._checksCache || [];
   CHECK_STATUS.forEach(s => {
     const count = items.filter(c => getCheckStatus(c) === s.value).length;
-    // V12.37: Status-9-Chip (Archiviert) nur anzeigen wenn es archivierte
-    // Checks gibt — sonst leerer Filter-Clutter.
-    if (HIDDEN_STATUS_VALUES.has(s.value) && count === 0) return;
     const active = window._checksStatusFilter.has(s.value);
+    const isArchive = HIDDEN_STATUS_VALUES.has(s.value);
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dr-pill' + (active ? ' dr-pill--active' : '');
-    btn.innerHTML = `${s.label}<span class="dr-pill__count">${count}</span>`;
+    // V12.38: Archiviert-Chip immer sichtbar (auch bei count=0), damit das
+    // Feature auffindbar bleibt. Bei count=0 visuell etwas gedimmt.
+    if (isArchive && count === 0) btn.style.opacity = '0.55';
+    const icon = isArchive ? '📦 ' : '';
+    btn.innerHTML = `${icon}${s.label}<span class="dr-pill__count">${count}</span>`;
+    btn.title = isArchive ? 'Archivierte Checks anzeigen' : '';
     btn.onclick = () => toggleChecksStatusFilter(s.value);
     wrap.appendChild(btn);
   });
@@ -16424,10 +16427,13 @@ function renderDashboard() {
   // Status-Filter-Toolbar — Dashboard-Redesign V10.7 mit dr-pill
   const statusChipsHtml = CHECK_STATUS.map(s => {
     const cnt = checksAll.filter(c => getCheckStatus(c) === s.value).length;
-    // V12.37: Archiviert-Chip nur zeigen wenn es archivierte Checks gibt
-    if (HIDDEN_STATUS_VALUES.has(s.value) && cnt === 0) return '';
     const active = statusSet.has(s.value);
-    return `<button type="button" class="dr-pill${active?' dr-pill--active':''}" onclick="toggleDashStatus('${s.value}')">${s.label}<span class="dr-pill__count">${cnt}</span></button>`;
+    const isArchive = HIDDEN_STATUS_VALUES.has(s.value);
+    // V12.38: Archiviert-Chip immer sichtbar, bei count=0 gedimmt
+    const dimStyle = (isArchive && cnt === 0) ? ' style="opacity:.55"' : '';
+    const icon = isArchive ? '📦 ' : '';
+    const title = isArchive ? ' title="Archivierte Checks anzeigen"' : '';
+    return `<button type="button" class="dr-pill${active?' dr-pill--active':''}"${dimStyle}${title} onclick="toggleDashStatus('${s.value}')">${icon}${s.label}<span class="dr-pill__count">${cnt}</span></button>`;
   }).join('');
   const resetBtn = statusSet.size
     ? `<button type="button" class="dr-pill dr-pill--reset" onclick="window._dashStatusFilter.clear();renderDashboard()">✕ Filter zurücksetzen</button>`
