@@ -3620,7 +3620,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     <div style="padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1">
       <input type="hidden" id="au_anfrage_id">
       <div style="background:var(--dr-blue-soft,#EBF1FE);border:1px solid #C5D4F2;border-radius:8px;padding:11px 14px;font-size:12.5px;color:var(--dr-blue-deep,#1740B8);line-height:1.55">
-        <strong>So funktioniert es:</strong> Der Partner hat seinen Vertragsentwurf bereits mit „Liftaro GmbH (vermittelnd)" als Platzhalter-Adressat unterschrieben. Mit Auftragserteilung erhält er die echten HV-Daten und erstellt den finalen Vertrag, den er direkt zur Unterschrift an die HV schickt. Liftaro tritt aus dem Vertrag heraus, bekommt die Vermittlungsprovision.
+        <strong>So funktioniert es:</strong> Der Partner hat seinen Vertragsentwurf bereits mit „Liftaro GmbH (vermittelnd)" als Platzhalter-Adressat unterschrieben. Mit Auftragserteilung erhält er die echten HV-Daten und erstellt den finalen Vertrag. <strong>Der finale Vertrag wird zurück an Liftaro geschickt — Liftaro leitet ihn an die HV zur Unterschrift weiter.</strong> Liftaro bleibt durchgehend der Kommunikations-Mittelsmann; bekommt die Vermittlungsprovision.
       </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">HV / WEG — Name *</label>
@@ -4983,7 +4983,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.20';
+const APP_VERSION = 'V12.21';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10769,7 +10769,15 @@ function _renderVariantCard(a, isActive) {
         <div onclick="event.stopPropagation()" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--dr-green);font-size:11px;color:var(--dr-green-deep);line-height:1.45">
           <strong>📨 Erteilt am ${new Date(a.auftrag_erteilt_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'})}</strong><br>
           HV: ${_esc(a.final_hv_name || '–')}<br>
-          <span style="color:var(--dr-ink-mute);font-style:italic">Partner erstellt finalen Vertrag mit HV-Daten.</span>
+          ${a.final_vertrag_received_at && Array.isArray(a.final_vertrag_pdf) && a.final_vertrag_pdf[0]?.url
+            ? `<div style="margin-top:8px;padding:8px;background:#fff;border:1px solid #8FD4A6;border-radius:6px">
+                 <div style="font-weight:600;color:var(--dr-green-deep);margin-bottom:6px">✓ Finaler Vertrag eingegangen am ${new Date(a.final_vertrag_received_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'})}</div>
+                 <div style="display:flex;gap:5px;flex-wrap:wrap">
+                   <a href="${_esc(a.final_vertrag_pdf[0].url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="background:#fff;border:1px solid var(--dr-green-deep);color:var(--dr-green-deep);border-radius:5px;padding:4px 9px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:3px">📥 PDF</a>
+                   ${a.final_hv_email ? `<a href="mailto:${_esc(a.final_hv_email)}?subject=${encodeURIComponent('Liftaro: Ihr Wartungsvertrag zur Unterschrift')}&body=${encodeURIComponent('Sehr geehrte Damen und Herren,\n\nim Anhang finden Sie den Wartungsvertrag mit ' + (a.partner_name || a.partner_id) + ' zur Unterschrift.\n\nBitte unterschreiben und an check@liftaro.de zurücksenden.\n\nMit freundlichen Grüßen\nLiftaro GmbH')}" onclick="event.stopPropagation()" style="background:var(--dr-green-deep,#15803D);color:#fff;border:none;border-radius:5px;padding:4px 9px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:3px">📨 An HV weiterleiten</a>` : ''}
+                 </div>
+               </div>`
+            : `<span style="color:var(--dr-ink-mute);font-style:italic">Partner erstellt finalen Vertrag und schickt ihn an Liftaro zurück.</span>`}
         </div>
       ` : (isActive ? `
         <div onclick="event.stopPropagation()" style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--dr-blue-light)">
