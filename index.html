@@ -5047,7 +5047,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.27';
+const APP_VERSION = 'V12.28';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6548,39 +6548,49 @@ async function saveCheck(reporter) {
 
     // PDF-Anhänge hochladen (Vorliegendes + Alternativangebot, sofern vorhanden)
     if (recordId) {
-      // ── V12.27: Auto-Regenerate Ergebnis-PDF ─────────────────────────
+      // ── V12.28: Auto-Regenerate Ergebnis-PDF (immer) ─────────────────
       // Garantiert, dass das in Airtable gespeicherte ergebnis_pdf immer
       // exakt dem aktuellen Formular-Stand entspricht (z.B. nach Toggle
-      // Service-Pauschale ↔ Erfolgsprämie). Wenn der User keine neue PDF
-      // explizit erstellt hat (_pendingErgebnisPdfBlob === null), aber
-      // der Check bereits ein gespeichertes Ergebnis-PDF hat, regenerieren
-      // wir es jetzt frisch aus dem aktuellen DOM.
+      // Service-Pauschale ↔ Erfolgsprämie oder Prozent-Änderung).
+      // Wir regenerieren JEDES MAL beim Speichern (für wartung/reparatur
+      // /rechnung), unabhängig davon ob _pendingErgebnisPdfBlob gesetzt ist.
+      // Vorher werden calcSavings() + _refreshLegalBlock() forciert, damit
+      // alle abhängigen Anzeigewerte (Prozente, Beträge, Legal-Text) frisch
+      // im DOM stehen, bevor html2canvas rendert.
       const _ctype = data.checkType || 'reparatur';
-      // _currentCheckHasErgebnisPdf wird beim Check-Load gesetzt (Zeile ~6798)
-      const _hadStoredErgebnis = !!window._currentCheckHasErgebnisPdf;
-      if (!_pendingErgebnisPdfBlob && _hadStoredErgebnis) {
-        r.step('autopdf', 'Ergebnis-PDF wird auf aktuellen Stand neu generiert …');
-        try {
-          let freshBlob = null;
-          let freshName = `Liftaro_Check_${data.requestId || data.id || 'neu'}.pdf`;
-          if (_ctype === 'rechnung' && typeof buildRechnungscheckPDF === 'function') {
-            const out = await buildRechnungscheckPDF();
-            freshBlob = out && out.blob;
-            if (out && out.filename) freshName = out.filename;
-          } else if (typeof buildCheckCoverBlob === 'function') {
-            freshBlob = await buildCheckCoverBlob();
-          }
-          if (freshBlob) {
-            _pendingErgebnisPdfBlob = freshBlob;
-            _pendingErgebnisPdfName = freshName;
-            r.done('autopdf', `${(freshBlob.size/1024).toFixed(0)} KB frisch generiert`);
-          } else {
-            r.error('autopdf', 'kein Blob erzeugt (Builder lieferte null)');
-          }
-        } catch(e) {
-          console.warn('Auto-PDF-Regenerate fehlgeschlagen:', e.message);
-          r.error('autopdf', e.message);
+      try {
+        if (typeof calcSavings === 'function') calcSavings();
+      } catch(e) { console.warn('calcSavings vor autopdf:', e.message); }
+      try {
+        if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
+      } catch(e) { console.warn('_refreshLegalBlock vor autopdf:', e.message); }
+      r.step('autopdf', 'Ergebnis-PDF wird auf aktuellen Stand neu generiert …');
+      console.log('[autopdf] start, checkType=' + _ctype + ', pending=' + !!_pendingErgebnisPdfBlob);
+      if (typeof showToast === 'function') {
+        try { showToast('PDF wird auf aktuellen Stand neu erzeugt …', 'ok'); } catch(_){}
+      }
+      try {
+        let freshBlob = null;
+        let freshName = `Liftaro_Check_${data.requestId || data.id || 'neu'}.pdf`;
+        if (_ctype === 'rechnung' && typeof buildRechnungscheckPDF === 'function') {
+          const out = await buildRechnungscheckPDF();
+          freshBlob = out && out.blob;
+          if (out && out.filename) freshName = out.filename;
+        } else if (typeof buildCheckCoverBlob === 'function') {
+          freshBlob = await buildCheckCoverBlob();
         }
+        if (freshBlob) {
+          _pendingErgebnisPdfBlob = freshBlob;
+          _pendingErgebnisPdfName = freshName;
+          r.done('autopdf', `${(freshBlob.size/1024).toFixed(0)} KB frisch generiert`);
+          console.log('[autopdf] success, ' + (freshBlob.size/1024).toFixed(0) + ' KB');
+        } else {
+          r.error('autopdf', 'kein Blob erzeugt (Builder lieferte null)');
+          console.warn('[autopdf] builder returned null');
+        }
+      } catch(e) {
+        console.warn('[autopdf] failed:', e.message);
+        r.error('autopdf', e.message);
       }
       const uploads = [];
       if (uploadedFiles[1]) uploads.push({ field: 'vorliegendes_pdf', blob: uploadedFiles[1], name: uploadedFiles[1].name });
@@ -6606,9 +6616,27 @@ async function saveCheck(reporter) {
       if (window._pendingServiceRechnung) window._pendingServiceRechnung = null;
       if (window._pendingArbeitsbericht)  window._pendingArbeitsbericht  = null;
       if (window._pendingSignedVertrag)   window._pendingSignedVertrag   = null;
+      const _hadErgebnisUpload = !!_pendingErgebnisPdfBlob;
       if (_pendingErgebnisPdfBlob) {
         _pendingErgebnisPdfBlob = null;
         _pendingErgebnisPdfName = null;
+      }
+      // V12.28: Nach erfolgreichem Ergebnis-PDF-Upload das Mobile-Thumbnail
+      // mit der neu hochgeladenen Datei aktualisieren (statt das alte Cache-
+      // Bild zu lassen). Wir refetchen den Record und re-rendern den Viewer.
+      if (_hadErgebnisUpload && typeof renderMobileResultPdf === 'function') {
+        try {
+          const refreshed = await atRead('Checks', "{id}='" + data.id + "'");
+          const rec = refreshed && refreshed[0];
+          const att = rec?.fields?.ergebnis_pdf;
+          if (att && att.length && att[0].url) {
+            // Cache-Bust am URL-Ende, damit pdfjs nicht das alte File aus dem
+            // HTTP-Cache zieht (Airtable-Attachments können langfristig cached sein)
+            const url = att[0].url + (att[0].url.includes('?') ? '&' : '?') + 't=' + Date.now();
+            renderMobileResultPdf(url);
+            window._currentCheckHasErgebnisPdf = true;
+          }
+        } catch(e) { console.warn('Thumbnail-Refresh nach Save:', e.message); }
       }
     }
 
