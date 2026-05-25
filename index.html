@@ -1959,6 +1959,34 @@ const pdfWorkerReady = Promise.resolve();</script>
     border: 1px solid #ddd !important;
     width: 100% !important;
   }
+  /* V12.36: html2canvas hat einen bekannten Bug, bei dem <input>-Werte nicht
+     mittig in der Box gerendert werden, wenn die Input-Höhe deutlich größer
+     ist als die natürliche Text-Höhe — Text wird oben angesetzt und unten
+     abgeschnitten ("Tanja Lan…", "47NF8…"). Fix: für ALLE Inputs/Selects/
+     Textareas im PDF-Mode explizit Höhe, line-height und Padding setzen,
+     sodass Baseline + Box konsistent sind. */
+  body.pdf-rendering input[type="text"],
+  body.pdf-rendering input[type="number"],
+  body.pdf-rendering input[type="date"],
+  body.pdf-rendering input[type="email"],
+  body.pdf-rendering input[type="tel"],
+  body.pdf-rendering input:not([type]),
+  body.pdf-rendering select,
+  body.pdf-rendering textarea {
+    height: auto !important;
+    min-height: 0 !important;
+    line-height: 1.4 !important;
+    padding: 6px 10px !important;
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
+    /* Wichtig: kein overflow:hidden mit zu kleiner Höhe */
+    overflow: visible !important;
+  }
+  /* contenteditable-Empfehlungs-Feld auch */
+  body.pdf-rendering [contenteditable="true"] {
+    line-height: 1.5 !important;
+    overflow: visible !important;
+  }
   body.pdf-rendering .compare-table input[type="checkbox"],
   body.pdf-rendering .compare-table input.w-check {
     width: 18px !important;
@@ -2407,7 +2435,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="section" id="section-allgemein">
           <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
             <span>Allgemeine Daten</span>
-            <button type="button" data-frozen-allow onclick="saveCurrentBetreiberAsKunde()" title="Firma + Name (Betreiber) + Tel. (Betreiber) als Kunden-Datensatz speichern, damit die KI ihn beim nächsten Mal automatisch erkennt" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0" onmouseover="this.style.background='#6cb036'" onmouseout="this.style.background='var(--green)'">
+            <button type="button" id="btnSaveBetreiberAsKunde" data-frozen-allow onclick="saveCurrentBetreiberAsKunde()" title="Firma + Name (Betreiber) + Tel. (Betreiber) als Kunden-Datensatz speichern, damit die KI ihn beim nächsten Mal automatisch erkennt" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0" onmouseover="this.style.background='#6cb036'" onmouseout="this.style.background='var(--green)'">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               Kunde speichern
             </button>
@@ -5127,7 +5155,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.35';
+const APP_VERSION = 'V12.36';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -8454,8 +8482,11 @@ function switchTab(type) {
     }
   }
 
+  // V12.36: Non-Breaking-Hyphen (U+2011) statt ASCII-Hyphen — html2canvas
+  // schluckt den normalen Bindestrich bei bestimmten Buchstaben-Kombinationen
+  // visuell ("Wartungsvertrags-Analyse" wurde zu "WartungsvertragsAnalyse").
   document.getElementById('form-title').textContent = isWartung
-    ? 'Wartungsvertrags-Analyse'
+    ? 'Wartungsvertrags‑Analyse'
     : isRechnung ? 'Rechnungsprüfung'
     : 'Prüfung Reparaturangebot';
   document.getElementById('form-sub').innerHTML = isWartung
@@ -10240,6 +10271,8 @@ async function generatePDF() {
     // V12.35: Checkbox-Toggle-Row "In PDF anzeigen" + optional Ergebnis-Section
     document.getElementById('ergebnisPdfToggleRow'),
     (function(){ var cb = document.getElementById('cb_ergebnis_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-ergebnis') : null; })(),
+    // V12.36: "Kunde speichern"-Button gehört nicht in die PDF
+    document.getElementById('btnSaveBetreiberAsKunde'),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -17119,6 +17152,8 @@ async function buildCheckCoverBlob() {
     // V12.35: Checkbox-Toggle-Row "In PDF anzeigen" + optional Ergebnis-Section
     document.getElementById('ergebnisPdfToggleRow'),
     (function(){ var cb = document.getElementById('cb_ergebnis_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-ergebnis') : null; })(),
+    // V12.36: "Kunde speichern"-Button gehört nicht in die PDF
+    document.getElementById('btnSaveBetreiberAsKunde'),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
