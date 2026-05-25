@@ -402,8 +402,9 @@
         <li><strong>Angebot abgeben</strong>: Ihr pickt aus eurer Offer-DB ein passendes Angebot + submittet via <code>POST /api/v2/checks/{id}/offer</code> mit Eckdaten + optional PDF.<br>⚠ <strong>Vertragsentwurf bitte mit „Liftaro GmbH (vermittelnd)" als Platzhalter-Adressat ausstellen.</strong></li>
         <li><strong>HV-Entscheidung</strong>: Liftaro zeigt dem HV alle Varianten. HV wählt eine aus.</li>
         <li><strong>Auftrag erteilt</strong>: Bei eurer Variante → Webhook <code>anfrage.auftrag_erteilt</code> mit echten HV-Daten (Name, Anschrift, Email, Telefon, Ansprechpartner).</li>
-        <li><strong>Finaler Vertrag</strong>: Ihr erstellt den finalen Wartungsvertrag — diesmal mit der echten HV als Adressat — und schickt ihn direkt zur Unterschrift. <strong>Der Vertrag entsteht zwischen euch und der HV.</strong></li>
-        <li><strong>Provision</strong>: Liftaro tritt aus dem Vertrag heraus, erhält die im Rahmenvertrag vereinbarte Vermittlungsprovision.</li>
+        <li><strong>Finaler Vertrag (über Liftaro)</strong>: Ihr erstellt den finalen Wartungsvertrag mit der echten HV als Adressat und schickt ihn <strong>zurück an Liftaro</strong> via <code>POST /api/v2/checks/{id}/final-vertrag</code> (mit base64-PDF) ODER per Email an <code>check@liftaro.de</code>. <strong>Bitte nicht direkt mit der HV kommunizieren.</strong></li>
+        <li><strong>Liftaro leitet weiter + Unterschrift</strong>: Liftaro schickt den Vertrag zur Unterschrift an die HV. Nach Unterschrift erhaltet ihr den signierten Vertrag zurück.</li>
+        <li><strong>Vertrag entsteht zwischen euch und der HV.</strong> Liftaro tritt heraus, erhält die im Rahmenvertrag vereinbarte Vermittlungsprovision. Ab jetzt direkter Kontakt mit HV für Wartungsausführung.</li>
       </ol>
 
       <div class="key-banner" id="keyBanner">
@@ -659,7 +660,7 @@
   <span class="string">"objekt_plz"</span>:               <span class="string">"70173"</span>,
   <span class="string">"objekt_ort"</span>:               <span class="string">"Stuttgart"</span>,
   <span class="string">"response_preis_netto"</span>:     <span class="string">"1980.00"</span>,
-  <span class="string">"next_step"</span>:                <span class="string">"Bitte erstellen Sie den finalen Wartungsvertrag mit '…' als Adressat und schicken Sie ihn zur Unterschrift."</span>
+  <span class="string">"next_step"</span>:                <span class="string">"Bitte erstellen Sie den finalen Vertrag mit '…' als Adressat und schicken ihn ZURÜCK AN LIFTARO (API .../final-vertrag oder Email check@liftaro.de). NICHT direkt an HV."</span>
 }</code></pre>
 
       <h3>Signature-Verifikation</h3>
