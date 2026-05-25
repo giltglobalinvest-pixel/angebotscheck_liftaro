@@ -5119,7 +5119,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.33';
+const APP_VERSION = 'V12.34';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -9286,93 +9286,24 @@ async function previewErgebnis() {
     }
     return;
   }
-  // Use the existing preview modal
+  // V12.34: Vorschau erzeugt jetzt eine ECHTE multi-page A4-PDF via buildCheckCoverBlob
+  // (gleicher Code-Pfad wie Save-Auto-Regenerate + "PDF erstellen") und zeigt sie
+  // via openPreviewBlob (pdf.js) mit Page-Navigation. Damit ist die Vorschau immer
+  // 1:1 identisch mit dem was tatsächlich abgespeichert wird, und der User sieht
+  // die echte A4-Pagination statt eines ein-Block-Canvas.
   document.getElementById('previewModal').classList.add('show');
   document.body.classList.add('preview-open');
   document.getElementById('previewTitle').textContent = '📋 Ergebnis-Vorschau (Prüfbericht)';
   document.getElementById('previewWrap').innerHTML =
     '<div class="preview-loading"><div class="spin" style="width:24px;height:24px;border:3px solid #555;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite"></div> Vorschau wird gerendert …</div>';
-  document.getElementById('pageInfo').textContent = '1 / 1';
-  document.getElementById('prevPage').disabled = true;
-  document.getElementById('nextPage').disabled = true;
-
-  const printArea = document.getElementById('print-area');
-  const empTA  = document.getElementById('f_empfehlung');
-  const empBtn = document.getElementById('btnEmpfehlung');
-  const sections = document.querySelectorAll('#print-area .section');
-  const hideForPdf = [
-    document.getElementById('f_status_field'),
-    document.getElementById('row_kuendfrist'),
-    document.getElementById('row_vertragsbeginn'),
-    document.getElementById('row_kuendigung'),
-    document.getElementById('btnSyncRep'),
-    document.getElementById('btnSyncWart'),
-    document.getElementById('invoiceBtnRow'),
-    document.getElementById('vorabcheckLinkBanner'),
-    // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
-    document.getElementById('vertragInvoiceHistory'),
-    document.getElementById('lv_mode_switch_row_w'),
-    document.getElementById('lv_panel_erfolg_w'),
-    document.getElementById('lv_panel_pauschale_w'),
-    // V12.29: Mobile-only Inline-PDF-Viewer NIE in die generierte PDF rendern
-    document.getElementById('mobileResultViewer'),
-    document.getElementById('mobileVorliegendViewer'),
-    document.getElementById('mobileAlternativViewer'),
-  ];
-  // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
-  _renderLvPdfSummary(true);
-  const prevDisplays = hideForPdf.map(el => el ? el.style.display : null);
-  let restoreLayout = () => {};
-
+  document.getElementById('pageInfo').textContent = '… / …';
   try {
-    if (empTA)  empTA.style.overflow = 'visible';
-    sections.forEach(s => s.style.overflow = 'visible');
-    if (empBtn) empBtn.style.display = 'none';
-
-    if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
-    hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
-
-    restoreLayout = _forcePdfLayout();
-
-    // Mobile (iOS Safari): scale runter + scrollHeight kappen
-    const mobile = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
-    const scl  = mobile ? 1 : 1.5;
-    const maxH = mobile ? 6000 : printArea.scrollHeight;
-    const useH = Math.min(printArea.scrollHeight, maxH);
-
-    let canvas;
-    try {
-      canvas = await html2canvas(printArea, {
-        scale: scl,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width: printArea.scrollWidth,
-        height: useH,
-        windowWidth: 1400, windowHeight: 2000,
-        // Mobile-attached Sidebar-Cards (Vorliegendes/Alternativ/AHW) NICHT
-        // rendern — sie sind nur Editor-Hilfen und brechen html2canvas auf iOS.
-        ignoreElements: (el) => {
-          if (!el || !el.classList) return false;
-          return el.classList.contains('mobile-attached-here') ||
-                 el.classList.contains('mobile-slots-anchor');
-        },
-        // iOS-Safari-Crash-Mitigation: Cross-Origin-@import (Google Fonts) aus dem
-        // geklonten Dokument entfernen, weil html2canvas beim Lesen von cssRules
-        // mit "The index is not in the allowed range" abstürzt.
-        onclone: _sanitizeClonedDocForCanvas,
-      });
-    } catch(canvasErr) {
-      console.error('html2canvas (preview) failed:', canvasErr);
-      throw new Error('Render fehlgeschlagen (' + (canvasErr.message || canvasErr) + ')');
-    }
-
-    const wrap = document.getElementById('previewWrap');
-    wrap.innerHTML = '';
-    canvas.style.cssText = 'max-width:100%;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    wrap.appendChild(canvas);
-
+    const blob = await buildCheckCoverBlob();
+    if (!blob) throw new Error('buildCheckCoverBlob lieferte kein Blob');
+    const rid = (document.getElementById('f_requestid')?.value || '').trim() || 'neu';
+    _pendingErgebnisPdfBlob = blob;
+    _pendingErgebnisPdfName = `Liftaro_Check_${rid}.pdf`;
+    await openPreviewBlob(blob, '📋 Ergebnis-Vorschau (Prüfbericht)');
   } catch(err) {
     console.error('previewErgebnis error:', err);
     document.getElementById('previewWrap').innerHTML =
@@ -9381,19 +9312,9 @@ async function previewErgebnis() {
         <div style="font-weight:600;margin-bottom:8px">Vorschau fehlgeschlagen</div>
         <div style="font-size:12px;opacity:.8;line-height:1.5">${(err && err.message) ? err.message : err}</div>
         <div style="font-size:11px;opacity:.6;margin-top:14px;line-height:1.5">
-          Tipp: Direkt "PDF erstellen" verwenden — die Vorschau ist auf manchen Mobilbrowsern unzuverlässig.
+          Tipp: Versuch "PDF erstellen" direkt — manchmal hilft ein Reload der Seite.
         </div>
       </div>`;
-  } finally {
-    // ALWAYS restore — sonst klemmt print-area auf 1200 px Breite und das
-    // Layout bricht horizontal aus dem Viewport (iPhone-Bug).
-    try { restoreLayout(); } catch(_){}
-    if (empBtn) empBtn.style.display = '';
-    if (empTA)  empTA.style.overflow = '';
-    sections.forEach(s => s.style.overflow = '');
-    hideForPdf.forEach((el, i) => { if (el) el.style.display = prevDisplays[i] || ''; });
-    // V12.25: PDF-Summary wieder verstecken
-    if (typeof _renderLvPdfSummary === 'function') _renderLvPdfSummary(false);
   }
 }
 
