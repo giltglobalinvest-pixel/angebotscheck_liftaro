@@ -3697,6 +3697,19 @@ const pdfWorkerReady = Promise.resolve();</script>
           </label>
         </div>
       </div>
+      <!-- V12.17: Webhook-URL für Push-Notifications statt Polling -->
+      <div style="margin-top:10px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Webhook-URL <span style="color:var(--ink-subtle);text-transform:none;font-weight:500">(Kanal 2, Push) — optional</span></label>
+        <div style="display:flex;gap:6px;align-items:stretch">
+          <input type="url" id="pp_webhook_url" placeholder="https://partner-crm.example.com/integrations/liftaro" style="flex:1;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:12px;background:var(--sky);outline:none">
+          <button onclick="testPartnerWebhook()" id="pp_webhook_test_btn" title="Sendet einen Test-Webhook mit Event 'webhook.test' an die obige URL — der Partner muss die Signatur mit seinem api_key verifizieren" style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;flex-shrink:0">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Test
+          </button>
+        </div>
+        <div id="pp_webhook_status" style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Bei neuer Anfrage POSTet Liftaro an diese URL. Body signiert mit HMAC-SHA256 (Secret = API-Key). Partner muss erst gespeichert sein für „Test".</div>
+      </div>
+
       <div style="margin-top:10px">
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Notizen</label>
         <textarea id="pp_notes" rows="3" placeholder="Konditionen, Ansprechpartner, interne Hinweise …" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);resize:vertical;line-height:1.5"></textarea>
@@ -4909,7 +4922,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.16';
+const APP_VERSION = 'V12.17';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10128,7 +10141,8 @@ function _renderPartnerRow(p) {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <strong style="font-size:14px;color:var(--dr-ink);letter-spacing:-.01em">${_esc(p.name || '(unbenannt)')}</strong>
           <span style="background:var(--surface-alt);color:var(--ink-mute,#5C6E87);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-family:var(--dr-f-mono,monospace);font-size:10.5px;font-weight:700">${_esc(p.partner_id || '–')}</span>
-          ${p.api_key ? '<span style="background:var(--dr-purple-soft,#F3E8FF);color:var(--dr-purple,#7c3aed);border:1px solid #DDD6FE;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono,monospace)">API</span>' : ''}
+          ${p.api_key ? '<span style="background:var(--dr-purple-soft,#F3E8FF);color:var(--dr-purple,#7c3aed);border:1px solid #DDD6FE;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono,monospace)" title="Kanal 2: API-Integration aktiv">API</span>' : ''}
+          ${p.webhook_url ? '<span style="background:#FEF3C7;color:#92400E;border:1px solid #FDBA74;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono,monospace)" title="Webhook konfiguriert: '+(p.webhook_url||'').replace(/[<>"]/g,'')+'">📡 WEBHOOK</span>' : ''}
         </div>
         <div style="font-size:12px;color:var(--text);margin-bottom:3px">${_esc(p.email_kontakt || '(keine Email)')}${p.telefon ? ' · ' + _esc(p.telefon) : ''}</div>
         ${p.plz_region ? `<div style="font-size:11.5px;color:var(--muted);font-family:var(--dr-f-mono,monospace);margin-bottom:4px">PLZ: ${_esc(p.plz_region)}</div>` : ''}
@@ -10167,6 +10181,7 @@ function openPartnerEditForm(recId) {
     document.getElementById('pp_website').value       = p.website || '';
     document.getElementById('pp_plz_region').value    = p.plz_region || '';
     document.getElementById('pp_api_key').value       = p.api_key || '';
+    document.getElementById('pp_webhook_url').value   = p.webhook_url || '';
     document.getElementById('pp_active').checked      = p.active !== false;
     document.getElementById('pp_notes').value         = p.notes || '';
     // Spec-Chips setzen
@@ -10176,7 +10191,7 @@ function openPartnerEditForm(recId) {
     });
   } else {
     document.getElementById('pp_form_title').textContent = 'Neuen Partner anlegen';
-    ['pp_recId','pp_partner_id','pp_name','pp_email_kontakt','pp_telefon','pp_website','pp_plz_region','pp_api_key','pp_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['pp_recId','pp_partner_id','pp_name','pp_email_kontakt','pp_telefon','pp_website','pp_plz_region','pp_api_key','pp_webhook_url','pp_notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('pp_active').checked = true;
   }
 }
@@ -10207,6 +10222,9 @@ async function savePartner() {
   if (existing) { setStatus('⚠ Partner-ID ist bereits vergeben: ' + partner_id, '#9F1B1F'); return; }
   // Spec-Chips einsammeln
   const specs = Array.from(document.querySelectorAll('.pp-spec-chip.on')).map(c => c.dataset.val);
+  // V12.17: webhook_url-Validierung (https only, falls gesetzt)
+  const webhookUrl = get('pp_webhook_url');
+  if (webhookUrl && !/^https:\/\//i.test(webhookUrl)) { setStatus('⚠ Webhook-URL muss mit https:// beginnen (Sicherheit)', '#9F1B1F'); return; }
   const fields = {
     partner_id,
     name,
@@ -10216,6 +10234,7 @@ async function savePartner() {
     plz_region:        get('pp_plz_region'),
     spezialisierungen: specs.join(','),
     api_key:           get('pp_api_key'),
+    webhook_url:       webhookUrl,
     active:            !!document.getElementById('pp_active').checked,
     notes:             get('pp_notes'),
   };
@@ -10247,6 +10266,56 @@ async function togglePartnerActive(recId, makeActive) {
     showToast(makeActive ? 'Partner aktiviert' : 'Partner deaktiviert', 'success', 2000);
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// V12.17: Test-Webhook senden via /api/v2/webhook-test
+// Auth läuft per X-Partner-Key — der Partner muss also schon gespeichert sein
+// (sonst kann der val.town-Backend den api_key nicht in der Partner-Pool-Tabelle finden).
+async function testPartnerWebhook() {
+  const webhookUrl = (document.getElementById('pp_webhook_url').value || '').trim();
+  const apiKey    = (document.getElementById('pp_api_key').value || '').trim();
+  const recId     = (document.getElementById('pp_recId').value || '').trim();
+  const statusEl  = document.getElementById('pp_webhook_status');
+  if (!webhookUrl) {
+    statusEl.innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ Webhook-URL eintragen</span>';
+    return;
+  }
+  if (!/^https:\/\//i.test(webhookUrl)) {
+    statusEl.innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ Nur HTTPS-URLs erlaubt</span>';
+    return;
+  }
+  if (!apiKey) {
+    statusEl.innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ API-Key eintragen (wird zur Auth verwendet)</span>';
+    return;
+  }
+  if (!recId) {
+    statusEl.innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ Partner erst speichern (Backend braucht den Record für Lookup)</span>';
+    return;
+  }
+  if (!APP_KEYS.partnerApiUrl) {
+    statusEl.innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ Partner-API nicht konfiguriert</span>';
+    return;
+  }
+  const btn = document.getElementById('pp_webhook_test_btn');
+  btn.disabled = true;
+  statusEl.innerHTML = '<span style="color:var(--dr-blue,#2456E5)"><span class="spin" style="display:inline-block;width:10px;height:10px;border:2px solid #ccc;border-top-color:var(--dr-blue,#2456E5);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></span>Sende Test-Webhook …</span>';
+  try {
+    const resp = await fetch(`${APP_KEYS.partnerApiUrl.replace(/\/+$/,'')}/api/v2/webhook-test`, {
+      method: 'POST',
+      headers: { 'X-Partner-Key': apiKey, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.ok) {
+      statusEl.innerHTML = `<span style="color:var(--dr-green-deep,#15803D);font-weight:600">✓ Webhook abgesendet an ${_esc(data.sent_to || webhookUrl)} — prüf den Endpoint-Log des Partners.</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:#9F1B1F;font-weight:600">⚠ ${_esc(data.error || ('HTTP ' + resp.status))}</span>`;
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span style="color:#9F1B1F;font-weight:600">⚠ Netzwerk-Fehler: ${_esc(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
   }
 }
 
