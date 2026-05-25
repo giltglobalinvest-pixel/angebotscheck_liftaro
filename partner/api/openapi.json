@@ -166,7 +166,9 @@
                   "name": "Aufzugshandwerk GmbH",
                   "email_kontakt": "vertrieb@ahw.de",
                   "active": true,
-                  "api_version": "v2"
+                  "api_version": "v2",
+                  "webhook_url": "https://your-crm.example.com/integrations/liftaro",
+                  "webhook_configured": true
                 }
               }
             }
@@ -262,6 +264,26 @@
           "404": { "description": "Anfrage nicht gefunden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "409": { "description": "Status bereits final (angeboten oder abgelehnt)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "410": { "description": "Anfrage ist abgelaufen (timeout)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v2/webhook-test": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Test-Webhook senden",
+        "description": "Sendet einen `webhook.test`-Payload an die hinterlegte `webhook_url` des authentifizierten Partners. Nützlich bei Einrichtung — verifiziert, dass euer Endpoint Liftaro-Webhooks empfangen kann. Benötigt keine Body-Payload.",
+        "security": [{ "partnerKey": [] }],
+        "responses": {
+          "200": {
+            "description": "Webhook wurde abgesendet (Erfolg eures Endpoints muss im val.town-Log oder bei euch geprüft werden)",
+            "content": {
+              "application/json": {
+                "example": { "ok": true, "sent_to": "https://your-crm.example.com/integrations/liftaro", "event": "webhook.test", "note": "Webhook wurde gesendet — prüft euren Endpoint-Log." }
+              }
+            }
+          },
+          "400": { "description": "Keine webhook_url im Partner-Pool gesetzt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Auth fehlt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
