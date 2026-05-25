@@ -3602,6 +3602,60 @@ const pdfWorkerReady = Promise.resolve();</script>
 <!-- ════════════════════════════════════════════════════════════════════
      V12.16 Phase 5: Partner-Pool Admin-Modal
      ════════════════════════════════════════════════════════════════════ -->
+<!-- V12.20 Bau-Stufe 1: Auftrag-Erteilen-Modal (HV-Daten an Partner senden) -->
+<div id="auftragErteilenModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:5110;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px">
+  <div style="background:#fff;border-radius:16px;width:min(620px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#15803D,#16A34A);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0">
+      <div>
+        <div style="color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;letter-spacing:-.01em">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Auftrag erteilen</span>
+        </div>
+        <div style="color:rgba(255,255,255,.7);font-size:11.5px;margin-top:2px">HV-Daten an <strong id="au_partner_label" style="color:#fff">–</strong> senden — Partner erstellt finalen Vertrag</div>
+      </div>
+      <button onclick="closeAuftragModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1">
+      <input type="hidden" id="au_anfrage_id">
+      <div style="background:var(--dr-blue-soft,#EBF1FE);border:1px solid #C5D4F2;border-radius:8px;padding:11px 14px;font-size:12.5px;color:var(--dr-blue-deep,#1740B8);line-height:1.55">
+        <strong>So funktioniert es:</strong> Der Partner hat seinen Vertragsentwurf bereits mit „Liftaro GmbH (vermittelnd)" als Platzhalter-Adressat unterschrieben. Mit Auftragserteilung erhält er die echten HV-Daten und erstellt den finalen Vertrag, den er direkt zur Unterschrift an die HV schickt. Liftaro tritt aus dem Vertrag heraus, bekommt die Vermittlungsprovision.
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">HV / WEG — Name *</label>
+        <input type="text" id="au_hv_name" placeholder="Hausverwaltung Müller GmbH" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">HV — Anschrift</label>
+        <textarea id="au_hv_anschrift" rows="2" placeholder="Bahnhofstr. 12, 89075 Ulm" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);resize:vertical;line-height:1.45"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">HV — Email</label>
+          <input type="email" id="au_hv_email" placeholder="info@hv-mueller.de" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">HV — Telefon</label>
+          <input type="text" id="au_hv_telefon" placeholder="+49 731 …" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Ansprechpartner</label>
+        <input type="text" id="au_hv_ansprechpartner" placeholder="Frau Müller" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+      </div>
+      <div id="au_status" style="font-size:12.5px;min-height:16px;text-align:center"></div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;background:#fafbfc">
+      <button onclick="closeAuftragModal()" style="background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>
+      <button id="au_send_btn" onclick="submitAuftragErteilen()" style="background:var(--dr-green,#16A34A);border:none;color:#fff;border-radius:7px;padding:8px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Auftrag senden
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="partnerPoolAdminModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px">
   <div style="background:#fff;border-radius:16px;width:min(840px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:linear-gradient(135deg,#0e2440,#16345a);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0">
@@ -4929,7 +4983,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.19';
+const APP_VERSION = 'V12.20';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10584,6 +10638,80 @@ async function refreshAnfragenListForCurrentCheck() {
   _renderVariantsRow(angebote);
 }
 
+// V12.20 Bau-Stufe-1: Auftrag erteilen — schickt HV-Daten an Partner
+async function openAuftragModal(anfrageId) {
+  const a = (_currentCheckAnfragen || []).find(x => x._id === anfrageId);
+  if (!a) { showToast('Anfrage nicht gefunden', 'error'); return; }
+  if (a.auftrag_erteilt_at) { showToast('Auftrag wurde bereits erteilt am ' + new Date(a.auftrag_erteilt_at).toLocaleString('de-DE'), 'error', 4500); return; }
+  // HV-Daten aus aktuellem Check übernehmen
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const hvName = g('f_firma') || g('wt_firma') || '';
+  const hvAnschrift = g('wt_anschrift') || g('f_hv_anschrift') || '';
+  const hvEmail = g('f_email') || g('wt_email') || '';
+  const hvTel = g('f_tel') || g('wt_tel') || '';
+  const hvAp = g('f_name') || g('wt_ansprechpartner') || '';
+  document.getElementById('au_anfrage_id').value = anfrageId;
+  document.getElementById('au_partner_label').textContent = a.partner_name || a.partner_id || '–';
+  document.getElementById('au_hv_name').value = hvName;
+  document.getElementById('au_hv_anschrift').value = hvAnschrift;
+  document.getElementById('au_hv_email').value = hvEmail;
+  document.getElementById('au_hv_telefon').value = hvTel;
+  document.getElementById('au_hv_ansprechpartner').value = hvAp;
+  document.getElementById('au_status').textContent = '';
+  document.getElementById('auftragErteilenModal').style.display = 'flex';
+}
+function closeAuftragModal() {
+  document.getElementById('auftragErteilenModal').style.display = 'none';
+}
+async function submitAuftragErteilen() {
+  const anfrageId = (document.getElementById('au_anfrage_id').value || '').trim();
+  const get = id => (document.getElementById(id)?.value || '').trim();
+  const hvName = get('au_hv_name');
+  if (!hvName) { document.getElementById('au_status').innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ HV-Name ist Pflicht</span>'; return; }
+  if (!APP_KEYS.partnerApiUrl || !APP_KEYS.partnerApiSecret) {
+    document.getElementById('au_status').innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ Partner-API nicht konfiguriert</span>';
+    return;
+  }
+  const btn = document.getElementById('au_send_btn');
+  btn.disabled = true;
+  document.getElementById('au_status').innerHTML = '<span style="color:var(--dr-blue);font-weight:600"><span class="spin" style="display:inline-block;width:11px;height:11px;border:2px solid #ccc;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:4px"></span>Sende Auftrag …</span>';
+  try {
+    const url = `${APP_KEYS.partnerApiUrl.replace(/\/+$/,'')}/api/partner-anfragen/${encodeURIComponent(anfrageId)}/auftrag`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.partnerApiSecret },
+      body: JSON.stringify({
+        final_hv_name:            hvName,
+        final_hv_anschrift:       get('au_hv_anschrift'),
+        final_hv_email:           get('au_hv_email'),
+        final_hv_telefon:         get('au_hv_telefon'),
+        final_hv_ansprechpartner: get('au_hv_ansprechpartner'),
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.ok) {
+      document.getElementById('au_status').innerHTML = '<span style="color:var(--dr-green-deep);font-weight:600">✓ Auftrag erteilt — Partner ' + (data.webhook_sent ? 'per Webhook benachrichtigt' : 'sieht den Auftrag beim nächsten Polling') + '</span>';
+      showToast('Auftrag erteilt — Partner erstellt den finalen Vertrag mit HV-Daten', 'success', 4000);
+      // Lokal aktualisieren + Karten-View refreshen
+      const idx = _currentCheckAnfragen.findIndex(x => x._id === anfrageId);
+      if (idx >= 0) {
+        _currentCheckAnfragen[idx].auftrag_erteilt_at = data.auftrag_erteilt_at;
+        _currentCheckAnfragen[idx].final_hv_name = hvName;
+      }
+      setTimeout(() => {
+        closeAuftragModal();
+        refreshAnfragenListForCurrentCheck();
+      }, 1500);
+    } else {
+      document.getElementById('au_status').innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ ' + _esc(data.error || ('HTTP ' + resp.status)) + '</span>';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    document.getElementById('au_status').innerHTML = '<span style="color:#9F1B1F;font-weight:600">⚠ ' + _esc(e.message) + '</span>';
+    btn.disabled = false;
+  }
+}
+
 // V12.15 Phase 4: Karten-Reihe oberhalb der Vergleichstabelle
 function _renderVariantsRow(angebote) {
   const section = document.getElementById('wartung-variants-section');
@@ -10607,11 +10735,14 @@ function _renderVariantCard(a, isActive) {
   const partnerEsc = _esc(a.partner_name || a.partner_id || 'Partner');
   const preisFmt = a.response_preis_netto ? (parseFloat(String(a.response_preis_netto).replace(/\./g,'').replace(',', '.')).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.')) : '–';
   const respAt = a.responded_at ? new Date(a.responded_at).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
-  const accent = isActive ? 'var(--dr-blue)' : 'var(--border)';
-  const accentBg = isActive ? 'var(--dr-blue-soft)' : '#fff';
-  const badge = isActive
-    ? '<span style="background:var(--dr-blue);color:#fff;border-radius:999px;padding:2px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">✓ AKTIV</span>'
-    : '<span style="background:var(--dr-surface-alt);color:var(--dr-ink-mute);border:1px solid var(--dr-border);border-radius:999px;padding:1px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">wählen</span>';
+  const isAuftrag = !!a.auftrag_erteilt_at;
+  const accent = isAuftrag ? 'var(--dr-green)' : (isActive ? 'var(--dr-blue)' : 'var(--border)');
+  const accentBg = isAuftrag ? 'var(--dr-green-soft)' : (isActive ? 'var(--dr-blue-soft)' : '#fff');
+  const badge = isAuftrag
+    ? '<span style="background:var(--dr-green);color:#fff;border-radius:999px;padding:2px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">✓ AUFTRAG ERTEILT</span>'
+    : (isActive
+      ? '<span style="background:var(--dr-blue);color:#fff;border-radius:999px;padding:2px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">✓ AKTIV</span>'
+      : '<span style="background:var(--dr-surface-alt);color:var(--dr-ink-mute);border:1px solid var(--dr-border);border-radius:999px;padding:1px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">wählen</span>');
   const checkRow = (label, val) => val ? `<div style="display:flex;justify-content:space-between;gap:6px;font-size:11.5px;padding:2px 0"><span style="color:var(--muted)">${label}</span><strong style="color:var(--dr-ink)">${_esc(val)}</strong></div>` : '';
   const featChip = (label, on) => on ? `<span style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;font-family:var(--dr-f-mono);margin:1px">${_esc(label)}</span>` : '';
   return `
@@ -10634,6 +10765,20 @@ function _renderVariantCard(a, isActive) {
         ${featChip('Entstörung', a.response_entstoerung)}
       </div>
       ${respAt ? `<div style="font-size:10px;color:var(--muted);font-family:var(--dr-f-mono);margin-top:8px;text-align:right">${respAt}</div>` : ''}
+      ${isAuftrag ? `
+        <div onclick="event.stopPropagation()" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--dr-green);font-size:11px;color:var(--dr-green-deep);line-height:1.45">
+          <strong>📨 Erteilt am ${new Date(a.auftrag_erteilt_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'})}</strong><br>
+          HV: ${_esc(a.final_hv_name || '–')}<br>
+          <span style="color:var(--dr-ink-mute);font-style:italic">Partner erstellt finalen Vertrag mit HV-Daten.</span>
+        </div>
+      ` : (isActive ? `
+        <div onclick="event.stopPropagation()" style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--dr-blue-light)">
+          <button onclick="event.stopPropagation();openAuftragModal('${idEsc}')" style="width:100%;background:var(--dr-green,#16A34A);color:#fff;border:none;border-radius:6px;padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Auftrag erteilen →
+          </button>
+        </div>
+      ` : '')}
     </div>`;
 }
 
