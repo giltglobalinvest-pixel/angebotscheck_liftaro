@@ -2234,30 +2234,42 @@ function _buildEigCtaMailBodies(r) {
     (email    ? '✉  ' + email   + '\n' : '') +
     (telefon  ? '☎  ' + telefon + '\n' : '');
 
-  // ── HV-Mail ──
-  const subjHV = 'Aufzug-Wartungskosten — Bitte um Prüfung und Einsparungsberechnung bei Liftaro';
+  // ── HV-Mail ── (V12.40: schärfere Formulierung, Eigentümerversammlung,
+  // Rückmeldungs-Frist 4 Wochen, ohne Paragrafen-Verweise)
+  const subjHV = 'Aufzug-Wartungsvertrag — Bitte um Wirtschaftlichkeitsprüfung und Vorlage in der nächsten Eigentümerversammlung — Check ' + checkNr;
+  // Rückmeldungs-Frist: heute + 28 Tage
+  const _fristDate = new Date(Date.now() + 28 * 24 * 60 * 60 * 1000);
+  const fristStr = _fristDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const bodyHV =
-    'Sehr geehrte Hausverwaltung,\n\n' +
+    'Sehr geehrte Damen und Herren,\n\n' +
     'als Eigentümer der Immobilie\n\n' +
     (adresse ? '    ' + adresse + '\n\n' : '    (Adresse siehe unten in der Signatur)\n\n') +
     'habe ich die letzte Hausgeldabrechnung durch einen kostenlosen\n' +
     'Liftaro-Vorabcheck prüfen lassen (Check-Nr. ' + checkNr + ').\n' +
-    'Bei der Aufzug-Position besteht Optimierungspotenzial.\n\n\n' +
+    'Die Auswertung weist erhebliches Einsparpotenzial beim Aufzug-\n' +
+    'Wartungsvertrag aus.\n\n\n' +
     '───── AUSWERTUNG IN KURZFORM ─────\n\n' +
     summary + '\n\n' +
     'Geschätzte jährliche Gesamtersparnis für das Haus:\n' +
     '    ' + savingsTotalStr + '\n' +
     (savingsIndividualStr ? 'Mein anteiliger Vorteil:\n    ' + savingsIndividualStr + '\n' : '') +
     '\n\n' +
-    '───── BITTE PRÜFEN ─────\n\n' +
-    'Ich bitte Sie, das Vergleichsangebot direkt bei Liftaro anzufordern —\n' +
-    'über die folgende Schnell-Anfrage-Seite. Die wichtigsten Eckdaten Ihrer\n' +
-    'Verwaltung (Vertragsdetails oder Vertrags-Upload) genügen — wir erhalten\n' +
-    'dann zeitnah ein verbindliches Vergleichsangebot:\n\n\n' +
-    '    ▶  ' + verwalterUrl + '\n\n\n' +
-    'Liftaro ist auf Aufzug-Wartungsverträge spezialisiert. Über die laufende\n' +
-    'Betreuung lassen sich unterjährige Reparaturkosten im Einzelfall um bis\n' +
-    'zu 80 % reduzieren.\n\n' +
+    '───── ICH BITTE SIE FOLGENDES ─────\n\n' +
+    '1. Holen Sie auf Basis dieses Vorabchecks ein konkretes Vergleichs-\n' +
+    '   angebot bei Liftaro ein. Die Anfrage ist für die Gemeinschaft\n' +
+    '   kostenlos und unverbindlich:\n\n' +
+    '       ▶  ' + verwalterUrl + '\n\n' +
+    '2. Nehmen Sie den Punkt „Wirtschaftlichkeit des Aufzug-Wartungs-\n' +
+    '   vertrags" auf die Tagesordnung der nächsten Eigentümerversammlung\n' +
+    '   und legen Sie das Vergleichsangebot zur Beschlussfassung vor.\n\n' +
+    'Die laufende Prüfung der Wirtschaftlichkeit von Gemeinschaftsverträgen\n' +
+    'gehört zu den ordnungsgemäßen Verwaltungsaufgaben. Liftaro bietet diese\n' +
+    'Prüfung kostenlos an — als Sachverständige für Aufzug-Wartungsverträge.\n' +
+    'Über die laufende Betreuung lassen sich darüber hinaus unterjährige\n' +
+    'Reparaturkosten im Einzelfall um bis zu 80 % reduzieren.\n\n' +
+    'Bitte geben Sie mir bis spätestens ' + fristStr + ' eine kurze\n' +
+    'Rückmeldung, ob und in welchem Zeitrahmen Sie das Vergleichsangebot\n' +
+    'einholen.\n\n' +
     'Vielen Dank für Ihre Mühe.\n\n\n' +
     signatur;
 
@@ -2347,19 +2359,21 @@ function renderResultCta(role, r) {
       'Als Mieter sind Sie nicht Vertragspartner — eine Vertragsoptimierung kann nur Ihr <strong>Vermieter oder die Hausverwaltung</strong> anstoßen. ' +
       'Wir haben eine höfliche E-Mail-Vorlage an Ihren Vermieter vorbereitet, die Sie nur noch zu prüfen und abzusenden brauchen.';
 
-    const subj = encodeURIComponent('Bitte um Prüfung der Aufzug-Wartungskosten in der Nebenkostenabrechnung');
+    // V12.40: Mieter-Mail strenger formuliert, mit Rückmeldungs-Bitte
+    const subj = encodeURIComponent('Aufzug-Wartungskosten in der Nebenkostenabrechnung — Bitte um Prüfung — Check ' + checkNr);
     const body =
       'Sehr geehrte Damen und Herren,\n\n' +
       'ich habe einen kostenlosen Vorabcheck meiner Nebenkostenabrechnung durch Liftaro durchführen lassen ' +
-      '(Check-Nr. ' + checkNr + '). Die Analyse zeigt, dass bei der Aufzug-Position Optimierungspotenzial besteht.\n\n' +
+      '(Check-Nr. ' + checkNr + '). Die Analyse zeigt, dass die Aufzug-Position deutlich über dem marktüblichen Niveau liegt.\n\n' +
       'Auswertung in Kurzform:\n' + summary + '\n\n' +
       'Geschätzte jährliche Gesamt-Ersparnis für das Haus: ' + savingsTotalStr + '\n\n' +
-      'Ich möchte Sie freundlich bitten, dies bei Ihrer Hausverwaltung anzuregen — Liftaro bietet eine ' +
-      'unverbindliche, konkrete Einsparungsberechnung an und unterstützt die Hausverwaltung gerne dabei. ' +
-      'Auch eine laufende Begleitung zur Reduzierung unterjähriger Reparaturkosten (im Einzelfall bis zu ' +
-      '80 %) ist möglich.\n\n' +
+      'Da die Aufzug-Wartungskosten in voller Höhe als Nebenkosten auf die Mieter umgelegt werden, bitte ich Sie, ' +
+      'das Thema gegenüber der Hausverwaltung anzusprechen oder den Vorabcheck direkt an die Hausverwaltung weiterzuleiten. ' +
+      'Liftaro stellt der Verwaltung kostenlos ein konkretes Vergleichsangebot bereit. ' +
+      'Auch eine laufende Begleitung zur Reduzierung unterjähriger Reparaturkosten (im Einzelfall bis zu 80 %) ist möglich.\n\n' +
       'Weitere Informationen: ' + landingUrl + '\n' +
       'Kontakt Liftaro: check@liftaro.de\n\n' +
+      'Bitte geben Sie mir eine kurze Rückmeldung, wie Sie verfahren möchten.\n\n' +
       'Vielen Dank für Ihre Mühe.\n\n' +
       'Mit freundlichen Grüßen\n' + fullName +
       (adresse ? '\n' + adresse : '');
