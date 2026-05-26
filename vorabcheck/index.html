@@ -1737,6 +1737,22 @@ function renderResult(r) {
   window._lastResult = JSON.parse(JSON.stringify(r));
   if (!window._origResult) window._origResult = JSON.parse(JSON.stringify(r));
 
+  // V12.42: PDF im Hintergrund generieren + zu Airtable hochladen, sobald
+  // die Result-Page sichtbar wird. URL landet in window._vorabcheckPdfUrl
+  // und wird in den Mail-Buttons + Body verwendet (Link statt Anhang).
+  window._vorabcheckPdfUrl = null;
+  setTimeout(() => {
+    uploadVorabcheckPdfToBackend(r).then(url => {
+      if (url) {
+        // Buttons aktualisieren falls sie schon gerendert sind
+        if (typeof renderResultCta === 'function') {
+          const role = (window._currentRole || document.querySelector('.role-pill.active')?.dataset?.role || '');
+          try { renderResultCta(role, window._lastResult); } catch(_) {}
+        }
+      }
+    }).catch(()=>{});
+  }, 50);
+
   // Stamp & Title basierend auf Ampel
   const stamp = document.getElementById('result-stamp');
   const stampText = document.getElementById('result-stamp-text');
@@ -2462,6 +2478,54 @@ async function downloadVorabcheckPdfOnly() {
   }
 }
 
+// V12.42: PDF zum Backend hochladen → permanente Airtable-URL
+// Returnt URL oder null bei Fehler.
+async function uploadVorabcheckPdfToBackend(r) {
+  try {
+    const proxyUrl = (typeof LIFTARO_API_URL !== 'undefined' && LIFTARO_API_URL) || window.LIFTARO_API_URL;
+    if (!proxyUrl) {
+      console.warn('[upload_vorabcheck_pdf] LIFTARO_API_URL nicht gesetzt');
+      return null;
+    }
+    const ctx = await _getVorabcheckPdfContext(r);
+    if (!ctx.checkNr || ctx.checkNr === '—') {
+      console.warn('[upload_vorabcheck_pdf] keine check_nr im Result');
+      return null;
+    }
+    const bytes = await buildVorabcheckPdfBytes(r, ctx);
+    // Uint8Array → base64
+    let bin = '';
+    const u8 = new Uint8Array(bytes);
+    for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    const b64 = btoa(bin);
+    const fname = 'Liftaro_Vorabcheck_' + ctx.checkNr + '.pdf';
+    const resp = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload_vorabcheck_pdf',
+        check_nr: ctx.checkNr,
+        pdf_base64: b64,
+        filename: fname,
+      }),
+    });
+    if (!resp.ok) {
+      console.warn('[upload_vorabcheck_pdf] HTTP', resp.status);
+      return null;
+    }
+    const data = await resp.json();
+    if (data && data.ok && data.url) {
+      window._vorabcheckPdfUrl = data.url;
+      return data.url;
+    }
+    console.warn('[upload_vorabcheck_pdf] response not ok:', data);
+    return null;
+  } catch(e) {
+    console.warn('[upload_vorabcheck_pdf] failed:', e?.message || e);
+    return null;
+  }
+}
+
 // V12.41: Click-Handler — PDF + EML herunterladen (.eml öffnet Mailprogramm mit Anhang)
 async function downloadVorabcheckPdfAndEml(role) {
   try {
@@ -2540,6 +2604,9 @@ function _buildEigCtaMailBodies(r) {
   // Rückmeldungs-Frist: heute + 28 Tage
   const _fristDate = new Date(Date.now() + 28 * 24 * 60 * 60 * 1000);
   const fristStr = _fristDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  // V12.42: PDF-Link einbetten wenn Backend-Upload bereits erfolgreich
+  const pdfUrlHV = window._vorabcheckPdfUrl || '';
+  const pdfLineHV = pdfUrlHV ? '\nVollständige Auswertung als PDF:\n    ' + pdfUrlHV + '\n' : '';
   const bodyHV =
     'Sehr geehrte Damen und Herren,\n\n' +
     'als Eigentümer der Immobilie\n\n' +
@@ -2553,6 +2620,7 @@ function _buildEigCtaMailBodies(r) {
     'Geschätzte jährliche Gesamtersparnis für das Haus:\n' +
     '    ' + savingsTotalStr + '\n' +
     (savingsIndividualStr ? 'Mein anteiliger Vorteil:\n    ' + savingsIndividualStr + '\n' : '') +
+    pdfLineHV +
     '\n\n' +
     '───── ICH BITTE SIE FOLGENDES ─────\n\n' +
     '1. Holen Sie auf Basis dieses Vorabchecks ein konkretes Vergleichs-\n' +
@@ -2660,12 +2728,17 @@ function renderResultCta(role, r) {
       'Wir haben eine höfliche E-Mail-Vorlage an Ihren Vermieter vorbereitet, die Sie nur noch zu prüfen und abzusenden brauchen.';
 
     // V12.40: Mieter-Mail strenger formuliert, mit Rückmeldungs-Bitte
+    // V12.42: PDF-Link im Body (statt Anhang) wenn upload erfolgreich war
+    const pdfUrl = window._vorabcheckPdfUrl || '';
+    const pdfBlock = pdfUrl
+      ? '\nVollständige Auswertung als PDF: ' + pdfUrl + '\n\n'
+      : '\n';
     const subj = encodeURIComponent('Aufzug-Wartungskosten in der Nebenkostenabrechnung — Bitte um Prüfung — Check ' + checkNr);
     const body =
       'Sehr geehrte Damen und Herren,\n\n' +
       'ich habe einen kostenlosen Vorabcheck meiner Nebenkostenabrechnung durch Liftaro durchführen lassen ' +
       '(Check-Nr. ' + checkNr + '). Die Analyse zeigt, dass die Aufzug-Position deutlich über dem marktüblichen Niveau liegt.\n\n' +
-      'Auswertung in Kurzform:\n' + summary + '\n\n' +
+      'Auswertung in Kurzform:\n' + summary + '\n' + pdfBlock +
       'Geschätzte jährliche Gesamt-Ersparnis für das Haus: ' + savingsTotalStr + '\n\n' +
       'Da die Aufzug-Wartungskosten in voller Höhe als Nebenkosten auf die Mieter umgelegt werden, bitte ich Sie, ' +
       'das Thema gegenüber der Hausverwaltung anzusprechen oder den Vorabcheck direkt an die Hausverwaltung weiterzuleiten. ' +
@@ -2678,23 +2751,38 @@ function renderResultCta(role, r) {
       'Mit freundlichen Grüßen\n' + fullName +
       (adresse ? '\n' + adresse : '');
     const mailLink = 'mailto:?subject=' + subj + '&body=' + encodeURIComponent(body);
-    // V12.41: Bodies + Subject als Klartext für EML-Download speichern
+    // V12.41: Bodies + Subject als Klartext für EML-Download speichern (Fallback)
     window._mieterMailCtx = { subject: decodeURIComponent(subj), bodyText: body };
 
-    actionsEl.innerHTML =
-      '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
-        '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'mieter\')" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="#fff"/></svg>' +
-          'E-Mail an Vermieter vorbereiten (mit PDF im Anhang)' +
-        '</button>' +
-        '<button type="button" onclick="downloadVorabcheckPdfOnly()" class="btn" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2)">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-          'Nur PDF herunterladen' +
-        '</button>' +
-        '<a href="' + mailLink + '" style="font-size:12px;color:var(--ink-3);text-decoration:underline;text-align:center">Alternativ: Mail ohne Anhang öffnen (mailto)</a>' +
-      '</div>';
-    hintEl.style.display = 'block';
-    hintEl.innerHTML = '<strong>So funktioniert\'s:</strong> Klick auf den oberen Button lädt eine <code>.eml</code>-Datei herunter. Per Doppelklick öffnet sich Ihr Mail-Programm (Outlook, Apple Mail, Thunderbird) mit dem fertig vorbereiteten Text und dem PDF im Anhang. Sie müssen nur noch die Adresse Ihres Vermieters eintragen und absenden.';
+    if (pdfUrl) {
+      // V12.42: Mit Link → einfacher mailto + sichtbarer Link auf der Seite
+      actionsEl.innerHTML =
+        '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+          '<a href="' + mailLink + '" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+            'E-Mail an Vermieter vorbereiten (mit PDF-Link)' +
+          '</a>' +
+          '<a href="' + pdfUrl + '" target="_blank" rel="noopener" style="font-size:13px;color:var(--brand);text-decoration:underline;text-align:center;padding:6px;font-weight:600">📄 Vorabcheck-PDF in neuem Tab öffnen</a>' +
+        '</div>';
+      hintEl.style.display = 'block';
+      hintEl.innerHTML = 'Im E-Mail-Body steht ein Link auf das Vorabcheck-PDF — Ihr Vermieter kann es direkt aufrufen, ohne Anhang.';
+    } else {
+      // Fallback: PDF noch nicht hochgeladen → EML-Download mit Anhang
+      actionsEl.innerHTML =
+        '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+          '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'mieter\')" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="#fff"/></svg>' +
+            'E-Mail an Vermieter vorbereiten (PDF im Anhang)' +
+          '</button>' +
+          '<button type="button" onclick="downloadVorabcheckPdfOnly()" class="btn" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2)">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+            'Nur PDF herunterladen' +
+          '</button>' +
+          '<a href="' + mailLink + '" style="font-size:12px;color:var(--ink-3);text-decoration:underline;text-align:center">Alternativ: Mail ohne Anhang öffnen (mailto)</a>' +
+        '</div>';
+      hintEl.style.display = 'block';
+      hintEl.innerHTML = 'Der PDF-Link wird gerade hochgeladen — einen Moment, dann erscheint ein direkter Mail-Link statt EML-Download.';
+    }
     return;
   }
 
@@ -2738,17 +2826,25 @@ function renderResultCta(role, r) {
             'Sparpotenzial einreichen' +
           '</button>' +
         '</div>' +
-        // V12.41: Direkt-PDF-Download + EML-Mail-Download als Alternativen
-        '<div style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--line-2);display:flex;flex-direction:column;gap:8px">' +
-          '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'eigentuemer\')" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2);border-radius:8px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px">' +
-            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="var(--brand)"/></svg>' +
-            'Selbst per Mail-Programm versenden (mit PDF)' +
-          '</button>' +
-          '<button type="button" onclick="downloadVorabcheckPdfOnly()" style="background:transparent;color:var(--ink-3);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px">' +
-            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-            'Nur Vorabcheck-PDF herunterladen' +
-          '</button>' +
-        '</div>' +
+        // V12.41/42: Direkter PDF-Link (Backend-hosted) ODER Fallback EML/Download
+        (window._vorabcheckPdfUrl
+          ? '<div style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--line-2);text-align:center">' +
+              '<a href="' + window._vorabcheckPdfUrl + '" target="_blank" rel="noopener" style="font-size:13px;color:var(--brand);text-decoration:underline;font-weight:600;display:inline-flex;align-items:center;gap:6px">' +
+                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+                'Vorabcheck-PDF in neuem Tab öffnen' +
+              '</a>' +
+            '</div>'
+          : '<div style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--line-2);display:flex;flex-direction:column;gap:8px">' +
+              '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'eigentuemer\')" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2);border-radius:8px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px">' +
+                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="var(--brand)"/></svg>' +
+                'Selbst per Mail-Programm versenden (mit PDF)' +
+              '</button>' +
+              '<button type="button" onclick="downloadVorabcheckPdfOnly()" style="background:transparent;color:var(--ink-3);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px">' +
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+                'Nur Vorabcheck-PDF herunterladen' +
+              '</button>' +
+            '</div>'
+        ) +
         // Dezenter Link: Direktkontakt-Wunsch → Pipedrive-Hot-Markierung statt mailto
         '<div id="cta-hv-callback-wrap" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-2);text-align:center">' +
           '<a href="javascript:void(0)" id="cta-hv-callback-link" onclick="requestLiftaroCallback()" style="font-size:13px;color:var(--ink-3);text-decoration:underline;text-underline-offset:3px">' +
@@ -2771,12 +2867,15 @@ function renderResultCta(role, r) {
     'marktgerecht zu optimieren und über eine laufende Betreuung auch unterjährige Reparaturkosten um ' +
     'bis zu 80 % zu senken.';
 
+  // V12.42: PDF-Link einbetten wenn Backend-Upload erfolgreich
+  const pdfUrlV = window._vorabcheckPdfUrl || '';
+  const pdfBlockV = pdfUrlV ? '\nVollständige Auswertung als PDF: ' + pdfUrlV + '\n\n' : '\n';
   const subjV = encodeURIComponent('Zusammenarbeit Hausverwaltung – Einsparungs-Konzept – Check ' + checkNr);
   const bodyV =
     'Hallo Liftaro-Team,\n\n' +
     'ich bin Hausverwalter und habe für eines meiner verwalteten Objekte einen Vorabcheck unter ' +
     checkNr + ' durchgeführt.\n\n' +
-    'Auswertung in Kurzform:\n' + summary + '\n\n' +
+    'Auswertung in Kurzform:\n' + summary + '\n' + pdfBlockV +
     'Geschätzte jährliche Gesamtersparnis (nur Wartung+Notruf für dieses Objekt): ' + savingsTotalStr + '\n\n' +
     'Ich interessiere mich für eine laufende Zusammenarbeit zur Optimierung der Aufzug-Wartungskonditionen ' +
     'UND zur Reparatur-Kostenkontrolle bei allen meinen verwalteten Objekten (im Einzelfall bis zu 8.000 € ' +
@@ -2784,27 +2883,38 @@ function renderResultCta(role, r) {
     'laufenden Betreuung.\n\n' +
     'Mit freundlichen Grüßen\n' + fullName;
   const mailV = 'mailto:check@liftaro.de?subject=' + subjV + '&body=' + encodeURIComponent(bodyV);
-  // V12.41: Verwalter-Kontext für EML-Download speichern
+  // V12.41: Verwalter-Kontext für EML-Download speichern (Fallback)
   window._verwalterMailCtx = { to: 'check@liftaro.de', subject: decodeURIComponent(subjV), bodyText: bodyV };
-
-  actionsEl.innerHTML =
-    '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
-      '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'verwalter\')" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="#fff"/></svg>' +
-        'Anfrage an Liftaro vorbereiten (mit PDF im Anhang)' +
-      '</button>' +
-      '<button type="button" onclick="downloadVorabcheckPdfOnly()" class="btn" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2)">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-        'Nur PDF herunterladen' +
-      '</button>' +
-      '<a href="' + mailV + '" style="font-size:12px;color:var(--ink-3);text-decoration:underline;text-align:center">Alternativ: Mail ohne Anhang öffnen (mailto)</a>' +
-    '</div>';
-  hintEl.style.display = 'block';
-  hintEl.innerHTML = 'Der obere Button lädt eine <code>.eml</code>-Datei mit Mail-Text und PDF-Anhang. Doppelklick öffnet Ihr Mail-Programm (Outlook, Apple Mail, Thunderbird) mit allem vorausgefüllt. Wir antworten i.d.R. binnen 24 h.';
-  // V12.41: Verwalter-Pfad — auch _eigCtaCtx/_mieterMailCtx zurücksetzen damit
-  // downloadVorabcheckPdfAndEml('verwalter') den richtigen Kontext nimmt
+  // V12.41: Eig/Mieter-Kontexte zurücksetzen
   window._mieterMailCtx = null;
   window._eigCtaCtx     = null;
+
+  if (pdfUrlV) {
+    actionsEl.innerHTML =
+      '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+        '<a href="' + mailV + '" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
+          'Anfrage an Liftaro vorbereiten (mit PDF-Link)' +
+        '</a>' +
+        '<a href="' + pdfUrlV + '" target="_blank" rel="noopener" style="font-size:13px;color:var(--brand);text-decoration:underline;text-align:center;padding:6px;font-weight:600">📄 Vorabcheck-PDF in neuem Tab öffnen</a>' +
+      '</div>';
+    hintEl.style.display = 'block';
+    hintEl.innerHTML = 'Im E-Mail-Body steht ein Link auf das Vorabcheck-PDF. Wir antworten i.d.R. binnen 24 h.';
+  } else {
+    actionsEl.innerHTML =
+      '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+        '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'verwalter\')" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="#fff"/></svg>' +
+          'Anfrage an Liftaro vorbereiten (PDF im Anhang)' +
+        '</button>' +
+        '<button type="button" onclick="downloadVorabcheckPdfOnly()" class="btn" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2)">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+          'Nur PDF herunterladen' +
+        '</button>' +
+      '</div>';
+    hintEl.style.display = 'block';
+    hintEl.innerHTML = 'Der PDF-Link wird gerade hochgeladen. Wir antworten i.d.R. binnen 24 h.';
+  }
 }
 
 // ── Hausverwaltungs-Suche: Live-Lookup in Pipedrive während User tippt (Debounced) ──
