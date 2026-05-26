@@ -5156,7 +5156,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.43';
+const APP_VERSION = 'V12.44';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -18280,13 +18280,15 @@ async function setEmailStatus(recId, newStatus) {
 }
 
 async function dismissVorgang(recId, vIdx) {
-  // Vorgang als verworfen markieren: entferne ihn aus vorgaenge_json
+  // V12.44: Vorgang verwerfen — kein Confirm-Dialog mehr (statt dessen Undo-Snackbar).
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) return;
   let vorgaenge = [];
   try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
   if (vIdx < 0 || vIdx >= vorgaenge.length) return;
-  if (!confirm(`Vorgang "${vorgaenge[vIdx].titel || ''}" verwerfen?`)) return;
+  // Snapshot des verworfenen Vorgangs für Undo
+  const removed = JSON.parse(JSON.stringify(vorgaenge[vIdx]));
+  const removedTitle = removed.titel || '';
   vorgaenge.splice(vIdx, 1);
   try {
     await atUpdate('Emails', recId, {
@@ -18297,10 +18299,70 @@ async function dismissVorgang(recId, vIdx) {
     r.ki_vorgaenge_count = vorgaenge.length;
     renderEmailInboxDetail();
     renderEmailInboxList();
-    showToast('Vorgang verworfen.', 'success');
+    // V12.44: Undo-Snackbar (10 Sek) zeigen
+    _showVorgangUndoSnackbar(recId, vIdx, removed, removedTitle);
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
+}
+
+// V12.44: Undo-Snackbar für verworfene Vorgänge — 10 Sek sichtbar, Klick → Rückgängig.
+function _showVorgangUndoSnackbar(recId, origVIdx, vorgang, title) {
+  // Vorherige Snackbar entfernen falls da
+  const existing = document.getElementById('_vorgangUndoSnackbar');
+  if (existing) try { existing.remove(); } catch(_){}
+  if (window._vorgangUndoTimer) { try { clearTimeout(window._vorgangUndoTimer); } catch(_){} }
+  const bar = document.createElement('div');
+  bar.id = '_vorgangUndoSnackbar';
+  bar.style.cssText =
+    'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:7000;' +
+    'background:#1A3A5C;color:#fff;border-radius:10px;padding:12px 14px 12px 18px;' +
+    'box-shadow:0 8px 28px rgba(0,0,0,.35);display:flex;align-items:center;gap:12px;' +
+    'font-family:"DM Sans",sans-serif;font-size:13px;max-width:520px;width:calc(100% - 32px)';
+  bar.innerHTML =
+    '<div style="flex:1;min-width:0;line-height:1.4">' +
+      '<div style="font-weight:600">Vorgang verworfen</div>' +
+      (title ? '<div style="font-size:11.5px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">' + _esc(title.slice(0, 80)) + '</div>' : '') +
+    '</div>' +
+    '<button id="_vorgangUndoBtn" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:7px 13px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;flex-shrink:0">' +
+      '↩ Rückgängig' +
+    '</button>' +
+    '<button id="_vorgangUndoClose" style="background:transparent;border:none;color:rgba(255,255,255,.6);cursor:pointer;padding:4px 6px;font-size:14px;flex-shrink:0" title="Schließen">✕</button>';
+  document.body.appendChild(bar);
+  const undo = async () => {
+    try { bar.remove(); } catch(_){}
+    if (window._vorgangUndoTimer) { try { clearTimeout(window._vorgangUndoTimer); } catch(_){} window._vorgangUndoTimer = null; }
+    const r = _eiAllRecords.find(x => x._id === recId);
+    if (!r) { showToast('Email nicht mehr da — Rückgängig nicht möglich.', 'error'); return; }
+    let vorgaenge = [];
+    try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+    // An ursprünglicher Position einfügen (clamp, falls Liste in der Zwischenzeit kürzer wurde)
+    const insertAt = Math.max(0, Math.min(origVIdx, vorgaenge.length));
+    vorgaenge.splice(insertAt, 0, vorgang);
+    try {
+      await atUpdate('Emails', recId, {
+        vorgaenge_json: JSON.stringify(vorgaenge, null, 2),
+        ki_vorgaenge_count: vorgaenge.length,
+      });
+      r.vorgaenge_json = JSON.stringify(vorgaenge, null, 2);
+      r.ki_vorgaenge_count = vorgaenge.length;
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+      showToast('Vorgang wiederhergestellt.', 'success');
+    } catch(e) {
+      showToast('Wiederherstellen fehlgeschlagen: ' + e.message, 'error');
+    }
+  };
+  document.getElementById('_vorgangUndoBtn').onclick = undo;
+  document.getElementById('_vorgangUndoClose').onclick = () => {
+    try { bar.remove(); } catch(_){}
+    if (window._vorgangUndoTimer) { try { clearTimeout(window._vorgangUndoTimer); } catch(_){} window._vorgangUndoTimer = null; }
+  };
+  // Auto-dismiss nach 10 Sekunden
+  window._vorgangUndoTimer = setTimeout(() => {
+    try { bar.remove(); } catch(_){}
+    window._vorgangUndoTimer = null;
+  }, 10000);
 }
 
 // ── Pipedrive-Zuordnung pro Vorgang ─────────────────────────────────
