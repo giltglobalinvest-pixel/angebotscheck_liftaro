@@ -14,6 +14,9 @@
 <!-- Cloudflare Turnstile (kostenlos, DSGVO-friendly) -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
+<!-- V12.41 Phase 4: pdf-lib für Vorabcheck-PDF-Generierung -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
 <style>
 :root {
   --bg: #ffffff;
@@ -2201,6 +2204,303 @@ function scrollToResultCta() {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// V12.41 Phase 4 — Vorabcheck-PDF + EML-Generator
+// ─────────────────────────────────────────────────────────────────────
+// (1) buildVorabcheckPdfBytes(r, ctx) → Uint8Array
+//     Erzeugt eine 1-Seiter A4 PDF mit:
+//       • Header (Liftaro-Branding, Check-Nr, Datum)
+//       • Eckdaten + Ergebnis (Adresse, Wartungskosten, Ersparnis)
+//       • Werbung-Block "Was macht Liftaro"
+//       • Vorteile langfristiger Zusammenarbeit
+//       • Call-to-Action mit Kontaktdaten
+// (2) buildEmlBlob({to, subject, bodyText, attachmentBytes, attachmentName})
+//     Erzeugt eine RFC822-konforme .eml-Datei mit Anhang. Nach Doppelklick
+//     öffnet sich das Mailprogramm (Outlook/Apple Mail/Thunderbird) mit
+//     allem vorausgefüllt inkl. Anhang.
+// ═══════════════════════════════════════════════════════════════════════
+
+async function buildVorabcheckPdfBytes(r, ctx) {
+  if (!window.PDFLib) throw new Error('pdf-lib nicht geladen');
+  const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]); // A4 hoch
+  const helv     = await doc.embedFont(StandardFonts.Helvetica);
+  const helvBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const helvIt   = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const W = 595.28, H = 841.89, M = 40;
+
+  // Farben — abgestimmt auf Liftaro-Cover-PDF (navy + grün)
+  const cNavy   = rgb(0.1, 0.227, 0.361);
+  const cGreen  = rgb(0.49, 0.761, 0.259);
+  const cInk    = rgb(0.12, 0.16, 0.2);
+  const cMuted  = rgb(0.42, 0.45, 0.5);
+  const cLine   = rgb(0.88, 0.9, 0.92);
+  const cSky    = rgb(0.94, 0.97, 0.99);
+  const cGreenSoft = rgb(0.83, 0.96, 0.78);
+
+  // Helper
+  const drawText = (txt, x, y, size, font, color) => page.drawText(String(txt), { x, y, size, font, color: color || cInk });
+  const drawRect = (x, y, w, h, color) => page.drawRectangle({ x, y, width: w, height: h, color });
+  const drawLine = (y, color, thickness) => page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: thickness || 0.5, color: color || cLine });
+  // Wrap eine Textzeile auf max. width (in pt) bei gegebener font/size
+  const wrap = (txt, maxW, font, size) => {
+    const words = String(txt).split(/\s+/);
+    const lines = []; let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (font.widthOfTextAtSize(test, size) > maxW && cur) {
+        lines.push(cur); cur = w;
+      } else cur = test;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  };
+
+  // ── HEADER ────────────────────────────────────────────────────────
+  // Navy-Balken oben (volle Breite, 60pt hoch)
+  drawRect(0, H - 60, W, 60, cNavy);
+  drawText('LIFTARO  ·  Vorabcheck-Auswertung', M, H - 38, 16, helvBold, rgb(1, 1, 1));
+  drawText('Aufzug-Wartungskosten transparent geprüft', M, H - 53, 9.5, helv, rgb(0.85, 0.92, 0.98));
+  // Check-Nr rechts oben
+  const nrLbl = 'Check-Nr.';
+  const nrVal = ctx.checkNr || '—';
+  const nrLblW = helv.widthOfTextAtSize(nrLbl, 8);
+  const nrValW = helvBold.widthOfTextAtSize(nrVal, 13);
+  drawText(nrLbl, W - M - Math.max(nrLblW, nrValW), H - 26, 8, helv, rgb(0.7, 0.85, 0.95));
+  drawText(nrVal, W - M - nrValW, H - 44, 13, helvBold, rgb(1, 1, 1));
+
+  // ── ECKDATEN-BLOCK ────────────────────────────────────────────────
+  let y = H - 90;
+  drawText('Ergebnis Ihrer Vorabprüfung', M, y, 13, helvBold, cNavy);
+  y -= 8; drawLine(y, cGreen, 1.5); y -= 18;
+
+  // Eckdaten als 2-spaltige "Tabelle"
+  const rows = [];
+  if (ctx.adresse)         rows.push(['Objekt',                 ctx.adresse]);
+  if (ctx.checkDateStr)    rows.push(['Check durchgeführt am',  ctx.checkDateStr]);
+  if (ctx.role)            rows.push(['Rolle',                  ctx.role]);
+  if (ctx.wartungBruttoStr) rows.push(['Aktuelle Wartungskosten p. a.', ctx.wartungBruttoStr]);
+  if (ctx.savingsTotalStr) rows.push(['Geschätzte Ersparnis p. a.',    ctx.savingsTotalStr]);
+  // Tabelle zeichnen
+  const labelX = M + 8, valueX = M + 200, rowH = 18;
+  rows.forEach((row, i) => {
+    if (i % 2 === 0) drawRect(M, y - 4, W - 2 * M, rowH, cSky);
+    drawText(row[0], labelX, y + 2, 9.5, helv, cMuted);
+    // Ersparnis-Zeile fett + grün
+    const isErsp = row[0].includes('Ersparnis');
+    drawText(row[1], valueX, y + 2, isErsp ? 11 : 10, isErsp ? helvBold : helv, isErsp ? cGreen : cInk);
+    y -= rowH;
+  });
+
+  // Auswertung-Summary
+  if (ctx.summary) {
+    y -= 6;
+    drawText('Auswertung in Kurzform:', M, y, 9.5, helvBold, cNavy);
+    y -= 13;
+    const lines = wrap(ctx.summary, W - 2 * M, helv, 9);
+    lines.slice(0, 5).forEach(line => {
+      drawText(line, M, y, 9, helv, cInk);
+      y -= 12;
+    });
+  }
+
+  // ── WERBE-BLOCK: WAS MACHT LIFTARO ────────────────────────────────
+  y -= 18;
+  drawRect(M, y - 6, W - 2 * M, 4, cGreen); // grüner Trennstrich
+  y -= 22;
+  drawText('Was macht Liftaro?', M, y, 13, helvBold, cNavy);
+  y -= 16;
+  const aboutBullets = [
+    'Spezialisierte Sachverständige für Aufzug-Wartungs- und Reparaturverträge.',
+    'Wir prüfen Bestandsverträge auf Wirtschaftlichkeit und holen Vergleichs-',
+    'angebote bei qualifizierten Partnerfirmen ein — neutral und transparent.',
+    'Für den Betreiber kostenlos und unverbindlich.',
+  ];
+  aboutBullets.forEach(line => {
+    drawText('•', M + 2, y, 10, helvBold, cGreen);
+    drawText(line, M + 14, y, 9.5, helv, cInk);
+    y -= 13;
+  });
+
+  // ── VORTEILE LANGFRISTIGE ZUSAMMENARBEIT ──────────────────────────
+  y -= 12;
+  drawText('Ihre Vorteile bei laufender Betreuung', M, y, 13, helvBold, cNavy);
+  y -= 16;
+  const benefits = [
+    ['Service-Pauschale ab 100 €/Jahr', 'Statt prozentualer Ersparnisbeteiligung — planbar und kalkulierbar.'],
+    ['Reparaturkosten-Prüfung',         'Im Einzelfall bis zu 80 % Einsparung bei unterjährigen Reparaturen.'],
+    ['Vertragsverlängerung optimiert',   'Kündigungsfristen + Anbieterwechsel rechtzeitig vorbereitet.'],
+    ['Eine Anlaufstelle',                'Sie sparen Zeit — wir kommunizieren mit den Aufzugsfirmen.'],
+  ];
+  benefits.forEach(b => {
+    drawText('✓', M + 2, y, 11, helvBold, cGreen);
+    drawText(b[0], M + 16, y, 10, helvBold, cInk);
+    drawText('— ' + b[1], M + 16 + helvBold.widthOfTextAtSize(b[0], 10) + 4, y, 9, helv, cMuted);
+    y -= 14;
+  });
+
+  // ── CALL TO ACTION ────────────────────────────────────────────────
+  y -= 14;
+  const ctaH = 80;
+  drawRect(M, y - ctaH, W - 2 * M, ctaH, cGreenSoft);
+  drawRect(M, y - ctaH, 4, ctaH, cGreen);
+  drawText('Konkretes Angebot anfordern', M + 16, y - 18, 13, helvBold, cNavy);
+  drawText('Liftaro holt für Sie kostenlos ein verbindliches Vergleichsangebot bei einer geprüften Partnerfirma ein.', M + 16, y - 33, 9.5, helv, cInk);
+  drawText('▶  ' + (ctx.landingUrl || 'check.liftaro.de'), M + 16, y - 52, 10, helvBold, cNavy);
+  drawText('✉  check@liftaro.de    ·    🌐  www.liftaro.de', M + 16, y - 68, 9, helv, cMuted);
+
+  // ── FOOTER ────────────────────────────────────────────────────────
+  const footY = 38;
+  drawLine(footY + 14, cLine, 0.5);
+  drawText('Liftaro GmbH · Sachverständige für Aufzug-Wartungs- und Reparaturverträge', M, footY, 8, helv, cMuted);
+  drawText('Erstellt am ' + (ctx.checkDateStr || new Date().toLocaleDateString('de-DE')), W - M - helv.widthOfTextAtSize('Erstellt am ' + (ctx.checkDateStr || new Date().toLocaleDateString('de-DE')), 8), footY, 8, helv, cMuted);
+
+  doc.setTitle('Liftaro Vorabcheck ' + (ctx.checkNr || ''));
+  doc.setAuthor('Liftaro GmbH');
+  doc.setCreationDate(new Date());
+
+  return await doc.save();
+}
+
+// ── EML-Builder (RFC822 multipart/mixed mit Anhang) ──
+function buildEmlBlob({ to, subject, bodyText, attachmentBytes, attachmentName }) {
+  const boundary = 'LiftaroBoundary_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  // Helper: base64-encoding mit 76-Zeichen-Zeilen
+  const toB64 = (u8) => {
+    let bin = '';
+    for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    const raw = btoa(bin);
+    return raw.replace(/(.{76})/g, '$1\r\n');
+  };
+  // Quoted-Printable für UTF-8 Body — vereinfacht: nur Encoding der Non-ASCII Zeichen
+  const qp = (s) => s
+    .replace(/=/g, '=3D')
+    .replace(/[\x80-￿]/g, (ch) => {
+      const bytes = new TextEncoder().encode(ch);
+      let out = '';
+      for (const b of bytes) out += '=' + b.toString(16).toUpperCase().padStart(2, '0');
+      return out;
+    })
+    // Soft-Linebreaks bei langen Zeilen
+    .replace(/^(.{74})/gm, '$1=\r\n');
+  const subjEnc = '=?utf-8?B?' + btoa(unescape(encodeURIComponent(subject))) + '?=';
+  const attB64 = toB64(attachmentBytes);
+  const eml =
+    'From: \r\n' +
+    'To: ' + (to || '') + '\r\n' +
+    'Subject: ' + subjEnc + '\r\n' +
+    'MIME-Version: 1.0\r\n' +
+    'Content-Type: multipart/mixed; boundary="' + boundary + '"\r\n' +
+    '\r\n' +
+    '--' + boundary + '\r\n' +
+    'Content-Type: text/plain; charset=utf-8\r\n' +
+    'Content-Transfer-Encoding: quoted-printable\r\n' +
+    '\r\n' +
+    qp(bodyText) + '\r\n' +
+    '\r\n' +
+    '--' + boundary + '\r\n' +
+    'Content-Type: application/pdf; name="' + attachmentName + '"\r\n' +
+    'Content-Disposition: attachment; filename="' + attachmentName + '"\r\n' +
+    'Content-Transfer-Encoding: base64\r\n' +
+    '\r\n' +
+    attB64 + '\r\n' +
+    '\r\n' +
+    '--' + boundary + '--\r\n';
+  return new Blob([eml], { type: 'message/rfc822' });
+}
+
+// ── Helper: Vorabcheck-PDF + Context aus Result-Object bauen ──
+async function _getVorabcheckPdfContext(r) {
+  const vorname  = (document.getElementById('vorname')?.value || '').trim();
+  const nachname = (document.getElementById('nachname')?.value || '').trim();
+  const email    = (document.getElementById('email')?.value || '').trim();
+  const telefon  = (document.getElementById('telefon')?.value || '').trim();
+  const confInp  = document.getElementById('adresse-confirm-input');
+  const adresse  = ((confInp && confInp.value) || r.objekt_adresse || document.getElementById('adresse')?.value || '').toString().trim();
+  const role     = (window._currentRole || document.querySelector('.role-pill.active')?.dataset?.role || '').toString();
+  const roleLabel = role === 'mieter' ? 'Mieter' : role === 'eigentuemer' ? 'Eigentümer' : role === 'verwalter' ? 'Verwalter' : '—';
+  const fullName = (vorname + ' ' + nachname).trim() || 'Anonym';
+  const checkNr  = r.check_nr || '—';
+  const summary  = (r.summary || '').trim();
+  const savingsTotal      = Number(r.savings_total_eur || r.savings_estimate_eur || 0);
+  const savingsTotalStr   = savingsTotal > 0 ? Math.round(savingsTotal).toLocaleString('de-DE') + ' € / Jahr' : '–';
+  const wartungBrutto     = Number(r.wartung_brutto_used || r.anonymized_data?.betrag_aufzug_brutto || 0);
+  const wartungBruttoStr  = wartungBrutto > 0 ? Math.round(wartungBrutto).toLocaleString('de-DE') + ' € / Jahr' : '–';
+  const landingUrl = location.origin + location.pathname;
+  const checkDateStr = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return {
+    checkNr, adresse, role: roleLabel, fullName, email, telefon,
+    summary, savingsTotalStr, wartungBruttoStr,
+    landingUrl, checkDateStr,
+  };
+}
+
+// ── Download-Helper: triggert Browser-Download ──
+function _triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// V12.41: Click-Handler — nur PDF herunterladen (alle Rollen)
+async function downloadVorabcheckPdfOnly() {
+  try {
+    const r = window._lastResult || {};
+    const ctx = await _getVorabcheckPdfContext(r);
+    const bytes = await buildVorabcheckPdfBytes(r, ctx);
+    const fname = 'Liftaro_Vorabcheck_' + (ctx.checkNr || 'neu') + '.pdf';
+    _triggerDownload(new Blob([bytes], { type: 'application/pdf' }), fname);
+  } catch(e) {
+    console.error('Vorabcheck-PDF-Download:', e);
+    alert('PDF-Erstellung fehlgeschlagen: ' + (e.message || e));
+  }
+}
+
+// V12.41: Click-Handler — PDF + EML herunterladen (.eml öffnet Mailprogramm mit Anhang)
+async function downloadVorabcheckPdfAndEml(role) {
+  try {
+    const r = window._lastResult || {};
+    const ctx = await _getVorabcheckPdfContext(r);
+    const bytes = await buildVorabcheckPdfBytes(r, ctx);
+    const fname = 'Liftaro_Vorabcheck_' + (ctx.checkNr || 'neu') + '.pdf';
+    // Subject + Body je nach Rolle
+    let subject, bodyText, to;
+    if (role === 'mieter' && window._mieterMailCtx) {
+      subject  = window._mieterMailCtx.subject;
+      bodyText = window._mieterMailCtx.bodyText;
+      to       = '';
+    } else if (role === 'eigentuemer' && window._eigCtaCtx) {
+      subject  = window._eigCtaCtx.subjHV;
+      bodyText = window._eigCtaCtx.bodyHV;
+      to       = window._eigCtaCtx.hvEmail || '';
+    } else if (role === 'verwalter' && window._verwalterMailCtx) {
+      subject  = window._verwalterMailCtx.subject;
+      bodyText = window._verwalterMailCtx.bodyText;
+      to       = window._verwalterMailCtx.to || 'check@liftaro.de';
+    } else {
+      subject  = 'Liftaro Vorabcheck ' + (ctx.checkNr || '');
+      bodyText = 'Hallo,\n\nim Anhang finden Sie das PDF zur Vorabcheck-Auswertung ' + (ctx.checkNr || '') + '.\n\nMit freundlichen Grüßen';
+      to       = '';
+    }
+    const emlBlob = buildEmlBlob({
+      to, subject, bodyText,
+      attachmentBytes: bytes,
+      attachmentName:  fname,
+    });
+    const emlName = 'Liftaro_Vorabcheck_' + (ctx.checkNr || 'neu') + '.eml';
+    _triggerDownload(emlBlob, emlName);
+  } catch(e) {
+    console.error('Vorabcheck-EML-Download:', e);
+    alert('Mail-Vorbereitung fehlgeschlagen: ' + (e.message || e));
+  }
+}
+
 // ── Rollenabhängige CTA im Result-Screen ──────────────────────────────
 // Erzeugt rollen-spezifische E-Mail-Entwürfe (mailto). Mail-Client öffnet sich
 // auf Tap und der User kann den vorbereiteten Entwurf prüfen + abschicken.
@@ -2378,14 +2678,23 @@ function renderResultCta(role, r) {
       'Mit freundlichen Grüßen\n' + fullName +
       (adresse ? '\n' + adresse : '');
     const mailLink = 'mailto:?subject=' + subj + '&body=' + encodeURIComponent(body);
+    // V12.41: Bodies + Subject als Klartext für EML-Download speichern
+    window._mieterMailCtx = { subject: decodeURIComponent(subj), bodyText: body };
 
     actionsEl.innerHTML =
-      '<a href="' + mailLink + '" class="btn">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-        'E-Mail an Vermieter vorbereiten' +
-      '</a>';
+      '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+        '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'mieter\')" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="#fff"/></svg>' +
+          'E-Mail an Vermieter vorbereiten (mit PDF im Anhang)' +
+        '</button>' +
+        '<button type="button" onclick="downloadVorabcheckPdfOnly()" class="btn" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2)">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+          'Nur PDF herunterladen' +
+        '</button>' +
+        '<a href="' + mailLink + '" style="font-size:12px;color:var(--ink-3);text-decoration:underline;text-align:center">Alternativ: Mail ohne Anhang öffnen (mailto)</a>' +
+      '</div>';
     hintEl.style.display = 'block';
-    hintEl.textContent = 'Die E-Mail-Adresse Ihres Vermieters tragen Sie bitte selbst im geöffneten Mail-Entwurf ein. Wir geben keine Rechtsberatung.';
+    hintEl.innerHTML = '<strong>So funktioniert\'s:</strong> Klick auf den oberen Button lädt eine <code>.eml</code>-Datei herunter. Per Doppelklick öffnet sich Ihr Mail-Programm (Outlook, Apple Mail, Thunderbird) mit dem fertig vorbereiteten Text und dem PDF im Anhang. Sie müssen nur noch die Adresse Ihres Vermieters eintragen und absenden.';
     return;
   }
 
@@ -2429,6 +2738,17 @@ function renderResultCta(role, r) {
             'Sparpotenzial einreichen' +
           '</button>' +
         '</div>' +
+        // V12.41: Direkt-PDF-Download + EML-Mail-Download als Alternativen
+        '<div style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--line-2);display:flex;flex-direction:column;gap:8px">' +
+          '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'eigentuemer\')" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2);border-radius:8px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="var(--brand)"/></svg>' +
+            'Selbst per Mail-Programm versenden (mit PDF)' +
+          '</button>' +
+          '<button type="button" onclick="downloadVorabcheckPdfOnly()" style="background:transparent;color:var(--ink-3);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px">' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+            'Nur Vorabcheck-PDF herunterladen' +
+          '</button>' +
+        '</div>' +
         // Dezenter Link: Direktkontakt-Wunsch → Pipedrive-Hot-Markierung statt mailto
         '<div id="cta-hv-callback-wrap" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-2);text-align:center">' +
           '<a href="javascript:void(0)" id="cta-hv-callback-link" onclick="requestLiftaroCallback()" style="font-size:13px;color:var(--ink-3);text-decoration:underline;text-underline-offset:3px">' +
@@ -2464,14 +2784,27 @@ function renderResultCta(role, r) {
     'laufenden Betreuung.\n\n' +
     'Mit freundlichen Grüßen\n' + fullName;
   const mailV = 'mailto:check@liftaro.de?subject=' + subjV + '&body=' + encodeURIComponent(bodyV);
+  // V12.41: Verwalter-Kontext für EML-Download speichern
+  window._verwalterMailCtx = { to: 'check@liftaro.de', subject: decodeURIComponent(subjV), bodyText: bodyV };
 
   actionsEl.innerHTML =
-    '<a href="' + mailV + '" class="btn">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-      'Anfrage an Liftaro senden' +
-    '</a>';
+    '<div style="width:100%;display:flex;flex-direction:column;gap:10px">' +
+      '<button type="button" onclick="downloadVorabcheckPdfAndEml(\'verwalter\')" class="btn" style="background:var(--brand);color:#fff;border-color:var(--brand)">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="18" r="4" fill="#fff"/></svg>' +
+        'Anfrage an Liftaro vorbereiten (mit PDF im Anhang)' +
+      '</button>' +
+      '<button type="button" onclick="downloadVorabcheckPdfOnly()" class="btn" style="background:#fff;color:var(--ink);border:1.5px solid var(--line-2)">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+        'Nur PDF herunterladen' +
+      '</button>' +
+      '<a href="' + mailV + '" style="font-size:12px;color:var(--ink-3);text-decoration:underline;text-align:center">Alternativ: Mail ohne Anhang öffnen (mailto)</a>' +
+    '</div>';
   hintEl.style.display = 'block';
-  hintEl.textContent = 'Wir antworten i.d.R. innerhalb von 24 h mit einem unverbindlichen Konzept-Vorschlag. Wir geben keine Rechtsberatung.';
+  hintEl.innerHTML = 'Der obere Button lädt eine <code>.eml</code>-Datei mit Mail-Text und PDF-Anhang. Doppelklick öffnet Ihr Mail-Programm (Outlook, Apple Mail, Thunderbird) mit allem vorausgefüllt. Wir antworten i.d.R. binnen 24 h.';
+  // V12.41: Verwalter-Pfad — auch _eigCtaCtx/_mieterMailCtx zurücksetzen damit
+  // downloadVorabcheckPdfAndEml('verwalter') den richtigen Kontext nimmt
+  window._mieterMailCtx = null;
+  window._eigCtaCtx     = null;
 }
 
 // ── Hausverwaltungs-Suche: Live-Lookup in Pipedrive während User tippt (Debounced) ──
