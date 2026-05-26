@@ -5156,7 +5156,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.42';
+const APP_VERSION = 'V12.43';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -18789,6 +18789,103 @@ async function openLinkedCheckById(checkId) {
   }
 }
 
+// V12.43: Modal — wenn Email mehrere PDF-Anhänge hat, User wählen lassen welche
+// übernommen werden. Bei mehrfacher Auswahl werden sie zu einem PDF gemergt.
+// Returnt Promise<Array<attachment>> (leer wenn User abbricht).
+async function _chooseEmailAttachments(allAttachments) {
+  // PDFs filtern (bevorzugt) — Word/Bilder werden aktuell nicht unterstützt
+  const pdfs = (allAttachments || []).filter(a => {
+    const n = (a.filename || a.name || '').toLowerCase();
+    return /\.pdf$/.test(n) || a.type === 'application/pdf';
+  });
+  if (pdfs.length === 0) return [];
+  if (pdfs.length === 1) return pdfs;  // Single-PDF: kein Dialog nötig
+  // Mehrere PDFs → Modal-Dialog
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.7);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)';
+    const formatKb = (b) => (b > 0 ? (b/1024).toFixed(0) + ' KB' : '');
+    box.innerHTML =
+      '<div style="background:var(--navy);color:#fff;padding:14px 20px">' +
+        '<div style="font-size:15px;font-weight:700">Welche Anhänge übernehmen?</div>' +
+        '<div style="font-size:12px;opacity:.85;margin-top:2px">Die Email hat ' + pdfs.length + ' PDF-Anhänge. Wähle einen oder mehrere — bei Mehrfachauswahl werden sie zu einem PDF zusammengefügt.</div>' +
+      '</div>' +
+      '<div style="padding:8px 16px;border-bottom:1px solid var(--border);background:#f5f8fa">' +
+        '<label style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer">' +
+          '<input type="checkbox" id="_ea_all" checked style="width:16px;height:16px;cursor:pointer">' +
+          '<span>Alle auswählen</span>' +
+        '</label>' +
+      '</div>' +
+      '<div id="_ea_list" style="overflow-y:auto;flex:1;padding:8px 0;max-height:50vh">' +
+        pdfs.map((a, i) => {
+          const fn = a.filename || a.name || ('Anhang_' + (i+1) + '.pdf');
+          const sz = formatKb(a.size || 0);
+          return '<label style="display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s" onmouseover="this.style.background=\'#f5f8fa\'" onmouseout="this.style.background=\'\'">' +
+                   '<input type="checkbox" class="_ea_item" data-idx="' + i + '" checked style="width:16px;height:16px;cursor:pointer;flex:0 0 auto">' +
+                   '<div style="flex:1;min-width:0">' +
+                     '<div style="font-size:13px;font-weight:600;color:var(--text);word-break:break-word">' + _esc(fn) + '</div>' +
+                     (sz ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + sz + '</div>' : '') +
+                   '</div>' +
+                 '</label>';
+        }).join('') +
+      '</div>' +
+      '<div style="padding:12px 16px;border-top:1px solid var(--border);background:#f5f8fa;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+        '<div id="_ea_hint" style="font-size:11.5px;color:var(--muted);flex:1;min-width:140px"></div>' +
+        '<div style="display:flex;gap:8px;flex-shrink:0">' +
+          '<button id="_ea_cancel" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">Abbrechen</button>' +
+          '<button id="_ea_ok" style="background:var(--green);border:none;color:#fff;border-radius:7px;padding:8px 16px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">Übernehmen</button>' +
+        '</div>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const all = box.querySelector('#_ea_all');
+    const items = Array.from(box.querySelectorAll('._ea_item'));
+    const hint = box.querySelector('#_ea_hint');
+    const okBtn = box.querySelector('#_ea_ok');
+    const cancelBtn = box.querySelector('#_ea_cancel');
+    const updateHint = () => {
+      const sel = items.filter(x => x.checked);
+      okBtn.textContent = sel.length > 1 ? 'Übernehmen (' + sel.length + ' → 1 PDF zusammenfügen)' : sel.length === 1 ? 'Übernehmen' : 'Bitte auswählen';
+      okBtn.disabled = sel.length === 0;
+      okBtn.style.opacity = sel.length === 0 ? '.55' : '1';
+      hint.textContent = sel.length > 1 ? '✓ ' + sel.length + ' PDFs werden zu einer Datei zusammengefügt.' : '';
+      all.checked = sel.length === items.length;
+    };
+    all.onchange = () => { items.forEach(x => x.checked = all.checked); updateHint(); };
+    items.forEach(x => x.onchange = updateHint);
+    updateHint();
+    const close = (val) => { try { document.body.removeChild(overlay); } catch(_){}; resolve(val); };
+    okBtn.onclick = () => {
+      const sel = items.filter(x => x.checked).map(x => pdfs[parseInt(x.dataset.idx, 10)]);
+      close(sel);
+    };
+    cancelBtn.onclick = () => close([]);
+    overlay.onclick = (ev) => { if (ev.target === overlay) close([]); };
+  });
+}
+
+// V12.43: Mehrere PDF-Blobs zu einem zusammenfügen (via pdf-lib)
+async function _mergePdfBlobs(blobs, mergedFilename) {
+  if (!Array.isArray(blobs) || blobs.length === 0) return null;
+  if (blobs.length === 1) return blobs[0];  // nichts zu mergen
+  const { PDFDocument } = PDFLib;
+  const merged = await PDFDocument.create();
+  for (const blob of blobs) {
+    try {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const src = await PDFDocument.load(bytes);
+      const pages = await merged.copyPages(src, src.getPageIndices());
+      pages.forEach(p => merged.addPage(p));
+    } catch(e) {
+      console.warn('PDF-Merge: skip blob (load failed):', e?.message || e);
+    }
+  }
+  const out = await merged.save();
+  return new Blob([out], { type: 'application/pdf' });
+}
+
 async function createCheckFromVorgang(recId, vIdx) {
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) return;
@@ -18875,42 +18972,67 @@ async function createCheckFromVorgang(recId, vIdx) {
     const writeResult = await atWrite('Checks', fields);
     const recordId = writeResult?.id;
 
-    // V12.3+V12.4: Email-Anhang(e) automatisch in den neuen Check übernehmen (vorliegendes_pdf).
-    // → User muss nicht mehr aus der Email runterladen + manuell hochladen.
-    // V12.4: Erstes PDF wird zusätzlich als File-Objekt gemerkt → nach loadCheck
-    //        in Zone 1 plaziert + KI-Extraktion auto-getriggert (wie bei manuellem Upload).
+    // V12.3+V12.4+V12.43: Email-Anhang(e) in den neuen Check übernehmen.
+    // V12.43: Wenn mehrere PDFs vorhanden, fragt _chooseEmailAttachments den User
+    // welche übernommen werden sollen. Bei Mehrfachauswahl werden sie zu einem
+    // PDF gemerged → genau EIN vorliegendes_pdf landet auf dem Check + KI sieht
+    // alle Seiten zusammen.
     let attachedFiles = 0;
-    let firstPdfFileForKi = null;  // V12.4: File-Objekt für extractFromPDF nach loadCheck
+    let firstPdfFileForKi = null;
     if (recordId && Array.isArray(r.attachments) && r.attachments.length > 0) {
-      // Bevorzugt PDFs, sonst alle (z.B. wenn Word/Bilder dabei sind)
-      const candidates = r.attachments.filter(a => {
-        const n = (a.filename || a.name || '').toLowerCase();
-        return /\.pdf$/.test(n) || a.type === 'application/pdf';
-      });
-      const toAttach = candidates.length ? candidates : r.attachments.slice(0, 1);
-      showToast(`Übernehme ${toAttach.length} Anhang${toAttach.length > 1 ? '(e)' : ''} aus Email …`, 'info', 2000);
-      for (const att of toAttach) {
-        try {
-          const url = att.url;
-          if (!url) continue;
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const blob = await resp.blob();
-          const fname = att.filename || att.name || `Anhang_${attachedFiles + 1}.pdf`;
-          await atUploadAttachment(recordId, 'vorliegendes_pdf', blob, fname);
-          // V12.4: Ersten PDF-Anhang für KI-Auto-Trigger nach loadCheck merken
-          if (!firstPdfFileForKi) {
+      const chosenAtts = await _chooseEmailAttachments(r.attachments);
+      if (chosenAtts.length === 0) {
+        showToast('Kein Anhang übernommen — Check wurde leer angelegt.', 'info', 2500);
+      } else {
+        showToast(chosenAtts.length > 1
+          ? `Übernehme ${chosenAtts.length} Anhänge — werden zu einem PDF zusammengefügt …`
+          : 'Übernehme Anhang aus Email …',
+          'info', 2500);
+        // 1. Alle ausgewählten Anhänge laden
+        const loadedBlobs = [];
+        for (const att of chosenAtts) {
+          try {
+            if (!att.url) continue;
+            const resp = await fetch(att.url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const blob = await resp.blob();
+            loadedBlobs.push({ blob, filename: att.filename || att.name || `Anhang_${loadedBlobs.length + 1}.pdf` });
+          } catch(attErr) {
+            console.warn('Anhang-Download fehlgeschlagen:', attErr?.message);
+          }
+        }
+        if (loadedBlobs.length > 0) {
+          // 2. Zu einem PDF zusammenführen (oder bei 1 PDF direkt nehmen)
+          let finalBlob, finalName;
+          if (loadedBlobs.length === 1) {
+            finalBlob = loadedBlobs[0].blob;
+            finalName = loadedBlobs[0].filename;
+          } else {
+            // Merge
             try {
-              firstPdfFileForKi = new File([blob], fname, { type: blob.type || 'application/pdf' });
-            } catch(_) {
-              // Falls File-Konstruktor in Safari/iOS bockt: Blob mit name-Property reicht
-              firstPdfFileForKi = blob;
-              firstPdfFileForKi.name = fname;
+              finalBlob = await _mergePdfBlobs(loadedBlobs.map(b => b.blob), null);
+              finalName = `Email_Anhang_kombiniert_${loadedBlobs.length}_PDFs.pdf`;
+            } catch(mergeErr) {
+              console.warn('PDF-Merge fehlgeschlagen, nehme erstes PDF:', mergeErr?.message);
+              finalBlob = loadedBlobs[0].blob;
+              finalName = loadedBlobs[0].filename;
             }
           }
-          attachedFiles++;
-        } catch(attErr) {
-          console.warn('Anhang-Übernahme fehlgeschlagen:', attErr.message);
+          // 3. Upload + Datei-Objekt für KI merken
+          if (finalBlob) {
+            try {
+              await atUploadAttachment(recordId, 'vorliegendes_pdf', finalBlob, finalName);
+              try {
+                firstPdfFileForKi = new File([finalBlob], finalName, { type: 'application/pdf' });
+              } catch(_) {
+                firstPdfFileForKi = finalBlob;
+                firstPdfFileForKi.name = finalName;
+              }
+              attachedFiles = 1;
+            } catch(upErr) {
+              console.warn('Upload fehlgeschlagen:', upErr?.message);
+            }
+          }
         }
       }
     }
