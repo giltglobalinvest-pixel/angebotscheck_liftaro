@@ -105,3 +105,135 @@ export const EMAILS_TARGET_FIELDS = [
   M('replied_body'),
   T('reply_postmark_id'),        // Postmark/SES-MessageID der Antwort
 ];
+
+// ──────────────────────────────────────────────────────────────────
+// V12.13 Phase 1: Partner-Plattform — Schemas
+// "Partner-Pool"     = Aufzugsunternehmen, an die Liftaro anfragen kann
+// "Partner-Anfragen" = einzelne Anfragen Liftaro→Partner (1 pro Partner pro Check)
+// ──────────────────────────────────────────────────────────────────
+
+// Partner-Pool: Stammdaten aller Aufzugsunternehmen, mit denen Liftaro arbeitet.
+// Liftaro-Admin pflegt die Liste manuell (Phase 5 baut UI dafür).
+export const PARTNER_POOL_TARGET_FIELDS = [
+  T('partner_id'),               // Slug, z.B. "ahw", "aszendio", "schmitt-aufzug-stuttgart"
+  T('name'),                     // Anzeigename, z.B. "Aufzugshandwerk GmbH"
+  T('email_kontakt'),            // Mail-Adresse, an die Anfragen gehen
+  T('telefon'),                  // optional
+  T('website'),                  // optional
+  T('plz_region'),               // optional Komma-getrennt: "70-71,89,80" (PLZ-Anfänge)
+  T('spezialisierungen'),        // Komma-getrennt: "wartung,reparatur,modernisierung"
+  T('api_key'),                  // Kanal 2 (Phase 8): API-Zugriff
+  T('webhook_url'),              // Optional: POST hierhin wenn neue Anfrage für Partner kommt
+  C('active'),                   // Aktiv-Toggle
+  D('created_at'),
+  M('notes'),                    // Freitext: Konditionen, Ansprechpartner, etc.
+];
+
+// Partner-Anfragen: 1 Eintrag pro (Check × Partner). Pro Check kann es N Anfragen geben.
+// Token ist der One-Time-Schlüssel für die Landing-Page (channel='landing').
+export const PARTNER_ANFRAGEN_TARGET_FIELDS = [
+  T('id'),                       // PA-2026-0001 (auto-generiert)
+  T('check_id'),                 // Verlinkung zu Checks (z.B. C_1234) — Text, weil cross-base nicht möglich
+  T('partner_id'),
+  T('partner_name'),             // Snapshot (für Listen ohne Join)
+  T('partner_email'),            // Snapshot
+  T('token'),                    // 32-Zeichen URL-safer Token (für Landing-Page)
+  T('channel'),                  // "landing" | "api"
+  S('status', ['gesendet', 'geoeffnet', 'angeboten', 'abgelehnt', 'timeout']),
+  D('sent_at'),
+  D('opened_at'),
+  D('responded_at'),
+  D('deadline_at'),
+  // Check-Snapshot (anonymisiert) — was Partner zu sehen bekommt
+  T('objekt_plz'),
+  T('objekt_ort'),
+  T('objekt_strasse'),           // wird je nach Anonymisierungs-Stufe leer gelassen
+  T('anzahl_aufzuege'),
+  T('anlagenart'),
+  M('leistungsumfang_text'),     // KI-extrahiertes Soll-Leistungsbild
+  C('include_vorliegendes_pdf'), // Optional pro Anfrage (Antwort 4 aus Strategie)
+  { name: 'vorliegendes_pdf_snapshot', type: 'multipleAttachments' },
+  // Antwort-Felder (vom Partner befüllt, channel-egal)
+  T('response_offer_id'),        // Partner-eigene Angebots-Nr
+  T('response_preis_netto'),
+  T('response_laufzeit_jahre'),
+  T('response_kuendigungsfrist_monate'),
+  T('response_wartungen_pro_jahr'),
+  C('response_vollwartung'),
+  C('response_notruf'),
+  C('response_tuev_begl'),
+  C('response_tuev_pruef'),
+  C('response_entstoerung'),
+  M('response_kommentar'),
+  { name: 'response_pdf', type: 'multipleAttachments' },
+  // V12.42: Generierte Vorabcheck-Auswertung als PDF-Anhang (vom Frontend hochgeladen)
+  { name: 'ergebnis_pdf', type: 'multipleAttachments' },
+  // Auswahl im Liftaro-Check: wird hier markiert, sobald Bearbeiter die Variante wählt
+  C('selected_by_liftaro'),
+  D('selected_at'),
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// V12.42: Vorabcheck-PDF auf Vorab-Checks.ergebnis_pdf hochladen.
+// Wird aus valtown-backend.ts via Thin-Wrapper aufgerufen (Code-Auslagerung
+// wegen val.town 80k-Char-Limit).
+// Args: body = { check_nr, pdf_base64, filename }, env = { AIRTABLE_KEY, AIRTABLE_BASE_ID }
+// Returns: { ok, url?, filename?, size?, error? }
+// ─────────────────────────────────────────────────────────────────────
+export async function handleUploadVorabcheckPdf(body, env) {
+  const k = env?.AIRTABLE_KEY;
+  const b = env?.AIRTABLE_BASE_ID;
+  if (!k || !b) return { ok: false, status: 500, error: 'airtable nicht konfiguriert' };
+  const checkNr = String(body.check_nr || '').trim();
+  const pdfB64  = String(body.pdf_base64 || '').trim();
+  const fname   = String(body.filename || ('Liftaro_Vorabcheck_' + checkNr + '.pdf')).trim();
+  if (!checkNr) return { ok: false, status: 400, error: 'check_nr fehlt' };
+  if (!pdfB64)  return { ok: false, status: 400, error: 'pdf_base64 fehlt' };
+  try {
+    const filt = encodeURIComponent("{check_nr}='" + checkNr.replace(/'/g, "\\'") + "'");
+    const findRes = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + filt + '&maxRecords=1',
+      { headers: { Authorization: 'Bearer ' + k } });
+    if (!findRes.ok) {
+      const txt = await findRes.text();
+      return { ok: false, status: findRes.status, error: 'Lead-Lookup HTTP ' + findRes.status, raw: txt.slice(0, 200) };
+    }
+    const findData = await findRes.json();
+    const recId = findData.records?.[0]?.id;
+    if (!recId) return { ok: false, status: 404, error: 'Vorabcheck-Lead mit check_nr ' + checkNr + ' nicht gefunden' };
+    // Sicherstellen dass Feld 'ergebnis_pdf' existiert (best-effort)
+    try {
+      const schemaRes = await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables',
+        { headers: { Authorization: 'Bearer ' + k } });
+      if (schemaRes.ok) {
+        const schema = await schemaRes.json();
+        const tbl = schema.tables?.find((t) => t.name === 'Vorab-Checks');
+        const hasField = tbl?.fields?.some((f) => f.name === 'ergebnis_pdf');
+        if (tbl && !hasField) {
+          await fetch('https://api.airtable.com/v0/meta/bases/' + b + '/tables/' + tbl.id + '/fields', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'ergebnis_pdf', type: 'multipleAttachments' }),
+          });
+        }
+      }
+    } catch (_) { /* nicht kritisch */ }
+    // Attachment hochladen via Airtable Content-API
+    const uploadUrl = 'https://content.airtable.com/v0/' + b + '/' + recId + '/ergebnis_pdf/uploadAttachment';
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contentType: 'application/pdf', file: pdfB64, filename: fname }),
+    });
+    if (!uploadRes.ok) {
+      const txt = await uploadRes.text();
+      return { ok: false, status: uploadRes.status, error: 'Upload HTTP ' + uploadRes.status, raw: txt.slice(0, 300) };
+    }
+    const uploadData = await uploadRes.json();
+    const atts = uploadData?.fields?.ergebnis_pdf || [];
+    const att  = atts[atts.length - 1];
+    if (!att?.url) return { ok: false, status: 500, error: 'URL fehlt in Upload-Response', raw: JSON.stringify(uploadData).slice(0, 300) };
+    return { ok: true, url: att.url, filename: att.filename, size: att.size, recordId: recId };
+  } catch (e) {
+    return { ok: false, status: 500, error: e?.message || String(e) };
+  }
+}
