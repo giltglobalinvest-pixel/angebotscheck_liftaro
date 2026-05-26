@@ -168,10 +168,72 @@ export const PARTNER_ANFRAGEN_TARGET_FIELDS = [
   { name: 'response_pdf', type: 'multipleAttachments' },
   // V12.42: Generierte Vorabcheck-Auswertung als PDF-Anhang (vom Frontend hochgeladen)
   { name: 'ergebnis_pdf', type: 'multipleAttachments' },
+  // V12.45 Phase 2: Eigentümer-Self-Serve — Eigentümer holt Alternativangebot direkt ein
+  C('owner_self_serve'),
+  T('owner_response_token'),
+  S('owner_response_status', ['pending', 'angebot_eingeholt', 'an_eigentuemer_gesendet', 'an_verwalter_gesendet']),
+  D('owner_response_at'),
   // Auswahl im Liftaro-Check: wird hier markiert, sobald Bearbeiter die Variante wählt
   C('selected_by_liftaro'),
   D('selected_at'),
 ];
+
+// ─────────────────────────────────────────────────────────────────────
+// V12.45 Phase 2: Eigentümer-Self-Serve — Lead markieren + Token generieren.
+// Wird vom Vorabcheck-Result-CTA aufgerufen, wenn der Eigentümer NICHT über
+// den Verwalter geht, sondern Liftaro direkt das Alternativangebot einholen lässt.
+// Args: body = { check_nr, user_name, user_email, user_telefon, adresse }
+// Returns: { ok, token, recordId }
+// ─────────────────────────────────────────────────────────────────────
+export async function handleSubmitOwnerSelfServe(body, env) {
+  const k = env?.AIRTABLE_KEY;
+  const b = env?.AIRTABLE_BASE_ID;
+  if (!k || !b) return { ok: false, status: 500, error: 'airtable nicht konfiguriert' };
+  const checkNr  = String(body.check_nr || '').trim();
+  const userName  = String(body.user_name  || '').trim();
+  const userEmail = String(body.user_email || '').trim();
+  const userTel   = String(body.user_telefon || '').trim();
+  const adresse   = String(body.adresse || '').trim();
+  if (!checkNr)   return { ok: false, status: 400, error: 'check_nr fehlt' };
+  if (!userEmail) return { ok: false, status: 400, error: 'user_email fehlt' };
+  try {
+    // 1. Vorab-Checks Record finden
+    const filt = encodeURIComponent("{check_nr}='" + checkNr.replace(/'/g, "\\'") + "'");
+    const findRes = await fetch('https://api.airtable.com/v0/' + b + "/Vorab-Checks?filterByFormula=" + filt + '&maxRecords=1',
+      { headers: { Authorization: 'Bearer ' + k } });
+    if (!findRes.ok) return { ok: false, status: findRes.status, error: 'Lead-Lookup HTTP ' + findRes.status };
+    const findData = await findRes.json();
+    const recId = findData.records?.[0]?.id;
+    if (!recId) return { ok: false, status: 404, error: 'Vorabcheck-Lead mit check_nr ' + checkNr + ' nicht gefunden' };
+    // 2. Token generieren (32 hex chars = 128 bit)
+    const tokenBytes = new Uint8Array(16);
+    crypto.getRandomValues(tokenBytes);
+    const token = Array.from(tokenBytes, x => x.toString(16).padStart(2, '0')).join('');
+    // 3. Felder patchen
+    const fields = {
+      owner_self_serve:      true,
+      owner_response_token:  token,
+      owner_response_status: 'pending',
+      owner_response_at:     new Date().toISOString(),
+    };
+    if (userName)  fields.kunde_name    = userName;
+    if (userEmail) fields.kunde_email   = userEmail;
+    if (userTel)   fields.kunde_telefon = userTel;
+    if (adresse)   fields.objekt_adresse = adresse;
+    const patchRes = await fetch('https://api.airtable.com/v0/' + b + '/Vorab-Checks/' + recId, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer ' + k, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+    if (!patchRes.ok) {
+      const txt = await patchRes.text();
+      return { ok: false, status: patchRes.status, error: 'Patch fehlgeschlagen HTTP ' + patchRes.status, raw: txt.slice(0, 300) };
+    }
+    return { ok: true, token, recordId: recId };
+  } catch (e) {
+    return { ok: false, status: 500, error: e?.message || String(e) };
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // V12.42: Vorabcheck-PDF auf Vorab-Checks.ergebnis_pdf hochladen.
