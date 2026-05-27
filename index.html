@@ -2621,10 +2621,18 @@ const pdfWorkerReady = Promise.resolve();</script>
           <div id="wartung-variants-section" class="section" style="margin-top:20px;display:none">
             <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
               <span>📥 Eingegangene Partner-Angebote <span id="wartung-variants-count" style="background:var(--dr-blue);color:#fff;border-radius:999px;padding:2px 10px;font-family:'DM Mono',monospace;font-size:11.5px;font-weight:700;margin-left:6px"></span></span>
-              <button onclick="refreshAnfragenListForCurrentCheck()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Status neu laden" onmouseover="this.style.color='var(--dr-blue)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
-                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-                Aktualisieren
-              </button>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <!-- V12.46: Partner-Angebote optional aus PDF ausblenden -->
+                <label id="partnerVariantsPdfToggleRow" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;color:var(--navy);user-select:none" title="Eingegangene Partner-Angebote in der generierten PDF anzeigen oder ausblenden">
+                  <input type="checkbox" id="cb_variants_in_pdf" checked
+                    style="width:14px;height:14px;margin:0;cursor:pointer;accent-color:var(--green)">
+                  In PDF anzeigen
+                </label>
+                <button onclick="refreshAnfragenListForCurrentCheck()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Status neu laden" onmouseover="this.style.color='var(--dr-blue)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                  Aktualisieren
+                </button>
+              </div>
             </div>
             <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
               Klick auf eine Karte → die Variante wird in die Vergleichstabelle unten übernommen. Aktive Variante ist farblich markiert.
@@ -5156,7 +5164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.45';
+const APP_VERSION = 'V12.46';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6278,6 +6286,8 @@ function resetForm() {
   if (typeof setLiftaroVerguetungMode === 'function') setLiftaroVerguetungMode('w', 'erfolg');
   // V12.35: "Ergebnis-Liftaro in PDF anzeigen" zurück auf Default (an)
   const cbErgPdf = document.getElementById('cb_ergebnis_in_pdf'); if (cbErgPdf) cbErgPdf.checked = true;
+  // V12.46: "Partner-Angebote in PDF anzeigen" zurück auf Default (an)
+  const cbVarPdf = document.getElementById('cb_variants_in_pdf'); if (cbVarPdf) cbVarPdf.checked = true;
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6350,6 +6360,8 @@ function collectFormData() {
     auftrag_ausgefuehrt: g('f_auftrag_ausgefuehrt'),
     // V12.35: Ergebnistext in PDF anzeigen
     ergebnis_in_pdf: (document.getElementById('cb_ergebnis_in_pdf')?.checked ? '1' : '0'),
+    // V12.46: Partner-Variants-Block in PDF anzeigen
+    variants_in_pdf: (document.getElementById('cb_variants_in_pdf')?.checked ? '1' : '0'),
     // Vertragscheck-Jahresabrechnung
     naechste_abrechnung_am: g('f_naechste_abrechnung_am'),
     letzte_abrechnung_am:   g('f_letzte_abrechnung_am'),
@@ -7009,6 +7021,9 @@ async function loadCheck(data) {
   // V12.35: Checkbox "Ergebnis in PDF" wiederherstellen — Default = an wenn fehlt
   const _cbErgPdf = document.getElementById('cb_ergebnis_in_pdf');
   if (_cbErgPdf) _cbErgPdf.checked = (data.ergebnis_in_pdf == null || data.ergebnis_in_pdf === '' || data.ergebnis_in_pdf === '1' || data.ergebnis_in_pdf === true);
+  // V12.46: Checkbox "Partner-Angebote in PDF" wiederherstellen — Default = an
+  const _cbVarPdf = document.getElementById('cb_variants_in_pdf');
+  if (_cbVarPdf) _cbVarPdf.checked = (data.variants_in_pdf == null || data.variants_in_pdf === '' || data.variants_in_pdf === '1' || data.variants_in_pdf === true);
 
   // Restore check type and switch tab
   if (data.checkType && data.checkType !== checkType) switchTab(data.checkType);
@@ -10319,6 +10334,9 @@ async function generatePDF() {
     (function(){ var cb = document.getElementById('cb_ergebnis_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-ergebnis') : null; })(),
     // V12.36: "Kunde speichern"-Button gehört nicht in die PDF
     document.getElementById('btnSaveBetreiberAsKunde'),
+    // V12.46: Partner-Variants Toggle-Row + optional die ganze Section
+    document.getElementById('partnerVariantsPdfToggleRow'),
+    (function(){ var cb = document.getElementById('cb_variants_in_pdf'); return (cb && !cb.checked) ? document.getElementById('wartung-variants-section') : null; })(),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -17207,6 +17225,9 @@ async function buildCheckCoverBlob() {
     (function(){ var cb = document.getElementById('cb_ergebnis_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-ergebnis') : null; })(),
     // V12.36: "Kunde speichern"-Button gehört nicht in die PDF
     document.getElementById('btnSaveBetreiberAsKunde'),
+    // V12.46: Partner-Variants Toggle-Row + optional die ganze Section
+    document.getElementById('partnerVariantsPdfToggleRow'),
+    (function(){ var cb = document.getElementById('cb_variants_in_pdf'); return (cb && !cb.checked) ? document.getElementById('wartung-variants-section') : null; })(),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
