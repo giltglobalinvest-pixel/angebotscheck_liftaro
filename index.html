@@ -2790,58 +2790,159 @@ const pdfWorkerReady = Promise.resolve();</script>
                 Liftaro stellt die Rechnung nach erfolgreich erfolgtem Vertragswechsel. Bei „Erfolgsbasiert" überschreibt ein absoluter Betrag den Prozent-Anteil.
               </div>
             </div>
+          </div>
 
-            <!-- V12.47/V12.50: Equipment on Call — gesteuert über Top-Toggle (check_mode_eoc) -->
-            <div id="eoc_section_w" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;display:none">
-              <!-- V12.50: cb_eoc_active als Hidden-Checkbox behalten (Persistenz-API), Toggle erfolgt über Top-Pills -->
-              <input type="checkbox" id="cb_eoc_active" style="display:none" data-frozen-allow>
-              <div id="eoc_header_label" style="display:flex;align-items:center;gap:10px;background:#fff7e6;border:1.5px solid #f0c065;border-radius:8px;padding:10px 14px">
-                <div style="font-size:20px">🛡</div>
-                <div style="flex:1;min-width:0;line-height:1.4">
-                  <div style="font-size:13px;font-weight:700;color:#7a4d00">Equipment on Call — Vertragsverwaltung &amp; WEG-Schutz</div>
-                  <div style="font-size:11.5px;color:#7a4d00;opacity:.85;margin-top:1px">Bestandsvertrag nicht kurzfristig kündbar — Liftaro übernimmt die Vertragsverwaltung für die WEG bis zum regulären Vertragsende.</div>
-                </div>
+          <!-- ════════════════════════════════════════════════════
+               V12.51: EoC-Bereich — komplett eigene Sections,
+               nur sichtbar wenn check_mode = 'eoc'. Liegt PARALLEL
+               zu section-vertragsvergleich (kein Eltern-Konflikt mehr).
+               ════════════════════════════════════════════════════ -->
+
+          <!-- Hidden checkbox als Persistenz-Anker -->
+          <input type="checkbox" id="cb_eoc_active" style="display:none" data-frozen-allow>
+
+          <!-- Editor-Block: Konditions-Inputs (NICHT im PDF, nur App-UI) -->
+          <div id="eoc_section_w" class="hide-on-mobile" style="display:none;margin-top:20px">
+            <div id="eoc_header_label" style="display:flex;align-items:center;gap:10px;background:#fff7e6;border:1.5px solid #f0c065;border-radius:8px;padding:10px 14px">
+              <div style="font-size:20px">🛡</div>
+              <div style="flex:1;min-width:0;line-height:1.4">
+                <div style="font-size:13px;font-weight:700;color:#7a4d00">Equipment on Call — Editor (nicht im PDF)</div>
+                <div style="font-size:11.5px;color:#7a4d00;opacity:.85;margin-top:1px">Hier Konditionen + Pauschale konfigurieren. Das Angebots-PDF unten passt sich automatisch an.</div>
               </div>
-              <div id="eoc_panel_w" style="display:flex;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:12px">
-                <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
-                  <div class="field"><label>Bestandsvertrag endet am</label><input type="date" id="eoc_endet_am" oninput="calcEoc()" data-frozen-allow></div>
-                  <div class="field">
-                    <label>Vergütungs-Modus</label>
-                    <select id="eoc_modus" onchange="calcEoc()" data-frozen-allow style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;outline:none;width:100%">
-                      <option value="pauschale">Service-Pauschale</option>
-                      <option value="kostenlos">Kostenlos (Wert vor-investieren)</option>
-                    </select>
-                  </div>
-                  <div class="field" id="eoc_pauschale_field"><label>Service-Pauschale €/Jahr</label><input type="text" id="eoc_pauschale_eur" value="500" placeholder="500" oninput="calcEoc()" data-frozen-allow></div>
-                  <div class="field" id="eoc_wert_field" style="display:none"><label>Wert d. Betreuung €/Jahr (Kommunikation)</label><input type="text" id="eoc_wert_kostenlos_eur" value="450" placeholder="450" oninput="calcEoc()" data-frozen-allow></div>
+            </div>
+            <div id="eoc_panel_w" style="display:flex;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:12px">
+              <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+                <div class="field"><label>Bestandsvertrag endet am</label><input type="date" id="eoc_endet_am" oninput="calcEoc()" data-frozen-allow></div>
+                <div class="field">
+                  <label>Vergütungs-Modus</label>
+                  <select id="eoc_modus" onchange="calcEoc()" data-frozen-allow style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;outline:none;width:100%">
+                    <option value="pauschale">Service-Pauschale</option>
+                    <option value="kostenlos">Kostenlos (Wert vor-investieren)</option>
+                  </select>
                 </div>
-                <div id="eoc_calc_result" style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px">
-                  <div id="eoc_calc_pauschale_row" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                    <span style="color:var(--muted)">Liftaro-Service-Pauschale (laufende Betreuung):</span>
-                    <strong id="eoc_calc_pauschale" style="color:var(--navy)">– €/Jahr</strong>
-                  </div>
-                  <div id="eoc_calc_kostenlos_row" style="display:none;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                    <span style="color:var(--muted)">Betreuung kostenlos · Wert (Kommunikation):</span>
-                    <strong id="eoc_calc_wert" style="color:var(--navy)">– €/Jahr</strong>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
-                    <span style="color:var(--muted)">Bestandsvertrag-Restlaufzeit:</span>
-                    <strong id="eoc_calc_restlaufzeit" style="color:var(--text)">–</strong>
-                  </div>
+                <div class="field" id="eoc_pauschale_field"><label>Service-Pauschale €/Jahr</label><input type="text" id="eoc_pauschale_eur" value="500" placeholder="500" oninput="calcEoc()" data-frozen-allow></div>
+                <div class="field" id="eoc_wert_field" style="display:none"><label>Wert d. Betreuung €/Jahr (Kommunikation)</label><input type="text" id="eoc_wert_kostenlos_eur" value="450" placeholder="450" oninput="calcEoc()" data-frozen-allow></div>
+              </div>
+              <div id="eoc_calc_result" style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+                <div id="eoc_calc_pauschale_row" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                  <span style="color:var(--muted)">Liftaro-Service-Pauschale (laufende Betreuung):</span>
+                  <strong id="eoc_calc_pauschale" style="color:var(--navy)">– €/Jahr</strong>
                 </div>
-                <div style="font-size:11.5px;color:var(--text);line-height:1.55;background:#fff;border:1px dashed var(--border);border-radius:7px;padding:10px 12px">
-                  <strong style="color:var(--navy)">Liftaro-Leistungen für die WEG (im PDF aufgelistet):</strong>
-                  <ul style="margin:6px 0 0;padding-left:18px;color:var(--muted)">
-                    <li>Entlastung HV: TÜV-Mängelberichte, Wartungsnehmer-Korrespondenz, Angebote laufen über Liftaro · Prüfung + Nachverhandlung · Berechtigung zur Beauftragung alternativer Dienstleister bei Störungen · Angebote ab 500 € netto → WEG-Freigabe.</li>
-                    <li>Schutz vor überteuerten Angeboten — keine Überraschungen mehr.</li>
-                    <li>Überprüfung Betreiberpflichten · Reduzierung Haftungsrisiken.</li>
-                    <li>Wirtschaftlichkeitsanalyse über alle Kosten (Wartung + unterjährige Reparaturen). Echte Kosten = Gesamtkosten.</li>
-                    <li>Vor-Ort-Inspektion mit Foto-Dokumentation des Wartungszustands.</li>
-                  </ul>
+                <div id="eoc_calc_kostenlos_row" style="display:none;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                  <span style="color:var(--muted)">Betreuung kostenlos · Wert (Kommunikation):</span>
+                  <strong id="eoc_calc_wert" style="color:var(--navy)">– €/Jahr</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
+                  <span style="color:var(--muted)">Bestandsvertrag-Restlaufzeit:</span>
+                  <strong id="eoc_calc_restlaufzeit" style="color:var(--text)">–</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                  <span style="color:var(--muted)">Gesamtkosten Bestand bis Vertragsende:</span>
+                  <strong id="eoc_calc_bestand_total" style="color:var(--text)">–</strong>
                 </div>
               </div>
             </div>
           </div>
+
+          <!-- ▼▼▼ PDF-RELEVANTE SECTIONS (werden ins Ergebnis-PDF gerendert) ▼▼▼ -->
+
+          <!-- Section 1: Liftaro-Angebot -->
+          <div id="section-eoc-angebot" class="section" style="margin-top:20px;display:none">
+            <div class="section-title" style="background:#fff7e6;color:#7a4d00">🛡 Liftaro-Angebot für die Wohnungseigentümergemeinschaft</div>
+            <div class="section-inner" style="padding:16px 18px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.3px">Konditionen</div>
+                  <div id="eoc_angebot_subtitle" style="font-size:12.5px;color:var(--muted);margin-top:2px">Vertragsverwaltung &amp; WEG-Schutz bis zum regulären Vertragsende</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Sofort-Kosten der WEG</div>
+                  <div style="font-size:24px;font-weight:800;color:var(--green-dark,#3d7a14);line-height:1.1">0,00 €</div>
+                </div>
+              </div>
+              <div style="background:#f3faea;border:1.5px solid #c9e6a8;border-radius:8px;padding:12px 14px;font-size:13px;color:var(--text);line-height:1.55">
+                <strong style="color:#3d7a14">Erfolgsmodell — keine Ersparnis, keine Kosten:</strong>
+                <span id="eoc_angebot_modell_text">Liftaro berechnet ausschließlich <strong>25 % der nachweisbaren Ersparnis</strong>, die durch Nachverhandlung mit dem bestehenden Wartungsnehmer erzielt wird — bezogen auf die jährliche Wartungsrechnung. Wird keine Ersparnis erzielt, entstehen für die Gemeinschaft <strong>keine Kosten</strong>.</span>
+              </div>
+              <div style="margin-top:14px;font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.3px">Leistungsumfang Liftaro</div>
+              <ul style="margin:8px 0 0;padding-left:22px;font-size:13px;line-height:1.7;color:var(--text)">
+                <li><strong>Entlastung der Hausverwaltung:</strong> TÜV-Mängelberichte, sämtliche Korrespondenz und Angebote des Wartungsnehmers laufen über Liftaro. Wir prüfen jedes Schreiben, ordnen ein und bereiten eine Empfehlung zur Entscheidung vor.</li>
+                <li><strong>Nachverhandlung der Konditionen:</strong> Liftaro tritt im Auftrag der WEG an den bestehenden Wartungsnehmer heran und verhandelt Preis und Leistung neu. Mit zunehmendem Vertragsvolumen verbessert sich die Verhandlungsposition deutlich.</li>
+                <li><strong>Reparatur-Freigaben &amp; alternative Dienstleister:</strong> Angebote des Wartungsnehmers werden geprüft. Bei Störungen ist Liftaro berechtigt, alternative Dienstleister zu beauftragen. Angebote ab <strong>500 € netto</strong> werden der WEG zur Freigabe vorgelegt.</li>
+                <li><strong>Schutz vor überteuerten Angeboten:</strong> Keine Überraschungen mehr — jedes Angebot durchläuft erst die Liftaro-Prüfung.</li>
+                <li><strong>Betreiberpflichten &amp; Haftungsmanagement:</strong> Überwachung gesetzlicher Pflichten (BetrSichV, TÜV), Reduzierung der Haftungsrisiken der Eigentümergemeinschaft.</li>
+                <li><strong>Wirtschaftlichkeitsanalyse über die Gesamtkosten:</strong> Nicht nur der Wartungspreis, sondern auch alle unterjährigen Reparaturkosten werden bilanziert. <em>Echte Kosten = Gesamtkosten.</em></li>
+                <li><strong>Vor-Ort-Inspektion:</strong> Liftaro besichtigt die Anlage und dokumentiert den Wartungszustand mit Fotos — als zusätzliche Absicherung.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Section 2: Bestandsvertrags-Eckdaten + Leistungstabelle aus KI-Extraktion -->
+          <div id="section-eoc-bestandsdaten" class="section" style="margin-top:20px;display:none">
+            <div class="section-title">📋 Bestandsvertrag — Eckdaten</div>
+            <div class="section-inner" style="padding:14px 18px">
+              <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:14px">
+                <div class="field"><label>Anbieter (Bestand)</label><input type="text" id="eoc_disp_anbieter" readonly style="background:var(--sky)"></div>
+                <div class="field"><label>Wartungskosten p. a.</label><input type="text" id="eoc_disp_kosten" readonly style="background:var(--sky);font-weight:700;color:var(--navy)"></div>
+                <div class="field"><label>Vertragsende</label><input type="text" id="eoc_disp_endet" readonly style="background:var(--sky)"></div>
+                <div class="field"><label>Restlaufzeit</label><input type="text" id="eoc_disp_restlauf" readonly style="background:var(--sky)"></div>
+              </div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:10px 14px;background:#f3faea;border-left:4px solid #3d7a14;border-radius:4px;font-size:13px">
+                <span style="color:var(--text)"><strong>Gesamtkosten Bestandsvertrag bis Vertragsende</strong> <span style="color:var(--muted);font-size:11.5px">(linear hochgerechnet auf Restlaufzeit)</span></span>
+                <strong id="eoc_disp_total" style="color:var(--navy);font-size:16px">– €</strong>
+              </div>
+              <div style="margin-top:14px;font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.3px">Im Bestandsvertrag enthaltene Leistungen</div>
+              <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px">
+                <thead><tr style="background:var(--sky);color:var(--navy)">
+                  <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700">Leistung</th>
+                  <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700;width:90px">Enthalten</th>
+                </tr></thead>
+                <tbody id="eoc_leistungen_tbody">
+                  <!-- Wird per JS aus wv_*-Feldern befüllt -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section 3: KI-Zusammenfassung -->
+          <div id="section-eoc-zusammenfassung" class="section" style="margin-top:20px;display:none">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+              📝 Zusammenfassung &amp; Empfehlung an die WEG
+              <button type="button" id="eoc_ki_btn" onclick="requireApiKey(generateEocZusammenfassung)" data-frozen-allow style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer">✨ KI generieren</button>
+            </div>
+            <div class="section-inner" style="padding:10px 18px">
+              <div id="eoc_zusammenfassung_text" contenteditable="true"
+                data-placeholder="Hier kommt die KI-generierte Zusammenfassung — oder freier Text. Klick auf „✨ KI generieren" füllt automatisch."
+                style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:12.5px;color:var(--text);background:var(--sky);outline:none;line-height:1.6;cursor:text;word-wrap:break-word;white-space:normal;box-sizing:border-box"
+                onfocus="if(this.textContent===this.dataset.placeholder){this.textContent='';this.style.color='var(--text)'}"
+                onblur="if(!this.textContent.trim()){this.textContent=this.dataset.placeholder;this.style.color='var(--muted)'}"></div>
+            </div>
+          </div>
+
+          <!-- Section 4: Bedingungen + Unterschrift -->
+          <div id="section-eoc-bedingungen" class="section" style="margin-top:20px;display:none">
+            <div class="section-title">✍ Vereinbarung &amp; Unterschrift</div>
+            <div class="section-inner" style="padding:14px 18px;font-size:12px;line-height:1.65;color:var(--text)">
+              <strong style="color:var(--navy)">Bedingungen:</strong>
+              <ol style="margin:6px 0 12px;padding-left:22px">
+                <li>Die Wohnungseigentümergemeinschaft erteilt der Liftaro GmbH Vollmacht zur Vertragsverwaltung gegenüber dem bestehenden Wartungsnehmer bis zum regulären Vertragsende.</li>
+                <li>Liftaro übernimmt sämtliche Korrespondenz, Angebotsprüfung und Rechnungskontrolle gegenüber dem bestehenden Wartungsnehmer.</li>
+                <li>Reparatur-Angebote ab <strong>500 € netto</strong> werden der WEG vor Beauftragung zur schriftlichen Freigabe vorgelegt.</li>
+                <li>Die Liftaro-Vergütung beträgt <strong>25 % der nachweisbaren Ersparnis</strong>, bezogen auf die jährliche Wartungsrechnung nach erfolgreicher Nachverhandlung. Ohne erzielte Ersparnis: keine Vergütung.</li>
+                <li>Die Vereinbarung läuft bis zum regulären Ende des bestehenden Wartungsvertrags und endet automatisch ohne gesonderte Kündigung.</li>
+                <li>Beide Parteien können die Vereinbarung mit einer Frist von 30 Tagen schriftlich beenden.</li>
+              </ol>
+              <div style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
+                <div>
+                  <div style="border-top:1.5px solid var(--text);padding-top:6px;font-size:11px;color:var(--muted)">Ort, Datum, Unterschrift Beirat / Verwalter (WEG)</div>
+                </div>
+                <div>
+                  <div style="border-top:1.5px solid var(--text);padding-top:6px;font-size:11px;color:var(--muted)">Ort, Datum, Unterschrift Liftaro GmbH</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <input type="hidden" id="f_leistung">
@@ -5228,7 +5329,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.50';
+const APP_VERSION = 'V12.51';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6474,6 +6575,8 @@ function collectFormData() {
     eoc_modus:               g('eoc_modus') || 'pauschale',
     eoc_pauschale_eur:       g('eoc_pauschale_eur'),
     eoc_wert_kostenlos_eur:  g('eoc_wert_kostenlos_eur'),
+    // V12.51: KI-generierte Zusammenfassung
+    eoc_zusammenfassung:     (function(){ const el = document.getElementById('eoc_zusammenfassung_text'); if (!el) return ''; const t = el.textContent || ''; return (t === (el.dataset.placeholder || '')) ? '' : t.trim(); })(),
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
@@ -6636,8 +6739,13 @@ function _renderLvPdfSummary(show) {
   if (!show) { sumEl.style.display = 'none'; return; }
   const g = id => (document.getElementById(id)?.value || '').toString().trim();
   // V12.47/V12.48: EoC-Modus überschreibt — Vertragsverwaltung & WEG-Schutz
+  // V12.51: bei EoC ist der Summary-Block obsolet (neue Sections übernehmen)
   const eocActive = !!document.getElementById('cb_eoc_active')?.checked;
   if (eocActive) {
+    sumEl.style.display = 'none';
+    return;
+  }
+  if (false) {
     const endet = g('eoc_endet_am');
     const endetStr = endet ? new Date(endet).toLocaleDateString('de-DE') : '—';
     const modus = g('eoc_modus') || 'pauschale';
@@ -6765,10 +6873,14 @@ const EOC_HIDE_WHEN_ACTIVE = [
   'wartung-variants-section',    // Eingegangene Partner-Angebote
   'section-ergebnis',            // Ergebnis Liftaro (Empfehlungstext)
   'vertragInvoiceHistory',       // Jahresrechnungs-Historie
-  'lv_mode_switch_row_w',        // Vergütungs-Mode-Switch Erfolg/Pauschale
-  'lv_panel_erfolg_w',           // Erfolgsprämie-Inputs
-  'lv_panel_pauschale_w',        // Service-Pauschale-Inputs
-  'lv_footer_note_w',            // Footer-Hinweis zum Standard-Vergütungsmodell
+];
+// V12.51: Diese Sections sind NUR im EoC-Modus sichtbar
+const EOC_SHOW_WHEN_ACTIVE = [
+  'eoc_section_w',                // Editor mit Konditionen (nur App, nicht PDF)
+  'section-eoc-angebot',          // PDF: Liftaro-Angebot
+  'section-eoc-bestandsdaten',    // PDF: Bestandsvertrag-Eckdaten + Leistungstabelle
+  'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
+  'section-eoc-bedingungen',      // PDF: Bedingungen + Unterschriftenfeld
 ];
 
 function _applyEocVisibility(eocActive) {
@@ -6788,6 +6900,14 @@ function _applyEocVisibility(eocActive) {
       }
     }
   });
+  // V12.51: EoC-eigene Sections — nur sichtbar im EoC-Modus
+  EOC_SHOW_WHEN_ACTIVE.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = eocActive ? '' : 'none';
+  });
+  // Bei Aktivierung die Display-Felder aktuell halten
+  if (eocActive && typeof _refreshEocDisplays === 'function') _refreshEocDisplays();
   // Auch die savings-row im Wartungsblock (kein eigener ID — über Klasse + Position)
   // → wir vergeben einen Marker über JS, falls noch nicht da
   const sw = document.getElementById('section-wartung');
@@ -6849,6 +6969,133 @@ function _syncCheckModeToggleW(mode) {
   eocBtn.style.fontWeight = isEoc ? '700' : '600';
 }
 
+// V12.51: Display-Felder im EoC-Bestandsdaten-Block + Leistungs-Tabelle befüllen
+function _refreshEocDisplays() {
+  const _g = id => (document.getElementById(id)?.value || '').toString().trim();
+  // Anbieter: bevorzugt aus cv_anbieter (Bestandsanbieter aus Vorlage), sonst aus f_firma
+  const anbieter = _g('cv_anbieter') || _g('f_firma') || '–';
+  const kostenN  = parsePrice(_g('wv_kosten'));
+  const kostenS  = (!isNaN(kostenN) && kostenN > 0) ? formatEuro(kostenN) : '–';
+  const endetAm  = _g('eoc_endet_am');
+  let endetStr   = '–';
+  let monate     = 0;
+  if (endetAm) {
+    const end = new Date(endetAm);
+    if (!isNaN(end.getTime())) {
+      endetStr = end.toLocaleDateString('de-DE');
+      monate   = Math.max(0, Math.round((end - new Date()) / (1000 * 60 * 60 * 24 * 30.4375)));
+    }
+  }
+  const restStr  = monate > 0 ? ((Math.floor(monate/12) ? Math.floor(monate/12) + ' J ' : '') + (monate%12 ? (monate%12) + ' Mon' : '')).trim() : '–';
+  const totalN   = (!isNaN(kostenN) && kostenN > 0 && monate > 0) ? kostenN * (monate / 12) : 0;
+  const totalS   = totalN > 0 ? formatEuro(totalN) : '–';
+  // Display-Felder befüllen
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('eoc_disp_anbieter', anbieter);
+  set('eoc_disp_kosten',   kostenS + (kostenS !== '–' ? ' / Jahr' : ''));
+  set('eoc_disp_endet',    endetStr);
+  set('eoc_disp_restlauf', restStr);
+  const totEl = document.getElementById('eoc_disp_total');
+  if (totEl) totEl.textContent = totalS;
+  const bestTot = document.getElementById('eoc_calc_bestand_total');
+  if (bestTot) bestTot.textContent = totalS + (monate > 0 ? ' (über ' + monate + ' Monate)' : '');
+  // Leistungs-Tabelle aus wv_*-Checkboxen
+  const leistungen = [
+    { key: 'wv_tuev_begl',  label: 'TÜV-Begleitung' },
+    { key: 'wv_tuev_pruef', label: 'TÜV-Prüfung' },
+    { key: 'wv_entstoer',   label: 'Entstörung' },
+    { key: 'wv_notruf',     label: 'Notrufservice' },
+  ];
+  const extraText = [
+    ['Mindestlaufzeit',  _g('wv_laufzeit')],
+    ['Anzahl Wartungen', _g('wv_anzahl')],
+    ['Wartungstyp',      _g('wv_typ')],
+    ['Vertragsbeginn',   _g('wv_vertragsbeginn')],
+    ['Kündigungsfrist',  _g('wv_kuendfrist')],
+  ];
+  const tbody = document.getElementById('eoc_leistungen_tbody');
+  if (tbody) {
+    let rows = '';
+    leistungen.forEach(l => {
+      const checked = !!document.getElementById(l.key)?.checked;
+      rows += '<tr><td style="padding:7px 10px;border-bottom:1px solid var(--border)">' + l.label + '</td>' +
+              '<td style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:' + (checked ? '#3d7a14' : '#a8312f') + ';font-weight:700">' +
+              (checked ? '✓' : '–') + '</td></tr>';
+    });
+    extraText.forEach(([lbl, val]) => {
+      if (!val) return;
+      rows += '<tr><td style="padding:7px 10px;border-bottom:1px solid var(--border)">' + lbl + '</td>' +
+              '<td style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text)">' + _esc(val) + '</td></tr>';
+    });
+    if (!rows) rows = '<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--muted);font-style:italic">Keine Leistungsdetails extrahiert</td></tr>';
+    tbody.innerHTML = rows;
+  }
+}
+
+// V12.51: KI-generierte Zusammenfassung für das EoC-Angebot
+async function generateEocZusammenfassung() {
+  const txtEl = document.getElementById('eoc_zusammenfassung_text');
+  const btn   = document.getElementById('eoc_ki_btn');
+  if (!txtEl) return;
+  const _g = id => (document.getElementById(id)?.value || '').toString().trim();
+  const adresse  = _g('f_standort') || '';
+  const anbieter = _g('cv_anbieter') || _g('f_firma') || '';
+  const kosten   = _g('wv_kosten') || '';
+  const endet    = _g('eoc_endet_am') || '';
+  const endetStr = endet ? new Date(endet).toLocaleDateString('de-DE') : 'unbekannt';
+  const modus    = _g('eoc_modus') || 'pauschale';
+  const pauschal = _g('eoc_pauschale_eur') || '500';
+  const verguetungInfo = (modus === 'pauschale')
+    ? `Service-Pauschale ${pauschal} €/Jahr`
+    : 'Kostenfrei für die WEG';
+  const prompt = `Du bist Berater für Aufzug-Wartungsverträge. Schreibe eine professionelle, sachliche Zusammenfassung (3-4 kurze Absätze) für die Eigentümerversammlung einer WEG zu folgendem Vorschlag:
+
+Anlage: ${adresse}
+Aktueller Wartungsnehmer: ${anbieter}
+Wartungskosten Bestand: ${kosten}/Jahr
+Vertragsende: ${endetStr}
+Liftaro-Vergütungsmodell: ${verguetungInfo}, plus 25 % nachweisbarer Nachverhandlungs-Ersparnis.
+
+Inhalt:
+1. Ausgangslage: warum eine Vertragsverwaltung durch Liftaro sinnvoll ist (lange Restlaufzeit, kein Wechsel möglich, Schutz vor überteuerten Reparatur-Angeboten).
+2. Konkret was Liftaro für die WEG übernimmt (Korrespondenz, Angebotsprüfung, Nachverhandlung, Freigaben ab 500 €, Vor-Ort-Inspektion).
+3. Wirtschaftlichkeit: kein Risiko für die WEG (0 € Sofort-Kosten), 25 % erst bei tatsächlicher Ersparnis.
+4. Empfehlung: Beschluss zur Bevollmächtigung Liftaros + Unterzeichnung der Vereinbarung in der Eigentümerversammlung.
+
+Antworte als Plain Text (keine Markdown-Sternchen), formal und höflich. Keine Floskeln am Anfang ("Hiermit", "Wir freuen uns…"). Direkt zur Sache.`;
+  txtEl.textContent = 'KI generiert Zusammenfassung …';
+  txtEl.style.color = 'var(--muted)';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generiere …'; }
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'x-api-key':         APP_KEYS.anthropicKey,
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const text = (data?.content?.[0]?.text || '').trim();
+    if (!text) throw new Error('KI-Antwort leer');
+    txtEl.textContent = text;
+    txtEl.style.color = 'var(--text)';
+  } catch(e) {
+    console.error('generateEocZusammenfassung:', e);
+    txtEl.textContent = 'Fehler: ' + (e.message || e);
+    txtEl.style.color = '#a8312f';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ KI generieren'; }
+  }
+}
+
 function calcEoc() {
   const cb = document.getElementById('cb_eoc_active');
   if (!cb || !cb.checked) return;
@@ -6894,6 +7141,8 @@ function calcEoc() {
   if (pcEl) pcEl.textContent = fmtY(pauschal);
   if (wcEl) wcEl.textContent = fmtY(wertK);
   if (rlEl) rlEl.textContent = restlaufzeitStr;
+  // V12.51: Display-Felder der PDF-Sections aktualisieren
+  if (typeof _refreshEocDisplays === 'function') _refreshEocDisplays();
 }
 
 async function saveCheck(reporter) {
@@ -7341,6 +7590,13 @@ async function loadCheck(data) {
   sc('eoc_wert_kostenlos_eur',  data.eoc_wert_kostenlos_eur || '450');
   const _eocModSel = document.getElementById('eoc_modus');
   if (_eocModSel) _eocModSel.value = (data.eoc_modus === 'kostenlos') ? 'kostenlos' : 'pauschale';
+  // V12.51: KI-Zusammenfassung wiederherstellen
+  const _zuTxt = document.getElementById('eoc_zusammenfassung_text');
+  if (_zuTxt) {
+    const t = (data.eoc_zusammenfassung || '').trim();
+    if (t) { _zuTxt.textContent = t; _zuTxt.style.color = 'var(--text)'; }
+    else { _zuTxt.textContent = _zuTxt.dataset.placeholder || ''; _zuTxt.style.color = 'var(--muted)'; }
+  }
   const _cbEoc = document.getElementById('cb_eoc_active');
   if (_cbEoc) {
     _cbEoc.checked = !!data.eoc_active;
