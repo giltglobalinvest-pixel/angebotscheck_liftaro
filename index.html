@@ -2787,29 +2787,42 @@ const pdfWorkerReady = Promise.resolve();</script>
                   <div style="font-size:11.5px;color:#7a4d00;opacity:.85;margin-top:1px">Bestandsvertrag nicht kurzfristig kündbar (z.B. gerade um 5 Jahre verlängert). Liftaro betreut die WEG bis zum regulären Vertragsende.</div>
                 </div>
               </label>
-              <div id="eoc_panel_w" style="display:none;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:10px">
+              <div id="eoc_panel_w" style="display:none;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:12px">
                 <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
                   <div class="field"><label>Bestandsvertrag endet am</label><input type="date" id="eoc_endet_am" oninput="calcEoc()" data-frozen-allow></div>
-                  <div class="field"><label>Aszendio-Schätzpreis €/Jahr</label><input type="text" id="eoc_aszendio_preis" placeholder="z.B. 2.000 €" oninput="calcEoc()" data-frozen-allow></div>
-                  <div class="field"><label>Erwartete Reparaturen/Jahr</label><input type="number" id="eoc_reparaturen" placeholder="2" value="2" min="0" oninput="calcEoc()" data-frozen-allow></div>
-                  <div class="field"><label>Liftaro-Provision %</label><input type="number" id="eoc_provision_pct" placeholder="25" value="25" min="0" max="100" step="0.5" oninput="calcEoc()" data-frozen-allow></div>
+                  <div class="field">
+                    <label>Vergütungs-Modus</label>
+                    <select id="eoc_modus" onchange="calcEoc()" data-frozen-allow style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;outline:none;width:100%">
+                      <option value="pauschale">Service-Pauschale</option>
+                      <option value="kostenlos">Kostenlos (Wert vor-investieren)</option>
+                    </select>
+                  </div>
+                  <div class="field" id="eoc_pauschale_field"><label>Service-Pauschale €/Jahr</label><input type="text" id="eoc_pauschale_eur" value="500" placeholder="500" oninput="calcEoc()" data-frozen-allow></div>
+                  <div class="field" id="eoc_wert_field" style="display:none"><label>Wert d. Betreuung €/Jahr (Kommunikation)</label><input type="text" id="eoc_wert_kostenlos_eur" value="450" placeholder="450" oninput="calcEoc()" data-frozen-allow></div>
                 </div>
                 <div id="eoc_calc_result" style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px">
-                  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                    <span style="color:var(--muted)">Geschätzte Wartungs-Ersparnis/Jahr (Bestand vs. Aszendio):</span>
-                    <strong id="eoc_calc_savings_yr" style="color:var(--text)">– €</strong>
+                  <div id="eoc_calc_pauschale_row" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                    <span style="color:var(--muted)">Liftaro-Service-Pauschale (laufende Betreuung):</span>
+                    <strong id="eoc_calc_pauschale" style="color:var(--navy)">– €/Jahr</strong>
                   </div>
-                  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                    <span style="color:var(--muted)">Bis Vertragsende (kumuliert über <span id="eoc_calc_months">–</span> Monate):</span>
-                    <strong id="eoc_calc_savings_total" style="color:var(--text)">– €</strong>
+                  <div id="eoc_calc_kostenlos_row" style="display:none;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                    <span style="color:var(--muted)">Betreuung kostenlos · Wert (Kommunikation):</span>
+                    <strong id="eoc_calc_wert" style="color:var(--navy)">– €/Jahr</strong>
                   </div>
                   <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
-                    <span style="color:var(--muted)">Liftaro-Vergütung (<span id="eoc_calc_pct_label">25</span>% erfolgsbasiert):</span>
-                    <strong id="eoc_calc_provision" style="color:var(--navy)">– €</strong>
+                    <span style="color:var(--muted)">Bestandsvertrag-Restlaufzeit:</span>
+                    <strong id="eoc_calc_restlaufzeit" style="color:var(--text)">–</strong>
                   </div>
                 </div>
-                <div style="font-size:11px;color:var(--muted);font-style:italic;line-height:1.5">
-                  Aszendio steht im Equipment-on-Call-System auf Abruf bereit. Liftaro prüft alle Reparatur-Angebote des bestehenden Wartungsnehmers und holt bei Überteuerung ein Vergleichsangebot von Aszendio ein. Liftaro verdient ausschließlich erfolgsbasiert auf nachgewiesene Ersparnisse.
+                <div style="font-size:11.5px;color:var(--text);line-height:1.55;background:#fff;border:1px dashed var(--border);border-radius:7px;padding:10px 12px">
+                  <strong style="color:var(--navy)">Liftaro-Leistungen für die WEG (im PDF aufgelistet):</strong>
+                  <ul style="margin:6px 0 0;padding-left:18px;color:var(--muted)">
+                    <li>Entlastung HV: TÜV-Mängelberichte, Wartungsnehmer-Korrespondenz, Angebote laufen über Liftaro · Prüfung + Nachverhandlung · Berechtigung zur Beauftragung alternativer Dienstleister bei Störungen · Angebote ab 500 € netto → WEG-Freigabe.</li>
+                    <li>Schutz vor überteuerten Angeboten — keine Überraschungen mehr.</li>
+                    <li>Überprüfung Betreiberpflichten · Reduzierung Haftungsrisiken.</li>
+                    <li>Wirtschaftlichkeitsanalyse über alle Kosten (Wartung + unterjährige Reparaturen). Echte Kosten = Gesamtkosten.</li>
+                    <li>Vor-Ort-Inspektion mit Foto-Dokumentation des Wartungszustands.</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -5200,7 +5213,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.47';
+const APP_VERSION = 'V12.48';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6324,14 +6337,15 @@ function resetForm() {
   const cbErgPdf = document.getElementById('cb_ergebnis_in_pdf'); if (cbErgPdf) cbErgPdf.checked = true;
   // V12.46: "Partner-Angebote in PDF anzeigen" zurück auf Default (an)
   const cbVarPdf = document.getElementById('cb_variants_in_pdf'); if (cbVarPdf) cbVarPdf.checked = true;
-  // V12.47: Equipment on Call zurück auf Default (aus, leere Felder)
+  // V12.47/V12.48: Equipment on Call zurück auf Default (aus, leere Felder)
   const cbEoc = document.getElementById('cb_eoc_active');
   if (cbEoc) cbEoc.checked = false;
   window._eocActiveW = false;
-  ['eoc_endet_am','eoc_aszendio_preis'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const _rep = document.getElementById('eoc_reparaturen'); if (_rep) _rep.value = '2';
-  const _pp  = document.getElementById('eoc_provision_pct'); if (_pp) _pp.value = '25';
-  const _ep  = document.getElementById('eoc_panel_w'); if (_ep) _ep.style.display = 'none';
+  const _endet = document.getElementById('eoc_endet_am'); if (_endet) _endet.value = '';
+  const _mod   = document.getElementById('eoc_modus'); if (_mod) _mod.value = 'pauschale';
+  const _pau   = document.getElementById('eoc_pauschale_eur'); if (_pau) _pau.value = '500';
+  const _wert  = document.getElementById('eoc_wert_kostenlos_eur'); if (_wert) _wert.value = '450';
+  const _ep    = document.getElementById('eoc_panel_w'); if (_ep) _ep.style.display = 'none';
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6434,12 +6448,12 @@ function collectFormData() {
     // V12.23: Service-Pauschale (nur Wartung) — alternativer Vergütungsmodus
     liftaro_verguetung_typ_w: window._liftaroVerguetungModeW || 'erfolg',
     liftaro_jahresgebuehr_w:  g('liftaro_jahresgebuehr_w'),
-    // V12.47: Equipment on Call (nur Wartung)
-    eoc_active:          document.getElementById('cb_eoc_active')?.checked ? '1' : '',
-    eoc_endet_am:        g('eoc_endet_am'),
-    eoc_aszendio_preis:  g('eoc_aszendio_preis'),
-    eoc_reparaturen:     g('eoc_reparaturen'),
-    eoc_provision_pct:   g('eoc_provision_pct'),
+    // V12.47/V12.48: Equipment on Call (Vertragsverwaltung & WEG-Schutz)
+    eoc_active:              document.getElementById('cb_eoc_active')?.checked ? '1' : '',
+    eoc_endet_am:            g('eoc_endet_am'),
+    eoc_modus:               g('eoc_modus') || 'pauschale',
+    eoc_pauschale_eur:       g('eoc_pauschale_eur'),
+    eoc_wert_kostenlos_eur:  g('eoc_wert_kostenlos_eur'),
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
@@ -6550,13 +6564,20 @@ async function generateEmailAnfrageNr() {
 function _wartungLegalBlockText() {
   const mode = window._liftaroVerguetungModeW || 'erfolg';
   const g = id => (document.getElementById(id)?.value || '').toString().trim();
-  // V12.47: Equipment on Call überschreibt — eigener Legal-Text
+  // V12.47/V12.48: Equipment on Call überschreibt — Vertragsverwaltung & WEG-Schutz
   const eocActive = !!document.getElementById('cb_eoc_active')?.checked;
   if (eocActive) {
-    const pct = g('eoc_provision_pct') || '25';
     const endet = g('eoc_endet_am');
     const endetStr = endet ? new Date(endet).toLocaleDateString('de-DE') : 'zum regulären Vertragsende';
-    return `Equipment on Call: Der bestehende Wartungsvertrag läuft bis ${endetStr}. Bis dahin betreut Liftaro die Wohnungseigentümergemeinschaft bei sämtlicher Kommunikation, Angebotsprüfung und Rechnungskontrolle gegenüber dem Bestandsanbieter. Die Anlage ist im Equipment-on-Call-System von Aszendio Aufzugservice GmbH auf Abruf bereit — Reparatur-Angebote werden bei Bedarf zum Vergleich eingeholt. Liftaro-Vergütung: ${pct} % erfolgsbasiert auf nachgewiesene und dokumentierte Ersparnisse. Der Betreiber zahlt keine laufende Pauschale; die Vergütung wird ausschließlich aus realisierten Einsparungen anteilig getragen.`;
+    const modus = g('eoc_modus') || 'pauschale';
+    if (modus === 'kostenlos') {
+      const wertN = parsePrice(g('eoc_wert_kostenlos_eur'));
+      const wertS = isNaN(wertN) ? '450 €' : formatEuro(wertN);
+      return `Equipment on Call (Vertragsverwaltung & WEG-Schutz): Der bestehende Wartungsvertrag läuft bis ${endetStr}. Bis dahin übernimmt Liftaro im Namen der Wohnungseigentümergemeinschaft die vollständige Vertragsverwaltung gegenüber dem Bestandsanbieter — auf Basis einer von der WEG erteilten Vollmacht. Liftaro filtert sämtliche Korrespondenz, Mängelberichte und Angebote, verhandelt Konditionen nach und ist berechtigt, bei Störungen alternative Dienstleister zu beauftragen. Angebote ab 500 € netto werden der WEG zur Freigabe vorgelegt. In diesem Vorgang erbringt Liftaro die Leistung kostenfrei — der reguläre Gegenwert dieser Betreuung beträgt ${wertS}/Jahr und wird vorab investiert.`;
+    }
+    const pauN = parsePrice(g('eoc_pauschale_eur'));
+    const pauS = isNaN(pauN) ? '500 €' : formatEuro(pauN);
+    return `Equipment on Call (Vertragsverwaltung & WEG-Schutz): Der bestehende Wartungsvertrag läuft bis ${endetStr}. Bis dahin übernimmt Liftaro im Namen der Wohnungseigentümergemeinschaft die vollständige Vertragsverwaltung gegenüber dem Bestandsanbieter — auf Basis einer von der WEG erteilten Vollmacht. Liftaro filtert sämtliche Korrespondenz, Mängelberichte und Angebote, verhandelt Konditionen nach und ist berechtigt, bei Störungen alternative Dienstleister zu beauftragen. Angebote ab 500 € netto werden der WEG zur Freigabe vorgelegt. Liftaro-Service-Pauschale: ${pauS}/Jahr für die laufende Betreuungsleistung (TÜV-Mängel-Management, Korrespondenz-Filter, Wirtschaftlichkeitsanalyse, Vor-Ort-Inspektion mit Foto-Dokumentation, Haftungsmanagement).`;
   }
   if (mode === 'pauschale') {
     const j = parsePrice(g('liftaro_jahresgebuehr_w'));
@@ -6594,31 +6615,39 @@ function _renderLvPdfSummary(show) {
   if (!sumEl || !bodyEl) return;
   if (!show) { sumEl.style.display = 'none'; return; }
   const g = id => (document.getElementById(id)?.value || '').toString().trim();
-  // V12.47: EoC-Modus überschreibt — eigener Summary-Block
+  // V12.47/V12.48: EoC-Modus überschreibt — Vertragsverwaltung & WEG-Schutz
   const eocActive = !!document.getElementById('cb_eoc_active')?.checked;
   if (eocActive) {
-    const pct = g('eoc_provision_pct') || '25';
     const endet = g('eoc_endet_am');
     const endetStr = endet ? new Date(endet).toLocaleDateString('de-DE') : '—';
-    const aszendioPreis = parsePrice(g('eoc_aszendio_preis'));
-    const bestandsKosten = parsePrice(g('wv_kosten'));
-    const erspJahr = (!isNaN(bestandsKosten) && !isNaN(aszendioPreis) && aszendioPreis > 0)
-      ? Math.max(0, bestandsKosten - aszendioPreis) : 0;
+    const modus = g('eoc_modus') || 'pauschale';
+    const pauN  = parsePrice(g('eoc_pauschale_eur'));
+    const wertN = parsePrice(g('eoc_wert_kostenlos_eur'));
+    const verguetungZeile = (modus === 'kostenlos')
+      ? `<strong style="color:var(--navy);font-size:15px">Kostenlos · Wert ${_esc(isNaN(wertN) ? '450 €' : formatEuro(wertN))}/Jahr</strong>`
+      : `<strong style="color:var(--navy);font-size:15px">${_esc(isNaN(pauN) ? '500 €' : formatEuro(pauN))} / Jahr Service-Pauschale</strong>`;
     bodyEl.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px">
-        <strong style="color:#7a4d00;font-size:14px">🛡 Equipment on Call <span style="font-weight:400;color:var(--muted);font-size:12px">(Vertrag nicht kurzfristig kündbar)</span></strong>
-        <strong style="color:var(--navy);font-size:15px">${_esc(pct)}% erfolgsbasiert</strong>
+        <strong style="color:#7a4d00;font-size:14px">🛡 Equipment on Call <span style="font-weight:400;color:var(--muted);font-size:12px">(Vertragsverwaltung &amp; WEG-Schutz)</span></strong>
+        ${verguetungZeile}
       </div>
-      <div style="font-size:11.5px;color:var(--muted);line-height:1.55">
-        <strong style="color:var(--text)">Konstellation:</strong>
-        <ul style="margin:4px 0 8px;padding-left:18px">
-          <li>Bestandsvertrag läuft bis <strong>${_esc(endetStr)}</strong> — kurzfristiger Wechsel nicht möglich.</li>
-          <li>Liftaro betreut die WEG bis zum Vertragsende: prüft Reparatur-Angebote, kontrolliert Rechnungen, übernimmt sämtliche Kommunikation mit dem Bestandsanbieter.</li>
-          <li>Aszendio Aufzugservice GmbH steht im <strong>Equipment-on-Call-System</strong> auf Abruf — Vergleichsangebot wird bei überteuerten Reparaturen eingeholt.</li>
-          ${erspJahr > 0 ? `<li>Indikative Wartungs-Ersparnis bei späterem Wechsel: <strong>${_esc(formatEuro(erspJahr))}/Jahr</strong> (Aszendio vs. Bestand).</li>` : ''}
-          <li><strong>Für den Betreiber kostenlos</strong> — Liftaro-Vergütung erfolgt ausschließlich aus nachgewiesener Reparatur-/Vertragsersparnis (${_esc(pct)} %).</li>
-        </ul>
-      </div>`;
+      <div style="font-size:11.5px;color:var(--text);line-height:1.55">
+        <strong>Ausgangslage:</strong> Der bestehende Wartungsvertrag läuft bis <strong>${_esc(endetStr)}</strong> — ein kurzfristiger Wechsel ist nicht möglich. Liftaro übernimmt die vollständige Vertragsverwaltung gegenüber dem Bestandsanbieter im Namen der WEG (per Vollmacht).
+      </div>
+      <div style="font-size:11.5px;color:var(--text);line-height:1.55;margin-top:8px">
+        <strong>Leistungen während der Vertragslaufzeit:</strong>
+        <ol style="margin:4px 0 0;padding-left:20px;color:var(--muted)">
+          <li><strong>Entlastung der Hausverwaltung:</strong> TÜV-Mängelberichte, Wartungsnehmer-Korrespondenz und alle Angebote laufen über Liftaro. Wir prüfen, verhandeln nach und sind berechtigt, bei Störungen alternative Dienstleister zu beauftragen. Angebote ab 500 € netto werden der WEG zur Freigabe vorgelegt.</li>
+          <li><strong>Schutz vor überteuerten Angeboten:</strong> alle Reparatur-Angebote werden vor Weiterleitung an die WEG geprüft — keine Überraschungen mehr.</li>
+          <li><strong>Betreiberpflichten &amp; Haftungsmanagement:</strong> Überprüfung der Einhaltung, Reduzierung von Haftungsrisiken der Eigentümergemeinschaft.</li>
+          <li><strong>Wirtschaftlichkeitsanalyse über Gesamtkosten:</strong> nicht nur der Wartungspreis, auch alle unterjährigen Reparaturkosten werden bilanziert. Echte Kosten = Gesamtkosten.</li>
+          <li><strong>Vor-Ort-Inspektion:</strong> Liftaro besichtigt die Anlage, dokumentiert den Wartungszustand mit Fotos.</li>
+        </ol>
+      </div>
+      ${modus === 'kostenlos'
+        ? `<div style="font-size:11.5px;color:#7a4d00;background:#fff;border:1px dashed #f0c065;border-radius:6px;padding:8px 10px;margin-top:8px;line-height:1.55"><strong>Vergütung:</strong> In diesem Vorgang ist die Betreuung <strong>kostenfrei</strong> — der reguläre Gegenwert dieser Leistung beträgt ${_esc(isNaN(wertN) ? '450 €' : formatEuro(wertN))}/Jahr und wird von Liftaro vorab investiert.</div>`
+        : `<div style="font-size:11.5px;color:#7a4d00;background:#fff;border:1px dashed #f0c065;border-radius:6px;padding:8px 10px;margin-top:8px;line-height:1.55"><strong>Vergütung:</strong> Service-Pauschale von <strong>${_esc(isNaN(pauN) ? '500 €' : formatEuro(pauN))}/Jahr</strong> für die laufende Betreuungsleistung gemäß den oben aufgelisteten 5 Leistungsbausteinen.</div>`
+      }`;
     sumEl.style.display = 'block';
     sumEl.style.background = '#fff7e6';
     sumEl.style.borderColor = '#f0c065';
@@ -6726,36 +6755,47 @@ function calcEoc() {
   const cb = document.getElementById('cb_eoc_active');
   if (!cb || !cb.checked) return;
   const _g = id => (document.getElementById(id)?.value || '').toString().trim();
-  // Bestandskosten/Jahr aus wv_kosten lesen
-  const bestandsKosten = parsePrice(_g('wv_kosten'));
-  const aszendioPreis  = parsePrice(_g('eoc_aszendio_preis'));
-  const provPct        = parseFloat(_g('eoc_provision_pct')) || 25;
-  const endetAm        = _g('eoc_endet_am');
-  // Geschätzte Wartungs-Ersparnis pro Jahr
-  const erspJahr = (!isNaN(bestandsKosten) && !isNaN(aszendioPreis) && aszendioPreis > 0)
-    ? Math.max(0, bestandsKosten - aszendioPreis) : 0;
-  // Monate bis Vertragsende (heute → endet_am)
-  let monate = 0;
+  const modus    = _g('eoc_modus') || 'pauschale';
+  const pauschal = parsePrice(_g('eoc_pauschale_eur'));
+  const wertK    = parsePrice(_g('eoc_wert_kostenlos_eur'));
+  const endetAm  = _g('eoc_endet_am');
+  // Felder-Sichtbarkeit nach Modus toggeln
+  const pField = document.getElementById('eoc_pauschale_field');
+  const wField = document.getElementById('eoc_wert_field');
+  const pRow   = document.getElementById('eoc_calc_pauschale_row');
+  const kRow   = document.getElementById('eoc_calc_kostenlos_row');
+  if (modus === 'kostenlos') {
+    if (pField) pField.style.display = 'none';
+    if (wField) wField.style.display = '';
+    if (pRow)   pRow.style.display = 'none';
+    if (kRow)   kRow.style.display = 'flex';
+  } else {
+    if (pField) pField.style.display = '';
+    if (wField) wField.style.display = 'none';
+    if (pRow)   pRow.style.display = 'flex';
+    if (kRow)   kRow.style.display = 'none';
+  }
+  // Restlaufzeit
+  let restlaufzeitStr = '–';
   if (endetAm) {
     const end = new Date(endetAm);
     const now = new Date();
     if (!isNaN(end.getTime())) {
-      monate = Math.max(0, Math.round((end - now) / (1000 * 60 * 60 * 24 * 30.4375)));
+      const monate = Math.max(0, Math.round((end - now) / (1000 * 60 * 60 * 24 * 30.4375)));
+      if (monate > 0) {
+        const j = Math.floor(monate / 12);
+        const m = monate % 12;
+        restlaufzeitStr = (j ? j + ' J ' : '') + (m ? m + ' Mon' : '') + ' (bis ' + end.toLocaleDateString('de-DE') + ')';
+      }
     }
   }
-  const erspTotal   = erspJahr * (monate / 12);
-  const provision   = erspTotal * (provPct / 100);
-  const fmt = (n) => isNaN(n) || n <= 0 ? '– €' : formatEuro(n);
-  const sEl  = document.getElementById('eoc_calc_savings_yr');
-  const tEl  = document.getElementById('eoc_calc_savings_total');
-  const pEl  = document.getElementById('eoc_calc_provision');
-  const mEl  = document.getElementById('eoc_calc_months');
-  const lblEl= document.getElementById('eoc_calc_pct_label');
-  if (sEl)  sEl.textContent  = fmt(erspJahr);
-  if (tEl)  tEl.textContent  = fmt(erspTotal);
-  if (pEl)  pEl.textContent  = fmt(provision);
-  if (mEl)  mEl.textContent  = monate > 0 ? String(monate) : '–';
-  if (lblEl) lblEl.textContent = String(provPct);
+  const fmtY = (n) => (isNaN(n) || n <= 0) ? '– €/Jahr' : (formatEuro(n) + '/Jahr');
+  const pcEl = document.getElementById('eoc_calc_pauschale');
+  const wcEl = document.getElementById('eoc_calc_wert');
+  const rlEl = document.getElementById('eoc_calc_restlaufzeit');
+  if (pcEl) pcEl.textContent = fmtY(pauschal);
+  if (wcEl) wcEl.textContent = fmtY(wertK);
+  if (rlEl) rlEl.textContent = restlaufzeitStr;
 }
 
 async function saveCheck(reporter) {
@@ -7197,11 +7237,12 @@ async function loadCheck(data) {
   if (typeof setLiftaroVerguetungMode === 'function') {
     setLiftaroVerguetungMode('w', data.liftaro_verguetung_typ_w === 'pauschale' ? 'pauschale' : 'erfolg');
   }
-  // V12.47: Equipment on Call wiederherstellen
-  sc('eoc_endet_am',        data.eoc_endet_am || '');
-  sc('eoc_aszendio_preis',  data.eoc_aszendio_preis || '');
-  sc('eoc_reparaturen',     data.eoc_reparaturen || '2');
-  sc('eoc_provision_pct',   data.eoc_provision_pct || '25');
+  // V12.47/V12.48: Equipment on Call (Vertragsverwaltung) wiederherstellen
+  sc('eoc_endet_am',            data.eoc_endet_am || '');
+  sc('eoc_pauschale_eur',       data.eoc_pauschale_eur || '500');
+  sc('eoc_wert_kostenlos_eur',  data.eoc_wert_kostenlos_eur || '450');
+  const _eocModSel = document.getElementById('eoc_modus');
+  if (_eocModSel) _eocModSel.value = (data.eoc_modus === 'kostenlos') ? 'kostenlos' : 'pauschale';
   const _cbEoc = document.getElementById('cb_eoc_active');
   if (_cbEoc) {
     _cbEoc.checked = !!data.eoc_active;
