@@ -2639,7 +2639,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             </div>
             <div id="wartung-variants-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px"></div>
           </div>
-          <div class="section" style="margin-top:20px">
+          <div id="section-vertragsvergleich" class="section" style="margin-top:20px">
             <div class="section-title">Vertragsvergleich</div>
             <div style="overflow:hidden">
               <table class="compare-table">
@@ -5213,7 +5213,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.48';
+const APP_VERSION = 'V12.49';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6346,6 +6346,8 @@ function resetForm() {
   const _pau   = document.getElementById('eoc_pauschale_eur'); if (_pau) _pau.value = '500';
   const _wert  = document.getElementById('eoc_wert_kostenlos_eur'); if (_wert) _wert.value = '450';
   const _ep    = document.getElementById('eoc_panel_w'); if (_ep) _ep.style.display = 'none';
+  // V12.49: ausgeblendete Bereiche wieder sichtbar machen
+  if (typeof _applyEocVisibility === 'function') _applyEocVisibility(false);
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6736,17 +6738,67 @@ function setLiftaroVerguetungMode(checkType, mode) {
   if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
 }
 
-// V12.47: Equipment-on-Call — Toggle + Live-Berechnung
+// V12.47: Equipment-on-Call — Toggle + Live-Berechnung + Bereiche ausblenden
+// V12.49: bei EoC-aktiv werden Vertragsvergleich/Ersparnis/Vergütungs-Switch/
+// Ergebnis-Liftaro/Partner-Angebote/Jahresrechnungs-Historie ausgeblendet
+// (sowohl in der App als auch im generierten PDF).
+const EOC_HIDE_WHEN_ACTIVE = [
+  'section-vertragsvergleich',   // Vertragsvergleich-Tabelle (Bestand vs. Alternativ)
+  'wartung-variants-section',    // Eingegangene Partner-Angebote
+  'section-ergebnis',            // Ergebnis Liftaro (Empfehlungstext)
+  'vertragInvoiceHistory',       // Jahresrechnungs-Historie
+  'lv_mode_switch_row_w',        // Vergütungs-Mode-Switch Erfolg/Pauschale
+  'lv_panel_erfolg_w',           // Erfolgsprämie-Inputs
+  'lv_panel_pauschale_w',        // Service-Pauschale-Inputs
+  'lv_footer_note_w',            // Footer-Hinweis zum Standard-Vergütungsmodell
+];
+
+function _applyEocVisibility(eocActive) {
+  EOC_HIDE_WHEN_ACTIVE.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (eocActive) {
+      if (el.dataset._eocPrevDisplay == null) el.dataset._eocPrevDisplay = el.style.display || '';
+      el.style.display = 'none';
+    } else {
+      // restore
+      if (el.dataset._eocPrevDisplay != null) {
+        el.style.display = el.dataset._eocPrevDisplay;
+        delete el.dataset._eocPrevDisplay;
+      } else {
+        el.style.display = '';
+      }
+    }
+  });
+  // Auch die savings-row im Wartungsblock (kein eigener ID — über Klasse + Position)
+  // → wir vergeben einen Marker über JS, falls noch nicht da
+  const sw = document.getElementById('section-wartung');
+  if (sw) {
+    const savingsRow = sw.querySelector('.savings-row');
+    if (savingsRow) {
+      if (eocActive) {
+        if (savingsRow.dataset._eocPrevDisplay == null) savingsRow.dataset._eocPrevDisplay = savingsRow.style.display || '';
+        savingsRow.style.display = 'none';
+      } else {
+        if (savingsRow.dataset._eocPrevDisplay != null) {
+          savingsRow.style.display = savingsRow.dataset._eocPrevDisplay;
+          delete savingsRow.dataset._eocPrevDisplay;
+        } else {
+          savingsRow.style.display = '';
+        }
+      }
+    }
+  }
+}
+
 function onEocToggle() {
   const cb = document.getElementById('cb_eoc_active');
   const panel = document.getElementById('eoc_panel_w');
   if (!cb || !panel) return;
   window._eocActiveW = !!cb.checked;
   panel.style.display = cb.checked ? 'flex' : 'none';
-  // Bei Aktivierung: Vergütungs-Modus zwingend auf "erfolg" stellen (EoC nutzt nur Erfolgsbasiert)
-  if (cb.checked && typeof setLiftaroVerguetungMode === 'function' && window._liftaroVerguetungModeW !== 'erfolg') {
-    setLiftaroVerguetungMode('w', 'erfolg');
-  }
+  // V12.49: irrelevante Bereiche bei EoC-aktiv ausblenden (in der App)
+  _applyEocVisibility(cb.checked);
   if (typeof calcEoc === 'function') calcEoc();
   if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
 }
