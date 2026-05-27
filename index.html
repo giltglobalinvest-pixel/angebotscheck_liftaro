@@ -2617,6 +2617,19 @@ const pdfWorkerReady = Promise.resolve();</script>
 
         <!-- WARTUNG SECTION -->
         <div id="section-wartung" style="display:none">
+          <!-- V12.50: Mode-Toggle ganz oben — Standard-Vertragscheck vs Equipment on Call -->
+          <div id="check_mode_toggle_row" data-frozen-allow style="margin-top:20px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <span style="font-size:12.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.3px">Check-Modus</span>
+              <span style="font-size:11.5px;color:var(--muted)">Welches Konzept bietet Liftaro dieser WEG an?</span>
+            </div>
+            <div style="display:inline-flex;background:var(--sky);border:1px solid var(--border);border-radius:9px;padding:3px;gap:0">
+              <button type="button" id="check_mode_standard" data-frozen-allow onclick="setCheckModeW('standard')"
+                style="border:none;background:var(--navy);color:#fff;border-radius:6px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">📋 Standard-Vertragscheck</button>
+              <button type="button" id="check_mode_eoc" data-frozen-allow onclick="setCheckModeW('eoc')"
+                style="border:none;background:transparent;color:var(--muted);border-radius:6px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer">🛡 Equipment on Call</button>
+            </div>
+          </div>
           <!-- V12.15 Phase 4: Multi-Variant-Karten der eingegangenen Partner-Angebote -->
           <div id="wartung-variants-section" class="section" style="margin-top:20px;display:none">
             <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -2778,16 +2791,18 @@ const pdfWorkerReady = Promise.resolve();</script>
               </div>
             </div>
 
-            <!-- V12.47: Equipment on Call — wenn Vertrag nicht kurzfristig kündbar ist -->
-            <div id="eoc_section_w" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
-              <label id="eoc_toggle_row" style="display:flex;align-items:center;gap:10px;cursor:pointer;background:#fff7e6;border:1.5px solid #f0c065;border-radius:8px;padding:10px 14px;user-select:none">
-                <input type="checkbox" id="cb_eoc_active" onchange="onEocToggle()" data-frozen-allow style="width:18px;height:18px;cursor:pointer;accent-color:#b45309;flex-shrink:0">
+            <!-- V12.47/V12.50: Equipment on Call — gesteuert über Top-Toggle (check_mode_eoc) -->
+            <div id="eoc_section_w" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;display:none">
+              <!-- V12.50: cb_eoc_active als Hidden-Checkbox behalten (Persistenz-API), Toggle erfolgt über Top-Pills -->
+              <input type="checkbox" id="cb_eoc_active" style="display:none" data-frozen-allow>
+              <div id="eoc_header_label" style="display:flex;align-items:center;gap:10px;background:#fff7e6;border:1.5px solid #f0c065;border-radius:8px;padding:10px 14px">
+                <div style="font-size:20px">🛡</div>
                 <div style="flex:1;min-width:0;line-height:1.4">
-                  <div style="font-size:13px;font-weight:700;color:#7a4d00">🛡 Equipment on Call</div>
-                  <div style="font-size:11.5px;color:#7a4d00;opacity:.85;margin-top:1px">Bestandsvertrag nicht kurzfristig kündbar (z.B. gerade um 5 Jahre verlängert). Liftaro betreut die WEG bis zum regulären Vertragsende.</div>
+                  <div style="font-size:13px;font-weight:700;color:#7a4d00">Equipment on Call — Vertragsverwaltung &amp; WEG-Schutz</div>
+                  <div style="font-size:11.5px;color:#7a4d00;opacity:.85;margin-top:1px">Bestandsvertrag nicht kurzfristig kündbar — Liftaro übernimmt die Vertragsverwaltung für die WEG bis zum regulären Vertragsende.</div>
                 </div>
-              </label>
-              <div id="eoc_panel_w" style="display:none;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:12px">
+              </div>
+              <div id="eoc_panel_w" style="display:flex;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:12px">
                 <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
                   <div class="field"><label>Bestandsvertrag endet am</label><input type="date" id="eoc_endet_am" oninput="calcEoc()" data-frozen-allow></div>
                   <div class="field">
@@ -5213,7 +5228,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.49';
+const APP_VERSION = 'V12.50';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6348,6 +6363,9 @@ function resetForm() {
   const _ep    = document.getElementById('eoc_panel_w'); if (_ep) _ep.style.display = 'none';
   // V12.49: ausgeblendete Bereiche wieder sichtbar machen
   if (typeof _applyEocVisibility === 'function') _applyEocVisibility(false);
+  // V12.50: Top-Toggle auf Standard zurücksetzen
+  if (typeof _syncCheckModeToggleW === 'function') _syncCheckModeToggleW('standard');
+  const _eocSec0 = document.getElementById('eoc_section_w'); if (_eocSec0) _eocSec0.style.display = 'none';
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6793,14 +6811,42 @@ function _applyEocVisibility(eocActive) {
 
 function onEocToggle() {
   const cb = document.getElementById('cb_eoc_active');
+  const sec   = document.getElementById('eoc_section_w');
   const panel = document.getElementById('eoc_panel_w');
   if (!cb || !panel) return;
   window._eocActiveW = !!cb.checked;
+  if (sec)   sec.style.display   = cb.checked ? '' : 'none';
   panel.style.display = cb.checked ? 'flex' : 'none';
   // V12.49: irrelevante Bereiche bei EoC-aktiv ausblenden (in der App)
   _applyEocVisibility(cb.checked);
   if (typeof calcEoc === 'function') calcEoc();
   if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
+  // V12.50: Top-Toggle visuell synchronisieren
+  _syncCheckModeToggleW(cb.checked ? 'eoc' : 'standard');
+}
+
+// V12.50: Top-Mode-Switcher — Standard-Vertragscheck ↔ Equipment on Call
+function setCheckModeW(mode) {
+  const wantsEoc = (mode === 'eoc');
+  const cb = document.getElementById('cb_eoc_active');
+  if (cb && cb.checked !== wantsEoc) {
+    cb.checked = wantsEoc;
+  }
+  onEocToggle();
+}
+
+function _syncCheckModeToggleW(mode) {
+  const stdBtn = document.getElementById('check_mode_standard');
+  const eocBtn = document.getElementById('check_mode_eoc');
+  if (!stdBtn || !eocBtn) return;
+  const isEoc = (mode === 'eoc');
+  // Active-Pill: navy + weißer Text. Inactive: transparent + muted.
+  stdBtn.style.background = isEoc ? 'transparent' : 'var(--navy)';
+  stdBtn.style.color      = isEoc ? 'var(--muted)' : '#fff';
+  stdBtn.style.fontWeight = isEoc ? '600' : '700';
+  eocBtn.style.background = isEoc ? '#b45309' : 'transparent';
+  eocBtn.style.color      = isEoc ? '#fff' : 'var(--muted)';
+  eocBtn.style.fontWeight = isEoc ? '700' : '600';
 }
 
 function calcEoc() {
