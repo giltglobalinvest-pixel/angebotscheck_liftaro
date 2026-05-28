@@ -5315,7 +5315,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.54';
+const APP_VERSION = 'V12.55';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6865,13 +6865,14 @@ const EOC_HIDE_WHEN_ACTIVE = [
   'section-ergebnis',            // Ergebnis Liftaro (Empfehlungstext)
   'vertragInvoiceHistory',       // Jahresrechnungs-Historie
 ];
-// V12.51/V12.53: Diese Sections sind NUR im EoC-Modus sichtbar.
+// V12.51/V12.53/V12.55: Diese Sections sind NUR im EoC-Modus sichtbar.
 // (eoc_section_w bleibt dauerhaft hidden — enthält nur noch versteckte Persistenz-Inputs)
+// (section-eoc-bedingungen wurde auf Wunsch dauerhaft ausgeblendet — Vereinbarung/Unterschrift kommt
+//  später ins separate ETV-Beschluss-Paket-PDF, nicht ins reguläre Ergebnis-PDF)
 const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
   'section-eoc-bestandsdaten',    // PDF: Bestandsvertrag-Eckdaten + Leistungstabelle
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
-  'section-eoc-bedingungen',      // PDF: Bedingungen + Unterschriftenfeld
 ];
 
 function _applyEocVisibility(eocActive) {
