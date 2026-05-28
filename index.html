@@ -5307,7 +5307,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.52';
+const APP_VERSION = 'V12.53';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6853,9 +6853,9 @@ const EOC_HIDE_WHEN_ACTIVE = [
   'section-ergebnis',            // Ergebnis Liftaro (Empfehlungstext)
   'vertragInvoiceHistory',       // Jahresrechnungs-Historie
 ];
-// V12.51: Diese Sections sind NUR im EoC-Modus sichtbar
+// V12.51/V12.53: Diese Sections sind NUR im EoC-Modus sichtbar.
+// (eoc_section_w bleibt dauerhaft hidden — enthält nur noch versteckte Persistenz-Inputs)
 const EOC_SHOW_WHEN_ACTIVE = [
-  'eoc_section_w',                // Editor mit Konditionen (nur App, nicht PDF)
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
   'section-eoc-bestandsdaten',    // PDF: Bestandsvertrag-Eckdaten + Leistungstabelle
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
@@ -6910,13 +6910,10 @@ function _applyEocVisibility(eocActive) {
 
 function onEocToggle() {
   const cb = document.getElementById('cb_eoc_active');
-  const sec   = document.getElementById('eoc_section_w');
-  const panel = document.getElementById('eoc_panel_w');
-  if (!cb || !panel) return;
+  if (!cb) return;
+  // V12.52/V12.53: eoc_panel_w existiert nicht mehr (Editor-Block ist weg).
+  // Sichtbarkeit der Bereiche steuert ausschließlich _applyEocVisibility.
   window._eocActiveW = !!cb.checked;
-  if (sec)   sec.style.display   = cb.checked ? '' : 'none';
-  panel.style.display = cb.checked ? 'flex' : 'none';
-  // V12.49: irrelevante Bereiche bei EoC-aktiv ausblenden (in der App)
   _applyEocVisibility(cb.checked);
   if (typeof calcEoc === 'function') calcEoc();
   if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
