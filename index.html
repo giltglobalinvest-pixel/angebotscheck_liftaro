@@ -2884,9 +2884,17 @@ const pdfWorkerReady = Promise.resolve();</script>
 
           <!-- Section 3: KI-Zusammenfassung -->
           <div id="section-eoc-zusammenfassung" class="section" style="margin-top:20px;display:none">
-            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
-              📝 Zusammenfassung &amp; Empfehlung an die WEG
-              <button type="button" id="eoc_ki_btn" onclick="requireApiKey(generateEocZusammenfassung)" data-frozen-allow style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer">✨ KI generieren</button>
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <span>📝 Zusammenfassung &amp; Empfehlung an die WEG</span>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <!-- V12.54: Zusammenfassung optional aus PDF -->
+                <label id="eocZusammenfassungPdfToggleRow" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;color:var(--navy);user-select:none" title="Zusammenfassung in der generierten PDF anzeigen oder ausblenden">
+                  <input type="checkbox" id="cb_eoc_zusfas_in_pdf" checked
+                    style="width:14px;height:14px;margin:0;cursor:pointer;accent-color:var(--green)">
+                  In PDF anzeigen
+                </label>
+                <button type="button" id="eoc_ki_btn" onclick="requireApiKey(generateEocZusammenfassung)" data-frozen-allow style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:3px 10px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer">✨ KI generieren</button>
+              </div>
             </div>
             <div class="section-inner" style="padding:10px 18px">
               <div id="eoc_zusammenfassung_text" contenteditable="true"
@@ -5307,7 +5315,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.53';
+const APP_VERSION = 'V12.54';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6446,6 +6454,8 @@ function resetForm() {
   // V12.50: Top-Toggle auf Standard zurücksetzen
   if (typeof _syncCheckModeToggleW === 'function') _syncCheckModeToggleW('standard');
   const _eocSec0 = document.getElementById('eoc_section_w'); if (_eocSec0) _eocSec0.style.display = 'none';
+  // V12.54: Checkbox "Zusammenfassung in PDF" zurück auf Default (an)
+  const cbZus = document.getElementById('cb_eoc_zusfas_in_pdf'); if (cbZus) cbZus.checked = true;
   ['smiley-v','smiley-a','smiley-vw','smiley-aw'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.textContent = '–'; if (el.parentElement) el.parentElement.style.background = ''; }
@@ -6556,6 +6566,8 @@ function collectFormData() {
     eoc_wert_kostenlos_eur:  g('eoc_wert_kostenlos_eur'),
     // V12.51: KI-generierte Zusammenfassung
     eoc_zusammenfassung:     (function(){ const el = document.getElementById('eoc_zusammenfassung_text'); if (!el) return ''; const t = el.textContent || ''; return (t === (el.dataset.placeholder || '')) ? '' : t.trim(); })(),
+    // V12.54: Zusammenfassung in PDF anzeigen
+    eoc_zusfas_in_pdf:       (document.getElementById('cb_eoc_zusfas_in_pdf')?.checked ? '1' : '0'),
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
@@ -7585,6 +7597,9 @@ async function loadCheck(data) {
     if (t) { _zuTxt.textContent = t; _zuTxt.style.color = 'var(--text)'; }
     else { _zuTxt.textContent = _zuTxt.dataset.placeholder || ''; _zuTxt.style.color = 'var(--muted)'; }
   }
+  // V12.54: Checkbox "Zusammenfassung in PDF" wiederherstellen — Default = an
+  const _cbZus = document.getElementById('cb_eoc_zusfas_in_pdf');
+  if (_cbZus) _cbZus.checked = (data.eoc_zusfas_in_pdf == null || data.eoc_zusfas_in_pdf === '' || data.eoc_zusfas_in_pdf === '1' || data.eoc_zusfas_in_pdf === true);
   const _cbEoc = document.getElementById('cb_eoc_active');
   if (_cbEoc) {
     _cbEoc.checked = !!data.eoc_active;
@@ -10874,6 +10889,9 @@ async function generatePDF() {
     (function(){ var cb = document.getElementById('cb_variants_in_pdf'); return (cb && !cb.checked) ? document.getElementById('wartung-variants-section') : null; })(),
     // V12.47: EoC-Section komplett aus PDF (Checkbox + Inputs) — der EoC-Status taucht stattdessen im _renderLvPdfSummary auf
     document.getElementById('eoc_section_w'),
+    // V12.54: EoC-Zusammenfassungs-Toggle-Row immer raus + optional die ganze Section
+    document.getElementById('eocZusammenfassungPdfToggleRow'),
+    (function(){ var cb = document.getElementById('cb_eoc_zusfas_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-eoc-zusammenfassung') : null; })(),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
@@ -17767,6 +17785,9 @@ async function buildCheckCoverBlob() {
     (function(){ var cb = document.getElementById('cb_variants_in_pdf'); return (cb && !cb.checked) ? document.getElementById('wartung-variants-section') : null; })(),
     // V12.47: EoC-Section komplett aus PDF (Checkbox + Inputs) — der EoC-Status taucht stattdessen im _renderLvPdfSummary auf
     document.getElementById('eoc_section_w'),
+    // V12.54: EoC-Zusammenfassungs-Toggle-Row immer raus + optional die ganze Section
+    document.getElementById('eocZusammenfassungPdfToggleRow'),
+    (function(){ var cb = document.getElementById('cb_eoc_zusfas_in_pdf'); return (cb && !cb.checked) ? document.getElementById('section-eoc-zusammenfassung') : null; })(),
   ];
   // V12.25: PDF-Summary für Vergütung einblenden + befüllen (vor html2canvas)
   _renderLvPdfSummary(true);
