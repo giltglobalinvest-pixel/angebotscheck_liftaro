@@ -2909,7 +2909,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <div class="section-title">📋 Bestandsvertrag — Eckdaten</div>
             <div class="section-inner" style="padding:14px 18px">
               <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:14px">
-                <div class="field"><label>Anbieter (Bestand)</label><input type="text" id="eoc_disp_anbieter" readonly style="background:var(--sky)"></div>
+                <div class="field"><label>Anbieter (Bestand)</label><input type="text" id="eoc_disp_anbieter_edit" placeholder="z. B. Aufzugfirma XY GmbH" oninput="onEocAnbieterEditChange()" data-frozen-allow></div>
                 <div class="field"><label>Wartungskosten p. a.</label><input type="text" id="eoc_disp_kosten" readonly style="background:var(--sky);font-weight:700;color:var(--navy)"></div>
                 <div class="field"><label>Vertragsende</label><input type="date" id="eoc_disp_endet_edit" oninput="onEocEndetEditChange()" data-frozen-allow></div>
                 <div class="field"><label>Restlaufzeit</label><input type="text" id="eoc_disp_restlauf" readonly style="background:var(--sky)"></div>
@@ -5364,7 +5364,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.57';
+const APP_VERSION = 'V12.58';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6494,6 +6494,7 @@ function resetForm() {
   window._eocActiveW = false;
   const _endet = document.getElementById('eoc_endet_am'); if (_endet) _endet.value = '';
   const _endetEdit = document.getElementById('eoc_disp_endet_edit'); if (_endetEdit) _endetEdit.value = '';
+  const _anbEdit = document.getElementById('eoc_disp_anbieter_edit'); if (_anbEdit) _anbEdit.value = '';
   const _mod   = document.getElementById('eoc_modus'); if (_mod) _mod.value = 'pauschale';
   const _pau   = document.getElementById('eoc_pauschale_eur'); if (_pau) _pau.value = '500';
   const _wert  = document.getElementById('eoc_wert_kostenlos_eur'); if (_wert) _wert.value = '450';
@@ -6617,6 +6618,8 @@ function collectFormData() {
     eoc_zusammenfassung:     (function(){ const el = document.getElementById('eoc_zusammenfassung_text'); if (!el) return ''; const t = el.textContent || ''; return (t === (el.dataset.placeholder || '')) ? '' : t.trim(); })(),
     // V12.54: Zusammenfassung in PDF anzeigen
     eoc_zusfas_in_pdf:       (document.getElementById('cb_eoc_zusfas_in_pdf')?.checked ? '1' : '0'),
+    // V12.58: manuell editierter Bestandsanbieter (überschreibt KI-Default)
+    eoc_anbieter_manual:     g('eoc_disp_anbieter_edit'),
     checkType:   checkType,
     f_kuendigung_ab: g('f_kuendigung_ab'),
     wv_laufzeit: g('wv_laufzeit'), wa_laufzeit: g('wa_laufzeit'),
@@ -7018,14 +7021,62 @@ function onEocEndetEditChange() {
   if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
 }
 
+// V12.58: Anbieter wird manuell editiert (oder von KI vorbefüllt).
+function onEocAnbieterEditChange() {
+  if (typeof calcEoc === 'function') calcEoc();
+}
+
+// V12.58: berechnet Vertragsende aus wv_vertragsbeginn + wv_laufzeit (z.B. "5 Jahre")
+function _calcEocEndetFromBestand() {
+  const _g = id => (document.getElementById(id)?.value || '').toString().trim();
+  const vb = _g('wv_vertragsbeginn');
+  const lzRaw = _g('wv_laufzeit');
+  if (!vb || !lzRaw) return '';
+  // Vertragsbeginn parsen: ISO oder DE
+  let start = null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(vb)) {
+    start = new Date(vb);
+  } else {
+    // DE-Format "01.01.2026"
+    const m = vb.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+    if (m) {
+      const yyyy = m[3].length === 2 ? '20' + m[3] : m[3];
+      start = new Date(parseInt(yyyy, 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+    }
+  }
+  if (!start || isNaN(start.getTime())) return '';
+  const lzNum = parseInt(String(lzRaw).match(/\d+/)?.[0] || '0', 10);
+  if (lzNum <= 0) return '';
+  // Vertragsende = Vertragsbeginn + lzNum Jahre - 1 Tag (Tag vor Vertragsbeginn im Folgejahr)
+  const end = new Date(start.getFullYear() + lzNum, start.getMonth(), start.getDate() - 1);
+  // Als ISO-Date für date-Input
+  const iso = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
+  return iso;
+}
+
 // V12.51: Display-Felder im EoC-Bestandsdaten-Block + Leistungs-Tabelle befüllen
 function _refreshEocDisplays() {
   const _g = id => (document.getElementById(id)?.value || '').toString().trim();
-  // Anbieter: bevorzugt aus cv_anbieter (Bestandsanbieter aus Vorlage), sonst aus f_firma
-  const anbieter = _g('cv_anbieter') || _g('f_firma') || '–';
+  // V12.58: Anbieter — User-Edit hat Vorrang, sonst KI (cv_anbieter), sonst leer.
+  // f_firma ist die WEG, NICHT der Wartungsnehmer → wird NICHT mehr als Fallback genutzt.
+  const anbEdit = document.getElementById('eoc_disp_anbieter_edit');
+  let anbieter = anbEdit ? anbEdit.value.trim() : '';
+  if (!anbieter) {
+    anbieter = _g('cv_anbieter');
+    if (anbieter && anbEdit) anbEdit.value = anbieter; // Auto-Fill aus KI-Extraktion
+  }
   const kostenN  = parsePrice(_g('wv_kosten'));
   const kostenS  = (!isNaN(kostenN) && kostenN > 0) ? formatEuro(kostenN) : '–';
-  const endetAm  = _g('eoc_endet_am');
+  // V12.58: Vertragsende — User-Edit hat Vorrang, sonst hidden eoc_endet_am, sonst auto aus Bestandsvertrag
+  let endetAm = _g('eoc_endet_am');
+  if (!endetAm) {
+    const computed = _calcEocEndetFromBestand();
+    if (computed) {
+      endetAm = computed;
+      const hidden = document.getElementById('eoc_endet_am');
+      if (hidden) hidden.value = computed;
+    }
+  }
   let endetStr   = '–';
   let monate     = 0;
   if (endetAm) {
@@ -7040,7 +7091,6 @@ function _refreshEocDisplays() {
   const totalS   = totalN > 0 ? formatEuro(totalN) : '–';
   // Display-Felder befüllen
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-  set('eoc_disp_anbieter', anbieter);
   set('eoc_disp_kosten',   kostenS + (kostenS !== '–' ? ' / Jahr' : ''));
   // V12.52: Vertragsende ist jetzt im sichtbaren date-Input (eoc_disp_endet_edit)
   const endetEdit = document.getElementById('eoc_disp_endet_edit');
@@ -7671,6 +7721,8 @@ async function loadCheck(data) {
   // V12.54: Checkbox "Zusammenfassung in PDF" wiederherstellen — Default = an
   const _cbZus = document.getElementById('cb_eoc_zusfas_in_pdf');
   if (_cbZus) _cbZus.checked = (data.eoc_zusfas_in_pdf == null || data.eoc_zusfas_in_pdf === '' || data.eoc_zusfas_in_pdf === '1' || data.eoc_zusfas_in_pdf === true);
+  // V12.58: Anbieter-Edit wiederherstellen
+  sc('eoc_disp_anbieter_edit', data.eoc_anbieter_manual || '');
   const _cbEoc = document.getElementById('cb_eoc_active');
   if (_cbEoc) {
     _cbEoc.checked = !!data.eoc_active;
