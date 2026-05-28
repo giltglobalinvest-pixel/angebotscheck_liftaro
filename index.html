@@ -5364,7 +5364,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.58';
+const APP_VERSION = 'V12.59';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -17963,20 +17963,24 @@ async function buildCheckCoverBlob() {
   const restoreLayout = _forcePdfLayout();
   try {
     const _isMob3 = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
-    const _maxH = _isMob3 ? 6000 : printArea.scrollHeight;
-    const _useH = Math.min(printArea.scrollHeight, _maxH);
-    const renderCanvas = () => html2canvas(printArea, {
-      scale: _isMob3 ? 1 : 2,
-      useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
-      width: printArea.scrollWidth, height: _useH,
-      windowWidth: 1400, windowHeight: 2000,
-      ignoreElements: (el) => {
-        if (!el || !el.classList) return false;
-        return el.classList.contains('mobile-attached-here') ||
-               el.classList.contains('mobile-slots-anchor');
-      },
-      onclone: _sanitizeClonedDocForCanvas,
-    });
+    const _maxH = _isMob3 ? 6000 : 99999;
+    // V12.59: useH dynamisch pro Render lesen — sonst rendert das Canvas auf
+    // alte Gesamthöhe und fitToOnePage skaliert den (kleinen) Inhalt winzig.
+    const renderCanvas = () => {
+      const useH = Math.min(printArea.scrollHeight, _maxH);
+      return html2canvas(printArea, {
+        scale: _isMob3 ? 1 : 2,
+        useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
+        width: printArea.scrollWidth, height: useH,
+        windowWidth: 1400, windowHeight: 2000,
+        ignoreElements: (el) => {
+          if (!el || !el.classList) return false;
+          return el.classList.contains('mobile-attached-here') ||
+                 el.classList.contains('mobile-slots-anchor');
+        },
+        onclone: _sanitizeClonedDocForCanvas,
+      });
+    };
     // V12.57: EoC → 2 separate Canvas-Renders (Anschreiben auf eigener Seite)
     const eocActive = !!document.getElementById('cb_eoc_active')?.checked && checkType === 'wartung';
     let canvases = [];
