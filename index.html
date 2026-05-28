@@ -2801,47 +2801,25 @@ const pdfWorkerReady = Promise.resolve();</script>
           <!-- Hidden checkbox als Persistenz-Anker -->
           <input type="checkbox" id="cb_eoc_active" style="display:none" data-frozen-allow>
 
-          <!-- Editor-Block: Konditions-Inputs (NICHT im PDF, nur App-UI) -->
-          <div id="eoc_section_w" class="hide-on-mobile" style="display:none;margin-top:20px">
-            <div id="eoc_header_label" style="display:flex;align-items:center;gap:10px;background:#fff7e6;border:1.5px solid #f0c065;border-radius:8px;padding:10px 14px">
-              <div style="font-size:20px">🛡</div>
-              <div style="flex:1;min-width:0;line-height:1.4">
-                <div style="font-size:13px;font-weight:700;color:#7a4d00">Equipment on Call — Editor (nicht im PDF)</div>
-                <div style="font-size:11.5px;color:#7a4d00;opacity:.85;margin-top:1px">Hier Konditionen + Pauschale konfigurieren. Das Angebots-PDF unten passt sich automatisch an.</div>
-              </div>
-            </div>
-            <div id="eoc_panel_w" style="display:flex;margin-top:10px;background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex-direction:column;gap:12px">
-              <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
-                <div class="field"><label>Bestandsvertrag endet am</label><input type="date" id="eoc_endet_am" oninput="calcEoc()" data-frozen-allow></div>
-                <div class="field">
-                  <label>Vergütungs-Modus</label>
-                  <select id="eoc_modus" onchange="calcEoc()" data-frozen-allow style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;outline:none;width:100%">
-                    <option value="pauschale">Service-Pauschale</option>
-                    <option value="kostenlos">Kostenlos (Wert vor-investieren)</option>
-                  </select>
-                </div>
-                <div class="field" id="eoc_pauschale_field"><label>Service-Pauschale €/Jahr</label><input type="text" id="eoc_pauschale_eur" value="500" placeholder="500" oninput="calcEoc()" data-frozen-allow></div>
-                <div class="field" id="eoc_wert_field" style="display:none"><label>Wert d. Betreuung €/Jahr (Kommunikation)</label><input type="text" id="eoc_wert_kostenlos_eur" value="450" placeholder="450" oninput="calcEoc()" data-frozen-allow></div>
-              </div>
-              <div id="eoc_calc_result" style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px">
-                <div id="eoc_calc_pauschale_row" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                  <span style="color:var(--muted)">Liftaro-Service-Pauschale (laufende Betreuung):</span>
-                  <strong id="eoc_calc_pauschale" style="color:var(--navy)">– €/Jahr</strong>
-                </div>
-                <div id="eoc_calc_kostenlos_row" style="display:none;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                  <span style="color:var(--muted)">Betreuung kostenlos · Wert (Kommunikation):</span>
-                  <strong id="eoc_calc_wert" style="color:var(--navy)">– €/Jahr</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
-                  <span style="color:var(--muted)">Bestandsvertrag-Restlaufzeit:</span>
-                  <strong id="eoc_calc_restlaufzeit" style="color:var(--text)">–</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                  <span style="color:var(--muted)">Gesamtkosten Bestand bis Vertragsende:</span>
-                  <strong id="eoc_calc_bestand_total" style="color:var(--text)">–</strong>
-                </div>
-              </div>
-            </div>
+          <!-- V12.52: Editor-Block komplett ausgeblendet — Defaults fest, Vertragsende editierbar im Bestandsdaten-Block unten.
+               Hidden Inputs bleiben für Persistenz / Berechnungs-Code erhalten. -->
+          <div id="eoc_section_w" style="display:none">
+            <input type="hidden" id="eoc_endet_am" data-frozen-allow>
+            <select id="eoc_modus" data-frozen-allow style="display:none">
+              <option value="pauschale" selected>Service-Pauschale</option>
+              <option value="kostenlos">Kostenlos</option>
+            </select>
+            <input type="hidden" id="eoc_pauschale_eur" value="500" data-frozen-allow>
+            <input type="hidden" id="eoc_wert_kostenlos_eur" value="450" data-frozen-allow>
+            <!-- Live-Berechnungs-Anzeigen (für calcEoc-Rückkompat, nie sichtbar) -->
+            <span id="eoc_calc_pauschale" style="display:none"></span>
+            <span id="eoc_calc_wert" style="display:none"></span>
+            <span id="eoc_calc_restlaufzeit" style="display:none"></span>
+            <span id="eoc_calc_bestand_total" style="display:none"></span>
+            <div id="eoc_calc_pauschale_row" style="display:none"></div>
+            <div id="eoc_calc_kostenlos_row" style="display:none"></div>
+            <div id="eoc_pauschale_field" style="display:none"></div>
+            <div id="eoc_wert_field" style="display:none"></div>
           </div>
 
           <!-- ▼▼▼ PDF-RELEVANTE SECTIONS (werden ins Ergebnis-PDF gerendert) ▼▼▼ -->
@@ -2884,7 +2862,7 @@ const pdfWorkerReady = Promise.resolve();</script>
               <div class="field-row r4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:14px">
                 <div class="field"><label>Anbieter (Bestand)</label><input type="text" id="eoc_disp_anbieter" readonly style="background:var(--sky)"></div>
                 <div class="field"><label>Wartungskosten p. a.</label><input type="text" id="eoc_disp_kosten" readonly style="background:var(--sky);font-weight:700;color:var(--navy)"></div>
-                <div class="field"><label>Vertragsende</label><input type="text" id="eoc_disp_endet" readonly style="background:var(--sky)"></div>
+                <div class="field"><label>Vertragsende</label><input type="date" id="eoc_disp_endet_edit" oninput="onEocEndetEditChange()" data-frozen-allow></div>
                 <div class="field"><label>Restlaufzeit</label><input type="text" id="eoc_disp_restlauf" readonly style="background:var(--sky)"></div>
               </div>
               <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:10px 14px;background:#f3faea;border-left:4px solid #3d7a14;border-radius:4px;font-size:13px">
@@ -5329,7 +5307,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.51';
+const APP_VERSION = 'V12.52';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6458,6 +6436,7 @@ function resetForm() {
   if (cbEoc) cbEoc.checked = false;
   window._eocActiveW = false;
   const _endet = document.getElementById('eoc_endet_am'); if (_endet) _endet.value = '';
+  const _endetEdit = document.getElementById('eoc_disp_endet_edit'); if (_endetEdit) _endetEdit.value = '';
   const _mod   = document.getElementById('eoc_modus'); if (_mod) _mod.value = 'pauschale';
   const _pau   = document.getElementById('eoc_pauschale_eur'); if (_pau) _pau.value = '500';
   const _wert  = document.getElementById('eoc_wert_kostenlos_eur'); if (_wert) _wert.value = '450';
@@ -6969,6 +6948,16 @@ function _syncCheckModeToggleW(mode) {
   eocBtn.style.fontWeight = isEoc ? '700' : '600';
 }
 
+// V12.52: User editiert das Vertragsende in der Bestandsdaten-Section.
+// Sync mit hidden eoc_endet_am + Re-Calc.
+function onEocEndetEditChange() {
+  const edit = document.getElementById('eoc_disp_endet_edit');
+  const hidden = document.getElementById('eoc_endet_am');
+  if (edit && hidden) hidden.value = edit.value || '';
+  if (typeof calcEoc === 'function') calcEoc();
+  if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
+}
+
 // V12.51: Display-Felder im EoC-Bestandsdaten-Block + Leistungs-Tabelle befüllen
 function _refreshEocDisplays() {
   const _g = id => (document.getElementById(id)?.value || '').toString().trim();
@@ -6993,7 +6982,9 @@ function _refreshEocDisplays() {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('eoc_disp_anbieter', anbieter);
   set('eoc_disp_kosten',   kostenS + (kostenS !== '–' ? ' / Jahr' : ''));
-  set('eoc_disp_endet',    endetStr);
+  // V12.52: Vertragsende ist jetzt im sichtbaren date-Input (eoc_disp_endet_edit)
+  const endetEdit = document.getElementById('eoc_disp_endet_edit');
+  if (endetEdit && endetEdit.value !== endetAm) endetEdit.value = endetAm || '';
   set('eoc_disp_restlauf', restStr);
   const totEl = document.getElementById('eoc_disp_total');
   if (totEl) totEl.textContent = totalS;
