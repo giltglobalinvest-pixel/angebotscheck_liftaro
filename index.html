@@ -5364,7 +5364,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.56';
+const APP_VERSION = 'V12.57';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -10985,19 +10985,57 @@ async function generatePDF() {
     // Mobile: scale 1 statt 2, sonst sprengt das Canvas iOS-Safari-Limits
     const _isMob = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
     const _scale = _isMob ? 1 : 2;
+    const _renderCanvas = () => html2canvas(printArea, {
+      scale: _scale, useCORS: true, allowTaint: true,
+      logging: false, backgroundColor: '#ffffff',
+      width: printArea.scrollWidth, height: printArea.scrollHeight,
+      windowWidth: 1400, windowHeight: 2000,
+      ignoreElements: (el) => {
+        if (!el || !el.classList) return false;
+        return el.classList.contains('mobile-attached-here') ||
+               el.classList.contains('mobile-slots-anchor');
+      },
+      onclone: _sanitizeClonedDocForCanvas,
+    });
+    // V12.57: EoC → Anschreiben auf eigene Seite (2 Renders).
+    // Variablen außerhalb try, damit sie unten beim PDF-Build noch in Scope sind.
+    var _eocActiveGen = !!document.getElementById('cb_eoc_active')?.checked && checkType === 'wartung';
+    var canvasesGen = [];
     try {
-      canvas = await html2canvas(printArea, {
-        scale: _scale, useCORS: true, allowTaint: true,
-        logging: false, backgroundColor: '#ffffff',
-        width: printArea.scrollWidth, height: printArea.scrollHeight,
-        windowWidth: 1400, windowHeight: 2000,
-        ignoreElements: (el) => {
-          if (!el || !el.classList) return false;
-          return el.classList.contains('mobile-attached-here') ||
-                 el.classList.contains('mobile-slots-anchor');
-        },
-        onclone: _sanitizeClonedDocForCanvas,
-      });
+      if (_eocActiveGen) {
+        const _ansch = document.getElementById('section-eoc-anschreiben');
+        if (_ansch && _ansch.style.display !== 'none') {
+          const _printArea = printArea;
+          const _printChildren = Array.from(_printArea.children);
+          const _tempHidden = [];
+          _printChildren.forEach(c => {
+            if (c === _ansch || c.contains(_ansch)) return;
+            if (c.style.display === 'none') return;
+            _tempHidden.push({ el: c, prev: c.style.display || '' });
+            c.style.display = 'none';
+          });
+          const _sectW = document.getElementById('section-wartung');
+          if (_sectW) {
+            Array.from(_sectW.children).forEach(c => {
+              if (c === _ansch || c.contains(_ansch)) return;
+              if (c.style.display === 'none') return;
+              _tempHidden.push({ el: c, prev: c.style.display || '' });
+              c.style.display = 'none';
+            });
+          }
+          canvasesGen.push(await _renderCanvas());
+          _tempHidden.forEach(({el, prev}) => { el.style.display = prev; });
+          const _prevAns = _ansch.style.display;
+          _ansch.style.display = 'none';
+          canvasesGen.push(await _renderCanvas());
+          _ansch.style.display = _prevAns;
+        } else {
+          canvasesGen.push(await _renderCanvas());
+        }
+      } else {
+        canvasesGen.push(await _renderCanvas());
+      }
+      canvas = canvasesGen[0];  // Rückkompat — restlicher Code referenziert canvas
     } catch(canvasErr) {
       console.error('html2canvas (generatePDF) failed:', canvasErr);
       throw new Error('Render fehlgeschlagen (' + (canvasErr.message || canvasErr) + ')');
@@ -11015,9 +11053,14 @@ async function generatePDF() {
     const { PDFDocument } = PDFLib;
     const mergedDoc = await PDFDocument.create();
 
-    // V12.35: Vertragscheck → 1 A4 Seite (kompakt), sonst Multi-Page-Split
+    // V12.35/V12.57: Vertragscheck → 1 A4 Seite (kompakt), sonst Multi-Page-Split.
+    // Bei EoC werden zwei Canvas-Renders (Anschreiben + Rest) jeweils als 1 A4-Seite gerendert.
     const _fitOnePdf = (checkType === 'wartung');
-    await _canvasToA4Pages(mergedDoc, canvas, { fitToOnePage: _fitOnePdf });
+    if (_eocActiveGen && canvasesGen.length > 1) {
+      for (const c of canvasesGen) await _canvasToA4Pages(mergedDoc, c, { fitToOnePage: true });
+    } else {
+      await _canvasToA4Pages(mergedDoc, canvas, { fitToOnePage: _fitOnePdf });
+    }
 
     for (const [num, label] of [[2,'Alternativangebot'],[1,'Vorliegendes Angebot']]) {
       if (!uploadedFiles[num]) continue;
@@ -17868,11 +17911,9 @@ async function buildCheckCoverBlob() {
   const restoreLayout = _forcePdfLayout();
   try {
     const _isMob3 = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
-    // V12.29: scrollHeight auf Mobile auf 6000px kappen (sonst crasht html2canvas
-    // bei sehr langen Formularen mit eingeblendeten Sub-Sections auf iOS Safari).
     const _maxH = _isMob3 ? 6000 : printArea.scrollHeight;
     const _useH = Math.min(printArea.scrollHeight, _maxH);
-    const canvas = await html2canvas(printArea, {
+    const renderCanvas = () => html2canvas(printArea, {
       scale: _isMob3 ? 1 : 2,
       useCORS: true, allowTaint: true, logging: false, backgroundColor: '#ffffff',
       width: printArea.scrollWidth, height: _useH,
@@ -17884,13 +17925,55 @@ async function buildCheckCoverBlob() {
       },
       onclone: _sanitizeClonedDocForCanvas,
     });
+    // V12.57: EoC → 2 separate Canvas-Renders (Anschreiben auf eigener Seite)
+    const eocActive = !!document.getElementById('cb_eoc_active')?.checked && checkType === 'wartung';
+    let canvases = [];
+    if (eocActive) {
+      const anschreiben = document.getElementById('section-eoc-anschreiben');
+      if (anschreiben && anschreiben.style.display !== 'none') {
+        // Page 1: nur Anschreiben sichtbar (alle anderen sichtbaren Geschwister hidden)
+        const printChildren = Array.from(printArea.children);
+        const tempHidden = [];
+        printChildren.forEach(c => {
+          if (c === anschreiben || c.contains(anschreiben)) return;
+          if (c.style.display === 'none') return;
+          tempHidden.push({ el: c, prev: c.style.display || '' });
+          c.style.display = 'none';
+        });
+        // Auch innerhalb section-wartung andere Geschwister hiden (Anschreiben liegt in section-wartung)
+        const sectWartung = document.getElementById('section-wartung');
+        if (sectWartung) {
+          Array.from(sectWartung.children).forEach(c => {
+            if (c === anschreiben || c.contains(anschreiben)) return;
+            if (c.style.display === 'none') return;
+            tempHidden.push({ el: c, prev: c.style.display || '' });
+            c.style.display = 'none';
+          });
+        }
+        canvases.push(await renderCanvas());
+        tempHidden.forEach(({el, prev}) => { el.style.display = prev; });
+        // Page 2: Anschreiben hidden, Rest sichtbar
+        const prevAns = anschreiben.style.display;
+        anschreiben.style.display = 'none';
+        canvases.push(await renderCanvas());
+        anschreiben.style.display = prevAns;
+      } else {
+        canvases.push(await renderCanvas());
+      }
+    } else {
+      canvases.push(await renderCanvas());
+    }
     restoreLayout();
     const { PDFDocument } = PDFLib;
     const doc = await PDFDocument.create();
-    // V12.35: Beim Vertragscheck (wartung) immer auf 1 A4-Seite skalieren —
-    // sonst Multi-Page. Reparatur/Rechnung nutzen aktuell auch Multi-Page-Default.
-    const _fitOne = (checkType === 'wartung');
-    await _canvasToA4Pages(doc, canvas, { fitToOnePage: _fitOne });
+    // V12.57: bei EoC jede der zwei Canvas-Seiten auf 1 A4 skalieren (Anschreiben + Rest)
+    // Sonst wie bisher: Wartung = 1 Seite, andere Multi-Page.
+    if (eocActive) {
+      for (const c of canvases) await _canvasToA4Pages(doc, c, { fitToOnePage: true });
+    } else {
+      const _fitOne = (checkType === 'wartung');
+      await _canvasToA4Pages(doc, canvases[0], { fitToOnePage: _fitOne });
+    }
     const bytes = await doc.save();
     return new Blob([bytes], { type: 'application/pdf' });
   } finally {
