@@ -2185,9 +2185,9 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
         Verträge
       </button>
-      <button class="nav-pill" data-nav="lightvertraege" onclick="openLightVertraegeModal()" title="Liftmanagement Light · Rahmenvereinbarungen mit Hausverwaltungen für laufende WEG-Betreuung">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        Light
+      <button class="nav-pill" data-nav="lightvertraege" onclick="openLightVertraegeModal()" title="Equipment under Control (EuC) · Laufende Anlagen-Betreuung für Hausverwaltungen">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        EuC
         <span id="lightVertraegeCountBadge" class="btn-badge" style="display:none">0</span>
       </button>
       <button class="nav-pill" data-nav="kunden" onclick="openKundenModal()" title="Hausverwaltungen (aus Pipedrive)">
@@ -2284,8 +2284,8 @@ const pdfWorkerReady = Promise.resolve();</script>
       Verträge
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openLightVertraegeModal()">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-      Light-Verträge
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Equipment under Control
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openSettingsAdmin()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.07 7.07l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.07-7.07l4.24-4.24"/></svg>
@@ -4577,20 +4577,21 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
-     LIGHT-VERTRÄGE: Liste + Editor + WEG-Sub-Modal
-     Liftmanagement Light = 45 €/Aufzug/Monat, Vertrag pro HV, Rechnungen pro WEG
+     EuC-VEREINBARUNGEN: Liste + Editor + WEG-Sub-Modal
+     Equipment under Control = laufende Anlagen-Betreuung, 0 € + 25 %
+     Erfolgsbeteiligung, Rahmenvertrag pro HV, Sub-WEGs pro Objekt
      ═══════════════════════════════════════════════════════════════════════ -->
-<!-- Light-Verträge-Modal — V11.1 Redesign -->
+<!-- EuC-Vereinbarungs-Modal — V12.61 -->
 <div id="lightVertraegeModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
   <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(840px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
     <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-purple);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(124,58,237,.3),0 4px 12px rgba(124,58,237,.22);flex-shrink:0">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </div>
         <div>
-          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Liftmanagement Light</div>
-          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Rahmenvereinbarungen · 45 €/Aufzug/Monat pro HV</div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Equipment under Control</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Vereinbarungen · 0 € + 25 % Erfolgsbeteiligung · Rahmenvertrag pro HV</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -4616,11 +4617,11 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
-<!-- Light-Vertrag: Editor-Modal -->
+<!-- EuC-Vereinbarung: Editor-Modal -->
 <div id="lightVertragEditorModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
   <div style="background:#fff;border-radius:16px;width:min(780px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <span id="lightVertragEditorTitle" style="color:#fff;font-size:15px;font-weight:700">Neue Light-Rahmenvereinbarung</span>
+      <span id="lightVertragEditorTitle" style="color:#fff;font-size:15px;font-weight:700">Neue EuC-Vereinbarung</span>
       <button onclick="closeLightVertragEditor()" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
     </div>
     <div style="flex:1;overflow-y:auto;padding:18px 22px">
@@ -4712,7 +4713,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
-<!-- Light-WEG: Editor-Modal (pro WEG unter einer Light-Rahmenvereinbarung) -->
+<!-- EuC-WEG: Editor-Modal (pro WEG unter einer EuC-Rahmenvereinbarung) -->
 <div id="lightWegEditorModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.88);z-index:5200;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
   <div style="background:#fff;border-radius:16px;width:min(680px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -4768,7 +4769,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div id="lw_preview" style="background:var(--sky);border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--navy);margin-top:6px">
         <strong>Jahrespauschale dieser WEG:</strong> <span id="lw_jahressumme">0 €</span>
-        <span style="color:var(--muted);font-size:11.5px"> · (Anzahl × 45 € × 12)</span>
+        <span style="color:var(--muted);font-size:11.5px"> · (Anzahl × Monatspreis × 12)</span>
       </div>
     </div>
     <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
@@ -5364,7 +5365,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.60';
+const APP_VERSION = 'V12.61';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -12905,7 +12906,7 @@ async function renderKundenList() {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-        <button onclick="openLightVertragForOrg(${oid})" title="Neue Light-Vereinbarung mit dieser HV anlegen" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">⚡ Light-Vertrag</button>
+        <button onclick="openLightVertragForOrg(${oid})" title="Neue EuC-Vereinbarung mit dieser HV anlegen" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">🛡 EuC</button>
         <button onclick="openVertragForOrg(${oid})" title="Neuen Rahmenvertrag mit dieser HV anlegen" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">📑 Rahmen</button>
       </div>
     </div>`;
@@ -14296,7 +14297,7 @@ async function buildLightVertragPDF() {
     { x: PAGE_W - MARGIN_X - 200, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
 
   // ── Titel
-  title('Rahmenvereinbarung "Liftmanagement Light"');
+  title('Rahmenvereinbarung "Equipment under Control"');
   spacer(4);
 
   // ── Parteien
@@ -14320,7 +14321,7 @@ async function buildLightVertragPDF() {
 
   // ── §1 Vertragsgegenstand
   head('§ 1 Vertragsgegenstand');
-  draw('(1) Liftaro übernimmt das "Liftmanagement Light" für die von der Verwaltung benannten Aufzugsanlagen. Liftmanagement Light umfasst die laufende Prüfung, Nachverhandlung und administrative Betreuung von Aufzug-Verträgen und -Rechnungen im Namen und Auftrag der jeweiligen WEG.');
+  draw('(1) Liftaro übernimmt das "Equipment under Control" (EuC) für die von der Verwaltung benannten Aufzugsanlagen. EuC umfasst die laufende Prüfung, Nachverhandlung und administrative Betreuung von Aufzug-Verträgen und -Rechnungen im Namen und Auftrag der jeweiligen WEG.');
   draw('(2) Die Verwaltung übermittelt nach Vertragsschluss eine Liste sämtlicher Aufzugsanlagen, die in die Betreuung aufgenommen werden sollen, je Anlage mit: WEG-Bezeichnung, Objekt-Adresse, Anzahl Aufzüge, aktueller Wartungsdienstleister, aktuelle jährliche Wartungs- und Notrufkosten.');
 
   // ── §2 Leistungsumfang
@@ -14446,7 +14447,7 @@ async function buildLightVertragPDF() {
 
   const bytes = await doc.save();
   const blob = new Blob([bytes], { type: 'application/pdf' });
-  const filename = 'Light-Rahmenvereinbarung_' + (d.id || 'Entwurf') + '_' + (d.firma || 'HV').replace(/[^a-zA-Z0-9_-]+/g, '_') + '.pdf';
+  const filename = 'EuC-Rahmenvereinbarung_' + (d.id || 'Entwurf') + '_' + (d.firma || 'HV').replace(/[^a-zA-Z0-9_-]+/g, '_') + '.pdf';
   return { blob, filename };
 }
 
@@ -15672,7 +15673,7 @@ function openLightVertragEditor(data) {
     // WEGs nachladen + rendern
     renderLightWegsInEditor(data.id);
   } else {
-    document.getElementById('lightVertragEditorTitle').textContent = 'Neue Light-Rahmenvereinbarung';
+    document.getElementById('lightVertragEditorTitle').textContent = 'Neue EuC-Vereinbarung';
     document.getElementById('lv_btnDelete').style.display = 'none';
     document.getElementById('lv_uploadSection').style.display = 'none';
     document.getElementById('lv_wegList').innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Erst Vereinbarung speichern, dann WEGs anlegen.</p>';
@@ -17450,9 +17451,9 @@ function renderDashboard() {
       </div>
       <div class="dr-kpi-grid">
         ${kachel('Rahmenverträge', vertraege.length, '#2d5f96', `${signedCount} unterschrieben · ${openCount} offen`)}
-        ${kachel('Light-Verträge', lightAll.length, '#7c3aed', `${lightAktiv} aktiv · ${lightEntwurf} Entwurf`)}
-        ${kachel('Light: Aufzüge', String(lightAufzSum), '#5b21b6', `${lightWegsAll.length} WEG${lightWegsAll.length===1?'':'s'} betreut`)}
-        ${kachel('Light: Jahresumsatz', _fmtEuro(lightJahrSum), '#0e6655', 'Pauschale jährlich vorab')}
+        ${kachel('EuC-Vereinbarungen', lightAll.length, '#7c3aed', `${lightAktiv} aktiv · ${lightEntwurf} Entwurf`)}
+        ${kachel('EuC: Anlagen', String(lightAufzSum), '#5b21b6', `${lightWegsAll.length} WEG${lightWegsAll.length===1?'':'s'} betreut`)}
+        ${kachel('EuC: Jahresvolumen', _fmtEuro(lightJahrSum), '#0e6655', 'Pauschalen-Anteil pro Jahr')}
         ${aktiveVertraege.length ? kachel('Aktive Wartungs-Verträge', aktiveVertraege.length, '#0e6655', `${billingBuckets.overdue.length} überfällig · ${billingBuckets.due14.length} in 14 Tagen`) : ''}
       </div>
     </div>`;
