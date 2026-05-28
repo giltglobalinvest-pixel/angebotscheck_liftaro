@@ -5365,7 +5365,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.61';
+const APP_VERSION = 'V12.62';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6077,6 +6077,21 @@ async function setupTables() {
       { name: 'tel', type: 'singleLineText' },
       { name: 'savedAt', type: 'singleLineText' },
     ]),
+    // V12.62 EuC-F: Aufzüge-Tabelle als zentrale Anlagen-Stammdaten
+    ensureTable('Aufzuege', [
+      { name: 'id', type: 'singleLineText' },                  // intern: 'AZ-' + counter
+      { name: 'fabriknummer', type: 'singleLineText' },        // unique pro HV
+      { name: 'standort', type: 'singleLineText' },            // Straße, PLZ, Ort
+      { name: 'hv_pipedrive_org_id', type: 'singleLineText' }, // Pipedrive-Verknüpfung
+      { name: 'hv_name', type: 'singleLineText' },             // gecachter HV-Name
+      { name: 'hersteller', type: 'singleLineText' },          // Schindler/KONE/TK/OTIS/Schmitt/Sonstige
+      { name: 'weg_id', type: 'singleLineText' },              // optional: Verweis light_weg
+      { name: 'notiz', type: 'multilineText' },                // freie Notiz
+      { name: 'im_euc', type: 'singleLineText' },              // '1' oder leer
+      { name: 'euc_vertrag_id', type: 'singleLineText' },      // Verweis light_vertrag (genau einer aktiv)
+      { name: 'savedAt', type: 'singleLineText' },
+      { name: 'api_key', type: 'singleLineText' },
+    ]),
   ]);
   // Attachment-Felder ggf. nachträglich anlegen
   await ensureFields('Checks', [
@@ -6690,6 +6705,96 @@ function isAdmin() {
 // Fortlaufende Check-ID generieren: A_<Jahr><N\u00fcr>, ab 100, base-weit eindeutig
 // Fortlaufende Check-Nummer: C_<n> ab 1200, ein gemeinsamer Nummernkreis für
 // Reparatur- und Vertragschecks.
+// V12.62 EuC-F: ID-Generator für Aufzug-Datensätze (Format AZ-1, AZ-2, ...)
+async function generateAufzugId() {
+  let maxNr = 0;
+  try {
+    const recs = await atRead('Aufzuege');
+    for (const r of recs) {
+      const id = (r.fields?.id || '').toString();
+      const m = id.match(/^AZ-(\d+)$/);
+      if (m) {
+        const nr = parseInt(m[1], 10);
+        if (!isNaN(nr) && nr > maxNr) maxNr = nr;
+      }
+    }
+  } catch(e) { console.warn('generateAufzugId lookup failed:', e.message); }
+  return 'AZ-' + (maxNr + 1);
+}
+
+// V12.62 EuC-F: Aufzug anhand Fabriknummer suchen.
+// Eindeutigkeit ist pro HV (hv_pipedrive_org_id) — Aufzug mit gleicher Fabriknummer
+// in anderer HV ist OK. Wenn orgId nicht übergeben: alle Treffer zurückgeben.
+async function findAufzugByFabriknummer(fabriknummer, hvOrgId) {
+  const fn = (fabriknummer || '').toString().trim();
+  if (!fn) return null;
+  try {
+    const recs = await atRead('Aufzuege', "{fabriknummer}='" + fn.replace(/'/g, "\\'") + "'");
+    if (!recs.length) return null;
+    if (hvOrgId) {
+      // exakt diese HV-Kombination
+      const exact = recs.find(r => (r.fields?.hv_pipedrive_org_id || '').toString() === hvOrgId.toString());
+      return exact ? { ...exact.fields, _recordId: exact.id } : null;
+    }
+    // Erstes Ergebnis als Convenience
+    const r0 = recs[0];
+    return { ...r0.fields, _recordId: r0.id };
+  } catch(e) {
+    console.warn('findAufzugByFabriknummer failed:', e.message);
+    return null;
+  }
+}
+
+// V12.62 EuC-F: Alle Aufzüge laden (für Listen + Picker)
+async function loadAufzuege(filterFormula) {
+  try {
+    return await atRead('Aufzuege', filterFormula);
+  } catch(e) {
+    console.warn('loadAufzuege failed:', e.message);
+    return [];
+  }
+}
+
+// V12.62 EuC-F: Neuen Aufzug anlegen (oder existierenden updaten anhand Fabriknummer+HV).
+// Returnt { id, recordId, isNew }.
+async function upsertAufzug(data) {
+  const fn = (data.fabriknummer || '').toString().trim();
+  const orgId = (data.hv_pipedrive_org_id || '').toString().trim();
+  if (!fn) throw new Error('Fabriknummer ist Pflicht');
+  // Prüfen ob bereits vorhanden (gleiche Fabriknummer + gleiche HV)
+  const existing = orgId ? await findAufzugByFabriknummer(fn, orgId) : null;
+  const now = new Date().toISOString();
+  const apiKey = APP_KEYS.user?.api_key || 'unknown';
+  if (existing && existing._recordId) {
+    // Update — nur die übergebenen Felder
+    const updFields = {};
+    ['fabriknummer','standort','hv_pipedrive_org_id','hv_name','hersteller','weg_id','notiz','im_euc','euc_vertrag_id'].forEach(k => {
+      if (data[k] != null) updFields[k] = data[k].toString();
+    });
+    updFields.savedAt = now;
+    await atUpdate('Aufzuege', existing._recordId, updFields);
+    return { id: existing.id, recordId: existing._recordId, isNew: false };
+  }
+  // Neu anlegen
+  const newId = await generateAufzugId();
+  const fields = {
+    id: newId,
+    fabriknummer: fn,
+    standort: (data.standort || '').toString(),
+    hv_pipedrive_org_id: orgId,
+    hv_name: (data.hv_name || '').toString(),
+    hersteller: (data.hersteller || '').toString(),
+    weg_id: (data.weg_id || '').toString(),
+    notiz: (data.notiz || '').toString(),
+    im_euc: data.im_euc ? '1' : '',
+    euc_vertrag_id: (data.euc_vertrag_id || '').toString(),
+    savedAt: now,
+    api_key: apiKey,
+  };
+  const result = await atWrite('Aufzuege', fields);
+  return { id: newId, recordId: result?.id, isNew: true };
+}
+
 async function generateCheckId() {
   let maxNr = 1199; // 1200 ist die erste vergebene Nummer
   try {
