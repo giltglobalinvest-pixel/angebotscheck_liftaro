@@ -4653,14 +4653,18 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="field"><label>Steuernummer</label><input type="text" id="lv_steuernr" placeholder="z.B. 123/456/78901"></div>
       </div>
       <!-- Konditionen -->
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Konditionen</div>
-      <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
-        <div class="field"><label>Vertragsbeginn</label><input type="text" id="lv_beginn" placeholder="01.05.2026"></div>
-        <div class="field"><label>€/Aufzug/Monat</label><input type="number" id="lv_preis" placeholder="45" min="0" step="0.5"></div>
-        <div class="field"><label>Mindestabnahme Aufzüge</label><input type="number" id="lv_mindest" placeholder="10" min="1"></div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Vergütung &amp; Konditionen</div>
+      <div style="background:#ecf6e1;border:1px solid #c8e2a2;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:#3d5e1c;display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">🎁</span>
+        <span><strong>EuC ist für Verwaltung &amp; WEG kostenfrei.</strong> Liftaro finanziert sich ausschließlich aus der Erfolgsbeteiligung an erzielten Einsparungen (§ 4 des Vertrags).</span>
       </div>
       <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
-        <div class="field"><label>Mindestlaufzeit (Monate)</label><input type="number" id="lv_laufzeit" placeholder="12" min="1"></div>
+        <div class="field"><label>Vertragsbeginn</label><input type="text" id="lv_beginn" placeholder="01.05.2026"></div>
+        <div class="field"><label>Erfolgsbeteiligung (%)</label><input type="number" id="lv_erfolg_pct" placeholder="25" min="0" max="100" step="0.5" oninput="renderLightWegsInEditor(document.getElementById('lv_id').value)"></div>
+        <div class="field"><label>Erfolgsbeteiligung-Dauer (Jahre)</label><input type="number" id="lv_erfolg_jahre" placeholder="3" min="1" max="10"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+        <div class="field"><label>Mindestlaufzeit Rahmen (Monate)</label><input type="number" id="lv_laufzeit" placeholder="12" min="1"></div>
         <div class="field"><label>Kündigungsfrist (Monate)</label><input type="number" id="lv_kuendigung" placeholder="3" min="1"></div>
         <div class="field"><label>Haftungsgrenze (€)</label><input type="number" id="lv_haftung" placeholder="50000" min="0"></div>
       </div>
@@ -4754,7 +4758,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="field"><label>Anzahl Aufzüge</label><input type="number" id="lw_anzahl" placeholder="1" min="1" value="1" oninput="_updateLwPreview()"></div>
         <div class="field"><label>Aktueller Wartungs-Dienstleister</label><input type="text" id="lw_dienstleister" placeholder="optional"></div>
-        <div class="field"><label>Aktuelle Jahreskosten Wartung (€)</label><input type="number" id="lw_jahres_alt" placeholder="optional" min="0"></div>
+        <div class="field"><label>Aktuelle Jahreskosten Wartung+Notruf (€) <span style="color:#a8312f">*</span></label><input type="number" id="lw_jahres_alt" placeholder="Status quo (Pflicht für Erfolgsbasis)" min="0" oninput="_updateLwPreview()"></div>
       </div>
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Abrechnung</div>
       <div class="field-row" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -4768,8 +4772,8 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
       </div>
       <div id="lw_preview" style="background:var(--sky);border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--navy);margin-top:6px">
-        <strong>Jahrespauschale dieser WEG:</strong> <span id="lw_jahressumme">0 €</span>
-        <span style="color:var(--muted);font-size:11.5px"> · (Anzahl × Monatspreis × 12)</span>
+        <strong>Status quo (Basis für Erfolgsbeteiligung):</strong> <span id="lw_jahressumme">0 €</span>/Jahr
+        <span style="color:var(--muted);font-size:11.5px"> · Liftaro erhält <span id="lw_erfolg_pct_preview">25</span>% der nachweisbaren Einsparung gegenüber diesem Wert.</span>
       </div>
     </div>
     <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
@@ -5365,7 +5369,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.62';
+const APP_VERSION = 'V12.63';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -14340,13 +14344,22 @@ function _shortenZahlungsziel(s) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// LIGHT-RAHMENVEREINBARUNG — PDF nativ mit pdf-lib
+// EuC-RAHMENVEREINBARUNG — PDF nativ mit pdf-lib
 // Pro HV: §1 Vertragsgegenstand · §2 Leistungsumfang · §3 Mitwirkung
-//         §4 Vergütung (45 €/Aufzug/Mt, jährlich vorab pro WEG) · §5–§8
-// + Anlage: Vollmachts-Muster (eine pro WEG nachreichbar)
+//         §4 Vergütung (KOSTENFREI · 25% Erfolgsbeteiligung) · §5–§8
+// + Anlage A: Erfasste Aufzugsanlagen (aus Editor)
+// + Anlage B: Vollmachts-Muster (eine pro WEG nachreichbar)
 // ═══════════════════════════════════════════════════════════════════
 async function buildLightVertragPDF() {
   const d = getLightVertragForm();
+  // WEGs/Aufzüge aus dem Editor laden (oder Cache nutzen)
+  let wegs = Array.isArray(window._currentLightWegs) ? window._currentLightWegs : [];
+  if (d.id) {
+    try { wegs = await loadLightWegs(d.id); } catch (e) { /* fallback Cache */ }
+  }
+  const wegCount = wegs.length;
+  const aufzSum  = wegs.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
+  const kostenAltSum = wegs.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
   const helv     = await doc.embedFont(StandardFonts.Helvetica);
@@ -14398,7 +14411,7 @@ async function buildLightVertragPDF() {
   // ── Header
   page.drawText(_safeWinAnsi('Liftaro GmbH · Gustavburger Weg 6, 55116 Mainz'),
     { x: MARGIN_X, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
-  page.drawText(_safeWinAnsi('Light-ID: ' + (d.id || '–') + '  ·  Stand: ' + today),
+  page.drawText(_safeWinAnsi('EuC-ID: ' + (d.id || '–') + '  ·  Stand: ' + today),
     { x: PAGE_W - MARGIN_X - 200, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
 
   // ── Titel
@@ -14422,12 +14435,18 @@ async function buildLightVertragPDF() {
 
   // ── Präambel
   head('Präambel', { size: 12 });
-  draw('Liftaro bietet ein laufendes Verwaltungs- und Optimierungsservice für Aufzugsanlagen an. Die Verwaltung beauftragt Liftaro mit der laufenden technischen und wirtschaftlichen Betreuung von Aufzugsanlagen, die sie als Hausverwalter im Auftrag von Wohnungseigentümergemeinschaften (WEG) und/oder Vermietern verwaltet.');
+  draw('Liftaro bietet ein laufendes Verwaltungs- und Optimierungsservice für Aufzugsanlagen an. Die Verwaltung beauftragt Liftaro mit der laufenden technischen und wirtschaftlichen Betreuung der in Anlage A erfassten Aufzugsanlagen, die sie als Hausverwalter im Auftrag von Wohnungseigentümergemeinschaften (WEG) und/oder Vermietern verwaltet.');
+  draw('Der Service ist für die Verwaltung und die WEG vollständig kostenfrei. Liftaro finanziert sich ausschließlich aus einer Beteiligung an den durch Liftaro nachweisbar erzielten Einsparungen (siehe § 4).', { font: helvBold });
 
   // ── §1 Vertragsgegenstand
   head('§ 1 Vertragsgegenstand');
   draw('(1) Liftaro übernimmt das "Equipment under Control" (EuC) für die von der Verwaltung benannten Aufzugsanlagen. EuC umfasst die laufende Prüfung, Nachverhandlung und administrative Betreuung von Aufzug-Verträgen und -Rechnungen im Namen und Auftrag der jeweiligen WEG.');
-  draw('(2) Die Verwaltung übermittelt nach Vertragsschluss eine Liste sämtlicher Aufzugsanlagen, die in die Betreuung aufgenommen werden sollen, je Anlage mit: WEG-Bezeichnung, Objekt-Adresse, Anzahl Aufzüge, aktueller Wartungsdienstleister, aktuelle jährliche Wartungs- und Notrufkosten.');
+  if (wegCount > 0) {
+    draw('(2) Gegenstand der Betreuung sind die in Anlage A "Erfasste Aufzugsanlagen" konkret benannten ' + aufzSum + ' Aufzugsanlagen in ' + wegCount + ' Wohnungseigentümergemeinschaft' + (wegCount === 1 ? '' : 'en') + '. Eine Nachreichung einer Anlagen-Liste ist nicht erforderlich — die Anlagen sind mit Unterzeichnung dieser Vereinbarung verbindlich erfasst.');
+  } else {
+    draw('(2) Die konkret betreuten Aufzugsanlagen sind in Anlage A "Erfasste Aufzugsanlagen" abschließend aufgeführt. Eine Nachreichung einer Anlagen-Liste ist nicht erforderlich.');
+  }
+  draw('(3) Spätere Aufnahmen weiterer Aufzugsanlagen erfolgen durch schriftliche Ergänzung von Anlage A; gestrichene Anlagen werden in Anlage A entsprechend gekennzeichnet.');
 
   // ── §2 Leistungsumfang
   head('§ 2 Leistungsumfang Liftaro');
@@ -14456,23 +14475,26 @@ async function buildLightVertragPDF() {
 
   // ── §3 Mitwirkung
   head('§ 3 Mitwirkungspflichten der Verwaltung');
-  const mindest = d.mindestabnahme_aufzuege || 10;
-  draw('(1) Die Verwaltung verpflichtet sich, mindestens ' + mindest + ' Aufzugsanlagen über die gesamte Vertragslaufzeit in die Betreuung von Liftaro zu geben. Wird diese Mindestabnahme dauerhaft unterschritten, sind beide Parteien berechtigt, den Vertrag mit einer Frist von einem Monat zum Monatsende zu kündigen.');
-  draw('(2) Die Verwaltung holt für jede in die Betreuung aufgenommene WEG eine Vollmacht ein (siehe Anlage "Vollmacht WEG"), mit der die WEG Liftaro zur Vertretung in Vertrags- und Rechnungsangelegenheiten gegenüber Wartungsdienstleistern bevollmächtigt. Liftaro stellt das Vollmachtsformular zur Verfügung.');
-  draw('(3) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern.');
-  draw('(4) Die Verwaltung benennt je WEG einen Ansprechpartner (in der Regel Verwaltungsbeirat) und teilt Liftaro die Rechnungsanschrift der WEG mit.');
+  draw('(1) Die Verwaltung holt für jede in Anlage A erfasste WEG eine Vollmacht ein (siehe Anlage B "Vollmacht WEG"), mit der die WEG Liftaro zur Vertretung in Vertrags- und Rechnungsangelegenheiten gegenüber Wartungs- und Notrufdienstleistern bevollmächtigt. Liftaro stellt das Vollmachtsformular zur Verfügung.');
+  draw('(2) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern.');
+  draw('(3) Die Verwaltung benennt je WEG einen Ansprechpartner (in der Regel Verwaltungsbeirat) und teilt Liftaro die Rechnungsanschrift der WEG mit.');
+  draw('(4) Die Verwaltung wirkt an der nachvollziehbaren Dokumentation der Ausgangskosten (Status quo) je Aufzugsanlage mit, damit Einsparungen gemäß § 4 sauber berechnet werden können.');
 
-  // ── §4 Vergütung
+  // ── §4 Vergütung — Komplett kostenfrei + Erfolgsbeteiligung (dynamisch)
   head('§ 4 Vergütung');
-  const preis = Number(d.monatspreis_je_aufzug_eur || 45);
-  const jahr  = preis * 12;
   const fmt = (n) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  draw('(1) Light-Pauschale: Liftaro berechnet ' + fmt(preis) + ' EUR netto pro Aufzug und Monat. Die Vergütung wird jährlich im Voraus für jeweils 12 Monate pro WEG abgerechnet — Jahrespauschale: ' + fmt(jahr) + ' EUR netto je Aufzug.');
-  draw('(2) Mindestabnahme: ' + mindest + ' Aufzüge gemäß § 3 Abs. 1.');
-  draw('(3) Rechnungsstellung erfolgt einzeln pro WEG an die jeweilige WEG-Adresse, die die Verwaltung Liftaro mitteilt. Zahlungsziel: 14 Tage nach Rechnungsdatum, ohne Abzug.');
-  draw('(4) Bei Beauftragung mitten im Vertragsjahr wird die Pauschale taggenau anteilig berechnet.');
-  draw('(5) Keine Erfolgsbeteiligung: Liftaro erhält im Rahmen dieser Vereinbarung keinen Anteil an erzielten Einsparungen. Identifizierte Einsparungen kommen vollständig der jeweiligen WEG zugute.');
-  draw('(6) Sonderleistungen (Reisekosten, Sondergutachten, Modernisierungs-Begleitung über reguläre Empfehlung hinaus) werden vorab gesondert angeboten und nur nach schriftlicher Beauftragung berechnet.');
+  const erfPct   = Number(d.erfolgsbeteiligung_pct ?? LIGHT_DEFAULTS.erfolg_pct);
+  const erfJahre = Number(d.erfolgsbeteiligung_dauer_jahre ?? LIGHT_DEFAULTS.erfolg_jahre);
+  const erfPctStr = (Number.isInteger(erfPct) ? String(erfPct) : erfPct.toLocaleString('de-DE')) + ' %';
+  const jahreWort = ['ein','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn'][erfJahre - 1] || String(erfJahre);
+  draw('(1) Kostenfreiheit für die Verwaltung und die WEG: Liftaro berechnet für die in § 2 beschriebenen Leistungen weder eine Pauschale noch eine Grund- oder Bereitstellungsgebühr. Es gibt keine Mindestabnahme und keine Aufnahmegebühr je Aufzugsanlage.', { font: helvBold });
+  draw('(2) Erfolgsbeteiligung: Liftaro erhält ausschließlich ' + erfPctStr + ' der nachweisbaren Netto-Jahres-Einsparung pro WEG, die sich durch eine von Liftaro vermittelte oder verhandelte Optimierung der Wartungs- und/oder Notrufverträge ergibt.');
+  draw('(3) Berechnungsgrundlage: Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in Anlage A (Status quo) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet. Einmalige Boni oder Sondervorteile bei Vertragswechsel bleiben unberücksichtigt.');
+  draw('(4) Abrechnung der Erfolgsbeteiligung: pro WEG, jährlich nachträglich nach Ablauf des jeweiligen Vertragsjahres mit dem optimierten Dienstleister. Die Erfolgsbeteiligung wird für maximal ' + jahreWort + ' (' + erfJahre + ') volle Vertragsjahre ab dem ersten optimierten Vertragsjahr berechnet; danach verbleibt die volle Einsparung dauerhaft bei der WEG.');
+  draw('(5) Rechnungsbeanstandungen: Identifiziert Liftaro im Rahmen der Rechnungsprüfung (§ 2.2) berechtigt beanstandungsfähige Positionen, die zu einer einmaligen Erstattung oder Gutschrift durch den Dienstleister führen, erhält Liftaro ' + erfPctStr + ' des nachweislich erstatteten Netto-Betrags — abgerechnet nach Eingang der Gutschrift bei der WEG.');
+  draw('(6) Rechnungsstellung erfolgt einzeln pro WEG an die jeweilige WEG-Adresse, die die Verwaltung Liftaro mitteilt. Zahlungsziel: 14 Tage nach Rechnungsdatum, ohne Abzug. Alle genannten Prozent- und Eurobeträge verstehen sich netto zzgl. der gesetzlichen Umsatzsteuer.');
+  draw('(7) Tritt im konkreten Fall keine Einsparung ein, entstehen für die Verwaltung und die WEG keinerlei Kosten. Liftaro trägt das wirtschaftliche Risiko der eigenen Tätigkeit.', { font: helvBold });
+  draw('(8) Sonderleistungen (Reisekosten zu Vor-Ort-Terminen, Sondergutachten, intensive Modernisierungs-Begleitung über reguläre Empfehlungen hinaus) werden vorab gesondert angeboten und nur nach schriftlicher Beauftragung berechnet.');
 
   // ── §5 Laufzeit
   head('§ 5 Vertragslaufzeit und Kündigung');
@@ -14481,7 +14503,7 @@ async function buildLightVertragPDF() {
   draw('(1) Die Vereinbarung beginnt mit Unterzeichnung. Mindestlaufzeit: ' + lf + ' Monate.');
   draw('(2) Sie verlängert sich automatisch um jeweils 12 weitere Monate, sofern sie nicht mit einer Frist von ' + kf + ' Monaten zum Vertragsjahresende schriftlich gekündigt wird.');
   draw('(3) Das Recht zur außerordentlichen Kündigung aus wichtigem Grund bleibt unberührt.');
-  draw('(4) Bei vorzeitiger Beendigung wird bereits gezahlte Jahrespauschale anteilig (taggenau) zurückerstattet, sofern die Beendigung von Liftaro zu vertreten ist.');
+  draw('(4) Bereits entstandene Ansprüche auf Erfolgsbeteiligung gemäß § 4 Abs. 2 bis 5 bleiben von einer Beendigung unberührt und werden noch bis zum Ablauf des laufenden Erfolgsbeteiligungs-Zeitraums (max. ' + erfJahre + ' Vertragsjahr' + (erfJahre === 1 ? '' : 'e') + ' je optimiertem Dienstleistervertrag) abgerechnet.');
 
   // ── §6 Haftung
   head('§ 6 Haftung');
@@ -14512,9 +14534,77 @@ async function buildLightVertragPDF() {
   page.drawText(_safeWinAnsi('Ort, Datum · für Liftaro GmbH'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
   page.drawText(_safeWinAnsi('Ort, Datum · für ' + (d.firma || 'die Verwaltung')), { x: PAGE_W - MARGIN_X - 200, y, size: 9, font: helv, color: MUTED });
 
-  // ── ANLAGE: Vollmacht-Muster (neue Seite)
+  // ── ANLAGE A: Erfasste Aufzugsanlagen (neue Seite)
   newPage();
-  title('Anlage: Vollmacht (Muster — pro WEG)');
+  title('Anlage A: Erfasste Aufzugsanlagen');
+  draw('Die folgenden WEGs/Objekte mit insgesamt ' + aufzSum + ' Aufzugsanlagen sind verbindlicher Bestandteil dieser Rahmenvereinbarung gemäß § 1 Abs. 2. Die dokumentierten jährlichen Wartungs- und Notrufkosten dienen als Status quo für die Berechnung der Erfolgsbeteiligung gemäß § 4 Abs. 3.', { color: MUTED, after: 10 });
+
+  if (wegCount === 0) {
+    draw('— Bisher wurden keine Aufzugsanlagen erfasst. Bitte ergänzen Sie die Liste vor Vertragsunterzeichnung. —', { color: MUTED, font: helvBold, after: 10 });
+  } else {
+    // Tabellen-Header
+    const colX     = { nr: MARGIN_X, weg: MARGIN_X + 22, anz: MARGIN_X + 280, dl: MARGIN_X + 320, kost: PAGE_W - MARGIN_X - 70 };
+    const rowH     = 14;
+    const headerH  = 18;
+    function drawTableHeader() {
+      ensure(headerH + 4);
+      page.drawRectangle({ x: MARGIN_X - 4, y: y - headerH + 4, width: PAGE_W - 2*MARGIN_X + 8, height: headerH, color: rgb(0.93,0.94,0.96) });
+      page.drawText('#',                   { x: colX.nr,   y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('WEG / Objekt',        { x: colX.weg,  y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('Aufz.',               { x: colX.anz,  y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('Aktueller Wartungs-Dienstl.', { x: colX.dl, y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('Kosten/Jahr',         { x: colX.kost, y: y - 11, size: 9, font: helvBold, color: COLOR });
+      y -= headerH + 2;
+    }
+    drawTableHeader();
+
+    wegs.forEach((w, idx) => {
+      const nr   = String(idx + 1) + '.';
+      const name = w.weg_name || w.id || '—';
+      const adr  = [w.weg_strasse, [w.weg_plz, w.weg_ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      const anz  = Number(w.anzahl_aufzuege) || 0;
+      const dl   = w.aktueller_dienstleister || '—';
+      const kost = Number(w.aktuelle_jahreskosten_eur) || 0;
+      // Row-Höhe: 2 Zeilen (Name + Adresse-Zeile)
+      ensure(rowH * 2 + 6);
+      // Zeile 1: Name + Anzahl + Dienstleister + Kosten
+      const dlShort = dl.length > 26 ? dl.slice(0, 24) + '…' : dl;
+      page.drawText(_safeWinAnsi(nr),                  { x: colX.nr,   y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+      page.drawText(_safeWinAnsi(name.length > 42 ? name.slice(0, 40) + '…' : name),
+                                                       { x: colX.weg,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+      page.drawText(String(anz),                       { x: colX.anz,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+      page.drawText(_safeWinAnsi(dlShort),             { x: colX.dl,   y: y - 10, size: 9,   font: helv,     color: COLOR });
+      const kostStr = kost > 0 ? fmt(kost) + ' EUR' : '—';
+      const kostW   = helv.widthOfTextAtSize(kostStr, 9);
+      page.drawText(_safeWinAnsi(kostStr),             { x: PAGE_W - MARGIN_X - kostW, y: y - 10, size: 9, font: helv, color: COLOR });
+      y -= rowH;
+      // Zeile 2: Adresse (kursiv-Effekt via MUTED)
+      if (adr) {
+        page.drawText(_safeWinAnsi(adr.length > 70 ? adr.slice(0, 68) + '…' : adr),
+                                                       { x: colX.weg,  y: y - 10, size: 8.5, font: helv, color: MUTED });
+      }
+      y -= rowH;
+      // Trennlinie
+      page.drawLine({ start: { x: MARGIN_X - 4, y }, end: { x: PAGE_W - MARGIN_X + 4, y }, thickness: 0.3, color: rgb(0.85,0.87,0.91) });
+      y -= 4;
+    });
+
+    // Summenzeile
+    ensure(rowH + 6);
+    page.drawRectangle({ x: MARGIN_X - 4, y: y - rowH + 2, width: PAGE_W - 2*MARGIN_X + 8, height: rowH, color: rgb(0.93,0.94,0.96) });
+    page.drawText('Summe',                              { x: colX.weg,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+    page.drawText(String(aufzSum),                       { x: colX.anz,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+    const sumStr = fmt(kostenAltSum) + ' EUR';
+    const sumW   = helvBold.widthOfTextAtSize(sumStr, 9.5);
+    page.drawText(_safeWinAnsi(sumStr),                 { x: PAGE_W - MARGIN_X - sumW, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+    y -= rowH + 8;
+
+    draw('Erläuterung: Die Spalte "Kosten/Jahr" entspricht den dokumentierten Netto-Jahres-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme. Dieser Wert dient als Berechnungsgrundlage (Status quo) für die Erfolgsbeteiligung gemäß § 4.', { color: MUTED, size: 8.5, after: 4 });
+  }
+
+  // ── ANLAGE B: Vollmacht-Muster (neue Seite)
+  newPage();
+  title('Anlage B: Vollmacht (Muster — pro WEG)');
   draw('Diese Vollmacht wird von der jeweiligen WEG (vertreten durch den Verwaltungsbeirat oder die Hausverwaltung) ausgestellt und gilt für sämtliche Aufzugsanlagen am bezeichneten Objekt.', { color: MUTED, after: 12 });
 
   head('Vollmachtgeber');
@@ -15596,7 +15686,12 @@ function openVertragByIndex(i) {
 //  Tabelle 'Light-Vertraege' (HV-Level) + 'Light-WEGs' (Objekt-Level)
 // ════════════════════════════════════════════════════════════════════
 const LIGHT_DEFAULTS = {
-  monatspreis: 45, mindest: 10, laufzeit: 12, kuendigung: 3, haftung: 50000, gerichtsstand: 'Mainz',
+  // V12.63: kostenfreies EuC-Modell — Pauschale/Mindestabnahme entfallen,
+  //         Vergütung erfolgt ausschließlich erfolgsbasiert.
+  erfolg_pct: 25, erfolg_jahre: 3,
+  laufzeit: 12, kuendigung: 3, haftung: 50000, gerichtsstand: 'Mainz',
+  // Legacy-Felder (für Backwards-Compat beim Lesen alter Datensätze)
+  monatspreis: 0, mindest: 0,
 };
 
 async function generateLightVertragId() {
@@ -15642,12 +15737,12 @@ async function loadLightVertraege() {
     console.warn('loadLightVertraege error:', e.message);
     if (/NOT_FOUND|TABLE_NOT_FOUND/i.test(e.message || '')) {
       showToast('Airtable-Tabelle „Light-Vertraege" noch nicht angelegt. Setup-Anleitung im Browser-Konsolen-Log.', 'error', 6000);
-      console.warn('[Light-Verträge] Bitte folgende Tabellen in Airtable anlegen:\n' +
+      console.warn('[EuC-Verträge] Bitte folgende Tabellen in Airtable anlegen:\n' +
         '  1. Light-Vertraege: id, firma, gf, strasse, plz, ort, tel, email, vertragsbeginn,\n' +
-        '     monatspreis_je_aufzug_eur, mindestabnahme_aufzuege, mindestlaufzeit_monate,\n' +
-        '     kuendigungsfrist_monate, haftungsgrenze_eur, gerichtsstand, status (entwurf/aktiv/gekuendigt),\n' +
-        '     verknuepfter_rahmenvertrag_id, vertrag_pdf, vertrag_signed_pdf, kommentar,\n' +
-        '     savedAt, createdBy\n' +
+        '     erfolgsbeteiligung_pct, erfolgsbeteiligung_dauer_jahre,\n' +
+        '     mindestlaufzeit_monate, kuendigungsfrist_monate, haftungsgrenze_eur, gerichtsstand,\n' +
+        '     status (entwurf/aktiv/gekuendigt), verknuepfter_rahmenvertrag_id,\n' +
+        '     vertrag_pdf, vertrag_signed_pdf, kommentar, savedAt, createdBy\n' +
         '  2. Light-WEGs: id, light_vertrag_id, weg_name, weg_strasse, weg_plz, weg_ort,\n' +
         '     ansprechpartner_name, ansprechpartner_funktion (beirat/verwaltung/eigentuemer/andere),\n' +
         '     weg_email, weg_telefon, anzahl_aufzuege, aktueller_dienstleister,\n' +
@@ -15728,13 +15823,11 @@ function renderLightVertraegeList(items, query) {
     const adr = [v.strasse, [v.plz, v.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
     const wegs = (v.id && wegMap[v.id]) || [];
     const aufzuegeSum = wegs.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
-    const preis = Number(v.monatspreis_je_aufzug_eur || LIGHT_DEFAULTS.monatspreis);
-    const jahrSum = aufzuegeSum * preis * 12;
-    const mindest = Number(v.mindestabnahme_aufzuege || LIGHT_DEFAULTS.mindest);
+    const kostenAltSum = wegs.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
+    const erfolgPct = Number(v.erfolgsbeteiligung_pct ?? LIGHT_DEFAULTS.erfolg_pct);
     const status = String(v.status || 'entwurf').toLowerCase();
     const statusColor = status === 'aktiv' ? '#3d7a14' : status === 'gekuendigt' ? '#a8312f' : '#888';
     const statusLabel = status === 'aktiv' ? 'Aktiv' : status === 'gekuendigt' ? 'Gekündigt' : 'Entwurf';
-    const aufzWarn = aufzuegeSum < mindest;
     const date = v.savedAt ? new Date(v.savedAt) : null;
     return '<div style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;cursor:pointer" onclick="openLightVertragByIndex(' + i + ')">'
       + '<div style="flex:1">'
@@ -15745,8 +15838,9 @@ function renderLightVertraegeList(items, query) {
         + '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (adr || '–') + (v.gf ? ' · ' + v.gf : '') + '</div>'
         + '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px">'
           + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px"><strong>${wegs.length}</strong> WEG${wegs.length === 1 ? '' : 's'}</span>`
-          + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px"><strong>${aufzuegeSum}</strong> Aufzüge${aufzWarn ? ` <span style="color:#a8312f">⚠ min. ${mindest}</span>` : ''}</span>`
-          + `<span style="background:#2d5f96;color:#fff;border-radius:5px;padding:2px 8px;font-weight:600">€ ${jahrSum.toLocaleString('de-DE')}/Jahr</span>`
+          + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px"><strong>${aufzuegeSum}</strong> Aufzüge</span>`
+          + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px" title="Status quo: dokumentierte Jahreskosten alt — Basis für Erfolgsbeteiligung">Status quo: <strong>€ ${kostenAltSum.toLocaleString('de-DE')}</strong>/Jahr</span>`
+          + `<span style="background:#7c3aed;color:#fff;border-radius:5px;padding:2px 8px;font-weight:600" title="Erfolgsbeteiligung % auf nachweisbare Einsparung">🎯 ${erfolgPct}% Erfolg</span>`
         + '</div>'
       + '</div>'
       + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'
@@ -15796,8 +15890,8 @@ function closeLightVertragEditor() {
 function clearLightVertragForm() {
   ['lv_recordId','lv_id','lv_firma','lv_gf','lv_strasse','lv_plz','lv_ort','lv_tel','lv_email',
    'lv_ustidnr','lv_steuernr','lv_beginn','lv_link_v','lv_kommentar'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  document.getElementById('lv_preis').value = LIGHT_DEFAULTS.monatspreis;
-  document.getElementById('lv_mindest').value = LIGHT_DEFAULTS.mindest;
+  document.getElementById('lv_erfolg_pct').value = LIGHT_DEFAULTS.erfolg_pct;
+  document.getElementById('lv_erfolg_jahre').value = LIGHT_DEFAULTS.erfolg_jahre;
   document.getElementById('lv_laufzeit').value = LIGHT_DEFAULTS.laufzeit;
   document.getElementById('lv_kuendigung').value = LIGHT_DEFAULTS.kuendigung;
   document.getElementById('lv_haftung').value = LIGHT_DEFAULTS.haftung;
@@ -15821,8 +15915,8 @@ function setLightVertragForm(d) {
   set('lv_ustidnr', d.ustidnr);
   set('lv_steuernr', d.steuernr);
   set('lv_beginn', d.vertragsbeginn);
-  set('lv_preis', d.monatspreis_je_aufzug_eur || LIGHT_DEFAULTS.monatspreis);
-  set('lv_mindest', d.mindestabnahme_aufzuege || LIGHT_DEFAULTS.mindest);
+  set('lv_erfolg_pct', d.erfolgsbeteiligung_pct ?? LIGHT_DEFAULTS.erfolg_pct);
+  set('lv_erfolg_jahre', d.erfolgsbeteiligung_dauer_jahre ?? LIGHT_DEFAULTS.erfolg_jahre);
   set('lv_laufzeit', d.mindestlaufzeit_monate || LIGHT_DEFAULTS.laufzeit);
   set('lv_kuendigung', d.kuendigungsfrist_monate || LIGHT_DEFAULTS.kuendigung);
   set('lv_haftung', d.haftungsgrenze_eur || LIGHT_DEFAULTS.haftung);
@@ -15848,8 +15942,8 @@ function getLightVertragForm() {
     ustidnr: g('lv_ustidnr'),
     steuernr: g('lv_steuernr'),
     vertragsbeginn: g('lv_beginn'),
-    monatspreis_je_aufzug_eur: num('lv_preis') || LIGHT_DEFAULTS.monatspreis,
-    mindestabnahme_aufzuege: parseInt(g('lv_mindest'), 10) || LIGHT_DEFAULTS.mindest,
+    erfolgsbeteiligung_pct: num('lv_erfolg_pct') || LIGHT_DEFAULTS.erfolg_pct,
+    erfolgsbeteiligung_dauer_jahre: parseInt(g('lv_erfolg_jahre'), 10) || LIGHT_DEFAULTS.erfolg_jahre,
     mindestlaufzeit_monate: parseInt(g('lv_laufzeit'), 10) || LIGHT_DEFAULTS.laufzeit,
     kuendigungsfrist_monate: parseInt(g('lv_kuendigung'), 10) || LIGHT_DEFAULTS.kuendigung,
     haftungsgrenze_eur: parseInt(g('lv_haftung'), 10) || LIGHT_DEFAULTS.haftung,
@@ -15871,8 +15965,8 @@ async function saveLightVertrag() {
     tel: d.tel, email: d.email,
     ustidnr: d.ustidnr, steuernr: d.steuernr,
     vertragsbeginn: d.vertragsbeginn,
-    monatspreis_je_aufzug_eur: d.monatspreis_je_aufzug_eur,
-    mindestabnahme_aufzuege: d.mindestabnahme_aufzuege,
+    erfolgsbeteiligung_pct: d.erfolgsbeteiligung_pct,
+    erfolgsbeteiligung_dauer_jahre: d.erfolgsbeteiligung_dauer_jahre,
     mindestlaufzeit_monate: d.mindestlaufzeit_monate,
     kuendigungsfrist_monate: d.kuendigungsfrist_monate,
     haftungsgrenze_eur: d.haftungsgrenze_eur,
@@ -15931,36 +16025,34 @@ async function renderLightWegsInEditor(lightVertragId) {
   window._currentLightWegs = wegs;
   if (!wegs.length) {
     listEl.innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Noch keine WEGs hinzugefügt. Klick „+ WEG" oben rechts.</p>';
-    sumEl.textContent = '(0 WEGs · 0 Aufzüge · 0 €/Jahr)';
+    sumEl.textContent = '(0 WEGs · 0 Aufzüge · Status quo: 0 €/Jahr)';
     return;
   }
-  const preis = parseFloat(document.getElementById('lv_preis').value) || LIGHT_DEFAULTS.monatspreis;
+  const erfolgPct = parseFloat(document.getElementById('lv_erfolg_pct')?.value) || LIGHT_DEFAULTS.erfolg_pct;
   let aufzSum = 0;
+  let kostenAltSum = 0;
   listEl.innerHTML = wegs.map((w, idx) => {
     const an = Number(w.anzahl_aufzuege) || 0;
+    const kostAlt = Number(w.aktuelle_jahreskosten_eur) || 0;
     aufzSum += an;
-    const jahr = an * preis * 12;
+    kostenAltSum += kostAlt;
     const adr = [w.weg_strasse, [w.weg_plz, w.weg_ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
     const apFunktion = { beirat: 'Beirat', verwaltung: 'Verwaltung', eigentuemer: 'Eigentümer', andere: 'Andere' }[w.ansprechpartner_funktion] || '–';
     const status = String(w.status || 'aktiv').toLowerCase();
     const statusColor = status === 'aktiv' ? '#3d7a14' : '#a8312f';
+    const kostAltStr = kostAlt > 0 ? '€ ' + kostAlt.toLocaleString('de-DE') + '/J. (alt)' : '<span style="color:#a8312f">⚠ kein Status quo</span>';
     return '<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:10px" onclick="openLightWegByIndex(' + idx + ')">'
       + '<div style="flex:1">'
         + `<div style="font-weight:600;font-size:12.5px;color:var(--navy)">${w.weg_name || w.id || 'WEG'}<span style="font-weight:400;color:var(--muted);font-size:10.5px;margin-left:6px;font-family:'DM Mono',monospace">${w.id || ''}</span></div>`
         + `<div style="font-size:11px;color:var(--muted);margin-top:1px">${adr || '–'} · ${w.ansprechpartner_name || '–'} (${apFunktion})</div>`
       + '</div>'
       + `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11px">`
-        + `<span><strong>${an}</strong> Aufz. · <strong>€ ${jahr.toLocaleString('de-DE')}</strong>/Jahr</span>`
+        + `<span><strong>${an}</strong> Aufz. · ${kostAltStr}</span>`
         + `<span style="background:${statusColor};color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:8px;text-transform:uppercase">${status}</span>`
       + `</div>`
       + '</div>';
   }).join('');
-  const jahrSum = aufzSum * preis * 12;
-  sumEl.textContent = `(${wegs.length} WEG${wegs.length === 1 ? '' : 's'} · ${aufzSum} Aufzüge · ${jahrSum.toLocaleString('de-DE')} €/Jahr)`;
-  const mindest = parseInt(document.getElementById('lv_mindest').value, 10) || LIGHT_DEFAULTS.mindest;
-  if (aufzSum < mindest) {
-    sumEl.innerHTML += ` <span style="color:#a8312f;font-weight:600">⚠ unter Mindest-${mindest}</span>`;
-  }
+  sumEl.textContent = `(${wegs.length} WEG${wegs.length === 1 ? '' : 's'} · ${aufzSum} Aufzüge · Status quo: ${kostenAltSum.toLocaleString('de-DE')} €/Jahr · ${erfolgPct}% Erfolgsbasis)`;
 }
 
 function openLightWegByIndex(i) {
@@ -16019,10 +16111,11 @@ function setLightWegForm(d) {
 }
 
 function _updateLwPreview() {
-  const anz = parseInt(document.getElementById('lw_anzahl').value, 10) || 0;
-  const preis = parseFloat(document.getElementById('lv_preis')?.value) || LIGHT_DEFAULTS.monatspreis;
-  const jahr = anz * preis * 12;
-  document.getElementById('lw_jahressumme').textContent = jahr.toLocaleString('de-DE') + ' €';
+  const kostAlt = parseFloat(document.getElementById('lw_jahres_alt')?.value) || 0;
+  const erfolgPct = parseFloat(document.getElementById('lv_erfolg_pct')?.value) || LIGHT_DEFAULTS.erfolg_pct;
+  document.getElementById('lw_jahressumme').textContent = kostAlt.toLocaleString('de-DE') + ' €';
+  const pctEl = document.getElementById('lw_erfolg_pct_preview');
+  if (pctEl) pctEl.textContent = erfolgPct;
 }
 
 async function saveLightWeg() {
@@ -17447,13 +17540,15 @@ function renderDashboard() {
   const lightAktiv = lightAll.filter(l => (l.status || 'entwurf') === 'aktiv').length;
   const lightEntwurf = lightAll.filter(l => (l.status || 'entwurf') === 'entwurf').length;
   const lightAufzSum = lightWegsAll.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
-  // Jahresumme: pro Light-Vertrag = anzahl_aufzuege aller WEGs × monatspreis × 12
-  const lightJahrSum = lightAll.reduce((s, l) => {
-    const preis = Number(l.monatspreis_je_aufzug_eur) || 45;
-    const wegs = lightWegsAll.filter(w => w.light_vertrag_id === l.id);
-    const auf = wegs.reduce((a, w) => a + (Number(w.anzahl_aufzuege) || 0), 0);
-    return s + (auf * preis * 12);
-  }, 0);
+  // V12.63: Erfolgsbasis statt Pauschalen-Jahresvolumen.
+  // Status-quo-Volumen = Summe der dokumentierten Jahreskosten (alt) aller WEGs.
+  // Daraus berechnen wir das geschätzte Liftaro-Potenzial (typ. 30 % Ersparnis × Erfolgsbeteiligungs-%).
+  const lightJahrSum = lightWegsAll.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
+  // Erwartete Liftaro-Vergütung (Heuristik): 30 % Ersparnis-Quote × Ø-Erfolgsbeteiligung pro Vertrag.
+  const lightErfolgPctAvg = lightAll.length
+    ? (lightAll.reduce((a, l) => a + (Number(l.erfolgsbeteiligung_pct) || LIGHT_DEFAULTS.erfolg_pct), 0) / lightAll.length)
+    : LIGHT_DEFAULTS.erfolg_pct;
+  const lightPotenzialLiftaro = Math.round(lightJahrSum * 0.30 * (lightErfolgPctAvg / 100));
 
   // V12.7+V12.8+V12.9: Posteingang-Block (Top-Section)
   // V12.9: 4 Postfächer entlang des Workflows — mutually exclusive. Jede Email
@@ -17558,7 +17653,7 @@ function renderDashboard() {
         ${kachel('Rahmenverträge', vertraege.length, '#2d5f96', `${signedCount} unterschrieben · ${openCount} offen`)}
         ${kachel('EuC-Vereinbarungen', lightAll.length, '#7c3aed', `${lightAktiv} aktiv · ${lightEntwurf} Entwurf`)}
         ${kachel('EuC: Anlagen', String(lightAufzSum), '#5b21b6', `${lightWegsAll.length} WEG${lightWegsAll.length===1?'':'s'} betreut`)}
-        ${kachel('EuC: Jahresvolumen', _fmtEuro(lightJahrSum), '#0e6655', 'Pauschalen-Anteil pro Jahr')}
+        ${kachel('EuC: Status-quo-Volumen', _fmtEuro(lightJahrSum), '#0e6655', `Erfolgsbasis (alt) · ⌀ ${Math.round(lightErfolgPctAvg)}% Beteiligung`)}
         ${aktiveVertraege.length ? kachel('Aktive Wartungs-Verträge', aktiveVertraege.length, '#0e6655', `${billingBuckets.overdue.length} überfällig · ${billingBuckets.due14.length} in 14 Tagen`) : ''}
       </div>
     </div>`;
