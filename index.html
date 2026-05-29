@@ -2464,15 +2464,27 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <input type="text" id="f_anfrageNr" placeholder="Anfragenummer" oninput="updateEmail()" style="background:#fff;border:1.5px solid rgba(255,255,255,.3);color:#1a3a5c;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;outline:none;text-align:right;min-width:160px;margin-top:4px">
               </div>
             </div>
+            <!-- V12.70: Hidden field für Pipedrive-Org-ID der HV (gesetzt durch HV-Picker) -->
+            <input type="hidden" id="f_hv_pipedrive_org_id">
             <div class="field-row r4">
               <div class="field"><label>Datum</label><input type="date" id="f_datum"></div>
-              <div class="field"><label>Fabriknummer</label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug"></div>
+              <div class="field"><label style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                <span>Fabriknummer</span>
+                <button type="button" onclick="openAufzugPickerForCurrentCheck()" title="Aufzug aus Stammdaten wählen / neu anlegen" style="background:#1e40af;border:none;color:#fff;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
+                  Aufzug
+                </button>
+              </label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug"></div>
             </div>
             <div class="field-row" style="grid-template-columns:1fr">
               <div class="field"><label>Standort</label><input type="text" id="f_standort" placeholder="Adresse / Objekt"></div>
             </div>
             <div class="field-row r5">
-              <div class="field"><label>Firmenname</label><input type="text" id="f_firma" placeholder="Betreiber GmbH"></div>
+              <div class="field" style="position:relative"><label style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                <span>Firmenname <span style="font-weight:400;color:var(--muted);font-size:10.5px">· HV-Suche aktiv</span></span>
+              </label><input type="text" id="f_firma" placeholder="Tippe Name → Pipedrive-Vorschläge" autocomplete="off" oninput="_hvPickerSearch('f')">
+              <div id="f_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
+              </div>
               <div class="field"><label>Name (Betreiber)</label><input type="text" id="f_name" placeholder="Vor- und Nachname"></div>
               <div class="field"><label>Tel. (Betreiber)</label><input type="tel" id="f_tel" placeholder="+49 …"></div>
               <div class="field"><label style="white-space:nowrap">Ansprechperson Liftaro</label>
@@ -5582,7 +5594,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.69';
+const APP_VERSION = 'V12.70';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6653,6 +6665,9 @@ function resetForm() {
   // V12.68 EuC-I: Aufzug-Kontext und -Banner leeren
   window._currentCheckAufzug = null;
   window._currentCheckPipedriveOrgId = '';
+  // V12.70: Hidden-HV-Org-ID-Feld leeren
+  const _orgIdEl = document.getElementById('f_hv_pipedrive_org_id');
+  if (_orgIdEl) _orgIdEl.value = '';
   if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
 
   // Clear all inputs
@@ -6813,6 +6828,8 @@ function collectFormData() {
     aufzug_hv_org_id:    _az.hv_pipedrive_org_id || '',
     aufzug_im_euc:       _az.im_euc || '',
     aufzug_euc_vertrag_id: _az.euc_vertrag_id || '',
+    // V12.70: HV-Pipedrive-Verknüpfung (Hidden-Feld vom HV-Picker, oder Aufzug-Org-ID)
+    pipedrive_org_id:    g('f_hv_pipedrive_org_id') || _az.hv_pipedrive_org_id || (window._currentCheckPipedriveOrgId || ''),
     name:        g('f_name'),
     tel:         g('f_tel'),
     ap:          g('f_ap'),
@@ -7947,6 +7964,9 @@ async function loadCheck(data) {
   window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
   // V12.68 EuC-I: Aufzug-Kontext aus formData wiederherstellen
   window._currentCheckPipedriveOrgId = data?.pipedrive_org_id || data?.aufzug_hv_org_id || '';
+  // V12.70: Hidden-Feld für HV-Org-ID synchron halten
+  const _orgIdField = document.getElementById('f_hv_pipedrive_org_id');
+  if (_orgIdField) _orgIdField.value = window._currentCheckPipedriveOrgId || '';
   if (data?.aufzug_id) {
     window._currentCheckAufzug = {
       id: data.aufzug_id || '',
@@ -13386,7 +13406,20 @@ async function _pickHvForEditor(idx, editor) {
   const hit = _hvPickerResults[idx];
   if (!hit) return;
   document.getElementById(editor + '_firma_sug').style.display = 'none';
-  // Volle Details holen + alle Felder befüllen
+  // V12.70: Check-Form (editor='f') hat f_tel/f_email = Betreiber-Daten (NICHT HV)
+  // → bei editor='f' nur Firma + Hidden-OrgID setzen, restliche Pipedrive-Felder weglassen.
+  if (editor === 'f') {
+    document.getElementById('f_firma').value = hit.name || '';
+    const orgIdEl = document.getElementById('f_hv_pipedrive_org_id');
+    if (orgIdEl) orgIdEl.value = hit.org_id || '';
+    // Auch globalen Cache aktualisieren für späteres Auto-Match
+    window._currentCheckPipedriveOrgId = hit.org_id || '';
+    showToast('✓ HV „' + (hit.name || '') + '" aus Pipedrive verknüpft', 'ok', 2800);
+    // updateEmail etc. neu triggern
+    if (typeof updateEmail === 'function') updateEmail();
+    return;
+  }
+  // Volle Details holen + alle Felder befüllen (Vertrag/Light-Editor)
   const details = await _fetchOrgDetails(hit.org_id);
   if (!details) { showToast('Details konnten nicht geladen werden', 'error'); return; }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || el.value; };
@@ -16776,11 +16809,16 @@ async function saveAufzug() {
     // Editor schließen, ohne Picker-Auto-Reopen (Flag ist ja schon weg)
     document.getElementById('aufzugEditorModal').style.display = 'none';
     if (returnTo === 'picker' && savedAufzug && savedAufzug.id) {
-      _applyAufzugToCheckForm(savedAufzug);
+      const isBindExisting = window._aufzugPickerMode === 'bind-existing';
+      window._aufzugPickerMode = null;
+      _applyAufzugToCheckForm(savedAufzug, { reset: !isBindExisting });
       // Badge im Hintergrund aktualisieren (nicht-blockierend)
       loadAufzuege().then(recs => _updateAufzuegeBadge((recs || []).length)).catch(() => {});
-      showCheckView();
-      showToast('✓ Check gestartet für ' + savedAufzug.id + (savedAufzug.fabriknummer ? ' · Fabr.-Nr. ' + savedAufzug.fabriknummer : ''), 'ok', 3000);
+      if (!isBindExisting) showCheckView();
+      showToast(isBindExisting
+        ? ('✓ Aufzug ' + savedAufzug.id + ' an Check gebunden')
+        : ('✓ Check gestartet für ' + savedAufzug.id + (savedAufzug.fabriknummer ? ' · Fabr.-Nr. ' + savedAufzug.fabriknummer : '')),
+        'ok', 3000);
       return;
     }
     // Default: Aufzüge-Liste im Hintergrund neu laden
@@ -17065,6 +17103,8 @@ async function startNewCheckViaAufzug() {
 
 function closeAufzugPicker() {
   document.getElementById('aufzugPickerModal').style.display = 'none';
+  // V12.70: Picker-Mode aufräumen bei manuellem Abbruch
+  window._aufzugPickerMode = null;
 }
 
 function filterAufzugPicker() {
@@ -17114,17 +17154,28 @@ function renderAufzugPickerList(items, query) {
 async function pickAufzugForCheck(idx) {
   const a = (window._aufzugPickerCache || [])[idx];
   if (!a) return;
-  // Auf der Check-Seite Form vorbefüllen
-  _applyAufzugToCheckForm(a);
+  const mode = window._aufzugPickerMode;
+  window._aufzugPickerMode = null;
+  if (mode === 'bind-existing') {
+    // Bestehender Check — nur Aufzug binden, keine Form-Reset/Navigation
+    _applyAufzugToCheckForm(a, { reset: false });
+    closeAufzugPicker();
+    showToast('✓ Aufzug ' + (a.id || '') + ' an Check gebunden' + (a.fabriknummer ? ' · Fabr.-Nr. ' + a.fabriknummer : ''), 'ok', 3000);
+    return;
+  }
+  // Default: Neuer Check
+  _applyAufzugToCheckForm(a, { reset: true });
   closeAufzugPicker();
   showCheckView();
   showToast('✓ Check gestartet für ' + (a.id || 'Aufzug') + (a.fabriknummer ? ' · Fabr.-Nr. ' + a.fabriknummer : ''), 'ok', 3000);
 }
 
-function _applyAufzugToCheckForm(a) {
+function _applyAufzugToCheckForm(a, opts) {
+  opts = opts || {};
   if (!a) return;
-  // Form auf neuen Check vorbereiten (Liftaro-Defaults + Datum werden in resetForm gesetzt)
-  if (typeof resetForm === 'function') resetForm();
+  // V12.70: Default = reset (Neuer-Check-Flow). Für bestehende Checks reset=false setzen,
+  // damit Empfehlung/Status/Vergleichstabelle nicht überschrieben werden.
+  if (opts.reset !== false && typeof resetForm === 'function') resetForm();
   // Aufzug-Kontext speichern (wird beim Speichern persistiert)
   window._currentCheckAufzug = {
     id: a.id || '',
@@ -17137,25 +17188,57 @@ function _applyAufzugToCheckForm(a) {
     im_euc: a.im_euc || '',
     euc_vertrag_id: a.euc_vertrag_id || '',
   };
-  // pipedrive_org_id auch separat cachen für Auto-Match
+  // pipedrive_org_id auch separat cachen für Auto-Match + Save
   if (a.hv_pipedrive_org_id) window._currentCheckPipedriveOrgId = a.hv_pipedrive_org_id;
-  // Bekannte Formularfelder befüllen
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-  set('f_fabrik',   a.fabriknummer);
-  set('f_standort', a.standort);
-  set('f_firma',    a.hv_name);
+  // Sync in Hidden-Feld (für collectFormData → save)
+  const orgIdEl = document.getElementById('f_hv_pipedrive_org_id');
+  if (orgIdEl) orgIdEl.value = a.hv_pipedrive_org_id || '';
+  // Bekannte Formularfelder befüllen — bei reset=false (Aufzug-Wechsel im bestehenden Check)
+  // nur überschreiben wenn aktuell leer ODER der User sieht den Wechsel kommen
+  const set = (id, v, force) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (force || opts.reset !== false || !(el.value || '').trim()) el.value = v || '';
+  };
+  set('f_fabrik',   a.fabriknummer, true);
+  set('f_standort', a.standort, opts.reset !== false);
+  set('f_firma',    a.hv_name, opts.reset !== false);
   // Banner sofort rendern
   renderAufzugBanner();
 }
 
-// V12.68 EuC-I: Banner-Render — zeigt aktuell gebundenen Aufzug am Check-Header
+// V12.70: Aufzug-Picker für bestehenden Check öffnen — bindet nur den Aufzug,
+// reset der Form-Felder findet NICHT statt.
+async function openAufzugPickerForCurrentCheck() {
+  window._aufzugPickerMode = 'bind-existing';
+  // Bevorzugt mit aktueller HV-Org-ID filtern (TODO: Filter im Picker)
+  await startNewCheckViaAufzug();
+}
+
+// V12.68 EuC-I + V12.70: Banner-Render — zeigt aktuell gebundenen Aufzug am Check-Header,
+// oder Empty-State-CTA "Aufzug wählen" wenn keiner gebunden ist.
 function renderAufzugBanner() {
   const banner = document.getElementById('aufzugBanner');
   if (!banner) return;
   const a = window._currentCheckAufzug;
   if (!a || !a.id) {
-    banner.style.display = 'none';
-    banner.innerHTML = '';
+    // V12.70: Empty-State-CTA statt unsichtbar
+    banner.style.display = 'flex';
+    banner.style.background = '#fff7ed';
+    banner.style.border = '1.5px dashed #fb923c';
+    banner.style.color = '#9a3412';
+    banner.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'
+      + '<span style="font-size:18px">📌</span>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-weight:700;font-size:13px">Kein Aufzug verknüpft</div>'
+        + '<div style="font-size:11.5px;margin-top:1px;opacity:.85">Wähle einen Aufzug aus den Stammdaten oder lege einen neuen an — Fabriknummer, Standort und EuC-Status werden automatisch ergänzt.</div>'
+      + '</div>'
+      + '</div>'
+      + '<button onclick="openAufzugPickerForCurrentCheck()" style="background:#1e40af;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
+        + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>'
+        + 'Aufzug wählen'
+      + '</button>';
     return;
   }
   const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
