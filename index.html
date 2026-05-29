@@ -2468,13 +2468,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <input type="hidden" id="f_hv_pipedrive_org_id">
             <div class="field-row r4">
               <div class="field"><label>Datum</label><input type="date" id="f_datum"></div>
-              <div class="field"><label style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-                <span>Fabriknummer</span>
-                <button type="button" onclick="openAufzugPickerForCurrentCheck()" title="Aufzug aus Stammdaten wählen / neu anlegen" style="background:#1e40af;border:none;color:#fff;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">
-                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
-                  Aufzug
-                </button>
-              </label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug" oninput="if(typeof renderAufzugBanner==='function') renderAufzugBanner()"></div>
+              <div class="field"><label>Fabriknummer</label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug" oninput="if(typeof renderAufzugBanner==='function') renderAufzugBanner()"></div>
             </div>
             <div class="field-row" style="grid-template-columns:1fr">
               <div class="field"><label>Standort</label><input type="text" id="f_standort" placeholder="Adresse / Objekt"></div>
@@ -5594,7 +5588,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.71';
+const APP_VERSION = 'V12.72';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -17333,10 +17327,16 @@ function renderAufzugBanner() {
       + eucLine
     + '</div>'
     + '</div>'
-    + '<button onclick="openAufzugByCurrentCheck()" title="Aufzug-Datensatz öffnen" style="background:rgba(255,255,255,.6);border:1px solid ' + border + ';color:' + accent + ';border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
-      + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M21 14v7H3V3h7"/></svg>'
-      + 'Aufzug'
-    + '</button>';
+    + '<div style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">'
+      + '<button onclick="openAufzugByCurrentCheck()" title="Aufzug-Datensatz öffnen" style="background:rgba(255,255,255,.6);border:1px solid ' + border + ';color:' + accent + ';border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">'
+        + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M21 14v7H3V3h7"/></svg>'
+        + 'Aufzug'
+      + '</button>'
+      + '<button onclick="openAufzugPickerForCurrentCheck()" title="Anderen Aufzug wählen" style="background:transparent;border:1px solid ' + border + ';color:' + accent + ';border-radius:6px;padding:5px 9px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">'
+        + '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 14.85-6.85L21 8"/><polyline points="21 3 21 8 16 8"/><path d="M21 12a9 9 0 0 1-14.85 6.85L3 16"/><polyline points="3 21 3 16 8 16"/></svg>'
+        + 'Ändern'
+      + '</button>'
+    + '</div>';
 }
 
 // Öffnet den Aufzug-Editor für den aktuell am Check gebundenen Aufzug
