@@ -4552,6 +4552,16 @@ const pdfWorkerReady = Promise.resolve();</script>
           <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Ändert nur den Wortlaut von §3. Inhaltlich bleibt der Vertrag gleich.</div>
         </div>
       </div>
+      <!-- V12.64: EuC-Zusatzklausel (§5a) optional -->
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-top:6px;margin-bottom:6px">
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f5efff;border:1.5px solid #d6c4f0;border-radius:8px;cursor:pointer">
+          <input type="checkbox" id="v_euc_klausel" style="width:18px;height:18px;cursor:pointer;accent-color:#7c3aed;margin-top:1px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:#5b21b6">🛡 Equipment under Control · Zusatzklausel einschließen</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4">Fügt <strong>§ 5a</strong> in den Vertrag ein: optionale laufende EuC-Betreuung (kostenfrei für die WEG, 25 % Erfolgsbeteiligung auf Einsparung, max. 3 Jahre). Verbindlich erst mit separater EuC-Rahmenvereinbarung (L_xxxx).</div>
+          </div>
+        </label>
+      </div>
       <div id="v_uploadSection" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:none">
         <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Unterschriebener Vertrag</div>
         <div id="v_signedInfo" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
@@ -5369,7 +5379,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.63';
+const APP_VERSION = 'V12.64';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13859,6 +13869,7 @@ function getVertragData() {
     email:    g('v_email'),
     beginn:   g('v_beginn'),
     variante: g('v_variante') || 'standard',
+    euc_klausel: !!document.getElementById('v_euc_klausel')?.checked,
     anpassungen: window._currentVertragAnpassungen || {},
   };
 }
@@ -13876,6 +13887,9 @@ function setVertragForm(d) {
   set('v_email',    d.email);
   set('v_beginn',   d.beginn);
   set('v_variante', d.variante || 'standard');
+  // V12.64: EuC-Zusatzklausel (Checkbox)
+  const eucEl = document.getElementById('v_euc_klausel');
+  if (eucEl) eucEl.checked = !!d.euc_klausel;
   // KI-Anpassungen aus JSON-String laden
   try {
     if (typeof d.anpassungen === 'string' && d.anpassungen.trim()) {
@@ -13894,6 +13908,8 @@ function clearVertragForm() {
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   // Default-Variante zurück auf "standard"
   const va = document.getElementById('v_variante'); if (va) va.value = 'standard';
+  // V12.64: EuC-Klausel-Checkbox zurücksetzen
+  const ec = document.getElementById('v_euc_klausel'); if (ec) ec.checked = false;
   window._currentVertragAnpassungen = {};
   if (typeof refreshKiAnpassungenBadge === 'function') refreshKiAnpassungenBadge();
   _vertragPreviewBlob = null;
@@ -14089,6 +14105,20 @@ async function buildVertragPDF() {
 
   head('h5', '§5 Besondere Beratungsleistungen');
   txt('p5_1', 'Leistungen außerhalb des vereinbarten Umfangs werden nur nach vorheriger schriftlicher Beauftragung vergütet und vorab separat von Liftaro angeboten.');
+
+  // ═══════════════════════════════════════════════════════════════════
+  // §5a Equipment under Control — optional (V12.64)
+  // Wird nur eingefügt, wenn im Editor die Checkbox "EuC-Zusatzklausel" aktiv ist.
+  // Erhält Sub-Nummerierung "§ 5a" → keine Renumbering der nachfolgenden §§.
+  // ═══════════════════════════════════════════════════════════════════
+  if (d.euc_klausel) {
+    head('h5a', '§ 5a Equipment under Control (Zusatzklausel)');
+    txt('p5a_1', '(1) Die Parteien können — zusätzlich zu den vorstehenden Beratungsleistungen — die laufende administrative Betreuung der Aufzugsanlagen einer oder mehrerer vom Auftraggeber verwalteter Wohnungseigentümergemeinschaften (WEG) durch den Berater vereinbaren. Diese Leistung trägt den Namen „Equipment under Control" (EuC) und wird in einer separaten Rahmenvereinbarung („EuC-Rahmenvereinbarung", L_xxxx) zwischen dem Berater und dem Auftraggeber konkretisiert.');
+    txt('p5a_2', '(2) Leistungsumfang EuC: laufende Vertragsprüfung und Nachverhandlung mit Wartungs- und Notrufdienstleistern, Rechnungsprüfung, Begleitung bei Reparatur- und Modernisierungsangeboten, Erinnerung an Betreiberpflichten, halbjährliches Reporting je WEG. Die in EuC aufgenommenen Aufzugsanlagen sind in Anlage A der EuC-Rahmenvereinbarung abschließend benannt.');
+    txt('p5a_3', '(3) Vergütung EuC — vollständig erfolgsbasiert: Die Leistungen nach Abs. 2 sind für den Auftraggeber und die jeweilige WEG kostenfrei. Der Berater berechnet weder eine Pauschale noch eine Grund- oder Bereitstellungsgebühr. Als Vergütung erhält der Berater 25 % der nachweisbaren Netto-Jahres-Einsparung pro WEG, die sich durch eine vom Berater vermittelte oder verhandelte Optimierung der Wartungs- und/oder Notrufverträge ergibt — abgerechnet jährlich nachträglich für maximal drei (3) volle Vertragsjahre ab dem ersten optimierten Vertragsjahr. Tritt keine Einsparung ein, entstehen für den Auftraggeber und die WEG keinerlei Kosten.');
+    txt('p5a_4', '(4) Abgrenzung zur Erfolgsvergütung nach § 4 Abs. 2: Die EuC-Erfolgsbeteiligung (25 %) tritt nur für solche Maßnahmen ein, die im Rahmen der laufenden EuC-Betreuung der jeweiligen WEG erfolgen. Beratungsmaßnahmen außerhalb des EuC (z. B. einmalige Optimierungen ohne EuC-Mandat) werden unverändert nach § 4 Abs. 2 (50 %) vergütet. Eine Doppelvergütung derselben Einsparung ist ausgeschlossen.');
+    txt('p5a_5', '(5) Die EuC-Rahmenvereinbarung kann gleichzeitig mit diesem Beratervertrag oder zu einem späteren Zeitpunkt geschlossen werden. Diese Zusatzklausel hat informativen Charakter; verbindliche Vertragsbeziehungen aus EuC entstehen erst mit Unterzeichnung der separaten EuC-Rahmenvereinbarung durch beide Parteien.');
+  }
 
   head('h6', '§6 Haftung');
   txt('p6_1', '(1) Der Berater haftet ausschließlich für Schäden, die auf Vorsatz oder grobe Fahrlässigkeit zurückzuführen sind.');
@@ -15484,6 +15514,7 @@ async function saveVertrag() {
     firma: d.firma, gf: d.gf, strasse: d.strasse, plz: d.plz, ort: d.ort,
     tel: d.tel, email: d.email, beginn: d.beginn,
     variante: d.variante || 'standard',
+    euc_klausel: !!d.euc_klausel,
     anpassungen: JSON.stringify(d.anpassungen || {}),
   };
 
