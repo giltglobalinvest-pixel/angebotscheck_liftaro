@@ -5588,7 +5588,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.73';
+const APP_VERSION = 'V12.75';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7973,7 +7973,7 @@ async function loadCheck(data) {
       im_euc: data.aufzug_im_euc || '',
       euc_vertrag_id: data.aufzug_euc_vertrag_id || '',
     };
-    // Frische Daten (Hersteller, im_euc-Stand) im Hintergrund nachholen
+    // Frische Daten (Hersteller, im_euc-Stand, Standort) im Hintergrund nachholen
     setTimeout(async () => {
       try {
         const orgId = window._currentCheckAufzug?.hv_pipedrive_org_id || '';
@@ -7983,11 +7983,19 @@ async function loadCheck(data) {
           if (fresh) {
             window._currentCheckAufzug = {
               ...window._currentCheckAufzug,
+              fabriknummer: fresh.fabriknummer || fn,
+              standort: fresh.standort || window._currentCheckAufzug.standort || '',
+              hv_name: fresh.hv_name || window._currentCheckAufzug.hv_name || '',
               hersteller: fresh.hersteller || '',
               im_euc: fresh.im_euc || '',
               euc_vertrag_id: fresh.euc_vertrag_id || '',
               _recordId: fresh._recordId || window._currentCheckAufzug._recordId,
             };
+            // V12.75: Aufzug ist Source of Truth → Form-Felder mit frischen Daten überschreiben
+            const setFld = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+            setFld('f_fabrik',   window._currentCheckAufzug.fabriknummer);
+            setFld('f_standort', window._currentCheckAufzug.standort);
+            setFld('f_firma',    window._currentCheckAufzug.hv_name);
             renderAufzugBanner();
           }
         }
@@ -11387,6 +11395,8 @@ async function generatePDF() {
     document.getElementById('btnSyncWart'),
     document.getElementById('invoiceBtnRow'),
     document.getElementById('vorabcheckLinkBanner'),
+    // V12.74: Aufzug-Banner gehört nicht in die PDF (UI-Element für Stammdaten-Verknüpfung)
+    document.getElementById('aufzugBanner'),
     // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
     document.getElementById('vertragInvoiceHistory'),
     document.getElementById('lv_mode_switch_row_w'),
@@ -16716,6 +16726,10 @@ function closeAufzugEditor() {
     window._aufzugEditorReturnTo = null;
     window._aufzugPickerMode = null;
   }
+  // V12.75: "banner" → einfach zumachen, Aufzüge-Modul NICHT aufmachen
+  if (window._aufzugEditorReturnTo === 'banner') {
+    window._aufzugEditorReturnTo = null;
+  }
 }
 
 function clearAufzugForm() {
@@ -16823,6 +16837,17 @@ async function saveAufzug() {
         'ok', 3000);
       return;
     }
+    // V12.75: 'banner' — Aufzug-Edit aus dem gebundenen Banner. Nach Save direkt
+    // Check-Form mit den geänderten Daten synchronisieren, kein Aufzüge-Modul öffnen.
+    if (returnTo === 'banner' && savedAufzug && savedAufzug.id) {
+      _applyAufzugToCheckForm(savedAufzug, { reset: false });
+      loadAufzuege().then(recs => {
+        window._aufzuegeCache = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+        _updateAufzuegeBadge(window._aufzuegeCache.length);
+      }).catch(() => {});
+      showToast('✓ Aufzug ' + savedAufzug.id + ' aktualisiert', 'ok', 2500);
+      return;
+    }
     // Default: Aufzüge-Liste im Hintergrund neu laden
     openAufzuegeModal();
   } catch (e) {
@@ -16845,11 +16870,24 @@ async function deleteAufzugCurrent() {
     ? 'Dieser Aufzug ist aktuell in einer EuC-Vereinbarung. Wirklich löschen? (Die EuC-Vereinbarung bleibt bestehen, der Aufzug-Eintrag wird aus dem Stamm entfernt.)'
     : 'Aufzug ' + (azId || '') + ' wirklich löschen?';
   if (!confirm(warn)) return;
+  // V12.75: Falls dieser Aufzug am aktuellen Check gebunden ist → vor Delete unbinden
+  const wasBoundToCheck = window._currentCheckAufzug?.id === azId;
+  const returnTo = window._aufzugEditorReturnTo;
   try {
     await atDelete('Aufzuege', recId);
+    if (wasBoundToCheck) {
+      window._currentCheckAufzug = null;
+      if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
+    }
     showToast('Aufzug gelöscht', 'ok');
-    closeAufzugEditor();
-    openAufzuegeModal();
+    window._aufzugEditorReturnTo = null;
+    // V12.75: Nur Aufzüge-Modul reopen wenn NICHT aus dem Banner-Flow heraus
+    if (returnTo === 'banner') {
+      document.getElementById('aufzugEditorModal').style.display = 'none';
+    } else {
+      closeAufzugEditor();
+      openAufzuegeModal();
+    }
   } catch (e) { showToast('Löschen fehlgeschlagen: ' + e.message, 'error'); }
 }
 
@@ -17195,18 +17233,57 @@ function _applyAufzugToCheckForm(a, opts) {
   // Sync in Hidden-Feld (für collectFormData → save)
   const orgIdEl = document.getElementById('f_hv_pipedrive_org_id');
   if (orgIdEl) orgIdEl.value = a.hv_pipedrive_org_id || '';
-  // Bekannte Formularfelder befüllen — bei reset=false (Aufzug-Wechsel im bestehenden Check)
-  // nur überschreiben wenn aktuell leer ODER der User sieht den Wechsel kommen
-  const set = (id, v, force) => {
+  // V12.75: Aufzug ist die Source of Truth — Felder IMMER mit Aufzug-Daten überschreiben
+  // (auch bei Bind-Existing-Mode), danach lockern.
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('f_fabrik',   a.fabriknummer);
+  set('f_standort', a.standort);
+  set('f_firma',    a.hv_name);
+  // Banner + Lock-State sofort rendern
+  renderAufzugBanner();
+}
+
+// V12.75: Sperrt/entsperrt die vom Aufzug-Stamm verwalteten Felder im Check.
+// Wenn ein Aufzug gebunden ist → readonly + leicht graue Optik + Lock-Hinweis am Label.
+function _setCheckFieldsLockState(locked) {
+  const fieldIds = ['f_fabrik', 'f_standort', 'f_firma'];
+  fieldIds.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (force || opts.reset !== false || !(el.value || '').trim()) el.value = v || '';
-  };
-  set('f_fabrik',   a.fabriknummer, true);
-  set('f_standort', a.standort, opts.reset !== false);
-  set('f_firma',    a.hv_name, opts.reset !== false);
-  // Banner sofort rendern
-  renderAufzugBanner();
+    if (locked) {
+      el.setAttribute('readonly', 'readonly');
+      el.style.background = '#eef4fb';
+      el.style.color = '#475569';
+      el.style.cursor = 'not-allowed';
+      el.title = '🔒 Stammdaten aus dem Aufzug — Änderung nur im Aufzug-Editor (Banner-Button „Aufzug").';
+    } else {
+      el.removeAttribute('readonly');
+      el.style.background = '';
+      el.style.color = '';
+      el.style.cursor = '';
+      el.title = '';
+    }
+  });
+  // Wenn locked: HV-Picker-Dropdown schließen (sonst irreführend)
+  if (locked) {
+    const sug = document.getElementById('f_firma_sug');
+    if (sug) sug.style.display = 'none';
+  }
+  // Label-Hinweis am Firmenname-Feld aktualisieren
+  const firmaLabel = document.querySelector('label[for] span') || null;
+  // (kein for-Attribute auf den Labels — wir nutzen DOM-Position stattdessen)
+  const firmaInput = document.getElementById('f_firma');
+  if (firmaInput) {
+    const labelEl = firmaInput.closest('.field')?.querySelector('label > span');
+    if (labelEl) {
+      // V12.75: Label-Text dynamisch — "HV-Suche aktiv" wenn entsperrt, "🔒 vom Aufzug" wenn gelockt
+      if (locked) {
+        labelEl.innerHTML = 'Firmenname <span style="font-weight:400;color:#94a3b8;font-size:10.5px">· 🔒 vom Aufzug-Stamm</span>';
+      } else {
+        labelEl.innerHTML = 'Firmenname <span style="font-weight:400;color:var(--muted);font-size:10.5px">· HV-Suche aktiv</span>';
+      }
+    }
+  }
 }
 
 // V12.70: Aufzug-Picker für bestehenden Check öffnen — bindet nur den Aufzug,
@@ -17355,6 +17432,8 @@ function renderAufzugBanner() {
   const banner = document.getElementById('aufzugBanner');
   if (!banner) return;
   const a = window._currentCheckAufzug;
+  // V12.75: Felder-Lock-State je nach Aufzug-Bindung anpassen
+  _setCheckFieldsLockState(!!(a && a.id));
   if (!a || !a.id) {
     // V12.70: Empty-State-CTA statt unsichtbar
     // V12.71: zweite CTA "Aus Check anlegen" wenn Check-Form genug Daten hat
@@ -17464,10 +17543,13 @@ function renderAufzugBanner() {
     + '</div>';
 }
 
-// Öffnet den Aufzug-Editor für den aktuell am Check gebundenen Aufzug
+// Öffnet den Aufzug-Editor für den aktuell am Check gebundenen Aufzug.
+// V12.75: Routing-Flag 'banner' setzen → nach Save/Delete kein Aufzüge-Modul,
+// sondern direkt Form-Sync + Banner-Render.
 function openAufzugByCurrentCheck() {
   const a = window._currentCheckAufzug;
   if (!a || !a.id) return;
+  window._aufzugEditorReturnTo = 'banner';
   // Versuch über Cache, sonst Live-Lookup
   const cached = (window._aufzuegeCache || []).find(x => x.id === a.id);
   if (cached) openAufzugEditor(cached);
@@ -19514,6 +19596,8 @@ async function buildCheckCoverBlob() {
     document.getElementById('btnSyncWart'),
     document.getElementById('invoiceBtnRow'),
     document.getElementById('vorabcheckLinkBanner'),
+    // V12.74: Aufzug-Banner gehört nicht in die PDF (UI-Element für Stammdaten-Verknüpfung)
+    document.getElementById('aufzugBanner'),
     // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
     document.getElementById('vertragInvoiceHistory'),
     document.getElementById('lv_mode_switch_row_w'),
