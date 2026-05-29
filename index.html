@@ -2476,7 +2476,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <div class="field-row r5">
               <div class="field" style="position:relative"><label style="display:flex;align-items:center;justify-content:space-between;gap:6px">
                 <span>Firmenname <span style="font-weight:400;color:var(--muted);font-size:10.5px">· HV-Suche aktiv</span></span>
-              </label><input type="text" id="f_firma" placeholder="Tippe Name → Pipedrive-Vorschläge" autocomplete="off" oninput="_hvPickerSearch('f')">
+              </label><input type="text" id="f_firma" placeholder="Tippe Name → Pipedrive-Vorschläge" autocomplete="off" oninput="_hvPickerSearch('f');if(typeof renderAufzugBanner==='function')renderAufzugBanner()">
               <div id="f_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
               </div>
               <div class="field"><label>Name (Betreiber)</label><input type="text" id="f_name" placeholder="Vor- und Nachname"></div>
@@ -5588,7 +5588,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.72';
+const APP_VERSION = 'V12.73';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13488,9 +13488,9 @@ async function enrichHvFromWeb(editor) {
   }
 }
 
-// Dropdown bei Klick außerhalb schließen (für beide Editoren)
+// Dropdown bei Klick außerhalb schließen (für alle Editoren, V12.73: + Check-Form 'f_firma_sug' + Aufzug-Editor 'az_firma_sug')
 document.addEventListener('click', function(e) {
-  ['lv_firma_sug', 'v_firma_sug'].forEach(id => {
+  ['lv_firma_sug', 'v_firma_sug', 'f_firma_sug', 'az_firma_sug'].forEach(id => {
     const sug = document.getElementById(id);
     if (!sug || sug.style.display === 'none') return;
     const inputId = id.replace('_sug', '');
@@ -17256,6 +17256,99 @@ function createAufzugFromCheckInfos() {
   }, 60);
 }
 
+// V12.73: HV aus Check-Daten in Pipedrive anlegen — Schritt 1 vor Aufzug-Verknüpfung.
+// Nutzt den existierenden _eiAiConfirmDialog + enrich_property_manager + create_pm.
+async function createHvForCurrentCheck() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const name = g('f_firma');
+  if (!name || name.length < 3) {
+    showToast('Bitte erst den Firmennamen ins Feld „Firmenname" eintragen (min. 3 Zeichen).', 'error', 4000);
+    document.getElementById('f_firma')?.focus();
+    return;
+  }
+  if (!APP_KEYS.vorabcheckProxyUrl) {
+    showToast('Pipedrive-Proxy nicht konfiguriert (Vorabcheck-Hub → Setup).', 'error');
+    return;
+  }
+  // Aus Standort versuchen wir eine PLZ/Ort herauszuziehen (für die Web-Suche)
+  const standort = g('f_standort');
+  const cityHint = (function() {
+    if (!standort) return '';
+    // Sehr einfache Heuristik: 5-stellige PLZ + danach Wort
+    const m = standort.match(/\b(\d{5})\s+([A-Za-zÄÖÜäöüß\-\.\s]{2,40}?)(?:[\s,]|$)/);
+    if (m) return m[2].trim();
+    // Sonst: letztes komma-getrenntes Stück
+    const parts = standort.split(',').map(s => s.trim()).filter(Boolean);
+    return parts[parts.length - 1] || '';
+  })();
+
+  // 1. Web-Anreicherung
+  showToast('Suche im Web nach HV-Stammdaten …', 'info', 2500);
+  let webData = {};
+  try {
+    const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'enrich_property_manager', name, city: cityHint }),
+    });
+    const d = await r.json();
+    if (d.ok && d.data) webData = d.data;
+  } catch(e) { /* silent */ }
+
+  // 2. Daten für Bestätigungs-Dialog zusammenstellen
+  const merged = {
+    name:     name,
+    firma:    name,
+    gf:       '',
+    strasse:  webData.strasse || '',
+    plz:      webData.plz || '',
+    ort:      webData.ort || cityHint || '',
+    tel:      webData.telefon || '',
+    email:    webData.email || '',
+    website:  webData.website || '',
+  };
+
+  // 3. Dialog (nutzt vorhandenes _eiAiConfirmDialog — gleiches Pattern wie Email-Inbox-Flow)
+  if (typeof _eiAiConfirmDialog !== 'function') {
+    showToast('Bestätigungs-Dialog nicht verfügbar.', 'error');
+    return;
+  }
+  const confirmed = await _eiAiConfirmDialog(merged);
+  if (!confirmed) return;
+
+  // 4. Anlage in Pipedrive
+  showToast('Lege Pipedrive-Eintrag an …', 'info', 2500);
+  try {
+    const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:  'create_pm',
+        name:    confirmed.name,
+        email:   confirmed.email,
+        strasse: confirmed.strasse,
+        city:    [confirmed.plz, confirmed.ort].filter(Boolean).join(' '),
+        tel:     confirmed.tel,
+        website: confirmed.website,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      showToast('Pipedrive-Anlage fehlgeschlagen: ' + (d.error || '?'), 'error', 4500);
+      return;
+    }
+    const orgId = String(d.org_id || '');
+    // 5. Check-Form aktualisieren
+    document.getElementById('f_firma').value = confirmed.name;
+    const orgIdEl = document.getElementById('f_hv_pipedrive_org_id');
+    if (orgIdEl) orgIdEl.value = orgId;
+    window._currentCheckPipedriveOrgId = orgId;
+    if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
+    if (typeof updateEmail === 'function') updateEmail();
+    showToast('✓ HV „' + confirmed.name + '" in Pipedrive angelegt + verknüpft', 'ok', 3800);
+  } catch(e) {
+    showToast('Fehler bei Pipedrive-Anlage: ' + e.message, 'error', 4000);
+  }
+}
+
 // V12.68 EuC-I + V12.70: Banner-Render — zeigt aktuell gebundenen Aufzug am Check-Header,
 // oder Empty-State-CTA "Aufzug wählen" wenn keiner gebunden ist.
 function renderAufzugBanner() {
@@ -17265,32 +17358,64 @@ function renderAufzugBanner() {
   if (!a || !a.id) {
     // V12.70: Empty-State-CTA statt unsichtbar
     // V12.71: zweite CTA "Aus Check anlegen" wenn Check-Form genug Daten hat
+    // V12.73: Zwei-Stufen-Flow — erst HV verknüpfen, dann Aufzug
     const fabrik = (document.getElementById('f_fabrik')?.value || '').trim();
     const firma  = (document.getElementById('f_firma')?.value || '').trim();
     const orgId  = (document.getElementById('f_hv_pipedrive_org_id')?.value || '').trim();
-    const canCreate = !!(fabrik && (orgId || firma));
+    banner.style.display = 'flex';
+    banner.style.background = '#fff7ed';
+    banner.style.border = '1.5px dashed #fb923c';
+    banner.style.color = '#9a3412';
+
+    // ── Schritt 1: HV ist noch nicht verknüpft (oder Firmenname wurde gelöscht) ──
+    if (!orgId || !firma) {
+      const hvWebBtn = (firma && firma.length >= 3)
+        ? '<button onclick="createHvForCurrentCheck()" title="Aktuellen Firmennamen per Web-Suche anreichern + in Pipedrive anlegen" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;margin-right:6px">'
+          + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>'
+          + '✨ Neu in Pipedrive anlegen'
+        + '</button>'
+        : '';
+      banner.innerHTML =
+        '<div style="display:flex;align-items:center;gap:11px;flex:1;min-width:0">'
+        + '<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fb923c;color:#fff;font-weight:800;font-size:13px;flex-shrink:0">1</div>'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-weight:700;font-size:13px">Schritt 1 von 2 — Hausverwaltung verknüpfen</div>'
+          + '<div style="font-size:11.5px;margin-top:1px;opacity:.85">'
+            + (firma
+                ? 'Suche „<strong>' + escapeHtml(firma.length > 40 ? firma.slice(0, 38) + '…' : firma) + '</strong>" in Pipedrive (tippe im Firmenname-Feld) oder lege sie automatisch neu an. Erst danach kannst du den Aufzug verknüpfen.'
+                : 'Tippe den Firmennamen ins Feld „Firmenname" → Pipedrive-Vorschläge erscheinen. Oder lege eine neue HV per KI + Web-Suche an.')
+          + '</div>'
+        + '</div>'
+        + '</div>'
+        + '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">'
+        + hvWebBtn
+        + '<button onclick="document.getElementById(\'f_firma\').focus(); document.getElementById(\'f_firma\').scrollIntoView({behavior:\'smooth\',block:\'center\'}); showToast(\'Tippe min. 3 Zeichen — Pipedrive-Vorschläge erscheinen automatisch.\',\'info\',3500);" style="background:#fff;border:1.5px solid #fb923c;color:#9a3412;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
+          + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+          + 'In Pipedrive suchen'
+        + '</button>'
+        + '</div>';
+      return;
+    }
+
+    // ── Schritt 2: HV verknüpft, aber kein Aufzug ───────────────────
+    const canCreate = !!fabrik;
     const fromCheckBtn = canCreate
       ? '<button onclick="createAufzugFromCheckInfos()" title="Aufzug mit den aktuellen Check-Daten (Fabr.-Nr., Standort, HV) anlegen" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;margin-right:6px">'
         + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
         + '+ Aus Check anlegen'
       + '</button>'
       : '';
-    banner.style.display = 'flex';
-    banner.style.background = '#fff7ed';
-    banner.style.border = '1.5px dashed #fb923c';
-    banner.style.color = '#9a3412';
     banner.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'
-      + '<span style="font-size:18px">📌</span>'
+      '<div style="display:flex;align-items:center;gap:11px;flex:1;min-width:0">'
+      + '<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fb923c;color:#fff;font-weight:800;font-size:13px;flex-shrink:0">2</div>'
       + '<div style="flex:1;min-width:0">'
-        + '<div style="font-weight:700;font-size:13px">Kein Aufzug verknüpft</div>'
-        + '<div style="font-size:11.5px;margin-top:1px;opacity:.85">' + (canCreate
-            ? 'Mit den aktuellen Check-Daten direkt anlegen oder einen Aufzug aus den Stammdaten wählen.'
-            : 'Wähle einen Aufzug aus den Stammdaten oder lege einen neuen an — Fabriknummer, Standort und EuC-Status werden automatisch ergänzt.')
-        + '</div>'
+        + '<div style="font-weight:700;font-size:13px">Schritt 2 von 2 — Aufzug wählen oder anlegen</div>'
+        + '<div style="font-size:11.5px;margin-top:1px;opacity:.85">HV ist mit Pipedrive verknüpft ✓ — ' + (canCreate
+            ? 'Mit den aktuellen Check-Daten direkt anlegen oder einen existierenden Aufzug wählen.'
+            : 'Wähle einen Aufzug aus den Stammdaten oder trage erst die Fabriknummer ein.') + '</div>'
       + '</div>'
       + '</div>'
-      + '<div style="display:flex;align-items:center">'
+      + '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">'
       + fromCheckBtn
       + '<button onclick="openAufzugPickerForCurrentCheck()" style="background:#1e40af;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
         + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>'
