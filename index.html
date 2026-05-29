@@ -2450,6 +2450,8 @@ const pdfWorkerReady = Promise.resolve();</script>
             </button>
           </div>
           <div class="section-inner">
+            <!-- V12.68 EuC-I: Aufzug-Kontext-Banner (dynamisch, hidden default) -->
+            <div id="aufzugBanner" style="display:none;align-items:center;justify-content:space-between;gap:14px;padding:11px 16px;border-radius:10px;margin-bottom:12px;flex-wrap:wrap;font-size:13px"></div>
             <!-- Große Checknummer-Anzeige oben -->
             <div id="checkNrBanner" style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:linear-gradient(135deg,var(--navy),#1f4d80);color:#fff;padding:14px 20px;border-radius:10px;margin-bottom:14px;flex-wrap:wrap">
               <div>
@@ -4471,7 +4473,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="dr-header-sub">Übersicht über Checks, Verträge und Ersparnisse</div>
       </div>
     </div>
-    <button class="dr-cta" onclick="showCheckView()">
+    <button class="dr-cta" onclick="startNewCheckViaAufzug()">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Neuen Check starten
     </button>
@@ -4784,6 +4786,18 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="field"><label>Aktueller Wartungs-Dienstleister</label><input type="text" id="lw_dienstleister" placeholder="optional"></div>
         <div class="field"><label>Aktuelle Jahreskosten Wartung+Notruf (€) <span style="color:#a8312f">*</span></label><input type="number" id="lw_jahres_alt" placeholder="Status quo (Pflicht für Erfolgsbasis)" min="0" oninput="_updateLwPreview()"></div>
       </div>
+      <!-- V12.69 EuC-J: Aufzug-Multi-Select pro WEG -->
+      <input type="hidden" id="lw_aufzug_ids">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>Verknüpfte Aufzüge <span id="lw_aufzugCountLabel" style="color:var(--blue-mid);font-weight:700">(0)</span></span>
+        <button type="button" onclick="openAufzugLinkPicker()" style="background:#1e40af;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Aufzüge zuordnen
+        </button>
+      </div>
+      <div id="lw_aufzugChips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px;padding:8px 10px;background:var(--sky);border:1.5px dashed var(--border);border-radius:8px;margin-bottom:14px;align-items:center">
+        <span style="font-size:11.5px;color:var(--muted)">Noch keine Aufzüge verknüpft. Über „Aufzüge zuordnen" kannst du existierende Stammdaten anhängen.</span>
+      </div>
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Abrechnung</div>
       <div class="field-row" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="field"><label>Nächste Jahresabrechnung am</label><input type="text" id="lw_naechste" placeholder="01.05.2027"></div>
@@ -4898,6 +4912,85 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div style="display:flex;gap:8px">
         <button id="az_btnDelete" onclick="deleteAufzugCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
         <button onclick="saveAufzug()" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">💾 Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- V12.67 EuC-H: Aufzug-Picker — Pflicht-Schritt vor neuem Check -->
+<div id="aufzugPickerModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:5050;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(720px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.4);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:#1e40af;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(30,64,175,.3),0 4px 12px rgba(30,64,175,.22);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
+        </div>
+        <div>
+          <div style="font-size:17px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Aufzug wählen</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Jeder Check wird einem Aufzug zugeordnet · Pflicht-Schritt</div>
+        </div>
+      </div>
+      <button onclick="closeAufzugPicker()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'" title="Abbrechen">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:14px 24px 12px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;gap:10px;align-items:center">
+      <div style="position:relative;flex:1">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="aufzugPickerSearch" oninput="filterAufzugPicker()" placeholder="Suchen nach Fabriknummer, Standort, HV …" autofocus style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none">
+      </div>
+      <button onclick="startNewAufzugFromPicker()" style="background:var(--dr-green);border:none;color:#fff;border-radius:var(--dr-r-md);padding:9px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 1px 2px rgba(22,163,74,.3),0 4px 10px rgba(22,163,74,.2)">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Neuer Aufzug
+      </button>
+    </div>
+    <div id="aufzugPickerList" style="flex:1;overflow-y:auto;padding:12px 24px 16px;display:flex;flex-direction:column;gap:6px;background:var(--dr-bg-soft)">
+      <div class="preview-loading" style="background:var(--dr-surface);border-radius:var(--dr-r-md);padding:32px;text-align:center;color:var(--dr-ink-mute)"><div class="spin" style="width:18px;height:18px;border:3px solid #ddd;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;display:inline-block"></div> Aufzüge werden geladen …</div>
+    </div>
+    <div style="padding:11px 24px;border-top:1px solid var(--dr-border);background:var(--dr-surface);font-size:11.5px;color:var(--dr-ink-mute);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <span><strong style="color:var(--dr-blue)">Tipp:</strong> Tippe Fabriknummer für schnelle Auswahl. Existiert der Aufzug noch nicht, lege ihn rechts oben an.</span>
+      <button onclick="closeAufzugPicker()" style="background:transparent;border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- V12.69 EuC-J: Aufzug-Link-Picker (Multi-Select) für WEG-Editor -->
+<div id="aufzugLinkPickerModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:5300;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(680px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.4);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:40px;height:40px;border-radius:12px;background:#1e40af;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--dr-ink)">Aufzüge zuordnen</div>
+          <div id="aufzugLinkPickerSubtitle" style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Wähle Aufzüge aus dem HV-Stamm · Mehrfachauswahl</div>
+        </div>
+      </div>
+      <button onclick="closeAufzugLinkPicker()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:32px;height:32px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:13px 24px 10px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div style="position:relative;flex:1;min-width:200px">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="aufzugLinkPickerSearch" oninput="filterAufzugLinkPicker()" placeholder="Filtern nach Fabriknummer, Standort, Hersteller …" style="width:100%;padding:9px 12px 9px 32px;border:1px solid var(--dr-border-strong);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12.5px;background:var(--dr-surface-alt);outline:none">
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dr-ink-mute);cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="aufzugLinkFilterFrei" checked onchange="filterAufzugLinkPicker()" style="accent-color:#1e40af">
+        Nur freie (nicht in EuC)
+      </label>
+    </div>
+    <div id="aufzugLinkPickerList" style="flex:1;overflow-y:auto;padding:12px 24px 14px;background:var(--dr-bg-soft);display:flex;flex-direction:column;gap:5px">
+      <div class="preview-loading" style="padding:24px;text-align:center;color:var(--dr-ink-mute)">Laden …</div>
+    </div>
+    <div style="padding:11px 24px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:11.5px;color:var(--dr-ink-mute)">
+        <span id="aufzugLinkSelCount">0</span> ausgewählt · <span id="aufzugLinkTotalCount">0</span> verfügbar
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="closeAufzugLinkPicker()" style="background:transparent;border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:7px;padding:6px 14px;font-size:12.5px;cursor:pointer">Abbrechen</button>
+        <button onclick="applyAufzugLinkSelection()" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:7px 16px;font-size:12.5px;font-weight:600;cursor:pointer">✓ Übernehmen</button>
       </div>
     </div>
   </div>
@@ -5489,7 +5582,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.66';
+const APP_VERSION = 'V12.69';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6557,6 +6650,10 @@ function resetForm() {
   window._vorabcheckRefForNewCheckSavedAt = null;
   const linkBanner = document.getElementById('vorabcheckLinkBanner');
   if (linkBanner) linkBanner.remove();
+  // V12.68 EuC-I: Aufzug-Kontext und -Banner leeren
+  window._currentCheckAufzug = null;
+  window._currentCheckPipedriveOrgId = '';
+  if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
 
   // Clear all inputs
   const ids = ['f_requestid','f_anfrageNr','f_datum','f_fabrik','f_standort','f_firma','f_name','f_tel',
@@ -6698,6 +6795,8 @@ function resetForm() {
 // ── Checks speichern & laden ──────────────────────────────────────
 function collectFormData() {
   const g = id => { const el = document.getElementById(id); return el ? (el.tagName === 'DIV' ? el.textContent.trim() : el.value) : ''; };
+  // V12.68 EuC-I: Aufzug-Kontext mitspeichern
+  const _az = window._currentCheckAufzug || {};
   return {
     id:          g('f_requestid'),
     savedAt:     new Date().toISOString(),
@@ -6707,6 +6806,13 @@ function collectFormData() {
     fabrik:      g('f_fabrik'),
     standort:    g('f_standort'),
     firma:       g('f_firma'),
+    // Aufzug-Kontext (EuC-I)
+    aufzug_id:           _az.id || '',
+    aufzug_recordId:     _az._recordId || '',
+    aufzug_fabriknummer: _az.fabriknummer || '',
+    aufzug_hv_org_id:    _az.hv_pipedrive_org_id || '',
+    aufzug_im_euc:       _az.im_euc || '',
+    aufzug_euc_vertrag_id: _az.euc_vertrag_id || '',
     name:        g('f_name'),
     tel:         g('f_tel'),
     ap:          g('f_ap'),
@@ -7535,6 +7641,8 @@ async function saveCheck(reporter) {
     auftrag_ausgefuehrt: data.auftrag_ausgefuehrt || '',
     status: data.status || '1',
     vorabcheck_ref: data.vorabcheck_ref || '',
+    // V12.68 EuC-I: Aufzug-Verknüpfung als Top-Level-Filter-Index
+    aufzug_id: data.aufzug_id || '',
     formData: JSON.stringify(data),
   };
   const filledCount = Object.values(data).filter(v => v !== '' && v !== null && v !== false && v !== undefined).length;
@@ -7837,6 +7945,44 @@ async function loadCheck(data) {
   // V12.3: Email-Quelle des aktuell geladenen Checks für Reply-CTA cachen
   window._currentCheckEmailSrc = data?.email_source_id || null;
   window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
+  // V12.68 EuC-I: Aufzug-Kontext aus formData wiederherstellen
+  window._currentCheckPipedriveOrgId = data?.pipedrive_org_id || data?.aufzug_hv_org_id || '';
+  if (data?.aufzug_id) {
+    window._currentCheckAufzug = {
+      id: data.aufzug_id || '',
+      _recordId: data.aufzug_recordId || '',
+      fabriknummer: data.aufzug_fabriknummer || data.fabrik || '',
+      standort: data.standort || '',
+      hv_name: data.firma || '',
+      hv_pipedrive_org_id: data.aufzug_hv_org_id || data.pipedrive_org_id || '',
+      hersteller: '',
+      im_euc: data.aufzug_im_euc || '',
+      euc_vertrag_id: data.aufzug_euc_vertrag_id || '',
+    };
+    // Frische Daten (Hersteller, im_euc-Stand) im Hintergrund nachholen
+    setTimeout(async () => {
+      try {
+        const orgId = window._currentCheckAufzug?.hv_pipedrive_org_id || '';
+        const fn = window._currentCheckAufzug?.fabriknummer || '';
+        if (fn && orgId) {
+          const fresh = await findAufzugByFabriknummer(fn, orgId);
+          if (fresh) {
+            window._currentCheckAufzug = {
+              ...window._currentCheckAufzug,
+              hersteller: fresh.hersteller || '',
+              im_euc: fresh.im_euc || '',
+              euc_vertrag_id: fresh.euc_vertrag_id || '',
+              _recordId: fresh._recordId || window._currentCheckAufzug._recordId,
+            };
+            renderAufzugBanner();
+          }
+        }
+      } catch(e) { /* silent */ }
+    }, 200);
+  } else {
+    window._currentCheckAufzug = null;
+  }
+  renderAufzugBanner();
   // Set field value - works for input, textarea, and contenteditable div
   const set = (id, val) => {
     const el = document.getElementById(id);
@@ -9944,6 +10090,12 @@ ${textForAI}`;
     statusEl.className = 'ai-status done';
     statusEl.innerHTML = '✓ Felder automatisch ausgefüllt';
     if (typeof updateEmail === 'function') updateEmail();
+    // V12.68 EuC-I: Wenn KI eine Fabriknummer extrahiert hat und der Check
+    // noch keinen Aufzug gebunden hat, Auto-Match oder Auto-Anlage triggern.
+    if (isFirst && typeof autoMatchOrCreateAufzugFromCheckForm === 'function') {
+      try { await autoMatchOrCreateAufzugFromCheckForm({ silent: false }); }
+      catch(e) { console.warn('Aufzug-Auto-Match:', e.message); }
+    }
     if (typeof addChatMsg === 'function') {
       let chatMsg;
       if (checkType === 'rechnung') {
@@ -14519,6 +14671,14 @@ async function buildLightVertragPDF() {
   const wegCount = wegs.length;
   const aufzSum  = wegs.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
   const kostenAltSum = wegs.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
+  // V12.69 EuC-J: verknüpfte Aufzüge pro WEG für die Anlage A
+  let aufzugById = {};
+  try {
+    const recs = await loadAufzuege();
+    (recs || []).forEach(r => {
+      if (r.fields?.id) aufzugById[r.fields.id] = r.fields;
+    });
+  } catch (_) { /* silent */ }
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
   const helv     = await doc.embedFont(StandardFonts.Helvetica);
@@ -14724,14 +14884,23 @@ async function buildLightVertragPDF() {
       const anz  = Number(w.anzahl_aufzuege) || 0;
       const dl   = w.aktueller_dienstleister || '—';
       const kost = Number(w.aktuelle_jahreskosten_eur) || 0;
-      // Row-Höhe: 2 Zeilen (Name + Adresse-Zeile)
-      ensure(rowH * 2 + 6);
+      // V12.69 EuC-J: verknüpfte Aufzug-IDs der WEG
+      const azIds = ((w.aufzug_ids || '').toString()).split(',').map(s => s.trim()).filter(Boolean);
+      const linkedAufzuege = azIds.map(id => aufzugById[id]).filter(Boolean);
+      const azLine = linkedAufzuege.length
+        ? 'Fabr.-Nrn.: ' + linkedAufzuege.map(a => a.fabriknummer || '?').join(', ')
+        : '';
+      // Row-Höhe: 2 Zeilen (Name + Adresse) + ggf. 1 Zeile für Fabr.-Nrn.
+      const extraLines = azLine ? 1 : 0;
+      ensure(rowH * (2 + extraLines) + 6);
       // Zeile 1: Name + Anzahl + Dienstleister + Kosten
       const dlShort = dl.length > 26 ? dl.slice(0, 24) + '…' : dl;
       page.drawText(_safeWinAnsi(nr),                  { x: colX.nr,   y: y - 10, size: 9.5, font: helvBold, color: COLOR });
       page.drawText(_safeWinAnsi(name.length > 42 ? name.slice(0, 40) + '…' : name),
                                                        { x: colX.weg,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
-      page.drawText(String(anz),                       { x: colX.anz,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+      // Anzeige der Anzahl: bei verknüpften Aufzügen die tatsächliche Zahl, sonst manuelle anz
+      const anzDisp = linkedAufzuege.length > 0 ? linkedAufzuege.length : anz;
+      page.drawText(String(anzDisp),                   { x: colX.anz,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
       page.drawText(_safeWinAnsi(dlShort),             { x: colX.dl,   y: y - 10, size: 9,   font: helv,     color: COLOR });
       const kostStr = kost > 0 ? fmt(kost) + ' EUR' : '—';
       const kostW   = helv.widthOfTextAtSize(kostStr, 9);
@@ -14743,6 +14912,13 @@ async function buildLightVertragPDF() {
                                                        { x: colX.weg,  y: y - 10, size: 8.5, font: helv, color: MUTED });
       }
       y -= rowH;
+      // Zeile 3 (optional): Fabr.-Nrn. der verknüpften Aufzüge
+      if (azLine) {
+        const cap = azLine.length > 95 ? azLine.slice(0, 92) + '…' : azLine;
+        page.drawText(_safeWinAnsi(cap),
+                                                       { x: colX.weg,  y: y - 10, size: 8.5, font: helvBold, color: rgb(0.12, 0.25, 0.55) });
+        y -= rowH;
+      }
       // Trennlinie
       page.drawLine({ start: { x: MARGIN_X - 4, y }, end: { x: PAGE_W - MARGIN_X + 4, y }, thickness: 0.3, color: rgb(0.85,0.87,0.91) });
       y -= 4;
@@ -15908,7 +16084,8 @@ async function loadLightVertraege() {
         '     ansprechpartner_name, ansprechpartner_funktion (beirat/verwaltung/eigentuemer/andere),\n' +
         '     weg_email, weg_telefon, anzahl_aufzuege, aktueller_dienstleister,\n' +
         '     aktuelle_jahreskosten_eur, vollmacht_pdf, vollmacht_signed_pdf,\n' +
-        '     naechste_jahresabrechnung_am, status (aktiv/gekuendigt), savedAt, createdBy');
+        '     naechste_jahresabrechnung_am, status (aktiv/gekuendigt), savedAt, createdBy,\n' +
+        '     aufzug_ids (singleLineText — komma-separierte AZ-IDs der verknüpften Aufzüge, V12.69+)');
     }
     return [];
   }
@@ -16245,11 +16422,15 @@ function closeLightWegEditor() {
 
 function clearLightWegForm() {
   ['lw_recordId','lw_id','lw_weg_name','lw_strasse','lw_plz','lw_ort',
-   'lw_ap_name','lw_email','lw_tel','lw_dienstleister','lw_jahres_alt','lw_naechste']
+   'lw_ap_name','lw_email','lw_tel','lw_dienstleister','lw_jahres_alt','lw_naechste',
+   'lw_aufzug_ids']
    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('lw_anzahl').value = '1';
   document.getElementById('lw_ap_funktion').value = 'beirat';
   document.getElementById('lw_status').value = 'aktiv';
+  // V12.69: Vorherigen Aufzug-Ids-State (für Diff bei Save) zurücksetzen
+  window._lwAufzugIdsBefore = '';
+  renderLightWegAufzugChips([]);
 }
 
 function setLightWegForm(d) {
@@ -16269,6 +16450,11 @@ function setLightWegForm(d) {
   set('lw_jahres_alt', d.aktuelle_jahreskosten_eur);
   set('lw_naechste', d.naechste_jahresabrechnung_am);
   set('lw_status', d.status || 'aktiv');
+  // V12.69 EuC-J: Aufzug-Verknüpfungen wiederherstellen
+  const aufzugIdsRaw = (d.aufzug_ids || '').toString();
+  set('lw_aufzug_ids', aufzugIdsRaw);
+  window._lwAufzugIdsBefore = aufzugIdsRaw;
+  _refreshLwAufzugChipsFromIds(aufzugIdsRaw);
 }
 
 function _updateLwPreview() {
@@ -16289,6 +16475,10 @@ async function saveLightWeg() {
   const recordId = g('lw_recordId');
   let wegId = g('lw_id') || (recordId ? '' : await generateLightWegId());
   if (!wegId && !recordId) wegId = await generateLightWegId();
+  // V12.69 EuC-J: Aufzug-Verknüpfungen aus Hidden-Feld extrahieren
+  const aufzugIdsCurrent = (g('lw_aufzug_ids') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const aufzugIdsBefore = ((window._lwAufzugIdsBefore || '').toString())
+    .split(',').map(s => s.trim()).filter(Boolean);
   const fields = {
     id: wegId,
     light_vertrag_id: lightVertragId,
@@ -16305,13 +16495,37 @@ async function saveLightWeg() {
     aktuelle_jahreskosten_eur: parseFloat(g('lw_jahres_alt')) || 0,
     naechste_jahresabrechnung_am: g('lw_naechste'),
     status: g('lw_status') || 'aktiv',
+    aufzug_ids: aufzugIdsCurrent.join(','),
     savedAt: new Date().toISOString(),
     createdBy: APP_KEYS.user?.email || '',
   };
+  // Try-write mit field-skip-on-unknown (analog saveVertrag)
+  const tryWrite = async (action, payload) => {
+    let attempt = 0; let p = payload;
+    while (true) {
+      try { return await action(p); }
+      catch(e) {
+        const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+        if (m && m[1] && p[m[1]] !== undefined && attempt < 4) {
+          p = { ...p }; delete p[m[1]];
+          console.warn('[Light-WEG] Feld unbekannt in Schema, retry ohne:', m[1]);
+          attempt++; continue;
+        }
+        throw e;
+      }
+    }
+  };
   try {
-    if (recordId) await atUpdate('Light-WEGs', recordId, fields);
-    else await atWrite('Light-WEGs', fields);
+    if (recordId) await tryWrite(pl => atUpdate('Light-WEGs', recordId, pl), fields);
+    else await tryWrite(pl => atWrite('Light-WEGs', pl), fields);
     showToast('WEG gespeichert', 'ok');
+    // V12.69 EuC-J: Aufzug-Sync (im_euc / euc_vertrag_id) für hinzugefügte + entfernte Aufzüge
+    const added   = aufzugIdsCurrent.filter(id => !aufzugIdsBefore.includes(id));
+    const removed = aufzugIdsBefore.filter(id => !aufzugIdsCurrent.includes(id));
+    if (added.length || removed.length) {
+      _syncAufzuegeForWeg({ added, removed, lightVertragId }).catch(e =>
+        console.warn('Aufzug-Sync nach WEG-Save:', e.message));
+    }
     closeLightWegEditor();
     renderLightWegsInEditor(lightVertragId);
   } catch (e) {
@@ -16326,8 +16540,15 @@ async function deleteLightWegCurrent() {
   const lvId  = document.getElementById('lw_lightVertragId').value;
   if (!recId) return;
   if (!confirm('Diese WEG wirklich aus der Light-Vereinbarung entfernen?')) return;
+  // V12.69: vor dem Löschen die verknüpften Aufzüge merken — werden danach befreit
+  const aufzugIdsBefore = ((document.getElementById('lw_aufzug_ids')?.value || '').toString())
+    .split(',').map(s => s.trim()).filter(Boolean);
   try {
     await atDelete('Light-WEGs', recId);
+    if (aufzugIdsBefore.length) {
+      _syncAufzuegeForWeg({ added: [], removed: aufzugIdsBefore, lightVertragId: lvId })
+        .catch(e => console.warn('Aufzug-Sync nach WEG-Delete:', e.message));
+    }
     showToast('WEG entfernt', 'ok');
     closeLightWegEditor();
     renderLightWegsInEditor(lvId);
@@ -16453,6 +16674,13 @@ function openAufzugEditor(data) {
 
 function closeAufzugEditor() {
   document.getElementById('aufzugEditorModal').style.display = 'none';
+  // V12.67 EuC-H: Routing-Flag löschen, falls Editor aus dem Picker geöffnet wurde
+  // und ohne Save geschlossen wird.
+  if (window._aufzugEditorReturnTo === 'picker') {
+    window._aufzugEditorReturnTo = null;
+    // Zurück zum Picker
+    document.getElementById('aufzugPickerModal').style.display = 'flex';
+  }
 }
 
 function clearAufzugForm() {
@@ -16521,8 +16749,10 @@ async function saveAufzug() {
     savedAt: now,
   };
   try {
+    let savedAufzug = null;
     if (d._recordId) {
       await atUpdate('Aufzuege', d._recordId, fields);
+      savedAufzug = { ...d, ...fields, _recordId: d._recordId };
       showToast('Aufzug aktualisiert', 'ok');
     } else {
       const newId = await generateAufzugId();
@@ -16535,10 +16765,25 @@ async function saveAufzug() {
       document.getElementById('az_id').value = newId;
       document.getElementById('aufzugEditorTitle').textContent = 'Aufzug · ' + newId;
       document.getElementById('az_btnDelete').style.display = 'inline-flex';
+      savedAufzug = { ...fields, _recordId: rec?.id };
       showToast('Aufzug ' + newId + ' angelegt', 'ok');
     }
-    closeAufzugEditor();
-    // Liste neu laden (im Hintergrund)
+    // V12.67 EuC-H: Routing — wenn Save aus dem Picker ausgelöst wurde,
+    // direkt diesen Aufzug für den neuen Check übernehmen statt Aufzüge-Liste.
+    // Flag VOR closeAufzugEditor() greifen, sonst räumt der Close ihn ab.
+    const returnTo = window._aufzugEditorReturnTo;
+    window._aufzugEditorReturnTo = null;
+    // Editor schließen, ohne Picker-Auto-Reopen (Flag ist ja schon weg)
+    document.getElementById('aufzugEditorModal').style.display = 'none';
+    if (returnTo === 'picker' && savedAufzug && savedAufzug.id) {
+      _applyAufzugToCheckForm(savedAufzug);
+      // Badge im Hintergrund aktualisieren (nicht-blockierend)
+      loadAufzuege().then(recs => _updateAufzuegeBadge((recs || []).length)).catch(() => {});
+      showCheckView();
+      showToast('✓ Check gestartet für ' + savedAufzug.id + (savedAufzug.fabriknummer ? ' · Fabr.-Nr. ' + savedAufzug.fabriknummer : ''), 'ok', 3000);
+      return;
+    }
+    // Default: Aufzüge-Liste im Hintergrund neu laden
     openAufzuegeModal();
   } catch (e) {
     if (/NOT_FOUND|TABLE_NOT_FOUND/i.test(e.message || '')) {
@@ -16576,6 +16821,468 @@ async function _preloadAufzuegeBadge() {
     _updateAufzuegeBadge((recs || []).length);
   } catch(e) { /* silent */ }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// V12.69 EuC-J: Aufzug-Link-Picker für WEG-Editor (Multi-Select)
+// Filtert auf HV des aktuellen EuC-Vertrags. Selektion kommt zurück
+// in das Hidden-Feld lw_aufzug_ids + rendert Chips.
+// ═══════════════════════════════════════════════════════════════════
+window._aufzugLinkPickerAll = [];        // alle Aufzüge der HV
+window._aufzugLinkPickerSelected = new Set(); // aktuell ausgewählte IDs (während Picker offen)
+
+async function openAufzugLinkPicker() {
+  const lightVertragId = document.getElementById('lw_lightVertragId').value;
+  if (!lightVertragId) { showToast('Bitte erst die EuC-Vereinbarung speichern.', 'error'); return; }
+  // HV des aktuellen EuC-Vertrags ermitteln (für Filter)
+  const lv = (window._lightVertraegeCache || []).find(v => v.id === lightVertragId);
+  const lvFirma = (lv?.firma || document.getElementById('lv_firma')?.value || '').trim();
+  // Pipedrive-Org-ID hat der EuC-Vertrag nicht direkt — wir filtern stattdessen über hv_name (norm)
+  // ODER zeigen alle und lassen den User filtern. Wir nehmen einen sanften Filter via name-match.
+  document.getElementById('aufzugLinkPickerModal').style.display = 'flex';
+  document.getElementById('aufzugLinkPickerSubtitle').textContent =
+    'Aufzüge der HV „' + (lvFirma || '–') + '" · Mehrfachauswahl';
+  document.getElementById('aufzugLinkPickerSearch').value = '';
+  const filterFreiEl = document.getElementById('aufzugLinkFilterFrei');
+  if (filterFreiEl) filterFreiEl.checked = true;
+  // Schon verknüpfte Aufzüge in der Initial-Selektion
+  const preselected = ((document.getElementById('lw_aufzug_ids')?.value || '').toString())
+    .split(',').map(s => s.trim()).filter(Boolean);
+  window._aufzugLinkPickerSelected = new Set(preselected);
+  document.getElementById('aufzugLinkPickerList').innerHTML =
+    '<div style="padding:24px;text-align:center;color:var(--dr-ink-mute)">Aufzüge werden geladen …</div>';
+  try {
+    const recs = await loadAufzuege();
+    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    // Filter: nur Aufzüge dieser HV (per hv_name fuzzy-match)
+    const lvFirmaNorm = _normFirma(lvFirma);
+    const filtered = items.filter(a => {
+      if (!lvFirmaNorm) return true; // kein HV-Filter möglich
+      const aNorm = _normFirma(a.hv_name || '');
+      return aNorm && aNorm === lvFirmaNorm;
+    });
+    window._aufzugLinkPickerAll = filtered;
+    filterAufzugLinkPicker();
+  } catch(e) {
+    document.getElementById('aufzugLinkPickerList').innerHTML =
+      '<div style="padding:20px;text-align:center;color:#a8312f">Fehler: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function closeAufzugLinkPicker() {
+  document.getElementById('aufzugLinkPickerModal').style.display = 'none';
+}
+
+function filterAufzugLinkPicker() {
+  const q = (document.getElementById('aufzugLinkPickerSearch')?.value || '').trim().toLowerCase();
+  const filterFrei = !!document.getElementById('aufzugLinkFilterFrei')?.checked;
+  const lvId = document.getElementById('lw_lightVertragId')?.value || '';
+  let items = window._aufzugLinkPickerAll || [];
+  if (filterFrei) {
+    // "Frei" = im_euc != '1' ODER bereits an genau diesen EuC-Vertrag gebunden (dann sichtbar lassen)
+    items = items.filter(a => {
+      const inEuC = (a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true);
+      if (!inEuC) return true;
+      return (a.euc_vertrag_id || '').toString() === lvId;
+    });
+  }
+  if (q) {
+    items = items.filter(a => {
+      const hay = [a.id, a.fabriknummer, a.standort, a.hersteller, a.weg_id]
+        .filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  _renderAufzugLinkPickerList(items);
+  document.getElementById('aufzugLinkTotalCount').textContent = items.length;
+  _refreshAufzugLinkSelCount();
+}
+
+function _renderAufzugLinkPickerList(items) {
+  const listEl = document.getElementById('aufzugLinkPickerList');
+  if (!items.length) {
+    listEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:8px">Keine Aufzüge gefunden. Im Filter "Nur freie" deaktivieren, falls schon Aufzüge im EuC sind, oder neue im Aufzüge-Modul anlegen.</div>';
+    return;
+  }
+  const lvId = document.getElementById('lw_lightVertragId')?.value || '';
+  listEl.innerHTML = items.map(a => {
+    const isChecked = window._aufzugLinkPickerSelected.has(a.id);
+    const eucActive = (a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true);
+    const ownEuC    = eucActive && (a.euc_vertrag_id || '').toString() === lvId;
+    const otherEuC  = eucActive && !ownEuC;
+    const badge = otherEuC
+      ? '<span style="background:#fde4d2;color:#8a3a00;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;text-transform:uppercase">⚠ in ' + escapeHtml(a.euc_vertrag_id || 'anderem EuC') + '</span>'
+      : (ownEuC ? '<span style="background:#dcfce7;color:#3d7a14;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;text-transform:uppercase">🛡 hier verknüpft</span>' : '');
+    return '<label style="display:flex;align-items:center;gap:11px;padding:9px 12px;background:var(--dr-surface);border:1px solid ' + (isChecked ? '#1e40af' : 'var(--dr-border)') + ';border-radius:8px;cursor:pointer;transition:border-color .1s">'
+      + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="_toggleAufzugLink(\'' + (a.id || '').replace(/'/g, "\\'") + '\', this.checked)" style="width:16px;height:16px;accent-color:#1e40af;cursor:pointer">'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-weight:700;font-size:12.5px;color:var(--dr-ink);display:flex;align-items:center;gap:7px;flex-wrap:wrap">'
+          + '<span style="font-family:var(--dr-f-mono);color:#1e40af;font-size:11px">' + escapeHtml(a.id || '—') + '</span>'
+          + '<span>Fabr.-Nr. ' + escapeHtml(a.fabriknummer || '?') + '</span>'
+          + (a.hersteller ? '<span style="color:var(--dr-ink-mute);font-size:11px;font-weight:500">· ' + escapeHtml(a.hersteller) + '</span>' : '')
+          + badge
+        + '</div>'
+        + '<div style="font-size:11px;color:var(--dr-ink-mute);margin-top:1px">' + (a.standort ? escapeHtml(a.standort) : '–') + '</div>'
+      + '</div>'
+    + '</label>';
+  }).join('');
+}
+
+function _toggleAufzugLink(azId, checked) {
+  if (!azId) return;
+  if (checked) window._aufzugLinkPickerSelected.add(azId);
+  else window._aufzugLinkPickerSelected.delete(azId);
+  _refreshAufzugLinkSelCount();
+}
+
+function _refreshAufzugLinkSelCount() {
+  const el = document.getElementById('aufzugLinkSelCount');
+  if (el) el.textContent = window._aufzugLinkPickerSelected?.size || 0;
+}
+
+function applyAufzugLinkSelection() {
+  const ids = Array.from(window._aufzugLinkPickerSelected || []);
+  document.getElementById('lw_aufzug_ids').value = ids.join(',');
+  _refreshLwAufzugChipsFromIds(ids.join(','));
+  closeAufzugLinkPicker();
+  showToast(ids.length === 0 ? 'Alle Aufzug-Verknüpfungen entfernt' : ('✓ ' + ids.length + ' Aufzug' + (ids.length === 1 ? '' : 'üge') + ' verknüpft (wird beim Speichern angewendet)'), 'ok', 2800);
+}
+
+// Rendert Aufzug-Chips im WEG-Editor anhand einer Komma-Liste von AZ-IDs
+function _refreshLwAufzugChipsFromIds(csv) {
+  const ids = (csv || '').split(',').map(s => s.trim()).filter(Boolean);
+  // Aus Cache holen (window._aufzuegeCache wird vom Aufzüge-Modul gepflegt)
+  const cache = window._aufzuegeCache || [];
+  const found = ids.map(id => cache.find(a => a.id === id)).filter(Boolean);
+  // Wenn Cache leer / unvollständig, async nachladen
+  if (found.length < ids.length) {
+    loadAufzuege().then(recs => {
+      window._aufzuegeCache = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+      const found2 = ids.map(id => window._aufzuegeCache.find(a => a.id === id) || { id, fabriknummer: '?', standort: '–' });
+      renderLightWegAufzugChips(found2);
+    }).catch(() => renderLightWegAufzugChips(ids.map(id => ({ id, fabriknummer: '?', standort: '–' }))));
+    return;
+  }
+  renderLightWegAufzugChips(found);
+}
+
+function renderLightWegAufzugChips(items) {
+  const wrap = document.getElementById('lw_aufzugChips');
+  const lbl  = document.getElementById('lw_aufzugCountLabel');
+  if (!wrap) return;
+  if (lbl) lbl.textContent = '(' + items.length + ')';
+  if (!items.length) {
+    wrap.innerHTML = '<span style="font-size:11.5px;color:var(--muted)">Noch keine Aufzüge verknüpft. Über „Aufzüge zuordnen" kannst du existierende Stammdaten anhängen.</span>';
+    return;
+  }
+  wrap.innerHTML = items.map(a => {
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #c5d4e4;border-radius:16px;padding:3px 6px 3px 10px;font-size:11.5px">'
+      + '<span style="font-family:var(--dr-f-mono,monospace);color:#1e40af;font-weight:600">' + escapeHtml(a.id || '?') + '</span>'
+      + '<span style="color:#1f2937">Fabr.-Nr. ' + escapeHtml(a.fabriknummer || '?') + '</span>'
+      + (a.standort ? '<span style="color:var(--muted);font-size:10.5px">· ' + escapeHtml((a.standort || '').slice(0, 30)) + ((a.standort || '').length > 30 ? '…' : '') + '</span>' : '')
+      + '<button type="button" onclick="_removeLwAufzugChip(\'' + (a.id || '').replace(/'/g, "\\'") + '\')" title="Verknüpfung entfernen" style="background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:50%;width:18px;height:18px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:13px;line-height:1">×</button>'
+    + '</span>';
+  }).join('');
+}
+
+function _removeLwAufzugChip(azId) {
+  const current = ((document.getElementById('lw_aufzug_ids')?.value || '').toString())
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const next = current.filter(id => id !== azId);
+  document.getElementById('lw_aufzug_ids').value = next.join(',');
+  _refreshLwAufzugChipsFromIds(next.join(','));
+}
+
+// V12.69 EuC-J: Aufzug-Sync — nach WEG-Save/Delete die im_euc/euc_vertrag_id-Felder
+// der hinzugefügten/entfernten Aufzüge konsistent halten.
+async function _syncAufzuegeForWeg(opts) {
+  const lightVertragId = (opts && opts.lightVertragId) || '';
+  const added   = (opts && opts.added)   || [];
+  const removed = (opts && opts.removed) || [];
+  // Bei Add: im_euc=1 + euc_vertrag_id=lvId
+  // Bei Remove: NUR clearen, wenn der Aufzug noch auf diesen Vertrag zeigt
+  //            (sonst ist er evtl. schon in einen anderen EuC umgezogen)
+  const cache = window._aufzuegeCache || [];
+  for (const azId of added) {
+    const rec = cache.find(a => a.id === azId);
+    if (!rec || !rec._recordId) continue;
+    try {
+      await atUpdate('Aufzuege', rec._recordId, {
+        im_euc: '1',
+        euc_vertrag_id: lightVertragId,
+        savedAt: new Date().toISOString(),
+      });
+    } catch(e) { console.warn('Aufzug-Add-Sync failed for', azId, e.message); }
+  }
+  for (const azId of removed) {
+    const rec = cache.find(a => a.id === azId);
+    if (!rec || !rec._recordId) continue;
+    // Nur clearen, wenn aktuelle Verknüpfung diesem EuC-Vertrag entspricht
+    if ((rec.euc_vertrag_id || '').toString() !== lightVertragId) continue;
+    try {
+      await atUpdate('Aufzuege', rec._recordId, {
+        im_euc: '',
+        euc_vertrag_id: '',
+        savedAt: new Date().toISOString(),
+      });
+    } catch(e) { console.warn('Aufzug-Remove-Sync failed for', azId, e.message); }
+  }
+  // Cache invalidieren
+  loadAufzuege().then(recs => {
+    window._aufzuegeCache = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    _updateAufzuegeBadge(window._aufzuegeCache.length);
+  }).catch(() => {});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// V12.67 EuC-H: Aufzug-Picker · Pflicht-Schritt vor neuem Check
+// "Neuer Check starten" öffnet erst diesen Picker. User wählt einen
+// existierenden Aufzug oder legt einen neuen an → Form wird vorbefüllt
+// (Fabriknummer, Standort, HV-Firma) und Check-View geöffnet.
+// ═══════════════════════════════════════════════════════════════════
+window._aufzugPickerCache = [];
+window._currentCheckAufzug = null; // {id, _recordId, fabriknummer, standort, hv_name, hv_pipedrive_org_id, im_euc, euc_vertrag_id}
+
+async function startNewCheckViaAufzug() {
+  // Öffnet den Picker und lädt Aufzüge (mit Cache-Reuse wenn möglich)
+  const modal = document.getElementById('aufzugPickerModal');
+  modal.style.display = 'flex';
+  const searchEl = document.getElementById('aufzugPickerSearch');
+  if (searchEl) { searchEl.value = ''; setTimeout(() => searchEl.focus(), 80); }
+  const listEl = document.getElementById('aufzugPickerList');
+  listEl.innerHTML = '<div class="preview-loading" style="background:var(--dr-surface);border-radius:var(--dr-r-md);padding:32px;text-align:center;color:var(--dr-ink-mute)"><div class="spin" style="width:18px;height:18px;border:3px solid #ddd;border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;display:inline-block"></div> Aufzüge werden geladen …</div>';
+  try {
+    const recs = await loadAufzuege();
+    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    items.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    window._aufzugPickerCache = items;
+    window._aufzuegeCache = items; // halten auch das Aufzüge-Modul-Cache aktuell
+    _updateAufzuegeBadge(items.length);
+    renderAufzugPickerList(items, '');
+  } catch (e) {
+    listEl.innerHTML = '<div style="color:#a8312f;font-size:13px;text-align:center;padding:24px">Laden fehlgeschlagen: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function closeAufzugPicker() {
+  document.getElementById('aufzugPickerModal').style.display = 'none';
+}
+
+function filterAufzugPicker() {
+  const q = (document.getElementById('aufzugPickerSearch')?.value || '').trim().toLowerCase();
+  const all = window._aufzugPickerCache || [];
+  if (!q) { renderAufzugPickerList(all, ''); return; }
+  const hits = all.filter(a => {
+    const hay = [a.id, a.fabriknummer, a.standort, a.hv_name, a.hersteller, a.weg_id]
+      .filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+  renderAufzugPickerList(hits, q);
+}
+
+function renderAufzugPickerList(items, query) {
+  const listEl = document.getElementById('aufzugPickerList');
+  if (!items.length) {
+    listEl.innerHTML = query
+      ? '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:28px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Keine Treffer für „' + escapeHtml(query) + '". <button onclick="startNewAufzugFromPicker()" style="background:var(--dr-green);border:none;color:#fff;border-radius:6px;padding:5px 12px;margin-left:8px;font-size:12px;font-weight:600;cursor:pointer">+ Neuer Aufzug</button></div>'
+      : '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Aufzüge angelegt. <button onclick="startNewAufzugFromPicker()" style="background:var(--dr-green);border:none;color:#fff;border-radius:6px;padding:6px 14px;margin-left:8px;font-size:12.5px;font-weight:600;cursor:pointer">+ Ersten Aufzug anlegen</button></div>';
+    return;
+  }
+  const cache = window._aufzugPickerCache || [];
+  listEl.innerHTML = items.map(a => {
+    const idx = cache.indexOf(a);
+    const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
+    const eucBadge = eucActive
+      ? '<span style="background:#16a34a;color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:7px;letter-spacing:.3px;text-transform:uppercase">🛡 EuC</span>'
+      : '';
+    const hv = a.hv_name ? escapeHtml(a.hv_name) : '<span style="color:#a8312f">— HV fehlt</span>';
+    const standort = a.standort ? escapeHtml(a.standort) : '–';
+    return '<button type="button" onclick="pickAufzugForCheck(' + idx + ')" style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;font-family:inherit;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor=\'var(--dr-blue)\';this.style.background=\'#f8fbff\'" onmouseout="this.style.borderColor=\'var(--dr-border)\';this.style.background=\'var(--dr-surface)\'">'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'
+          + '<span style="font-family:var(--dr-f-mono);color:var(--dr-blue);font-size:11.5px;font-weight:600">' + escapeHtml(a.id || '—') + '</span>'
+          + '<span style="font-weight:700;font-size:13px;color:var(--dr-ink)">Fabr.-Nr. ' + (a.fabriknummer ? escapeHtml(a.fabriknummer) : '<span style="color:#a8312f">?</span>') + '</span>'
+          + (a.hersteller ? '<span style="font-size:11.5px;color:var(--dr-ink-mute)">· ' + escapeHtml(a.hersteller) + '</span>' : '')
+          + eucBadge
+        + '</div>'
+        + '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">' + standort + ' · HV: ' + hv + '</div>'
+      + '</div>'
+      + '<svg width="16" height="16" fill="none" stroke="var(--dr-blue)" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
+    + '</button>';
+  }).join('');
+}
+
+async function pickAufzugForCheck(idx) {
+  const a = (window._aufzugPickerCache || [])[idx];
+  if (!a) return;
+  // Auf der Check-Seite Form vorbefüllen
+  _applyAufzugToCheckForm(a);
+  closeAufzugPicker();
+  showCheckView();
+  showToast('✓ Check gestartet für ' + (a.id || 'Aufzug') + (a.fabriknummer ? ' · Fabr.-Nr. ' + a.fabriknummer : ''), 'ok', 3000);
+}
+
+function _applyAufzugToCheckForm(a) {
+  if (!a) return;
+  // Form auf neuen Check vorbereiten (Liftaro-Defaults + Datum werden in resetForm gesetzt)
+  if (typeof resetForm === 'function') resetForm();
+  // Aufzug-Kontext speichern (wird beim Speichern persistiert)
+  window._currentCheckAufzug = {
+    id: a.id || '',
+    _recordId: a._recordId || '',
+    fabriknummer: a.fabriknummer || '',
+    standort: a.standort || '',
+    hv_name: a.hv_name || '',
+    hv_pipedrive_org_id: a.hv_pipedrive_org_id || '',
+    hersteller: a.hersteller || '',
+    im_euc: a.im_euc || '',
+    euc_vertrag_id: a.euc_vertrag_id || '',
+  };
+  // pipedrive_org_id auch separat cachen für Auto-Match
+  if (a.hv_pipedrive_org_id) window._currentCheckPipedriveOrgId = a.hv_pipedrive_org_id;
+  // Bekannte Formularfelder befüllen
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('f_fabrik',   a.fabriknummer);
+  set('f_standort', a.standort);
+  set('f_firma',    a.hv_name);
+  // Banner sofort rendern
+  renderAufzugBanner();
+}
+
+// V12.68 EuC-I: Banner-Render — zeigt aktuell gebundenen Aufzug am Check-Header
+function renderAufzugBanner() {
+  const banner = document.getElementById('aufzugBanner');
+  if (!banner) return;
+  const a = window._currentCheckAufzug;
+  if (!a || !a.id) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    return;
+  }
+  const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
+  const bg     = eucActive ? '#ecf6e1' : '#eef4fb';
+  const border = eucActive ? '#86b85e' : '#9bb8d4';
+  const ink    = eucActive ? '#2f4d18' : '#1a3a5c';
+  const accent = eucActive ? '#3d7a14' : '#2d5f96';
+  const icon   = eucActive ? '🛡' : '🛗';
+  const eucLine = eucActive
+    ? '<div style="font-size:11.5px;margin-top:3px;color:' + accent + '"><strong>Equipment under Control</strong> aktiv' + (a.euc_vertrag_id ? ' · Vertrag <span style="font-family:var(--dr-f-mono,monospace);font-size:11px">' + escapeHtml(a.euc_vertrag_id) + '</span>' : '') + '</div>'
+    : '';
+  banner.style.display = 'flex';
+  banner.style.background = bg;
+  banner.style.border = '1.5px solid ' + border;
+  banner.style.color = ink;
+  banner.innerHTML =
+    '<div style="display:flex;align-items:center;gap:11px;flex:1;min-width:0">'
+    + '<span style="font-size:20px">' + icon + '</span>'
+    + '<div style="flex:1;min-width:0">'
+      + '<div style="font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        + '<span style="font-family:var(--dr-f-mono,monospace);color:' + accent + '">' + escapeHtml(a.id) + '</span>'
+        + '<span>Fabr.-Nr. ' + escapeHtml(a.fabriknummer || '?') + '</span>'
+        + (a.hersteller ? '<span style="color:' + accent + ';font-weight:500;font-size:12px">· ' + escapeHtml(a.hersteller) + '</span>' : '')
+      + '</div>'
+      + '<div style="font-size:11.5px;margin-top:2px;color:' + ink + ';opacity:.85">'
+        + (a.standort ? escapeHtml(a.standort) : '–') + ' · HV: ' + (a.hv_name ? escapeHtml(a.hv_name) : '<em>nicht gesetzt</em>')
+      + '</div>'
+      + eucLine
+    + '</div>'
+    + '</div>'
+    + '<button onclick="openAufzugByCurrentCheck()" title="Aufzug-Datensatz öffnen" style="background:rgba(255,255,255,.6);border:1px solid ' + border + ';color:' + accent + ';border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
+      + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M21 14v7H3V3h7"/></svg>'
+      + 'Aufzug'
+    + '</button>';
+}
+
+// Öffnet den Aufzug-Editor für den aktuell am Check gebundenen Aufzug
+function openAufzugByCurrentCheck() {
+  const a = window._currentCheckAufzug;
+  if (!a || !a.id) return;
+  // Versuch über Cache, sonst Live-Lookup
+  const cached = (window._aufzuegeCache || []).find(x => x.id === a.id);
+  if (cached) openAufzugEditor(cached);
+  else openAufzugEditor(a);
+}
+
+// V12.68 EuC-I: Auto-Match — nach KI-Extraktion versuchen, einen passenden
+// Aufzug zur erkannten Fabriknummer + aktuell gebundener HV zu finden, sonst
+// einen neuen Aufzug anlegen. Nur aktiv, wenn noch kein Aufzug am Check hängt.
+async function autoMatchOrCreateAufzugFromCheckForm(opts) {
+  opts = opts || {};
+  const silent = !!opts.silent;
+  // Wenn schon ein Aufzug am Check hängt — nichts tun
+  if (window._currentCheckAufzug && window._currentCheckAufzug.id) return null;
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const fabriknummer = g('f_fabrik');
+  if (!fabriknummer) return null;
+  const orgId = (window._currentCheckPipedriveOrgId || '').toString().trim();
+  if (!orgId) {
+    // Ohne HV-Org-ID können wir keine eindeutige Zuordnung (Fabr.-Nr. ist nur pro HV eindeutig)
+    if (!silent) showToast('Aufzug-Auto-Zuordnung übersprungen: keine HV verknüpft.', 'info', 2500);
+    return null;
+  }
+  try {
+    // 1. Versuch: Match auf existierenden Aufzug
+    const existing = await findAufzugByFabriknummer(fabriknummer, orgId);
+    if (existing) {
+      window._currentCheckAufzug = {
+        id: existing.id || '',
+        _recordId: existing._recordId || '',
+        fabriknummer: existing.fabriknummer || fabriknummer,
+        standort: existing.standort || g('f_standort'),
+        hv_name: existing.hv_name || g('f_firma'),
+        hv_pipedrive_org_id: existing.hv_pipedrive_org_id || orgId,
+        hersteller: existing.hersteller || '',
+        im_euc: existing.im_euc || '',
+        euc_vertrag_id: existing.euc_vertrag_id || '',
+      };
+      renderAufzugBanner();
+      if (!silent) showToast('✓ Aufzug ' + existing.id + ' automatisch zugeordnet (Fabr.-Nr. ' + fabriknummer + ')', 'ok', 3500);
+      return window._currentCheckAufzug;
+    }
+    // 2. Kein Match → neu anlegen mit aktuellem KI-Stand
+    const hersteller = g('cv_anbieter') || ''; // bei Reparaturcheck oft der Anbieter
+    const created = await upsertAufzug({
+      fabriknummer,
+      standort: g('f_standort'),
+      hv_pipedrive_org_id: orgId,
+      hv_name: g('f_firma'),
+      hersteller,
+      weg_id: '',
+      notiz: 'Auto-angelegt aus Check ' + (g('f_requestid') || '') + ' (KI-Extraktion ' + new Date().toLocaleDateString('de-DE') + ')',
+    });
+    if (created && created.id) {
+      window._currentCheckAufzug = {
+        id: created.id,
+        _recordId: created.recordId || '',
+        fabriknummer,
+        standort: g('f_standort'),
+        hv_name: g('f_firma'),
+        hv_pipedrive_org_id: orgId,
+        hersteller,
+        im_euc: '',
+        euc_vertrag_id: '',
+      };
+      // Cache invalidieren (Badge updaten)
+      loadAufzuege().then(recs => _updateAufzuegeBadge((recs || []).length)).catch(() => {});
+      renderAufzugBanner();
+      if (!silent) showToast('✨ Neuer Aufzug ' + created.id + ' aus KI-Extraktion angelegt', 'ok', 4000);
+      return window._currentCheckAufzug;
+    }
+  } catch(e) {
+    console.warn('autoMatchOrCreateAufzug:', e.message);
+    if (!silent) showToast('Auto-Aufzug-Zuordnung fehlgeschlagen: ' + e.message, 'error', 3500);
+  }
+  return null;
+}
+
+async function startNewAufzugFromPicker() {
+  // Picker schließen, Editor öffnen — Save kehrt in den Picker zurück & wählt automatisch
+  closeAufzugPicker();
+  window._aufzugEditorReturnTo = 'picker';
+  openAufzugEditor();
+}
+
+// Hinweis: das Routing nach saveAufzug (zurück zum Picker statt zur Aufzüge-Liste)
+// wird direkt in saveAufzug() via window._aufzugEditorReturnTo behandelt.
 
 // ── Dashboard ─────────────────────────────────────────────────────
 function _normFirma(s) {
