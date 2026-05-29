@@ -2190,6 +2190,11 @@ const pdfWorkerReady = Promise.resolve();</script>
         EuC
         <span id="lightVertraegeCountBadge" class="btn-badge" style="display:none">0</span>
       </button>
+      <button class="nav-pill" data-nav="aufzuege" onclick="openAufzuegeModal()" title="Aufzüge · zentrale Anlagen-Stammdaten (Fabriknummer, Standort, HV)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
+        Aufzüge
+        <span id="aufzuegeCountBadge" class="btn-badge" style="display:none">0</span>
+      </button>
       <button class="nav-pill" data-nav="kunden" onclick="openKundenModal()" title="Hausverwaltungen (aus Pipedrive)">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
         Hausverwaltungen
@@ -2286,6 +2291,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openLightVertraegeModal()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Equipment under Control
+    </button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openAufzuegeModal()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
+      Aufzüge
     </button>
     <button class="mobile-menu-item" onclick="closeMobileMenu();openSettingsAdmin()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.07 7.07l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.07-7.07l4.24-4.24"/></svg>
@@ -4798,6 +4807,102 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════
+     V12.66 EuC-G: Aufzüge-Modul · Liste + CRUD-Editor
+     Aufzüge sind die zentralen Anlagen-Stammdaten (Fabriknummer eindeutig pro HV).
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="aufzuegeModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(880px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:#1e40af;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(30,64,175,.3),0 4px 12px rgba(30,64,175,.22);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Aufzüge</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Zentrale Anlagen-Stammdaten · Fabriknummer eindeutig pro Hausverwaltung</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="openAufzugEditor()" style="background:var(--dr-green);border:none;color:#fff;border-radius:var(--dr-r-md);padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(22,163,74,.3),0 4px 12px rgba(22,163,74,.22);transition:filter .15s" onmouseover="this.style.filter='brightness(.95)'" onmouseout="this.style.filter='brightness(1)'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Neuer Aufzug
+        </button>
+        <button onclick="document.getElementById('aufzuegeModal').style.display='none'" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div style="padding:16px 24px 14px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border)">
+      <div style="position:relative">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="aufzuegeSearch" oninput="filterAufzuege()" placeholder="Suchen nach Fabriknummer, Standort, HV, Hersteller, ID …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
+      </div>
+      <div id="aufzuegeSearchInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-top:8px;min-height:14px;letter-spacing:.04em"></div>
+    </div>
+    <div id="aufzuegeList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:8px;background:var(--dr-bg-soft)">
+      <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Aufzüge erfasst.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Aufzug-Editor-Modal -->
+<div id="aufzugEditorModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.85);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+  <div style="background:#fff;border-radius:16px;width:min(680px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <span id="aufzugEditorTitle" style="color:#fff;font-size:15px;font-weight:700">Neuer Aufzug</span>
+      <button onclick="closeAufzugEditor()" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕ Schließen</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:18px 22px">
+      <input type="hidden" id="az_recordId">
+      <input type="hidden" id="az_id">
+      <input type="hidden" id="az_hv_pipedrive_org_id">
+      <input type="hidden" id="az_im_euc">
+      <input type="hidden" id="az_euc_vertrag_id">
+
+      <!-- EuC-Status Badge (read-only) -->
+      <div id="az_eucStatus" style="display:none;background:#ecf6e1;border:1px solid #c8e2a2;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12.5px;color:#3d5e1c">
+        <strong>🛡 In Equipment under Control:</strong> <span id="az_eucVertragLabel">–</span>
+      </div>
+
+      <!-- Hausverwaltung -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Hausverwaltung</div>
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:14px">
+        <div class="field" style="position:relative">
+          <label>HV-Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· tippe Name → Pipedrive-Vorschläge (mind. 3 Zeichen)</span></label>
+          <input type="text" id="az_firma" placeholder="Firmenname der Hausverwaltung" autocomplete="off" oninput="_hvPickerSearch('az')">
+          <div id="az_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
+        </div>
+      </div>
+
+      <!-- Anlagendaten -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Aufzugdaten</div>
+      <div class="field-row" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div class="field"><label>Fabriknummer <span style="color:#a8312f">*</span></label><input type="text" id="az_fabriknummer" placeholder="z. B. 1234567" autocomplete="off"></div>
+        <div class="field"><label>Hersteller</label><input type="text" id="az_hersteller" placeholder="z. B. Schindler, OTIS, TK Elevator"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px">
+        <div class="field"><label>Standort / Objekt-Adresse</label><input type="text" id="az_standort" placeholder="Musterstraße 1, 12345 Musterstadt"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px">
+        <div class="field"><label>WEG-Bezeichnung <span style="font-weight:400;color:var(--muted);font-size:10.5px">· optional, z. B. „WEG Müller­straße 5"</span></label><input type="text" id="az_weg_id" placeholder="optional"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:6px">
+        <div class="field"><label>Notiz</label><textarea id="az_notiz" rows="3" placeholder="Freitext, optional" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%;resize:vertical"></textarea></div>
+      </div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:11.5px;color:var(--muted)">
+        <strong style="color:var(--blue-mid)">Hinweis:</strong> Fabriknummer ist eindeutig pro HV. Gleiche Nummer bei anderer HV ist OK.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="az_btnDelete" onclick="deleteAufzugCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
+        <button onclick="saveAufzug()" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">💾 Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- KI-Anpassungs-Modal: Chat zur Vertragsmodifikation per Anthropic API -->
 <div id="kiVertragModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.88);z-index:5300;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
   <div style="background:#fff;border-radius:16px;width:min(820px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.5);overflow:hidden">
@@ -5384,7 +5489,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.65';
+const APP_VERSION = 'V12.66';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13140,6 +13245,9 @@ async function _pickHvForEditor(idx, editor) {
   set(editor + '_ort',     details.ort);
   set(editor + '_email',   details.email);
   set(editor + '_tel',     details.tel);
+  // V12.66 EuC-G: Editor-spezifische Hidden-Felder (Aufzug-Modul nutzt org_id direkt)
+  const orgIdEl = document.getElementById(editor + '_hv_pipedrive_org_id');
+  if (orgIdEl) orgIdEl.value = hit.org_id || '';
   showToast('✓ Daten aus Pipedrive übernommen', 'ok', 2500);
 }
 
@@ -16224,6 +16332,249 @@ async function deleteLightWegCurrent() {
     closeLightWegEditor();
     renderLightWegsInEditor(lvId);
   } catch (e) { showToast('Löschen fehlgeschlagen: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// V12.66 EuC-G: Aufzüge-Modul · Liste + CRUD
+// Zentrale Anlagen-Stammdaten, Fabriknummer eindeutig pro HV.
+// ═══════════════════════════════════════════════════════════════════
+window._aufzuegeCache = [];
+
+async function openAufzuegeModal() {
+  document.getElementById('aufzuegeModal').style.display = 'flex';
+  const listEl = document.getElementById('aufzuegeList');
+  listEl.innerHTML = '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite"></div> Aufzüge werden geladen …</div>';
+  try {
+    const recs = await loadAufzuege();
+    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    // Neuste zuerst
+    items.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    window._aufzuegeCache = items;
+    const searchEl = document.getElementById('aufzuegeSearch');
+    if (searchEl) searchEl.value = '';
+    renderAufzuegeList(items, '');
+    _updateAufzuegeBadge(items.length);
+  } catch (e) {
+    listEl.innerHTML = '<p style="color:#a8312f;font-size:13px;text-align:center;padding:20px">Laden fehlgeschlagen: ' + e.message + '</p>';
+  }
+}
+
+function _updateAufzuegeBadge(n) {
+  const b = document.getElementById('aufzuegeCountBadge');
+  if (!b) return;
+  if (n > 0) { b.style.display = 'inline-flex'; b.textContent = String(n); }
+  else b.style.display = 'none';
+}
+
+function filterAufzuege() {
+  const q = (document.getElementById('aufzuegeSearch')?.value || '').trim().toLowerCase();
+  const all = window._aufzuegeCache || [];
+  if (!q) { renderAufzuegeList(all, ''); return; }
+  const hits = all.filter(a => {
+    const hay = [a.id, a.fabriknummer, a.standort, a.hv_name, a.hersteller, a.weg_id, a.notiz]
+      .filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+  renderAufzuegeList(hits, q);
+}
+
+function renderAufzuegeList(items, query) {
+  const listEl = document.getElementById('aufzuegeList');
+  const infoEl = document.getElementById('aufzuegeSearchInfo');
+  if (infoEl) {
+    if (query) infoEl.textContent = items.length + ' Treffer für „' + query + '"';
+    else infoEl.textContent = (items.length === 0 ? 'Keine Aufzüge erfasst.' : items.length + ' Aufz' + (items.length === 1 ? 'ug' : 'üge') + ' insgesamt');
+  }
+  if (!items.length) {
+    listEl.innerHTML = query
+      ? '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Keine Treffer für „' + escapeHtml(query) + '".</div>'
+      : '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Aufzüge erfasst. Klick oben rechts auf <strong>+ Neuer Aufzug</strong>.</div>';
+    return;
+  }
+  // Mappe Cache-Indizes über Original-Cache
+  const cache = window._aufzuegeCache || [];
+  listEl.innerHTML = items.map(a => {
+    const cacheIdx = cache.indexOf(a);
+    const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
+    const eucBadge = eucActive
+      ? '<span style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🛡 EuC' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '</span>'
+      : '<span style="background:#e5e7eb;color:#6b7280;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase">Frei</span>';
+    const hvLine = a.hv_name ? escapeHtml(a.hv_name) : '<span style="color:#a8312f">⚠ ohne HV</span>';
+    const standortLine = a.standort ? escapeHtml(a.standort) : '–';
+    const hersteller = a.hersteller ? ' · ' + escapeHtml(a.hersteller) : '';
+    const wegPart = a.weg_id ? ' · ' + escapeHtml(a.weg_id) : '';
+    return '<div style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--dr-blue)\'" onmouseout="this.style.borderColor=\'var(--dr-border)\'" onclick="openAufzugByIndex(' + cacheIdx + ')">'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-weight:700;font-size:13.5px;color:var(--dr-ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+          + '<span style="font-family:var(--dr-f-mono);color:var(--dr-blue);font-size:12px">' + escapeHtml(a.id || '—') + '</span>'
+          + '<span style="font-weight:600">Fabr.-Nr. ' + (a.fabriknummer ? escapeHtml(a.fabriknummer) : '<span style="color:#a8312f">fehlt</span>') + '</span>'
+          + hersteller
+          + eucBadge
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--dr-ink-mute);margin-top:3px">' + standortLine + wegPart + '</div>'
+        + '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">HV: <strong style="color:var(--dr-ink)">' + hvLine + '</strong></div>'
+      + '</div>'
+      + '<svg width="18" height="18" fill="none" stroke="var(--dr-ink-mute)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
+    + '</div>';
+  }).join('');
+}
+
+function openAufzugByIndex(i) {
+  const a = (window._aufzuegeCache || [])[i];
+  if (!a) return;
+  openAufzugEditor(a);
+}
+
+function openAufzugEditor(data) {
+  clearAufzugForm();
+  if (data) {
+    setAufzugForm(data);
+    document.getElementById('aufzugEditorTitle').textContent = 'Aufzug · ' + (data.id || data.fabriknummer || '–');
+    document.getElementById('az_btnDelete').style.display = 'inline-flex';
+    // EuC-Badge anzeigen wenn aktiv
+    const eucActive = data.im_euc === '1' || data.im_euc === 'true' || data.im_euc === true;
+    const badge = document.getElementById('az_eucStatus');
+    const label = document.getElementById('az_eucVertragLabel');
+    if (eucActive) {
+      badge.style.display = 'block';
+      label.textContent = data.euc_vertrag_id || 'aktiv (ohne Vertrags-Verknüpfung)';
+    } else {
+      badge.style.display = 'none';
+    }
+  } else {
+    document.getElementById('aufzugEditorTitle').textContent = 'Neuer Aufzug';
+    document.getElementById('az_btnDelete').style.display = 'none';
+    document.getElementById('az_eucStatus').style.display = 'none';
+  }
+  document.getElementById('aufzugEditorModal').style.display = 'flex';
+  // Focus Fabriknummer wenn neu (kleines Delay für Modal-Animation)
+  if (!data) setTimeout(() => document.getElementById('az_fabriknummer')?.focus(), 100);
+}
+
+function closeAufzugEditor() {
+  document.getElementById('aufzugEditorModal').style.display = 'none';
+}
+
+function clearAufzugForm() {
+  ['az_recordId','az_id','az_hv_pipedrive_org_id','az_im_euc','az_euc_vertrag_id',
+   'az_firma','az_fabriknummer','az_hersteller','az_standort','az_weg_id','az_notiz']
+   .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const sug = document.getElementById('az_firma_sug');
+  if (sug) sug.style.display = 'none';
+}
+
+function setAufzugForm(d) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+  set('az_recordId', d._recordId);
+  set('az_id', d.id);
+  set('az_firma', d.hv_name);
+  set('az_hv_pipedrive_org_id', d.hv_pipedrive_org_id);
+  set('az_fabriknummer', d.fabriknummer);
+  set('az_hersteller', d.hersteller);
+  set('az_standort', d.standort);
+  set('az_weg_id', d.weg_id);
+  set('az_notiz', d.notiz);
+  set('az_im_euc', d.im_euc);
+  set('az_euc_vertrag_id', d.euc_vertrag_id);
+}
+
+function getAufzugForm() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    _recordId: g('az_recordId') || null,
+    id: g('az_id'),
+    fabriknummer: g('az_fabriknummer'),
+    hv_name: g('az_firma'),
+    hv_pipedrive_org_id: g('az_hv_pipedrive_org_id'),
+    hersteller: g('az_hersteller'),
+    standort: g('az_standort'),
+    weg_id: g('az_weg_id'),
+    notiz: g('az_notiz'),
+    im_euc: g('az_im_euc'),
+    euc_vertrag_id: g('az_euc_vertrag_id'),
+  };
+}
+
+async function saveAufzug() {
+  const d = getAufzugForm();
+  if (!d.fabriknummer) { showToast('Fabriknummer ist Pflicht', 'error'); return; }
+  if (!d.hv_pipedrive_org_id) { showToast('Bitte erst eine Hausverwaltung auswählen', 'error'); return; }
+  // Eindeutigkeit (Fabriknummer + HV) prüfen — nur beim Neuanlegen
+  if (!d._recordId) {
+    try {
+      const existing = await findAufzugByFabriknummer(d.fabriknummer, d.hv_pipedrive_org_id);
+      if (existing) {
+        showToast('Aufzug mit Fabr.-Nr. ' + d.fabriknummer + ' existiert bereits bei dieser HV (' + existing.id + ').', 'error', 4500);
+        return;
+      }
+    } catch(e) { /* nicht-blockierend */ }
+  }
+  const now = new Date().toISOString();
+  const fields = {
+    fabriknummer: d.fabriknummer,
+    standort: d.standort,
+    hv_pipedrive_org_id: d.hv_pipedrive_org_id,
+    hv_name: d.hv_name,
+    hersteller: d.hersteller,
+    weg_id: d.weg_id,
+    notiz: d.notiz,
+    savedAt: now,
+  };
+  try {
+    if (d._recordId) {
+      await atUpdate('Aufzuege', d._recordId, fields);
+      showToast('Aufzug aktualisiert', 'ok');
+    } else {
+      const newId = await generateAufzugId();
+      fields.id = newId;
+      fields.im_euc = '';
+      fields.euc_vertrag_id = '';
+      fields.api_key = APP_KEYS.user?.api_key || 'unknown';
+      const rec = await atWrite('Aufzuege', fields);
+      document.getElementById('az_recordId').value = rec.id;
+      document.getElementById('az_id').value = newId;
+      document.getElementById('aufzugEditorTitle').textContent = 'Aufzug · ' + newId;
+      document.getElementById('az_btnDelete').style.display = 'inline-flex';
+      showToast('Aufzug ' + newId + ' angelegt', 'ok');
+    }
+    closeAufzugEditor();
+    // Liste neu laden (im Hintergrund)
+    openAufzuegeModal();
+  } catch (e) {
+    if (/NOT_FOUND|TABLE_NOT_FOUND/i.test(e.message || '')) {
+      showToast('Tabelle „Aufzuege" nicht angelegt. Siehe Konsole.', 'error', 5000);
+      console.warn('Bitte Airtable-Tabelle „Aufzuege" anlegen mit den Feldern aus setupTables().');
+    } else {
+      showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+    }
+  }
+}
+
+async function deleteAufzugCurrent() {
+  const recId = document.getElementById('az_recordId').value;
+  const azId  = document.getElementById('az_id').value;
+  if (!recId) return;
+  // Wenn im EuC: zusätzliche Warnung
+  const eucActive = (document.getElementById('az_im_euc').value || '') === '1';
+  const warn = eucActive
+    ? 'Dieser Aufzug ist aktuell in einer EuC-Vereinbarung. Wirklich löschen? (Die EuC-Vereinbarung bleibt bestehen, der Aufzug-Eintrag wird aus dem Stamm entfernt.)'
+    : 'Aufzug ' + (azId || '') + ' wirklich löschen?';
+  if (!confirm(warn)) return;
+  try {
+    await atDelete('Aufzuege', recId);
+    showToast('Aufzug gelöscht', 'ok');
+    closeAufzugEditor();
+    openAufzuegeModal();
+  } catch (e) { showToast('Löschen fehlgeschlagen: ' + e.message, 'error'); }
+}
+
+// Counter beim App-Start vorbefüllen (im Hintergrund, ohne Modal-Öffnung)
+async function _preloadAufzuegeBadge() {
+  if (!APP_KEYS.user) return;
+  try {
+    const recs = await loadAufzuege();
+    _updateAufzuegeBadge((recs || []).length);
+  } catch(e) { /* silent */ }
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────
