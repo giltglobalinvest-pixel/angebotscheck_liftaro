@@ -4541,7 +4541,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:6px">
         <div class="field"><label>Vertragsbeginn (z. B. 01.05.2026)</label><input type="text" id="v_beginn" placeholder="01.05.2026"></div>
       </div>
-      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-top:12px;margin-bottom:6px">
+      <div class="field-row" style="grid-template-columns:2fr 1fr;gap:12px;margin-top:12px;margin-bottom:6px">
         <div class="field">
           <label>Vertragsvariante (§3 Mitwirkung)</label>
           <select id="v_variante" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
@@ -4550,6 +4550,11 @@ const pdfWorkerReady = Promise.resolve();</script>
             <option value="varb">Variante B – Empfehlungs-Sprache („es empfiehlt sich")</option>
           </select>
           <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Ändert nur den Wortlaut von §3. Inhaltlich bleibt der Vertrag gleich.</div>
+        </div>
+        <div class="field">
+          <label>Erfolgsbeteiligung § 4 (%) <span style="font-weight:400;color:var(--muted);font-size:10.5px">· 0–50</span></label>
+          <input type="number" id="v_erfolg_pct" placeholder="50" min="0" max="50" step="0.5" value="50">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Standard 50 %. Bei Bedarf reduzieren — gilt für Wartung/Notruf <strong>und</strong> Reparatur/Nachrüstung.</div>
         </div>
       </div>
       <!-- V12.64: EuC-Zusatzklausel (§5a) optional -->
@@ -5379,7 +5384,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.64';
+const APP_VERSION = 'V12.65';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13869,6 +13874,13 @@ function getVertragData() {
     email:    g('v_email'),
     beginn:   g('v_beginn'),
     variante: g('v_variante') || 'standard',
+    erfolgsbeteiligung_pct: (() => {
+      const raw = g('v_erfolg_pct');
+      if (raw === '' || raw === null) return 50;
+      const n = parseFloat(raw.replace(',', '.'));
+      if (!Number.isFinite(n)) return 50;
+      return Math.max(0, Math.min(50, n));
+    })(),
     euc_klausel: !!document.getElementById('v_euc_klausel')?.checked,
     anpassungen: window._currentVertragAnpassungen || {},
   };
@@ -13887,6 +13899,9 @@ function setVertragForm(d) {
   set('v_email',    d.email);
   set('v_beginn',   d.beginn);
   set('v_variante', d.variante || 'standard');
+  // V12.65: Erfolgsbeteiligung % (Default 50)
+  const erfEl = document.getElementById('v_erfolg_pct');
+  if (erfEl) erfEl.value = (d.erfolgsbeteiligung_pct ?? 50);
   // V12.64: EuC-Zusatzklausel (Checkbox)
   const eucEl = document.getElementById('v_euc_klausel');
   if (eucEl) eucEl.checked = !!d.euc_klausel;
@@ -13908,6 +13923,8 @@ function clearVertragForm() {
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   // Default-Variante zurück auf "standard"
   const va = document.getElementById('v_variante'); if (va) va.value = 'standard';
+  // V12.65: Erfolgsbeteiligung zurück auf 50 %
+  const ep = document.getElementById('v_erfolg_pct'); if (ep) ep.value = '50';
   // V12.64: EuC-Klausel-Checkbox zurücksetzen
   const ec = document.getElementById('v_euc_klausel'); if (ec) ec.checked = false;
   window._currentVertragAnpassungen = {};
@@ -14098,9 +14115,13 @@ async function buildVertragPDF() {
   txt('p4_1', 'Der Aufbau, die Pflege und Aktualisierung der Anlagendatenbank ist für den AG grundsätzlich kostenlos.');
   txt('p4_2_h', '2. Erfolgsabhängige Vergütung – Einsparungen');
   txt('p4_2_1', '(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.');
+  // V12.65: Erfolgsbeteiligung dynamisch (0–50 %, Default 50)
+  const _erfRaw = Number(d.erfolgsbeteiligung_pct);
+  const erfPctP4 = Number.isFinite(_erfRaw) ? Math.max(0, Math.min(50, _erfRaw)) : 50;
+  const erfPctStrP4 = (Number.isInteger(erfPctP4) ? String(erfPctP4) : erfPctP4.toLocaleString('de-DE')) + ' %';
   txt('p4_2_2', '(2) Der Berater erhält:');
-  bul('p4_b1', '50 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)');
-  bul('p4_b2', '50 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen');
+  bul('p4_b1', erfPctStrP4 + ' der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)');
+  bul('p4_b2', erfPctStrP4 + ' der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen');
   txt('p4_2_3', '(3) Die Einsparungsberechnung erfolgt transparent und nachvollziehbar und wird dem AG schriftlich dargelegt.');
 
   head('h5', '§5 Besondere Beratungsleistungen');
@@ -14116,7 +14137,7 @@ async function buildVertragPDF() {
     txt('p5a_1', '(1) Die Parteien können — zusätzlich zu den vorstehenden Beratungsleistungen — die laufende administrative Betreuung der Aufzugsanlagen einer oder mehrerer vom Auftraggeber verwalteter Wohnungseigentümergemeinschaften (WEG) durch den Berater vereinbaren. Diese Leistung trägt den Namen „Equipment under Control" (EuC) und wird in einer separaten Rahmenvereinbarung („EuC-Rahmenvereinbarung", L_xxxx) zwischen dem Berater und dem Auftraggeber konkretisiert.');
     txt('p5a_2', '(2) Leistungsumfang EuC: laufende Vertragsprüfung und Nachverhandlung mit Wartungs- und Notrufdienstleistern, Rechnungsprüfung, Begleitung bei Reparatur- und Modernisierungsangeboten, Erinnerung an Betreiberpflichten, halbjährliches Reporting je WEG. Die in EuC aufgenommenen Aufzugsanlagen sind in Anlage A der EuC-Rahmenvereinbarung abschließend benannt.');
     txt('p5a_3', '(3) Vergütung EuC — vollständig erfolgsbasiert: Die Leistungen nach Abs. 2 sind für den Auftraggeber und die jeweilige WEG kostenfrei. Der Berater berechnet weder eine Pauschale noch eine Grund- oder Bereitstellungsgebühr. Als Vergütung erhält der Berater 25 % der nachweisbaren Netto-Jahres-Einsparung pro WEG, die sich durch eine vom Berater vermittelte oder verhandelte Optimierung der Wartungs- und/oder Notrufverträge ergibt — abgerechnet jährlich nachträglich für maximal drei (3) volle Vertragsjahre ab dem ersten optimierten Vertragsjahr. Tritt keine Einsparung ein, entstehen für den Auftraggeber und die WEG keinerlei Kosten.');
-    txt('p5a_4', '(4) Abgrenzung zur Erfolgsvergütung nach § 4 Abs. 2: Die EuC-Erfolgsbeteiligung (25 %) tritt nur für solche Maßnahmen ein, die im Rahmen der laufenden EuC-Betreuung der jeweiligen WEG erfolgen. Beratungsmaßnahmen außerhalb des EuC (z. B. einmalige Optimierungen ohne EuC-Mandat) werden unverändert nach § 4 Abs. 2 (50 %) vergütet. Eine Doppelvergütung derselben Einsparung ist ausgeschlossen.');
+    txt('p5a_4', '(4) Abgrenzung zur Erfolgsvergütung nach § 4 Abs. 2: Die EuC-Erfolgsbeteiligung (25 %) tritt nur für solche Maßnahmen ein, die im Rahmen der laufenden EuC-Betreuung der jeweiligen WEG erfolgen. Beratungsmaßnahmen außerhalb des EuC (z. B. einmalige Optimierungen ohne EuC-Mandat) werden unverändert nach § 4 Abs. 2 (' + erfPctStrP4 + ') vergütet. Eine Doppelvergütung derselben Einsparung ist ausgeschlossen.');
     txt('p5a_5', '(5) Die EuC-Rahmenvereinbarung kann gleichzeitig mit diesem Beratervertrag oder zu einem späteren Zeitpunkt geschlossen werden. Diese Zusatzklausel hat informativen Charakter; verbindliche Vertragsbeziehungen aus EuC entstehen erst mit Unterzeichnung der separaten EuC-Rahmenvereinbarung durch beide Parteien.');
   }
 
@@ -15514,6 +15535,7 @@ async function saveVertrag() {
     firma: d.firma, gf: d.gf, strasse: d.strasse, plz: d.plz, ort: d.ort,
     tel: d.tel, email: d.email, beginn: d.beginn,
     variante: d.variante || 'standard',
+    erfolgsbeteiligung_pct: d.erfolgsbeteiligung_pct ?? 50,
     euc_klausel: !!d.euc_klausel,
     anpassungen: JSON.stringify(d.anpassungen || {}),
   };
