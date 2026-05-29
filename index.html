@@ -2474,7 +2474,7 @@ const pdfWorkerReady = Promise.resolve();</script>
                   <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>
                   Aufzug
                 </button>
-              </label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug"></div>
+              </label><input type="text" id="f_fabrik" placeholder="Fabriknummer Aufzug" oninput="if(typeof renderAufzugBanner==='function') renderAufzugBanner()"></div>
             </div>
             <div class="field-row" style="grid-template-columns:1fr">
               <div class="field"><label>Standort</label><input type="text" id="f_standort" placeholder="Adresse / Objekt"></div>
@@ -5594,7 +5594,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.70';
+const APP_VERSION = 'V12.71';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -13415,6 +13415,8 @@ async function _pickHvForEditor(idx, editor) {
     // Auch globalen Cache aktualisieren für späteres Auto-Match
     window._currentCheckPipedriveOrgId = hit.org_id || '';
     showToast('✓ HV „' + (hit.name || '') + '" aus Pipedrive verknüpft', 'ok', 2800);
+    // V12.71: Banner re-rendern (zeigt jetzt "+ Aus Check anlegen"-Button wenn Fabriknummer da)
+    if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
     // updateEmail etc. neu triggern
     if (typeof updateEmail === 'function') updateEmail();
     return;
@@ -16713,6 +16715,12 @@ function closeAufzugEditor() {
     window._aufzugEditorReturnTo = null;
     // Zurück zum Picker
     document.getElementById('aufzugPickerModal').style.display = 'flex';
+    return;
+  }
+  // V12.71: "check-bind" → einfach zumachen, Picker NICHT aufmachen
+  if (window._aufzugEditorReturnTo === 'check-bind') {
+    window._aufzugEditorReturnTo = null;
+    window._aufzugPickerMode = null;
   }
 }
 
@@ -16808,8 +16816,8 @@ async function saveAufzug() {
     window._aufzugEditorReturnTo = null;
     // Editor schließen, ohne Picker-Auto-Reopen (Flag ist ja schon weg)
     document.getElementById('aufzugEditorModal').style.display = 'none';
-    if (returnTo === 'picker' && savedAufzug && savedAufzug.id) {
-      const isBindExisting = window._aufzugPickerMode === 'bind-existing';
+    if ((returnTo === 'picker' || returnTo === 'check-bind') && savedAufzug && savedAufzug.id) {
+      const isBindExisting = window._aufzugPickerMode === 'bind-existing' || returnTo === 'check-bind';
       window._aufzugPickerMode = null;
       _applyAufzugToCheckForm(savedAufzug, { reset: !isBindExisting });
       // Badge im Hintergrund aktualisieren (nicht-blockierend)
@@ -17215,6 +17223,45 @@ async function openAufzugPickerForCurrentCheck() {
   await startNewCheckViaAufzug();
 }
 
+// V12.71: Direkt-CTA — legt einen neuen Aufzug an, vorbefüllt mit den aktuellen
+// Check-Daten (Fabriknummer, Standort, HV-Firma + Org-ID, ggf. Hersteller).
+// Nach Save bindet er sich automatisch an den aktuellen Check (kein neuer Check!).
+function createAufzugFromCheckInfos() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const fabriknummer = g('f_fabrik');
+  if (!fabriknummer) {
+    showToast('Fabriknummer im Check fehlt — bitte zuerst eintragen oder KI extrahieren lassen.', 'error', 4000);
+    return;
+  }
+  const orgId = g('f_hv_pipedrive_org_id') || (window._currentCheckPipedriveOrgId || '');
+  if (!orgId) {
+    showToast('HV im Check ist nicht aus Pipedrive verknüpft — bitte Firmenname über die HV-Suche zuordnen.', 'error', 4500);
+    return;
+  }
+  const firma     = g('f_firma');
+  const standort  = g('f_standort');
+  // Hersteller-Heuristik: vorliegender Anbieter (cv_anbieter), sonst Wartungstyp
+  const hersteller = g('cv_anbieter') || g('wv_typ') || '';
+  // V12.71: eigener Return-Code "check-bind" — saveAufzug bindet an aktuellen Check
+  // ohne Reset, closeAufzugEditor öffnet KEINEN Picker auf Cancel.
+  window._aufzugPickerMode = 'bind-existing';
+  window._aufzugEditorReturnTo = 'check-bind';
+  // Editor öffnen + vorbefüllen (clearAufzugForm + manuelles Set, weil openAufzugEditor data ignoriert wenn _recordId fehlt)
+  openAufzugEditor();
+  // Nach dem Öffnen Felder befüllen (kleines Delay damit Modal-Anzeige fertig ist)
+  setTimeout(() => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    set('az_fabriknummer', fabriknummer);
+    set('az_firma', firma);
+    set('az_hv_pipedrive_org_id', orgId);
+    set('az_standort', standort);
+    set('az_hersteller', hersteller);
+    set('az_notiz', 'Aus Check ' + (g('f_requestid') || '–') + ' angelegt am ' + new Date().toLocaleDateString('de-DE'));
+    document.getElementById('aufzugEditorTitle').textContent = 'Neuer Aufzug · aus Check-Daten';
+    showToast('Felder aus Check vorbefüllt — bitte prüfen und Speichern.', 'ok', 3000);
+  }, 60);
+}
+
 // V12.68 EuC-I + V12.70: Banner-Render — zeigt aktuell gebundenen Aufzug am Check-Header,
 // oder Empty-State-CTA "Aufzug wählen" wenn keiner gebunden ist.
 function renderAufzugBanner() {
@@ -17223,6 +17270,17 @@ function renderAufzugBanner() {
   const a = window._currentCheckAufzug;
   if (!a || !a.id) {
     // V12.70: Empty-State-CTA statt unsichtbar
+    // V12.71: zweite CTA "Aus Check anlegen" wenn Check-Form genug Daten hat
+    const fabrik = (document.getElementById('f_fabrik')?.value || '').trim();
+    const firma  = (document.getElementById('f_firma')?.value || '').trim();
+    const orgId  = (document.getElementById('f_hv_pipedrive_org_id')?.value || '').trim();
+    const canCreate = !!(fabrik && (orgId || firma));
+    const fromCheckBtn = canCreate
+      ? '<button onclick="createAufzugFromCheckInfos()" title="Aufzug mit den aktuellen Check-Daten (Fabr.-Nr., Standort, HV) anlegen" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;margin-right:6px">'
+        + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+        + '+ Aus Check anlegen'
+      + '</button>'
+      : '';
     banner.style.display = 'flex';
     banner.style.background = '#fff7ed';
     banner.style.border = '1.5px dashed #fb923c';
@@ -17232,13 +17290,19 @@ function renderAufzugBanner() {
       + '<span style="font-size:18px">📌</span>'
       + '<div style="flex:1;min-width:0">'
         + '<div style="font-weight:700;font-size:13px">Kein Aufzug verknüpft</div>'
-        + '<div style="font-size:11.5px;margin-top:1px;opacity:.85">Wähle einen Aufzug aus den Stammdaten oder lege einen neuen an — Fabriknummer, Standort und EuC-Status werden automatisch ergänzt.</div>'
+        + '<div style="font-size:11.5px;margin-top:1px;opacity:.85">' + (canCreate
+            ? 'Mit den aktuellen Check-Daten direkt anlegen oder einen Aufzug aus den Stammdaten wählen.'
+            : 'Wähle einen Aufzug aus den Stammdaten oder lege einen neuen an — Fabriknummer, Standort und EuC-Status werden automatisch ergänzt.')
+        + '</div>'
       + '</div>'
       + '</div>'
+      + '<div style="display:flex;align-items:center">'
+      + fromCheckBtn
       + '<button onclick="openAufzugPickerForCurrentCheck()" style="background:#1e40af;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
         + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1.5"/><path d="M9 7l3-2 3 2"/><path d="M9 17l3 2 3-2"/></svg>'
         + 'Aufzug wählen'
-      + '</button>';
+      + '</button>'
+      + '</div>';
     return;
   }
   const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
