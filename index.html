@@ -1160,7 +1160,8 @@ const pdfWorkerReady = Promise.resolve();</script>
   .field-row.r5 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
   .field { display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .4px; text-transform: uppercase; }
+  /* V12.81: Label-Schrift einen Tick größer (11 → 12), Letter-Spacing leicht reduziert */
+  .field label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .35px; text-transform: uppercase; }
   .field input, .field textarea {
     border: 1.5px solid var(--border);
     border-radius: 7px;
@@ -1274,7 +1275,8 @@ const pdfWorkerReady = Promise.resolve();</script>
     padding: 14px 18px;
     background: var(--sky);
     border-radius: 10px;
-    font-size: 11px;
+    /* V12.81: 11 → 12 für besser lesbare Rechtshinweise */
+    font-size: 12px;
     color: var(--muted);
     line-height: 1.65;
     border: 1px solid var(--border);
@@ -1283,7 +1285,8 @@ const pdfWorkerReady = Promise.resolve();</script>
     margin-top: 32px;
     padding-top: 12px;
     border-top: 2px solid var(--navy);
-    font-size: 11.5px;
+    /* V12.81: 11.5 → 12 (im PDF ohnehin ausgeblendet, V12.74) */
+    font-size: 12px;
     color: var(--muted);
     width: 280px;
   }
@@ -1679,7 +1682,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     /* === Sonstige Anpassungen === */
     [contenteditable="true"] { font-size: 14px !important; min-height: 80px !important; }
     #smiley-v, #smiley-a, #smiley-vw, #smiley-aw { font-size: 28px !important; padding: 6px 0 !important; }
-    .sig-line { font-size: 10.5px !important; }
+    .sig-line { font-size: 11px !important; }
     #checkFrozenBanner { font-size: 11.5px !important; padding: 8px 12px !important; }
     #invoiceBtnRow {
       flex-direction: column !important;
@@ -2851,23 +2854,24 @@ const pdfWorkerReady = Promise.resolve();</script>
           <!-- V12.56: Section 0 — Anschreiben an die WEG (kommt vor dem Angebot) -->
           <div id="section-eoc-anschreiben" class="section" style="margin-top:20px;display:none">
             <div class="section-title">📨 Anschreiben an die Eigentümergemeinschaft</div>
-            <div class="section-inner" style="padding:24px 28px;font-size:12.5px;line-height:1.65;color:var(--text);font-family:'DM Sans',sans-serif">
+            <!-- V12.81: Schriftgrößen aufgewertet — Body 14, Empfänger/Datum 13, Betreff 15, H4 14.5 -->
+            <div class="section-inner" style="padding:24px 28px;font-size:14px;line-height:1.65;color:var(--text);font-family:'DM Sans',sans-serif">
               <!-- Empfänger-Adresse oben links + Datum rechts -->
               <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:36px;flex-wrap:wrap">
-                <div id="eoc_brief_empfaenger" style="font-size:12px;line-height:1.5;color:var(--text);white-space:pre-line">
+                <div id="eoc_brief_empfaenger" style="font-size:13px;line-height:1.5;color:var(--text);white-space:pre-line">
                   Wohnungseigentümergemeinschaft
                 </div>
-                <div id="eoc_brief_datum" style="font-size:12px;color:var(--muted);white-space:nowrap">–</div>
+                <div id="eoc_brief_datum" style="font-size:13px;color:var(--muted);white-space:nowrap">–</div>
               </div>
               <!-- Betreff -->
-              <div id="eoc_brief_betreff" style="font-weight:700;color:var(--navy);margin-bottom:18px;font-size:13px">Wartungsvertrag Ihrer Aufzugsanlage — Vorschlag zur Vertragsbetreuung bis zum regulären Vertragsende</div>
+              <div id="eoc_brief_betreff" style="font-weight:700;color:var(--navy);margin-bottom:18px;font-size:15px">Wartungsvertrag Ihrer Aufzugsanlage — Vorschlag zur Vertragsbetreuung bis zum regulären Vertragsende</div>
               <!-- Anrede -->
               <div style="margin-bottom:14px">Sehr geehrte Damen und Herren,</div>
               <!-- Brief-Body -->
               <p style="margin:0 0 12px">
                 wir haben den Wartungsvertrag Ihrer Aufzugsanlage am Standort <strong id="eoc_brief_adresse_inline">–</strong> geprüft. Im Gegensatz zu unserem Standard-Vertragscheck können wir hier <strong>keinen Anbieterwechsel empfehlen</strong> — der bestehende Vertrag läuft noch bis <strong id="eoc_brief_endet">–</strong> und ist bis dahin nicht ordentlich kündbar.
               </p>
-              <h4 style="margin:18px 0 8px;font-size:13px;color:var(--navy);font-weight:700">Warum lange Vertragsbindungen ein Problem sind</h4>
+              <h4 style="margin:18px 0 8px;font-size:14.5px;color:var(--navy);font-weight:700">Warum lange Vertragsbindungen ein Problem sind</h4>
               <p style="margin:0 0 8px">
                 Lange Bindungen werden von Wartungsfirmen häufig als Hebel genutzt, um unterjährig zusätzliche Umsätze zu generieren — meist deutlich über dem marktüblichen Niveau. Typische Beobachtungen aus unserer Praxis:
               </p>
@@ -2876,14 +2880,14 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <li><strong>Überhöhte Einsatzpauschalen und Stundensätze</strong> bei jeder Störung, jedem TÜV-Mängelbericht, jeder kleinen Reparatur.</li>
                 <li>Erfundene <strong>Sicherheitsrisiken</strong>, mit denen unnötige (und teure) Maßnahmen verkauft werden.</li>
               </ul>
-              <h4 style="margin:18px 0 8px;font-size:13px;color:var(--navy);font-weight:700">Unsere Lösung: Equipment on Call</h4>
+              <h4 style="margin:18px 0 8px;font-size:14.5px;color:var(--navy);font-weight:700">Unsere Lösung: Equipment on Call</h4>
               <p style="margin:0 0 10px">
                 Liftaro übernimmt für die Restlaufzeit des Bestandsvertrags die <strong>vollständige Vertragsverwaltung gegenüber dem aktuellen Wartungsnehmer</strong> — als Schutzmantel der Eigentümergemeinschaft. Sämtliche Korrespondenz, TÜV-Mängelberichte, Angebote und Rechnungen laufen über uns. Wir prüfen, ordnen ein, verhandeln nach.
               </p>
               <p style="margin:0 0 10px">
                 Gleichzeitig wird Ihre Anlage in unser <strong>Equipment-on-Call-System</strong> aufgenommen: Bei jedem Reparatur-Angebot des Bestandsanbieters können wir innerhalb von Stunden ein Vergleichsangebot eines geprüften alternativen Dienstleisters einholen. Wird das Angebot überteuert beauftragt, ist das Ihre Entscheidung. Wird es abgewiesen und das Vergleichsangebot beauftragt, sparen Sie sofort.
               </p>
-              <h4 style="margin:18px 0 8px;font-size:13px;color:var(--navy);font-weight:700">Konditionen</h4>
+              <h4 style="margin:18px 0 8px;font-size:14.5px;color:var(--navy);font-weight:700">Konditionen</h4>
               <p style="margin:0 0 12px">
                 Für die laufende Betreuung <strong>zahlen Sie nichts</strong>. Liftaro berechnet ausschließlich <strong>25 % der nachweisbaren Ersparnis</strong> aus Vergleichsangeboten und Nachverhandlung. Ohne Ersparnis: keine Vergütung.
               </p>
@@ -5629,7 +5633,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.80';
+const APP_VERSION = 'V12.81';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
