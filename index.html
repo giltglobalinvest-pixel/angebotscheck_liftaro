@@ -2120,7 +2120,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     try {
       var srcImg = document.querySelector('.fh-logo img');
       if (!srcImg || !srcImg.src) return;
-      ['topbarLogoImg', 'loginLogoImg'].forEach(function(id) {
+      ['topbarLogoImg', 'loginLogoImg', 'checkBannerLogoImg'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) { el.src = srcImg.src; el.style.display = 'block'; }
       });
@@ -2459,6 +2459,8 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <div id="f_requestid_display" style="font-size:28px;font-weight:800;font-family:'DM Mono',monospace;letter-spacing:.5px;line-height:1.1;margin-top:2px">–</div>
                 <input type="hidden" id="f_requestid">
               </div>
+              <!-- V12.76: Liftaro-Logo im Banner (gleiches Asset wie Form-Header, per JS geklont) -->
+              <img id="checkBannerLogoImg" alt="Liftaro" style="height:38px;width:auto;border-radius:6px;background:rgba(255,255,255,.95);padding:4px 9px;border:1px solid rgba(255,255,255,.25);flex-shrink:0;display:none">
               <div style="text-align:right">
                 <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;opacity:.8">Anfragenummer</div>
                 <input type="text" id="f_anfrageNr" placeholder="Anfragenummer" oninput="updateEmail()" style="background:#fff;border:1.5px solid rgba(255,255,255,.3);color:#1a3a5c;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;outline:none;text-align:right;min-width:160px;margin-top:4px">
@@ -2475,8 +2477,13 @@ const pdfWorkerReady = Promise.resolve();</script>
             </div>
             <div class="field-row r5">
               <div class="field" style="position:relative"><label style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-                <span>Firmenname <span style="font-weight:400;color:var(--muted);font-size:10.5px">· HV-Suche aktiv</span></span>
-              </label><input type="text" id="f_firma" placeholder="Tippe Name → Pipedrive-Vorschläge" autocomplete="off" oninput="_hvPickerSearch('f');if(typeof renderAufzugBanner==='function')renderAufzugBanner()">
+                <span>Firmenname <span id="f_firma_label_hint" style="font-weight:400;color:var(--muted);font-size:10.5px">· HV aus Pipedrive</span></span>
+                <button type="button" id="f_firma_changeBtn" onclick="openHvPickerForCheck()" title="Hausverwaltung aus Pipedrive wählen" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  HV wählen
+                </button>
+              </label><input type="text" id="f_firma" placeholder="🔍 Klicke „HV wählen" — Suche in Pipedrive" autocomplete="off" readonly onclick="openHvPickerForCheck()" style="cursor:pointer">
+              <!-- Legacy-Dropdown-Container (V12.77: nicht mehr genutzt, bleibt für Backwards-Compat im DOM) -->
               <div id="f_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
               </div>
               <div class="field"><label>Name (Betreiber)</label><input type="text" id="f_name" placeholder="Vor- und Nachname"></div>
@@ -3117,7 +3124,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div class="legal-block" id="legal-block">
           Die Vergütung von Liftaro beträgt 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.
         </div>
-        <div class="sig-line">Datum, Unterschrift (Betreiber)</div>
+        <div id="sig-line-betreiber" class="sig-line">Datum, Unterschrift (Betreiber)</div>
       </div>
     </div>
   </div>
@@ -5002,6 +5009,40 @@ const pdfWorkerReady = Promise.resolve();</script>
   </div>
 </div>
 
+<!-- V12.77: HV-Picker-Modal für Check-Form (Pipedrive-Suche, ersetzt Inline-Dropdown) -->
+<div id="hvPickerCheckModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:5050;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(680px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.4);overflow:hidden;border:1px solid var(--dr-border)">
+    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;border-bottom:1px solid var(--dr-border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(124,58,237,.3),0 4px 12px rgba(124,58,237,.22);flex-shrink:0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+        </div>
+        <div>
+          <div style="font-size:17px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em">Hausverwaltung wählen</div>
+          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">Aus Pipedrive · Firma, Ansprechpartner &amp; Telefon werden automatisch übernommen</div>
+        </div>
+      </div>
+      <button onclick="closeHvPickerForCheck()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center" title="Abbrechen">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:14px 24px 12px;flex-shrink:0;background:var(--dr-surface);border-bottom:1px solid var(--dr-border)">
+      <div style="position:relative">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="hvPickerCheckSearchInput" oninput="_hvPickerCheckSearchDebounced()" placeholder="Firma, Stadt oder Email tippen (min. 3 Zeichen) …" autofocus style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13.5px;background:var(--dr-surface-alt);outline:none">
+      </div>
+      <div id="hvPickerCheckStatus" style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:7px;min-height:14px"></div>
+    </div>
+    <div id="hvPickerCheckList" style="flex:1;overflow-y:auto;padding:12px 24px 16px;background:var(--dr-bg-soft);display:flex;flex-direction:column;gap:6px">
+      <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:30px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Tippe oben, um in Pipedrive zu suchen.</div>
+    </div>
+    <div style="padding:11px 24px;border-top:1px solid var(--dr-border);background:var(--dr-surface);font-size:11.5px;color:var(--dr-ink-mute);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <span><strong style="color:#7c3aed">Nicht gefunden?</strong> Im Empty-State-Banner gibt's „✨ Neu in Pipedrive anlegen".</span>
+      <button onclick="closeHvPickerForCheck()" style="background:transparent;border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
 <!-- KI-Anpassungs-Modal: Chat zur Vertragsmodifikation per Anthropic API -->
 <div id="kiVertragModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.88);z-index:5300;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
   <div style="background:#fff;border-radius:16px;width:min(820px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.5);overflow:hidden">
@@ -5588,7 +5629,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.75';
+const APP_VERSION = 'V12.77';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -11397,6 +11438,8 @@ async function generatePDF() {
     document.getElementById('vorabcheckLinkBanner'),
     // V12.74: Aufzug-Banner gehört nicht in die PDF (UI-Element für Stammdaten-Verknüpfung)
     document.getElementById('aufzugBanner'),
+    // V12.76: Unterschriftszeile "Datum, Unterschrift (Betreiber)" raus aus PDF
+    document.getElementById('sig-line-betreiber'),
     // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
     document.getElementById('vertragInvoiceHistory'),
     document.getElementById('lv_mode_switch_row_w'),
@@ -17243,11 +17286,19 @@ function _applyAufzugToCheckForm(a, opts) {
   renderAufzugBanner();
 }
 
-// V12.75: Sperrt/entsperrt die vom Aufzug-Stamm verwalteten Felder im Check.
-// Wenn ein Aufzug gebunden ist → readonly + leicht graue Optik + Lock-Hinweis am Label.
-function _setCheckFieldsLockState(locked) {
-  const fieldIds = ['f_fabrik', 'f_standort', 'f_firma'];
-  fieldIds.forEach(id => {
+// V12.75 + V12.77: Sperrt/entsperrt die Stammdaten-Felder im Check.
+// - Aufzug-Lock (aufzugLocked): Fabriknummer + Standort
+// - HV-Lock (hvLocked):         Firma + Name (Betreiber) + Tel. (Betreiber)
+// Beide unabhängig. f_firma wird von beiden gelockt — sobald eins greift.
+// Hinweis: Argument 'locked' (Bool) hält V12.75-Aufruf rückwärtskompatibel
+// und triggert dann eine Auto-Erkennung des HV-Lock-State anhand der Org-ID.
+function _setCheckFieldsLockState(aufzugLocked, hvLockedOpt) {
+  // Wenn nur ein Argument: alter V12.75-Aufruf → HV-Lock auto-erkennen
+  const orgId = (document.getElementById('f_hv_pipedrive_org_id')?.value || '').trim();
+  const hvLocked = (typeof hvLockedOpt === 'boolean') ? hvLockedOpt : !!orgId;
+
+  // Lock-Helper
+  const lock = (id, locked, tooltip) => {
     const el = document.getElementById(id);
     if (!el) return;
     if (locked) {
@@ -17255,7 +17306,7 @@ function _setCheckFieldsLockState(locked) {
       el.style.background = '#eef4fb';
       el.style.color = '#475569';
       el.style.cursor = 'not-allowed';
-      el.title = '🔒 Stammdaten aus dem Aufzug — Änderung nur im Aufzug-Editor (Banner-Button „Aufzug").';
+      el.title = tooltip;
     } else {
       el.removeAttribute('readonly');
       el.style.background = '';
@@ -17263,25 +17314,68 @@ function _setCheckFieldsLockState(locked) {
       el.style.cursor = '';
       el.title = '';
     }
-  });
-  // Wenn locked: HV-Picker-Dropdown schließen (sonst irreführend)
-  if (locked) {
-    const sug = document.getElementById('f_firma_sug');
-    if (sug) sug.style.display = 'none';
+  };
+
+  // f_fabrik & f_standort sind nur Aufzug-controlled
+  lock('f_fabrik',   aufzugLocked, '🔒 Stammdaten aus dem Aufzug — Änderung nur im Aufzug-Editor.');
+  lock('f_standort', aufzugLocked, '🔒 Stammdaten aus dem Aufzug — Änderung nur im Aufzug-Editor.');
+
+  // f_firma: gelockt wenn Aufzug ODER HV (= Pipedrive-Verknüpfung) gesetzt
+  // V12.77: f_firma ist standardmäßig immer readonly (Click → Modal). Trigger-Stil bleibt.
+  const firmaEl = document.getElementById('f_firma');
+  if (firmaEl) {
+    firmaEl.setAttribute('readonly', 'readonly'); // immer readonly — Picker statt Direkteingabe
+    if (aufzugLocked || hvLocked) {
+      firmaEl.style.background = '#eef4fb';
+      firmaEl.style.color = '#475569';
+      firmaEl.style.cursor = aufzugLocked ? 'not-allowed' : 'pointer';
+      firmaEl.title = aufzugLocked
+        ? '🔒 Aus dem Aufzug — Änderung nur im Aufzug-Editor.'
+        : '🔒 Aus Pipedrive — klick „HV wählen" für anderen Verwalter.';
+      // Wenn Aufzug-Lock greift, soll Click NICHT mehr das Modal öffnen → onclick neutralisieren
+      firmaEl.onclick = aufzugLocked ? null : () => openHvPickerForCheck();
+    } else {
+      firmaEl.style.background = '';
+      firmaEl.style.color = '';
+      firmaEl.style.cursor = 'pointer';
+      firmaEl.title = '🔍 Klicke „HV wählen" — Suche in Pipedrive';
+      firmaEl.onclick = () => openHvPickerForCheck();
+    }
   }
-  // Label-Hinweis am Firmenname-Feld aktualisieren
-  const firmaLabel = document.querySelector('label[for] span') || null;
-  // (kein for-Attribute auf den Labels — wir nutzen DOM-Position stattdessen)
-  const firmaInput = document.getElementById('f_firma');
-  if (firmaInput) {
-    const labelEl = firmaInput.closest('.field')?.querySelector('label > span');
-    if (labelEl) {
-      // V12.75: Label-Text dynamisch — "HV-Suche aktiv" wenn entsperrt, "🔒 vom Aufzug" wenn gelockt
-      if (locked) {
-        labelEl.innerHTML = 'Firmenname <span style="font-weight:400;color:#94a3b8;font-size:10.5px">· 🔒 vom Aufzug-Stamm</span>';
-      } else {
-        labelEl.innerHTML = 'Firmenname <span style="font-weight:400;color:var(--muted);font-size:10.5px">· HV-Suche aktiv</span>';
-      }
+
+  // f_name (Name Betreiber) und f_tel (Tel Betreiber) sind HV-controlled
+  lock('f_name', hvLocked, '🔒 Aus Pipedrive-Kontakt — bei neuem Verwalter im Modal wählen.');
+  lock('f_tel',  hvLocked, '🔒 Aus Pipedrive-Kontakt — bei neuem Verwalter im Modal wählen.');
+
+  // Legacy: Inline-Picker-Dropdown ausblenden
+  const sug = document.getElementById('f_firma_sug');
+  if (sug) sug.style.display = 'none';
+
+  // Label-Hinweis am Firmenname-Feld dynamisch
+  const firmaLabel = firmaEl?.closest('.field')?.querySelector('#f_firma_label_hint');
+  if (firmaLabel) {
+    if (aufzugLocked) {
+      firmaLabel.innerHTML = '· 🔒 vom Aufzug-Stamm';
+      firmaLabel.style.color = '#94a3b8';
+    } else if (hvLocked) {
+      firmaLabel.innerHTML = '· 🔒 aus Pipedrive';
+      firmaLabel.style.color = '#94a3b8';
+    } else {
+      firmaLabel.innerHTML = '· HV aus Pipedrive';
+      firmaLabel.style.color = 'var(--muted)';
+    }
+  }
+
+  // "HV wählen"-Button neben dem Label: Label dynamisch "↻ Ändern" vs "HV wählen"
+  const btn = document.getElementById('f_firma_changeBtn');
+  if (btn) {
+    if (aufzugLocked) {
+      btn.style.display = 'none'; // Aufzug-Lock — HV nur via Aufzug
+    } else {
+      btn.style.display = 'inline-flex';
+      btn.innerHTML = hvLocked
+        ? '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 14.85-6.85L21 8"/><polyline points="21 3 21 8 16 8"/><path d="M21 12a9 9 0 0 1-14.85 6.85L3 16"/><polyline points="3 21 3 16 8 16"/></svg> Ändern'
+        : '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> HV wählen';
     }
   }
 }
@@ -17426,6 +17520,122 @@ async function createHvForCurrentCheck() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// V12.77: HV-Picker-Modal für Check-Form
+// Ersetzt das alte Inline-Dropdown (oninput → _hvPickerSearch('f')).
+// Search via Pipedrive `find_property_manager` → Pick lädt Details und
+// schreibt firma, hv_org_id, name (Betreiber=GF), tel — danach sind diese
+// drei Felder readonly (vom Pipedrive-Stamm verwaltet).
+// ═══════════════════════════════════════════════════════════════════
+window._hvPickerCheckResults = [];
+window._hvPickerCheckTimer = null;
+window._hvPickerCheckLastQ = '';
+
+function openHvPickerForCheck() {
+  // Wenn Aufzug gebunden → HV vom Aufzug abhängig, kein direkter Wechsel
+  if (window._currentCheckAufzug?.id) {
+    showToast('HV ist über den gebundenen Aufzug fest — wechsle den Aufzug oder löse die Bindung.', 'info', 4000);
+    return;
+  }
+  const modal = document.getElementById('hvPickerCheckModal');
+  modal.style.display = 'flex';
+  const input = document.getElementById('hvPickerCheckSearchInput');
+  const status = document.getElementById('hvPickerCheckStatus');
+  const list = document.getElementById('hvPickerCheckList');
+  // Bei aktueller firma als Vorbelegung in Suche
+  const cur = (document.getElementById('f_firma')?.value || '').trim();
+  if (input) {
+    input.value = cur;
+    setTimeout(() => { input.focus(); input.select(); }, 80);
+  }
+  if (status) status.textContent = '';
+  list.innerHTML = '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:30px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Tippe oben, um in Pipedrive zu suchen.</div>';
+  window._hvPickerCheckLastQ = '';
+  if (cur.length >= 3) _hvPickerCheckSearchDebounced();
+}
+
+function closeHvPickerForCheck() {
+  document.getElementById('hvPickerCheckModal').style.display = 'none';
+}
+
+function _hvPickerCheckSearchDebounced() {
+  clearTimeout(window._hvPickerCheckTimer);
+  window._hvPickerCheckTimer = setTimeout(_hvPickerCheckRunSearch, 320);
+}
+
+async function _hvPickerCheckRunSearch() {
+  const input = document.getElementById('hvPickerCheckSearchInput');
+  const status = document.getElementById('hvPickerCheckStatus');
+  const list = document.getElementById('hvPickerCheckList');
+  const q = (input?.value || '').trim();
+  if (q.length < 3) {
+    if (status) status.textContent = 'Mindestens 3 Zeichen für Suche.';
+    list.innerHTML = '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:30px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Tippe oben, um in Pipedrive zu suchen.</div>';
+    return;
+  }
+  if (q === window._hvPickerCheckLastQ) return;
+  window._hvPickerCheckLastQ = q;
+  if (!APP_KEYS.vorabcheckProxyUrl) {
+    if (status) status.textContent = '⚠ Pipedrive-Proxy nicht konfiguriert.';
+    return;
+  }
+  if (status) status.innerHTML = '<span style="display:inline-block;width:11px;height:11px;border:2px solid var(--dr-border-strong);border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle"></span> Suche „' + escapeHtml(q) + '" …';
+  try {
+    const r = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'find_property_manager', query: q }),
+    });
+    const d = await r.json();
+    window._hvPickerCheckResults = (d.ok && Array.isArray(d.results)) ? d.results : [];
+    _renderHvPickerCheckResults();
+    if (status) status.textContent = (window._hvPickerCheckResults.length || 0) + ' Treffer für „' + q + '"';
+  } catch(e) {
+    if (status) status.textContent = '⚠ Fehler: ' + e.message;
+  }
+}
+
+function _renderHvPickerCheckResults() {
+  const list = document.getElementById('hvPickerCheckList');
+  const items = window._hvPickerCheckResults || [];
+  if (!items.length) {
+    list.innerHTML = '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:24px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Keine Treffer. Im Banner findest du „✨ Neu in Pipedrive anlegen".</div>';
+    return;
+  }
+  list.innerHTML = items.map((r, idx) => {
+    const city = r.city ? '<span style="color:var(--dr-ink-mute);font-size:11.5px">· ' + escapeHtml(r.city) + '</span>' : '';
+    const email = r.email ? '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">✉ ' + escapeHtml(r.email) + '</div>' : '';
+    return '<button type="button" onclick="pickHvForCheckFromModal(' + idx + ')" style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.background=\'#faf7ff\'" onmouseout="this.style.borderColor=\'var(--dr-border)\';this.style.background=\'var(--dr-surface)\'">'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-weight:700;font-size:13.5px;color:var(--dr-ink)">' + escapeHtml(r.name || '?') + ' ' + city + '</div>'
+        + '<div style="font-size:11px;color:var(--dr-ink-mute);margin-top:2px;font-family:var(--dr-f-mono,monospace)">Pipedrive-ID ' + escapeHtml(String(r.org_id || '')) + '</div>'
+        + email
+      + '</div>'
+      + '<svg width="16" height="16" fill="none" stroke="#7c3aed" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
+    + '</button>';
+  }).join('');
+}
+
+async function pickHvForCheckFromModal(idx) {
+  const hit = (window._hvPickerCheckResults || [])[idx];
+  if (!hit) return;
+  const status = document.getElementById('hvPickerCheckStatus');
+  if (status) status.innerHTML = '<span style="display:inline-block;width:11px;height:11px;border:2px solid var(--dr-border-strong);border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle"></span> Lade Details …';
+  let details = null;
+  try { details = await _fetchOrgDetails(hit.org_id); } catch(_) {}
+  // Felder befüllen
+  const setF = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+  setF('f_firma', details?.firma || hit.name || '');
+  setF('f_hv_pipedrive_org_id', hit.org_id);
+  setF('f_name', details?.gf || '');
+  setF('f_tel',  details?.tel || '');
+  window._currentCheckPipedriveOrgId = String(hit.org_id || '');
+  closeHvPickerForCheck();
+  // Banner neu rendern (Step-2 statt Step-1)
+  if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
+  if (typeof updateEmail === 'function') updateEmail();
+  showToast('✓ HV „' + (details?.firma || hit.name) + '" aus Pipedrive übernommen (Name + Tel.)', 'ok', 3500);
+}
+
 // V12.68 EuC-I + V12.70: Banner-Render — zeigt aktuell gebundenen Aufzug am Check-Header,
 // oder Empty-State-CTA "Aufzug wählen" wenn keiner gebunden ist.
 function renderAufzugBanner() {
@@ -17468,7 +17678,7 @@ function renderAufzugBanner() {
         + '</div>'
         + '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">'
         + hvWebBtn
-        + '<button onclick="document.getElementById(\'f_firma\').focus(); document.getElementById(\'f_firma\').scrollIntoView({behavior:\'smooth\',block:\'center\'}); showToast(\'Tippe min. 3 Zeichen — Pipedrive-Vorschläge erscheinen automatisch.\',\'info\',3500);" style="background:#fff;border:1.5px solid #fb923c;color:#9a3412;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
+        + '<button onclick="openHvPickerForCheck()" style="background:#fff;border:1.5px solid #fb923c;color:#9a3412;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
           + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
           + 'In Pipedrive suchen'
         + '</button>'
@@ -19598,6 +19808,8 @@ async function buildCheckCoverBlob() {
     document.getElementById('vorabcheckLinkBanner'),
     // V12.74: Aufzug-Banner gehört nicht in die PDF (UI-Element für Stammdaten-Verknüpfung)
     document.getElementById('aufzugBanner'),
+    // V12.76: Unterschriftszeile "Datum, Unterschrift (Betreiber)" raus aus PDF
+    document.getElementById('sig-line-betreiber'),
     // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
     document.getElementById('vertragInvoiceHistory'),
     document.getElementById('lv_mode_switch_row_w'),
