@@ -85,6 +85,16 @@ const pdfWorkerReady = Promise.resolve();</script>
     border: 1.5px solid #93c5fd !important;
     color: #1e40af !important;
   }
+  /* V12.87: Globale box-sizing:border-box (Z. 729) quetscht die Logo-img,
+     weil Padding+Border in die height eingerechnet werden. Auf content-box
+     zurücksetzen → Bild bekommt die volle inline-height als Inhalt. */
+  #topbarLogoImg, #loginLogoImg, #checkBannerLogoImg {
+    box-sizing: content-box !important;
+    display: block;
+    vertical-align: top;
+    object-fit: contain;
+    max-width: none;
+  }
   /* Topbar-Logo im Hero: hellblauer Pill-Hintergrund passend zum weißen Topbar */
   body[data-theme="hero"] #topbarLogoImg {
     background: #f0f7ff !important;
@@ -5649,7 +5659,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.86';
+const APP_VERSION = 'V12.87';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
