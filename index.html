@@ -85,16 +85,6 @@ const pdfWorkerReady = Promise.resolve();</script>
     border: 1.5px solid #93c5fd !important;
     color: #1e40af !important;
   }
-  /* V12.87/V12.88: Globale box-sizing:border-box (Z. 729) hat die Logo-imgs
-     beschnitten. Hard-Override: content-box + plain display:block,
-     KEIN object-fit (zerquetscht width:auto-imgs). */
-  #topbarLogoImg, #loginLogoImg, #checkBannerLogoImg {
-    box-sizing: content-box !important;
-    display: block !important;
-    vertical-align: top !important;
-    max-width: none !important;
-    min-height: 0;
-  }
   /* Topbar-Logo im Hero: hellblauer Pill-Hintergrund passend zum weißen Topbar */
   body[data-theme="hero"] #topbarLogoImg {
     background: #f0f7ff !important;
@@ -1124,12 +1114,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     padding: 28px 36px 22px;
     display: flex;
     justify-content: space-between;
-    /* V12.88: zurück auf flex-start (V12.86-center hatte den Logo gegen die ::after-Decoration gedrückt) */
     align-items: flex-start;
     border-bottom: 1px solid #edf3fa;
     position: relative;
     overflow: hidden;
-    min-height: 84px;
   }
   .form-header::after {
     content: '';
@@ -1143,17 +1131,8 @@ const pdfWorkerReady = Promise.resolve();</script>
   .fh-title { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1.1; }
   .fh-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
   .fh-sub span { color: var(--green); font-weight: 600; }
-  /* V12.86/V12.88: Form-Header-Logo — content-box gegen Cascade, kein object-fit */
-  .fh-logo { z-index: 1; display: flex; align-items: center; flex-shrink: 0; }
-  .fh-logo img {
-    height: 56px;
-    width: auto;
-    border-radius: 6px;
-    display: block;                   /* killt Baseline-Descender */
-    vertical-align: top;              /* Fallback */
-    box-sizing: content-box !important; /* nie border-box quetschen */
-    max-width: none !important;
-  }
+  .fh-logo { z-index: 1; }
+  .fh-logo img { height: 56px; width: auto; border-radius: 6px; }
 
   .form-body { padding: 0 36px 32px; }
 
@@ -1171,8 +1150,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     background: var(--sky);
     letter-spacing: .3px;
     text-transform: uppercase;
-    /* V12.83: 11.5 → 13 für klar lesbare Section-Header (gleichauf mit Field-Labels) */
-    font-size: 13px;
+    font-size: 11.5px;
   }
   .section-inner { padding: 18px; }
 
@@ -1182,15 +1160,14 @@ const pdfWorkerReady = Promise.resolve();</script>
   .field-row.r5 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 
   .field { display: flex; flex-direction: column; gap: 4px; }
-  /* V12.81/V12.83: Label-Schrift 11 → 13 (Caps werden gut lesbar) */
-  .field label { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .35px; text-transform: uppercase; }
+  /* V12.81: Label-Schrift einen Tick größer (11 → 12), Letter-Spacing leicht reduziert */
+  .field label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .35px; text-transform: uppercase; }
   .field input, .field textarea {
     border: 1.5px solid var(--border);
     border-radius: 7px;
     padding: 8px 10px;
     font-family: 'DM Sans', sans-serif;
-    /* V12.83: Inputs 13 → 14 für deutlich bessere Lesbarkeit */
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text);
     background: var(--sky);
     transition: border-color .15s, background .15s, box-shadow .15s;
@@ -1295,13 +1272,13 @@ const pdfWorkerReady = Promise.resolve();</script>
 
   .legal-block {
     margin-top: 24px;
-    padding: 16px 20px;
+    padding: 14px 18px;
     background: var(--sky);
     border-radius: 10px;
-    /* V12.84: 13 → 14 — am Anschreiben-Ende soll der Footer-Block nicht "verschluckt" wirken */
-    font-size: 14px;
+    /* V12.81: 11 → 12 für besser lesbare Rechtshinweise */
+    font-size: 12px;
     color: var(--muted);
-    line-height: 1.7;
+    line-height: 1.65;
     border: 1px solid var(--border);
   }
   .sig-line {
@@ -5656,7 +5633,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.88';
+const APP_VERSION = 'V12.89';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
