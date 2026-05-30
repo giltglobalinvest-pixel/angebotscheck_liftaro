@@ -85,15 +85,15 @@ const pdfWorkerReady = Promise.resolve();</script>
     border: 1.5px solid #93c5fd !important;
     color: #1e40af !important;
   }
-  /* V12.87: Globale box-sizing:border-box (Z. 729) quetscht die Logo-img,
-     weil Padding+Border in die height eingerechnet werden. Auf content-box
-     zurücksetzen → Bild bekommt die volle inline-height als Inhalt. */
+  /* V12.87/V12.88: Globale box-sizing:border-box (Z. 729) hat die Logo-imgs
+     beschnitten. Hard-Override: content-box + plain display:block,
+     KEIN object-fit (zerquetscht width:auto-imgs). */
   #topbarLogoImg, #loginLogoImg, #checkBannerLogoImg {
     box-sizing: content-box !important;
-    display: block;
-    vertical-align: top;
-    object-fit: contain;
-    max-width: none;
+    display: block !important;
+    vertical-align: top !important;
+    max-width: none !important;
+    min-height: 0;
   }
   /* Topbar-Logo im Hero: hellblauer Pill-Hintergrund passend zum weißen Topbar */
   body[data-theme="hero"] #topbarLogoImg {
@@ -1124,13 +1124,11 @@ const pdfWorkerReady = Promise.resolve();</script>
     padding: 28px 36px 22px;
     display: flex;
     justify-content: space-between;
-    /* V12.86: center statt flex-start — Titel + Logo werden vertikal mittig ausgerichtet,
-       Logo kann nicht mehr durch Cascade-Cuts oben/unten zerschnitten werden */
-    align-items: center;
+    /* V12.88: zurück auf flex-start (V12.86-center hatte den Logo gegen die ::after-Decoration gedrückt) */
+    align-items: flex-start;
     border-bottom: 1px solid #edf3fa;
     position: relative;
     overflow: hidden;
-    /* Mindesthöhe sichert das Logo (56 + 2× safety padding) — falls irgendein Parent collapsed */
     min-height: 84px;
   }
   .form-header::after {
@@ -1145,17 +1143,16 @@ const pdfWorkerReady = Promise.resolve();</script>
   .fh-title { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1.1; }
   .fh-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
   .fh-sub span { color: var(--green); font-weight: 600; }
-  /* V12.86: Defensiver Logo-Block — verhindert Inline-Image-Baseline-Clipping
-     (z.B. wenn .form-header Inline-Kontext bekommt) */
+  /* V12.86/V12.88: Form-Header-Logo — content-box gegen Cascade, kein object-fit */
   .fh-logo { z-index: 1; display: flex; align-items: center; flex-shrink: 0; }
   .fh-logo img {
     height: 56px;
     width: auto;
     border-radius: 6px;
-    display: block;          /* killt Baseline-Descender */
-    vertical-align: top;     /* Fallback falls display:block überschrieben */
-    object-fit: contain;     /* nie horizontal/vertikal zerquetschen */
-    max-width: none;
+    display: block;                   /* killt Baseline-Descender */
+    vertical-align: top;              /* Fallback */
+    box-sizing: content-box !important; /* nie border-box quetschen */
+    max-width: none !important;
   }
 
   .form-body { padding: 0 36px 32px; }
@@ -5659,7 +5656,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.87';
+const APP_VERSION = 'V12.88';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
