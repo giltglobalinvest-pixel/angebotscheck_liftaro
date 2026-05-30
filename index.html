@@ -1114,10 +1114,14 @@ const pdfWorkerReady = Promise.resolve();</script>
     padding: 28px 36px 22px;
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    /* V12.86: center statt flex-start — Titel + Logo werden vertikal mittig ausgerichtet,
+       Logo kann nicht mehr durch Cascade-Cuts oben/unten zerschnitten werden */
+    align-items: center;
     border-bottom: 1px solid #edf3fa;
     position: relative;
     overflow: hidden;
+    /* Mindesthöhe sichert das Logo (56 + 2× safety padding) — falls irgendein Parent collapsed */
+    min-height: 84px;
   }
   .form-header::after {
     content: '';
@@ -1131,8 +1135,18 @@ const pdfWorkerReady = Promise.resolve();</script>
   .fh-title { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1.1; }
   .fh-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
   .fh-sub span { color: var(--green); font-weight: 600; }
-  .fh-logo { z-index: 1; }
-  .fh-logo img { height: 56px; width: auto; border-radius: 6px; }
+  /* V12.86: Defensiver Logo-Block — verhindert Inline-Image-Baseline-Clipping
+     (z.B. wenn .form-header Inline-Kontext bekommt) */
+  .fh-logo { z-index: 1; display: flex; align-items: center; flex-shrink: 0; }
+  .fh-logo img {
+    height: 56px;
+    width: auto;
+    border-radius: 6px;
+    display: block;          /* killt Baseline-Descender */
+    vertical-align: top;     /* Fallback falls display:block überschrieben */
+    object-fit: contain;     /* nie horizontal/vertikal zerquetschen */
+    max-width: none;
+  }
 
   .form-body { padding: 0 36px 32px; }
 
@@ -5635,7 +5649,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.85';
+const APP_VERSION = 'V12.86';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
