@@ -5629,7 +5629,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.78';
+const APP_VERSION = 'V12.79';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7706,15 +7706,33 @@ async function saveCheck(reporter) {
     const existing = await atRead('Checks', "{id}='" + data.id + "'");
     r.done('lookup', existing.length ? `Gefunden: Airtable-Record ${existing[0].id}` : 'Kein bestehender Datensatz – wird neu angelegt', { existing });
 
+    // V12.79: tryWrite mit Field-Skip-on-Unknown — verhindert 422-Crash, wenn
+    // neue Felder (z.B. aufzug_id aus V12.68) im Airtable-Schema noch fehlen.
+    const tryWriteChecks = async (action, payload) => {
+      let attempt = 0; let p = payload; const skipped = [];
+      while (true) {
+        try { return await action(p); }
+        catch(e) {
+          const m = (e.message || '').match(/Unknown field name: ?"?([^"]+)"?/i);
+          if (m && m[1] && p[m[1]] !== undefined && attempt < 6) {
+            p = { ...p }; delete p[m[1]];
+            skipped.push(m[1]);
+            console.warn('[Checks] Feld unbekannt in Schema, retry ohne:', m[1]);
+            attempt++; continue;
+          }
+          throw e;
+        }
+      }
+    };
     let recordId;
     if (existing.length) {
       r.step('write', `PATCH /Checks/${existing[0].id}`);
-      const result = await atUpdate('Checks', existing[0].id, fields);
+      const result = await tryWriteChecks(pl => atUpdate('Checks', existing[0].id, pl), fields);
       recordId = result.id || existing[0].id;
       r.done('write', `Aktualisiert (Record ${recordId})`, { result });
     } else {
       r.step('write', 'POST /Checks (neuer Datensatz)');
-      const result = await atWrite('Checks', fields);
+      const result = await tryWriteChecks(pl => atWrite('Checks', pl), fields);
       recordId = result.id;
       r.done('write', `Angelegt (Record ${recordId || '–'})`, { result });
     }
