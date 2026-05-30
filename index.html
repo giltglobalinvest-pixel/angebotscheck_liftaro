@@ -5629,7 +5629,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.79';
+const APP_VERSION = 'V12.80';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6401,6 +6401,8 @@ async function setupTables() {
     { name: 'pipedrive_kundennr',type: 'singleLineText' },
     // V12.24: Vorabcheck-Backlink — falls Check aus einem Vorabcheck erstellt wurde
     { name: 'vorabcheck_ref',    type: 'singleLineText' },
+    // V12.68 EuC-I (nachträglich in V12.80 registriert): Aufzug-Verknüpfung als Top-Level-Filter-Index
+    { name: 'aufzug_id',         type: 'singleLineText' },
   ]);
   // Verträge-Tabelle
   try {
