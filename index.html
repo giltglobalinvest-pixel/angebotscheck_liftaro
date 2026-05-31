@@ -1996,8 +1996,9 @@ const pdfWorkerReady = Promise.resolve();</script>
     /* V12.106: Override gegen Mobile-Anti-Zoom-Regel (Zeile 1497: font-size 16px !important).
        html2canvas wertet @media-Queries auf iOS gegen die echte Viewport-Breite (~390px)
        aus, NICHT gegen windowWidth:1400 — daher greifen Mobile-Regeln im PDF. Ohne
-       diesen Override sind Inputs auf Handy-PDFs deutlich größer als auf Desktop-PDFs. */
-    font-size: 13px !important;
+       diesen Override sind Inputs auf Handy-PDFs deutlich größer als auf Desktop-PDFs.
+       V12.107: Bump auf 14.5px für bessere PDF-Lesbarkeit (war 13px). */
+    font-size: 14.5px !important;
   }
   /* V12.106: Mobile drückt html/body auf 14px Root-Font (Zeile 1499) — im PDF zurück auf
      Desktop-Default, damit em/rem-relative Größen konsistent bleiben. */
@@ -2012,7 +2013,16 @@ const pdfWorkerReady = Promise.resolve();</script>
   body.pdf-rendering .compare-table input:not([type="checkbox"]):not([type="radio"]),
   body.pdf-rendering .compare-table select {
     min-height: 0 !important;
-    font-size: 13px !important;
+    font-size: 14px !important;  /* V12.107: war 13px */
+  }
+  /* V12.107: Vergleichstabellen-Zellen + Labels auch eine Spur größer für bessere PDF-Lesbarkeit */
+  body.pdf-rendering .compare-table td,
+  body.pdf-rendering .compare-table th {
+    font-size: 14px !important;
+  }
+  body.pdf-rendering .field label,
+  body.pdf-rendering label {
+    font-size: 12.5px !important;
   }
   /* contenteditable-Empfehlungs-Feld auch */
   body.pdf-rendering [contenteditable="true"] {
@@ -5794,7 +5804,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.106';
+const APP_VERSION = 'V12.107';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
