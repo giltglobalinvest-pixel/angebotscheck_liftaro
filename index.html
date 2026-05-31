@@ -3044,6 +3044,63 @@ const pdfWorkerReady = Promise.resolve();</script>
             </div>
           </div>
 
+          <!-- V12.111: Inhaltsverzeichnis-Seite (kommt direkt nach der Titelseite, vor dem Anschreiben) -->
+          <div id="section-eoc-inhalt" class="section" style="margin-top:20px;display:none">
+            <div class="section-inner" style="padding:80px 70px 60px;font-family:'DM Sans',sans-serif;min-height:800px;background:#fff">
+              <!-- Header -->
+              <div style="margin-bottom:48px">
+                <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;font-weight:600">Übersicht</div>
+                <h2 style="font-size:32px;font-weight:700;color:var(--navy);margin:0;letter-spacing:-0.02em;line-height:1.15">Inhaltsverzeichnis</h2>
+                <div style="height:3px;background:var(--navy);width:60px;margin-top:16px;border-radius:2px"></div>
+              </div>
+              <!-- TOC-Items -->
+              <div style="display:flex;flex-direction:column">
+                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
+                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">01</div>
+                  <div style="flex:1">
+                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Anschreiben an die Eigentümergemeinschaft</div>
+                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Einführung in Equipment under Control mit Bezug auf § 27 Abs. 1 Nr. 1 WEG</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
+                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">02</div>
+                  <div style="flex:1">
+                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Liftaro-Angebot Equipment under Control</div>
+                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Konditionen, Erfolgsmodell und Leistungsumfang</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
+                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">03</div>
+                  <div style="flex:1">
+                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Vollmacht zur Handlungsbevollmächtigung</div>
+                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Bevollmächtigung der Liftaro GmbH zur Vertretung gegenüber TÜV und Wartungsnehmer</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
+                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">04</div>
+                  <div style="flex:1">
+                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Bestehender Wartungsvertrag</div>
+                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Original-Vertragsdokument, das zur Prüfung eingereicht wurde (Anlage)</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
+                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">05</div>
+                  <div style="flex:1">
+                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Bestandsvertrag — Eckdaten</div>
+                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Anbieter, Laufzeit, Kosten und enthaltene Leistungen im Überblick</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0">
+                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">06</div>
+                  <div style="flex:1">
+                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Zusammenfassung &amp; Empfehlung</div>
+                    <div style="font-size:14px;color:var(--muted);line-height:1.5">KI-gestützte Analyse und Handlungsempfehlung für die WEG</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- V12.105: Vollmacht zur Handlungsbevollmächtigung (erscheint im EuC-PDF nach dem Vertrag) -->
           <div id="section-eoc-vollmacht" class="section" style="margin-top:20px;display:none">
             <div class="section-inner" style="padding:40px 50px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.65;color:var(--text)">
@@ -5796,7 +5853,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.110';
+const APP_VERSION = 'V12.111';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7493,7 +7550,8 @@ const EOC_HIDE_WHEN_ACTIVE = [
 //  später ins separate ETV-Beschluss-Paket-PDF, nicht ins reguläre Ergebnis-PDF)
 const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-anschreiben-edit', // V12.94: Edit-Panel für Anschreiben-Texte (nur App, nicht PDF)
-  'section-eoc-titel',            // V12.105: Titelseite + Inhaltsverzeichnis (erste PDF-Seite)
+  'section-eoc-titel',            // V12.105: Titelseite (Cover)
+  'section-eoc-inhalt',           // V12.111: Inhaltsverzeichnis (eigene Seite)
   'section-eoc-anschreiben',      // PDF: Anschreiben an die WEG (V12.56)
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
   'section-eoc-vollmacht',        // V12.105: Vollmacht zur Handlungsbevollmächtigung
@@ -7507,6 +7565,7 @@ const EOC_SHOW_WHEN_ACTIVE = [
 // Andere EuC-Elemente werden während des Renders temporär versteckt.
 const EUC_PDF_PAGE_GROUPS = [
   { name: 'titel',       keep: ['section-eoc-titel'] },
+  { name: 'inhalt',      keep: ['section-eoc-inhalt'] },                                // V12.111
   { name: 'anschreiben', keep: ['section-eoc-anschreiben'] },
   { name: 'angebot',     keep: ['section-eoc-angebot', 'legal-block', 'eoc_sig_block'] },
   { name: 'vollmacht',   keep: ['section-eoc-vollmacht'] },
