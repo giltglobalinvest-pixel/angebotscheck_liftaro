@@ -2284,6 +2284,12 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         Vorschau
       </button>
+      <!-- V12.108: PDF-Schriftgrößen-Stepper (wirkt auf ALLE Text-Elemente im PDF, persistent via localStorage) -->
+      <div id="pdfFontStepper" title="Schriftgröße für die PDF — wirkt nur beim PDF-Erstellen, nicht auf die App-Ansicht" style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:3px 4px;font-family:'DM Sans',sans-serif">
+        <button type="button" onclick="_pdfFontStep(-0.05)" style="background:transparent;border:none;color:var(--navy);font-weight:700;cursor:pointer;padding:4px 9px;border-radius:5px;font-size:13px;font-family:inherit" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='transparent'" title="Schrift kleiner">A−</button>
+        <span id="pdfFontStepperLabel" style="font-family:'DM Mono',monospace;font-size:11.5px;color:var(--muted);min-width:38px;text-align:center">100 %</span>
+        <button type="button" onclick="_pdfFontStep(0.05)" style="background:transparent;border:none;color:var(--navy);font-weight:700;cursor:pointer;padding:4px 9px;border-radius:5px;font-size:15px;font-family:inherit" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='transparent'" title="Schrift größer">A+</button>
+      </div>
       <button class="btn-generate" id="btnGenerate" onclick="generatePDF()">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
         PDF erstellen
@@ -5804,7 +5810,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.107';
+const APP_VERSION = 'V12.108';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -12159,6 +12165,73 @@ async function generateRechnungscheckPDF() {
 // dadurch greifen die Mobile-CSS-Regeln und field-rows kollabieren auf 1 Spalte.
 // Fix: printArea + form-card explizit auf 1200px Width zwingen.
 // Bereinigt den von html2canvas geklonten Dokument-Knoten, BEVOR gerendert wird.
+// ─── V12.108: PDF-Schriftgrößen-Stepper (persistent) ───────────────────────
+// Multipliziert alle font-size-Werte im print-area mit einem User-gewählten Faktor.
+// Wirkt auf jedes Text-Element — egal woher die Größe stammt (inline-style, CSS-Klasse,
+// @media-Regel). Wert wird in localStorage gespeichert (key: pdfFontScale).
+function _pdfFontReadScale() {
+  const raw = parseFloat(localStorage.getItem('pdfFontScale') || '1');
+  if (!isFinite(raw) || raw <= 0) return 1;
+  // Clamp 0.7 … 1.6 (70% – 160%)
+  return Math.min(1.6, Math.max(0.7, raw));
+}
+function _pdfFontUpdateLabel() {
+  const lbl = document.getElementById('pdfFontStepperLabel');
+  if (!lbl) return;
+  const scale = _pdfFontReadScale();
+  lbl.textContent = Math.round(scale * 100) + ' %';
+}
+function _pdfFontStep(delta) {
+  const cur = _pdfFontReadScale();
+  const next = Math.round((cur + delta) * 100) / 100;
+  localStorage.setItem('pdfFontScale', String(Math.min(1.6, Math.max(0.7, next))));
+  _pdfFontUpdateLabel();
+  if (typeof showToast === 'function') {
+    showToast('PDF-Schrift: ' + Math.round(_pdfFontReadScale() * 100) + ' %', 'ok');
+  }
+}
+window._pdfFontStep = _pdfFontStep;
+window._pdfFontReadScale = _pdfFontReadScale;
+window._pdfFontUpdateLabel = _pdfFontUpdateLabel;
+// Bei Page-Load Label initialisieren
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', _pdfFontUpdateLabel);
+  // Falls DOM schon ready
+  setTimeout(_pdfFontUpdateLabel, 50);
+}
+
+// Skaliert alle font-size-Werte in `printArea`. Gibt Restore-Funktion zurück.
+// Skala 1.0 → no-op. Iteriert pro Element via getComputedStyle und setzt einen
+// neuen Wert mit !important auf den inline-style. Restore stellt den vorherigen
+// inline-style wieder her (auch wenn er leer war).
+function _applyPdfFontScale(printArea, scale) {
+  if (!printArea || !scale || scale === 1) return () => {};
+  const all = printArea.querySelectorAll('*');
+  const restore = [];
+  // Auch das printArea selbst skalieren
+  const targets = [printArea, ...all];
+  targets.forEach(el => {
+    // Inputs/Textareas/Selects: Cursor- und Layout-relevant — auch skalieren
+    let computed;
+    try { computed = window.getComputedStyle(el); } catch (e) { return; }
+    if (!computed) return;
+    const fsStr = computed.fontSize;
+    if (!fsStr) return;
+    const fs = parseFloat(fsStr);
+    if (!fs || isNaN(fs)) return;
+    const newFs = (fs * scale).toFixed(2) + 'px';
+    restore.push({ el, prev: el.style.getPropertyValue('font-size'), prio: el.style.getPropertyPriority('font-size') });
+    el.style.setProperty('font-size', newFs, 'important');
+  });
+  return () => {
+    restore.forEach(({ el, prev, prio }) => {
+      if (prev) el.style.setProperty('font-size', prev, prio || '');
+      else el.style.removeProperty('font-size');
+    });
+  };
+}
+window._applyPdfFontScale = _applyPdfFontScale;
+
 // iOS-Safari + html2canvas stürzen mit "The index is not in the allowed range" ab,
 // sobald sie auf Cross-Origin-Stylesheets (Google Fonts @import) treffen und deren
 // cssRules iterieren wollen. Wir entfernen:
@@ -12386,6 +12459,11 @@ async function generatePDF() {
 
     restoreLayout = _forcePdfLayout();
 
+    // V12.108: User-gewählte Font-Scale (1.0 = Default, 1.05/1.1/… aus Stepper)
+    const _userFontScale = (typeof _pdfFontReadScale === 'function') ? _pdfFontReadScale() : 1;
+    const _restoreUserFontScale = (typeof _applyPdfFontScale === 'function')
+      ? _applyPdfFontScale(printArea, _userFontScale) : () => {};
+
     // Mobile: scale 1 statt 2, sonst sprengt das Canvas iOS-Safari-Limits
     const _isMob = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
     const _scale = _isMob ? 1 : 2;
@@ -12425,6 +12503,8 @@ async function generatePDF() {
 
     // Layout sofort restoren — wir brauchen ab hier nur noch das gerenderte Canvas
     try { restoreLayout(); restoreLayout = () => {}; } catch(_){}
+    // V12.108: User-Font-Scale auch zurücksetzen
+    try { _restoreUserFontScale(); } catch(_) {}
     if (empfehlungBtn) empfehlungBtn.style.display = '';
     if (empTA) empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
@@ -12546,6 +12626,8 @@ async function generatePDF() {
     // ALWAYS restore — verhindert, dass print-area auf 1200 px gestreckt bleibt
     // und das Layout horizontal aus dem iPhone-Viewport bricht.
     try { restoreLayout(); } catch(_){}
+    // V12.108: User-Font-Scale immer zurücksetzen — auch bei Fehler
+    try { if (typeof _restoreUserFontScale === 'function') _restoreUserFontScale(); } catch(_){}
     if (empfehlungBtn) empfehlungBtn.style.display = '';
     if (empTA) empTA.style.overflow = '';
     sections.forEach(s => s.style.overflow = '');
@@ -20888,6 +20970,10 @@ async function buildCheckCoverBlob() {
   hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
   const restoreLayout = _forcePdfLayout();
+  // V12.108: User-Font-Scale auch in der Cover-Generierung anwenden
+  const _restoreUserFontScale3 = (typeof _applyPdfFontScale === 'function')
+    ? _applyPdfFontScale(printArea, (typeof _pdfFontReadScale === 'function') ? _pdfFontReadScale() : 1)
+    : () => {};
   try {
     const _isMob3 = (typeof isMobileScreen === 'function') ? isMobileScreen() : (window.innerWidth <= 768);
     const _maxH = _isMob3 ? 6000 : 99999;
@@ -20933,6 +21019,8 @@ async function buildCheckCoverBlob() {
     return new Blob([bytes], { type: 'application/pdf' });
   } finally {
     try { restoreLayout(); } catch (_) {}
+    // V12.108: User-Font-Scale immer zurücksetzen
+    try { _restoreUserFontScale3(); } catch (_) {}
     if (empBtn) empBtn.style.display = prevEmp || '';
     hideForPdf.forEach((el, i) => { if (el) el.style.display = prev[i] || ''; });
   }
