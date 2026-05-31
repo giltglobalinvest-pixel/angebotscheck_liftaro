@@ -2995,6 +2995,90 @@ const pdfWorkerReady = Promise.resolve();</script>
             </div>
           </div>
 
+          <!-- V12.105: Titelseite mit Inhaltsverzeichnis (erscheint als allererste Seite im EuC-PDF) -->
+          <div id="section-eoc-titel" class="section" style="margin-top:20px;display:none">
+            <div class="section-inner" style="padding:60px 50px;font-family:'DM Sans',sans-serif;min-height:900px;display:flex;flex-direction:column;background:#fff">
+              <div style="text-align:center;margin-bottom:50px">
+                <img id="eoc_titel_logo" src="" alt="Liftaro" style="height:64px;width:auto">
+              </div>
+              <div style="text-align:center;margin-bottom:60px">
+                <h1 style="font-size:32px;font-weight:700;color:var(--navy);margin:0 0 10px;letter-spacing:-0.02em;line-height:1.2">Equipment under Control</h1>
+                <div style="font-size:15px;color:var(--muted);margin:0">Vorschlag zur Vertragsbetreuung Ihrer Aufzugsanlage</div>
+              </div>
+              <div style="max-width:580px;margin:0 auto;width:100%">
+                <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid var(--navy)">Inhaltsverzeichnis</div>
+                <div style="display:flex;flex-direction:column;gap:11px;font-size:13.5px;line-height:1.5">
+                  <div style="display:flex;align-items:baseline;gap:14px"><span style="font-weight:700;color:var(--navy);min-width:22px">1.</span><span style="flex:1;color:var(--text)">Anschreiben an die Eigentümergemeinschaft</span></div>
+                  <div style="display:flex;align-items:baseline;gap:14px"><span style="font-weight:700;color:var(--navy);min-width:22px">2.</span><span style="flex:1;color:var(--text)">Liftaro-Angebot Equipment under Control</span></div>
+                  <div style="display:flex;align-items:baseline;gap:14px"><span style="font-weight:700;color:var(--navy);min-width:22px">3.</span><span style="flex:1;color:var(--text)">Vollmacht zur Handlungsbevollmächtigung</span></div>
+                  <div style="display:flex;align-items:baseline;gap:14px"><span style="font-weight:700;color:var(--navy);min-width:22px">4.</span><span style="flex:1;color:var(--text)">Bestehender Wartungsvertrag (zur Prüfung)</span></div>
+                  <div style="display:flex;align-items:baseline;gap:14px"><span style="font-weight:700;color:var(--navy);min-width:22px">5.</span><span style="flex:1;color:var(--text)">Bestandsvertrag — Eckdaten</span></div>
+                  <div style="display:flex;align-items:baseline;gap:14px"><span style="font-weight:700;color:var(--navy);min-width:22px">6.</span><span style="flex:1;color:var(--text)">Zusammenfassung &amp; Empfehlung</span></div>
+                </div>
+              </div>
+              <div style="margin-top:auto;padding-top:50px;text-align:center;font-size:11px;color:var(--muted)">
+                Liftaro GmbH · Mainz · <span id="eoc_titel_datum">–</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- V12.105: Vollmacht zur Handlungsbevollmächtigung (erscheint im EuC-PDF nach dem Vertrag) -->
+          <div id="section-eoc-vollmacht" class="section" style="margin-top:20px;display:none">
+            <div class="section-inner" style="padding:40px 50px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.65;color:var(--text)">
+              <div style="text-align:center;margin-bottom:30px">
+                <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Anlage zum Equipment-under-Control-Vertrag</div>
+                <h2 style="font-size:24px;font-weight:700;color:var(--navy);margin:0 0 6px;letter-spacing:-0.01em">Vollmacht</h2>
+                <div style="font-size:13px;color:var(--muted)">Handlungsbevollmächtigung der Liftaro GmbH</div>
+              </div>
+              <div style="margin-bottom:22px">
+                <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Vollmachtgeberin (Hausverwaltung)</div>
+                <div id="eoc_vollmacht_hv" style="line-height:1.55;white-space:pre-line">–</div>
+              </div>
+              <div style="margin-bottom:22px">
+                <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Bevollmächtigte</div>
+                <div style="line-height:1.55">Liftaro GmbH<br>Augustinerstraße 21<br>55116 Mainz<br>vertreten durch Geschäftsführer Patrizio Fontanarosa</div>
+              </div>
+              <div style="margin-bottom:22px">
+                <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Gegenstand der Vollmacht</div>
+                <p style="margin:0 0 10px">Die Vollmachtgeberin bevollmächtigt die Liftaro GmbH, sie in Angelegenheiten des bestehenden Wartungsvertrags der Aufzugsanlage am Standort <strong id="eoc_vollmacht_standort">–</strong> gegenüber Dritten zu vertreten. Die Vollmacht umfasst insbesondere:</p>
+                <ul style="margin:0 0 12px;padding-left:22px">
+                  <li>die Kommunikation mit dem bestehenden Wartungsanbieter (Korrespondenz, Mängelmeldungen, Auftragsbestätigungen, Rechnungsprüfung),</li>
+                  <li>die Korrespondenz mit dem TÜV bzw. der zuständigen Zugelassenen Überwachungsstelle (ZÜS) — insbesondere Terminabstimmungen, Mängelberichte und Rückfragen,</li>
+                  <li>das Einholen von Vergleichsangeboten geprüfter Drittanbieter,</li>
+                  <li>die Nachverhandlung von Reparatur- und Modernisierungsangeboten,</li>
+                  <li>die Einsichtnahme in vertragsbezogene Unterlagen sowie Wartungs- und Prüfprotokolle.</li>
+                </ul>
+                <p style="margin:0 0 10px"><strong>Beauftragungen, die zu finanziellen Verpflichtungen der Eigentümergemeinschaft führen</strong> — insbesondere ein Wechsel des Wartungsanbieters, größere Reparaturen oder Modernisierungen — bedürfen einer gesonderten Freigabe der Hausverwaltung oder eines Beschlusses der Eigentümerversammlung gemäß § 19 WEG.</p>
+              </div>
+              <div style="margin-bottom:22px">
+                <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Rechtliche Grundlage</div>
+                <p style="margin:0">Die Hausverwaltung handelt im Rahmen der ihr nach <strong>§ 27 Absatz 1 Nummer 1 WEG</strong> zustehenden Befugnis zur Durchführung von Maßnahmen ordnungsmäßiger Verwaltung von untergeordneter Bedeutung, die zu keinen erheblichen Verpflichtungen der Wohnungseigentümergemeinschaft führen. Die Grundbetreuung durch Liftaro ist für die Eigentümergemeinschaft kostenfrei.</p>
+              </div>
+              <div style="margin-bottom:22px">
+                <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Gültigkeit</div>
+                <p style="margin:0">Die Vollmacht gilt bis zum regulären Ende des bestehenden Wartungsvertrags (<strong id="eoc_vollmacht_endet">–</strong>) bzw. bis zum Widerruf durch die Hausverwaltung — je nachdem, was früher eintritt. Der Widerruf bedarf der Schriftform.</p>
+              </div>
+              <div style="display:flex;gap:50px;justify-content:space-between;flex-wrap:wrap;margin-top:55px;page-break-inside:avoid">
+                <div style="flex:1;min-width:230px">
+                  <div style="border-top:2px solid var(--navy);padding-top:8px;font-size:11.5px;color:var(--muted)">Datum, Ort, Unterschrift Hausverwaltung</div>
+                </div>
+                <div style="flex:1;min-width:230px">
+                  <div style="border-top:2px solid var(--navy);padding-top:8px;font-size:11.5px;color:var(--muted)">Datum, Ort, Unterschrift Liftaro GmbH</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- V12.105: Deckblatt vor dem eingereichten Altvertrag -->
+          <div id="section-eoc-altvertrag-deckblatt" class="section" style="margin-top:20px;display:none">
+            <div class="section-inner" style="padding:180px 60px 100px;text-align:center;font-family:'DM Sans',sans-serif;min-height:700px;background:#fff">
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:18px">Anlage zum Equipment-under-Control-Vertrag</div>
+              <h2 style="font-size:28px;font-weight:700;color:var(--navy);margin:0 0 18px;letter-spacing:-0.02em">Bestehender Wartungsvertrag</h2>
+              <p style="font-size:15px;color:var(--text);max-width:500px;margin:0 auto 16px;line-height:1.6">Auf den folgenden Seiten finden Sie den <strong>bestehenden Wartungsvertrag</strong>, der zur Prüfung eingereicht wurde.</p>
+              <p style="font-size:13px;color:var(--muted);max-width:500px;margin:0 auto;line-height:1.6">Die nachfolgenden Eckdaten und die KI-Zusammenfassung wurden auf Basis dieses Dokuments erstellt.</p>
+            </div>
+          </div>
+
         </div>
 
         <input type="hidden" id="f_leistung">
@@ -5690,7 +5774,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.104';
+const APP_VERSION = 'V12.105';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7387,12 +7471,27 @@ const EOC_HIDE_WHEN_ACTIVE = [
 //  später ins separate ETV-Beschluss-Paket-PDF, nicht ins reguläre Ergebnis-PDF)
 const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-anschreiben-edit', // V12.94: Edit-Panel für Anschreiben-Texte (nur App, nicht PDF)
+  'section-eoc-titel',            // V12.105: Titelseite + Inhaltsverzeichnis (erste PDF-Seite)
   'section-eoc-anschreiben',      // PDF: Anschreiben an die WEG (V12.56)
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
+  'section-eoc-vollmacht',        // V12.105: Vollmacht zur Handlungsbevollmächtigung
+  'section-eoc-altvertrag-deckblatt', // V12.105: Deckblatt vor dem Altvertrag
   'section-eoc-bestandsdaten',    // PDF: Bestandsvertrag-Eckdaten + Leistungstabelle
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
   'eoc_sig_block',                // V12.93: Unterschriftsfeld für HV-Beauftragung
 ];
+// V12.105: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
+// Jede Gruppe ist eine Liste sichtbarer IDs für genau eine PDF-Seite.
+// Andere EuC-Elemente werden während des Renders temporär versteckt.
+const EUC_PDF_PAGE_GROUPS = [
+  { name: 'titel',       keep: ['section-eoc-titel'] },
+  { name: 'anschreiben', keep: ['section-eoc-anschreiben'] },
+  { name: 'angebot',     keep: ['section-eoc-angebot', 'legal-block', 'eoc_sig_block'] },
+  { name: 'vollmacht',   keep: ['section-eoc-vollmacht'] },
+  { name: 'altvertrag',  keep: ['section-eoc-altvertrag-deckblatt'] },
+  { name: 'restdoc',     keep: ['section-eoc-bestandsdaten', 'section-eoc-zusammenfassung'] },
+];
+const EUC_PDF_ALL_IDS = Array.from(new Set(EUC_PDF_PAGE_GROUPS.flatMap(g => g.keep)));
 
 // ============================================================================
 // V12.96: Anschreiben-Text editierbar — EIN großer Text (mini-Markdown)
@@ -7588,6 +7687,64 @@ function _eaResetAll() {
 function _eaSyncFromFormData() {
   const ta = document.getElementById('eaedit_fulltext');
   if (ta) ta.value = _eocBriefStoredFulltext();
+}
+
+// V12.105: Multi-Page EuC-PDF — eine Canvas pro Seitengruppe.
+// Verwendet von generatePDF() UND buildCheckCoverBlob() für konsistente PDF-Struktur.
+async function _renderEucMultiPageCanvases(printArea, renderCanvas) {
+  const canvases = [];
+  for (const group of EUC_PDF_PAGE_GROUPS) {
+    // Mindestens eine "keep"-Sektion muss sichtbar sein (sonst überspringen)
+    const hasVisibleKeeper = group.keep.some(id => {
+      const el = document.getElementById(id);
+      return el && el.style.display !== 'none';
+    });
+    if (!hasVisibleKeeper) continue;
+    const tempHidden = [];
+    // 1) Andere EuC-Sektionen verstecken (nur die, die nicht in dieser Gruppe sind)
+    EUC_PDF_ALL_IDS.forEach(id => {
+      if (group.keep.includes(id)) return;
+      const el = document.getElementById(id);
+      if (!el || el.style.display === 'none') return;
+      tempHidden.push({ el, prev: el.style.display || '' });
+      el.style.display = 'none';
+    });
+    // Helper: enthält dieses Element einen Keeper?
+    const containsKeeper = (c) => group.keep.some(id => {
+      const el = document.getElementById(id);
+      return el && (c === el || c.contains(el));
+    });
+    // 2) Direkte print-area-Children verstecken (außer denen mit Keeper)
+    Array.from(printArea.children).forEach(c => {
+      if (containsKeeper(c)) return;
+      if (c.style.display === 'none') return;
+      tempHidden.push({ el: c, prev: c.style.display || '' });
+      c.style.display = 'none';
+    });
+    // 3) section-wartung-Geschwister verstecken (außer denen mit Keeper)
+    const sectWartung = document.getElementById('section-wartung');
+    if (sectWartung) {
+      Array.from(sectWartung.children).forEach(c => {
+        if (containsKeeper(c)) return;
+        if (c.style.display === 'none') return;
+        tempHidden.push({ el: c, prev: c.style.display || '' });
+        c.style.display = 'none';
+      });
+    }
+    // 4) Sonstige fremde Elemente verstecken (kein Keeper, aber im EuC-Bereich störend)
+    ['sig-line-betreiber', 'section-ergebnis'].forEach(id => {
+      if (group.keep.includes(id)) return;
+      const el = document.getElementById(id);
+      if (!el || el.style.display === 'none') return;
+      tempHidden.push({ el, prev: el.style.display || '' });
+      el.style.display = 'none';
+    });
+    // Render
+    canvases.push(await renderCanvas());
+    // Restore
+    tempHidden.forEach(({el, prev}) => { el.style.display = prev; });
+  }
+  return canvases;
 }
 
 // ─── V12.97: Vorlagen-CRUD + KI-Modifikation ───────────────────────────────
@@ -8156,6 +8313,28 @@ function _refreshEocDisplays() {
   if (typeof renderEocBrief === 'function') {
     try { renderEocBrief(); } catch (e) { console.warn('[V12.96] renderEocBrief failed', e); }
   }
+  // V12.105: Titelseite-Datum, Vollmacht-Daten, Logo
+  try {
+    const titelDat = document.getElementById('eoc_titel_datum');
+    if (titelDat) titelDat.textContent = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+    const titelLogo = document.getElementById('eoc_titel_logo');
+    if (titelLogo && !titelLogo.src) {
+      // Logo-URL einmalig aus dem fh-logo holen
+      const srcImg = document.querySelector('.fh-logo img');
+      if (srcImg && srcImg.src) titelLogo.src = srcImg.src;
+    }
+    // Vollmacht-Daten: HV-Block (Firma + Anschrift + Ansprechpartner) + Standort + Vertragsende
+    const hvFirma = (_g('f_firma') || '').trim();
+    const hvAnschr = (_g('f_hv_anschrift') || '').trim();
+    const hvName = (_g('f_name') || '').trim();
+    const hvBlock = [hvFirma, hvAnschr, hvName ? 'z. Hd. ' + hvName : ''].filter(Boolean).join('\n');
+    const vmHv = document.getElementById('eoc_vollmacht_hv');
+    if (vmHv) vmHv.textContent = hvBlock || '–';
+    const vmStandort = document.getElementById('eoc_vollmacht_standort');
+    if (vmStandort) vmStandort.textContent = adresse;
+    const vmEndet = document.getElementById('eoc_vollmacht_endet');
+    if (vmEndet) vmEndet.textContent = endetStr;
+  } catch (e) { console.warn('[V12.105] EuC-Anlagen-Daten:', e.message); }
   const totEl = document.getElementById('eoc_disp_total');
   if (totEl) totEl.textContent = totalS;
   const bestTot = document.getElementById('eoc_calc_bestand_total');
@@ -12198,32 +12377,10 @@ async function generatePDF() {
     var canvasesGen = [];
     try {
       if (_eocActiveGen) {
-        const _ansch = document.getElementById('section-eoc-anschreiben');
-        if (_ansch && _ansch.style.display !== 'none') {
-          const _printArea = printArea;
-          const _printChildren = Array.from(_printArea.children);
-          const _tempHidden = [];
-          _printChildren.forEach(c => {
-            if (c === _ansch || c.contains(_ansch)) return;
-            if (c.style.display === 'none') return;
-            _tempHidden.push({ el: c, prev: c.style.display || '' });
-            c.style.display = 'none';
-          });
-          const _sectW = document.getElementById('section-wartung');
-          if (_sectW) {
-            Array.from(_sectW.children).forEach(c => {
-              if (c === _ansch || c.contains(_ansch)) return;
-              if (c.style.display === 'none') return;
-              _tempHidden.push({ el: c, prev: c.style.display || '' });
-              c.style.display = 'none';
-            });
-          }
-          canvasesGen.push(await _renderCanvas());
-          _tempHidden.forEach(({el, prev}) => { el.style.display = prev; });
-          const _prevAns = _ansch.style.display;
-          _ansch.style.display = 'none';
-          canvasesGen.push(await _renderCanvas());
-          _ansch.style.display = _prevAns;
+        // V12.105: Multi-Page (Titel + Anschreiben + Vertrag + Vollmacht + Deckblatt + Bestandsdaten)
+        const _multi = await _renderEucMultiPageCanvases(printArea, _renderCanvas);
+        if (_multi.length > 0) {
+          canvasesGen.push(..._multi);
         } else {
           canvasesGen.push(await _renderCanvas());
         }
@@ -20721,49 +20878,13 @@ async function buildCheckCoverBlob() {
         onclone: _sanitizeClonedDocForCanvas,
       });
     };
-    // V12.57: EuC → 2 separate Canvas-Renders (Anschreiben auf eigener Seite)
+    // V12.57/V12.105: EuC → Multi-Page Canvas-Render (Titel + Anschreiben + Vertrag + Vollmacht + Altvertrag-Deckblatt + Bestandsdaten)
     const eocActive = !!document.getElementById('cb_eoc_active')?.checked && checkType === 'wartung';
     let canvases = [];
     if (eocActive) {
-      const anschreiben = document.getElementById('section-eoc-anschreiben');
-      if (anschreiben && anschreiben.style.display !== 'none') {
-        // Page 1: nur Anschreiben sichtbar (alle anderen sichtbaren Geschwister hidden)
-        const printChildren = Array.from(printArea.children);
-        const tempHidden = [];
-        printChildren.forEach(c => {
-          if (c === anschreiben || c.contains(anschreiben)) return;
-          if (c.style.display === 'none') return;
-          tempHidden.push({ el: c, prev: c.style.display || '' });
-          c.style.display = 'none';
-        });
-        // Auch innerhalb section-wartung andere Geschwister hiden (Anschreiben liegt in section-wartung)
-        const sectWartung = document.getElementById('section-wartung');
-        if (sectWartung) {
-          Array.from(sectWartung.children).forEach(c => {
-            if (c === anschreiben || c.contains(anschreiben)) return;
-            if (c.style.display === 'none') return;
-            tempHidden.push({ el: c, prev: c.style.display || '' });
-            c.style.display = 'none';
-          });
-        }
-        // V12.93: Zusätzlich form-body-Geschwister von section-wartung verstecken
-        // (legal-block + eoc_sig_block + section-ergebnis liegen NEBEN section-wartung)
-        ['legal-block', 'eoc_sig_block', 'section-ergebnis', 'sig-line-betreiber'].forEach(id => {
-          const el = document.getElementById(id);
-          if (!el || el.style.display === 'none') return;
-          tempHidden.push({ el, prev: el.style.display || '' });
-          el.style.display = 'none';
-        });
-        canvases.push(await renderCanvas());
-        tempHidden.forEach(({el, prev}) => { el.style.display = prev; });
-        // Page 2: Anschreiben hidden, Rest sichtbar
-        const prevAns = anschreiben.style.display;
-        anschreiben.style.display = 'none';
-        canvases.push(await renderCanvas());
-        anschreiben.style.display = prevAns;
-      } else {
-        canvases.push(await renderCanvas());
-      }
+      const _multi = await _renderEucMultiPageCanvases(printArea, renderCanvas);
+      if (_multi.length > 0) canvases = _multi;
+      else canvases.push(await renderCanvas());
     } else {
       canvases.push(await renderCanvas());
     }
