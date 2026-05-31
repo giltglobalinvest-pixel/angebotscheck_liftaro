@@ -3036,7 +3036,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <div class="section-inner" style="padding:70px 70px 60px;font-family:'DM Sans',sans-serif;min-height:800px;background:#fff">
               <!-- Logo oben -->
               <div style="margin-bottom:38px;text-align:center">
-                <img id="eoc_titel_logo" src="" alt="Liftaro" style="height:50px;width:auto">
+                <img id="eoc_titel_logo" class="eoc-pdf-logo" src="" alt="Liftaro" style="height:50px;width:auto">
               </div>
               <!-- Header mit neuem Titel -->
               <div style="margin-bottom:42px">
@@ -3089,6 +3089,19 @@ const pdfWorkerReady = Promise.resolve();</script>
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- V12.113: Cover-Seite "Equipment under Control" — kommt zwischen Inhaltsverzeichnis (Seite 1) und Anschreiben (Seite 3) -->
+          <div id="section-eoc-titel" class="section" style="margin-top:20px;display:none">
+            <div class="section-inner" style="padding:140px 60px 100px;text-align:center;font-family:'DM Sans',sans-serif;min-height:700px;background:#fff">
+              <div style="margin-bottom:42px">
+                <img id="eoc_cover_logo" class="eoc-pdf-logo" src="" alt="Liftaro" style="height:56px;width:auto">
+              </div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:18px">Vorschlag zur Vertragsbetreuung</div>
+              <h2 style="font-size:28px;font-weight:700;color:var(--navy);margin:0 0 18px;letter-spacing:-0.02em">Equipment under Control</h2>
+              <p style="font-size:15px;color:var(--text);max-width:500px;margin:0 auto 16px;line-height:1.6">Ein <strong>Schutzmantel-Modell</strong> für Wohnungseigentümergemeinschaften mit laufendem Aufzugs-Wartungsvertrag.</p>
+              <p style="font-size:13px;color:var(--muted);max-width:500px;margin:0 auto;line-height:1.6">Vorbereitet von der Liftaro GmbH, Mainz · <span id="eoc_cover_datum">–</span></p>
             </div>
           </div>
 
@@ -5844,7 +5857,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.112';
+const APP_VERSION = 'V12.113';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7541,7 +7554,8 @@ const EOC_HIDE_WHEN_ACTIVE = [
 //  später ins separate ETV-Beschluss-Paket-PDF, nicht ins reguläre Ergebnis-PDF)
 const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-anschreiben-edit', // V12.94: Edit-Panel für Anschreiben-Texte (nur App, nicht PDF)
-  'section-eoc-inhalt',           // V12.112: Erste Seite — Inhaltsverzeichnis mit Logo + Titel
+  'section-eoc-inhalt',           // V12.112: Seite 1 — Inhaltsverzeichnis mit Logo + Titel
+  'section-eoc-titel',            // V12.113: Seite 2 — Cover "Equipment under Control"
   'section-eoc-anschreiben',      // PDF: Anschreiben an die WEG (V12.56)
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
   'section-eoc-vollmacht',        // V12.105: Vollmacht zur Handlungsbevollmächtigung
@@ -7550,11 +7564,12 @@ const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
   'eoc_sig_block',                // V12.93: Unterschriftsfeld für HV-Beauftragung
 ];
-// V12.105/V12.112: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
+// V12.105/V12.112/V12.113: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
 // Jede Gruppe ist eine Liste sichtbarer IDs für genau eine PDF-Seite.
 // Andere EuC-Elemente werden während des Renders temporär versteckt.
 const EUC_PDF_PAGE_GROUPS = [
-  { name: 'inhalt',      keep: ['section-eoc-inhalt'] },                                  // V12.112: Inhaltsverzeichnis = Seite 1
+  { name: 'inhalt',      keep: ['section-eoc-inhalt'] },                                  // V12.112: Seite 1 — Inhaltsverzeichnis
+  { name: 'titel',       keep: ['section-eoc-titel'] },                                   // V12.113: Seite 2 — Cover Equipment under Control
   { name: 'anschreiben', keep: ['section-eoc-anschreiben'] },
   { name: 'angebot',     keep: ['section-eoc-angebot', 'legal-block', 'eoc_sig_block'] },
   { name: 'vollmacht',   keep: ['section-eoc-vollmacht'] },
@@ -8385,13 +8400,18 @@ function _refreshEocDisplays() {
   }
   // V12.105: Titelseite-Datum, Vollmacht-Daten, Logo
   try {
+    const todayLong = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
     const titelDat = document.getElementById('eoc_titel_datum');
-    if (titelDat) titelDat.textContent = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
-    const titelLogo = document.getElementById('eoc_titel_logo');
-    if (titelLogo && !titelLogo.src) {
-      // Logo-URL einmalig aus dem fh-logo holen
-      const srcImg = document.querySelector('.fh-logo img');
-      if (srcImg && srcImg.src) titelLogo.src = srcImg.src;
+    if (titelDat) titelDat.textContent = todayLong;
+    // V12.113: Cover-Seite Datum
+    const coverDat = document.getElementById('eoc_cover_datum');
+    if (coverDat) coverDat.textContent = todayLong;
+    // V12.113: Logo auf ALLEN EuC-PDF-Seiten füllen (Inhaltsverzeichnis + Cover)
+    const srcImg = document.querySelector('.fh-logo img');
+    if (srcImg && srcImg.src) {
+      document.querySelectorAll('.eoc-pdf-logo').forEach(img => {
+        if (!img.src) img.src = srcImg.src;
+      });
     }
     // Vollmacht-Daten: HV-Block (Firma + Anschrift + Ansprechpartner) + Standort + Vertragsende
     const hvFirma = (_g('f_firma') || '').trim();
