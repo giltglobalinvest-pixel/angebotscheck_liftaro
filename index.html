@@ -3031,26 +3031,17 @@ const pdfWorkerReady = Promise.resolve();</script>
             </div>
           </div>
 
-          <!-- V12.110: Titelseite minimalistisch wie das Altvertrag-Deckblatt (zentriert, ohne Inhaltsverzeichnis) -->
-          <div id="section-eoc-titel" class="section" style="margin-top:20px;display:none">
-            <div class="section-inner" style="padding:140px 60px 100px;text-align:center;font-family:'DM Sans',sans-serif;min-height:700px;background:#fff">
-              <div style="margin-bottom:42px">
-                <img id="eoc_titel_logo" src="" alt="Liftaro" style="height:56px;width:auto">
-              </div>
-              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:18px">Vorschlag zur Vertragsbetreuung</div>
-              <h2 style="font-size:28px;font-weight:700;color:var(--navy);margin:0 0 18px;letter-spacing:-0.02em">Equipment under Control</h2>
-              <p style="font-size:15px;color:var(--text);max-width:500px;margin:0 auto 16px;line-height:1.6">Ein <strong>Schutzmantel-Modell</strong> für Wohnungseigentümergemeinschaften mit laufendem Aufzugs-Wartungsvertrag.</p>
-              <p style="font-size:13px;color:var(--muted);max-width:500px;margin:0 auto;line-height:1.6">Vorbereitet von der Liftaro GmbH, Mainz · <span id="eoc_titel_datum">–</span></p>
-            </div>
-          </div>
-
-          <!-- V12.111: Inhaltsverzeichnis-Seite (kommt direkt nach der Titelseite, vor dem Anschreiben) -->
+          <!-- V12.112: Inhaltsverzeichnis ist jetzt die ERSTE Seite (kombiniert mit Logo + Titel "Vertragscheck Inhaltsverzeichnis") -->
           <div id="section-eoc-inhalt" class="section" style="margin-top:20px;display:none">
-            <div class="section-inner" style="padding:80px 70px 60px;font-family:'DM Sans',sans-serif;min-height:800px;background:#fff">
-              <!-- Header -->
-              <div style="margin-bottom:48px">
-                <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;font-weight:600">Übersicht</div>
-                <h2 style="font-size:32px;font-weight:700;color:var(--navy);margin:0;letter-spacing:-0.02em;line-height:1.15">Inhaltsverzeichnis</h2>
+            <div class="section-inner" style="padding:70px 70px 60px;font-family:'DM Sans',sans-serif;min-height:800px;background:#fff">
+              <!-- Logo oben -->
+              <div style="margin-bottom:38px;text-align:center">
+                <img id="eoc_titel_logo" src="" alt="Liftaro" style="height:50px;width:auto">
+              </div>
+              <!-- Header mit neuem Titel -->
+              <div style="margin-bottom:42px">
+                <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;font-weight:600">Equipment under Control · <span id="eoc_titel_datum">–</span></div>
+                <h2 style="font-size:32px;font-weight:700;color:var(--navy);margin:0;letter-spacing:-0.02em;line-height:1.15">Vertragscheck Inhaltsverzeichnis</h2>
                 <div style="height:3px;background:var(--navy);width:60px;margin-top:16px;border-radius:2px"></div>
               </div>
               <!-- TOC-Items -->
@@ -5853,7 +5844,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.111';
+const APP_VERSION = 'V12.112';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7550,8 +7541,7 @@ const EOC_HIDE_WHEN_ACTIVE = [
 //  später ins separate ETV-Beschluss-Paket-PDF, nicht ins reguläre Ergebnis-PDF)
 const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-anschreiben-edit', // V12.94: Edit-Panel für Anschreiben-Texte (nur App, nicht PDF)
-  'section-eoc-titel',            // V12.105: Titelseite (Cover)
-  'section-eoc-inhalt',           // V12.111: Inhaltsverzeichnis (eigene Seite)
+  'section-eoc-inhalt',           // V12.112: Erste Seite — Inhaltsverzeichnis mit Logo + Titel
   'section-eoc-anschreiben',      // PDF: Anschreiben an die WEG (V12.56)
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
   'section-eoc-vollmacht',        // V12.105: Vollmacht zur Handlungsbevollmächtigung
@@ -7560,12 +7550,11 @@ const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
   'eoc_sig_block',                // V12.93: Unterschriftsfeld für HV-Beauftragung
 ];
-// V12.105: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
+// V12.105/V12.112: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
 // Jede Gruppe ist eine Liste sichtbarer IDs für genau eine PDF-Seite.
 // Andere EuC-Elemente werden während des Renders temporär versteckt.
 const EUC_PDF_PAGE_GROUPS = [
-  { name: 'titel',       keep: ['section-eoc-titel'] },
-  { name: 'inhalt',      keep: ['section-eoc-inhalt'] },                                // V12.111
+  { name: 'inhalt',      keep: ['section-eoc-inhalt'] },                                  // V12.112: Inhaltsverzeichnis = Seite 1
   { name: 'anschreiben', keep: ['section-eoc-anschreiben'] },
   { name: 'angebot',     keep: ['section-eoc-angebot', 'legal-block', 'eoc_sig_block'] },
   { name: 'vollmacht',   keep: ['section-eoc-vollmacht'] },
