@@ -2860,14 +2860,15 @@ const pdfWorkerReady = Promise.resolve();</script>
 
           <!-- ▼▼▼ PDF-RELEVANTE SECTIONS (werden ins Ergebnis-PDF gerendert) ▼▼▼ -->
 
-          <!-- V12.94: Edit-Panel für Anschreiben-Texte (nicht im PDF) -->
+          <!-- V12.94: Edit-Panel für Anschreiben-Texte (nicht im PDF) · V12.95: einklappbar -->
           <div id="section-eoc-anschreiben-edit" class="section" style="margin-top:20px;display:none">
-            <div class="section-title">
-              ✏️ Anschreiben-Texte bearbeiten
-              <small style="font-weight:400;color:var(--muted);margin-left:8px;font-size:12px">— Änderungen erscheinen sofort im Anschreiben unten · <code>{STANDORT}</code> und <code>{VERTRAGSENDE}</code> werden ersetzt · <code>**Text**</code> wird fett</small>
+            <div class="section-title" id="eoc_brief_edit_title" onclick="_eaToggleCollapse()" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px">
+              <span id="eoc_brief_edit_chevron" style="display:inline-block;width:14px;text-align:center;transition:transform 0.15s ease;color:var(--muted)">▶</span>
+              <span>✏️ Anschreiben-Texte bearbeiten</span>
+              <small style="font-weight:400;color:var(--muted);margin-left:4px;font-size:12px">— Änderungen erscheinen sofort im Anschreiben unten · <code>{STANDORT}</code> und <code>{VERTRAGSENDE}</code> werden ersetzt · <code>**Text**</code> wird fett</small>
             </div>
-            <div class="section-inner" id="eoc_brief_edit_body" style="padding:18px 22px">
-              <!-- generated dynamically via _eaBuildEditPanel() -->
+            <div class="section-inner" id="eoc_brief_edit_body" style="padding:18px 22px;display:none">
+              <!-- generated dynamically via _eaBuildEditPanel() — default collapsed -->
             </div>
           </div>
 
@@ -5651,7 +5652,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.94';
+const APP_VERSION = 'V12.95';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7509,7 +7510,29 @@ function _eaInit() {
   _eaBuildEditPanel();
   _eaSyncFromFormData();
   renderEocBrief();
+  _eaApplyCollapseState();
 }
+// V12.95: Edit-Panel einklappbar (Default: zugeklappt; Status in localStorage)
+function _eaApplyCollapseState() {
+  const body = document.getElementById('eoc_brief_edit_body');
+  const chev = document.getElementById('eoc_brief_edit_chevron');
+  if (!body) return;
+  let open = false;
+  try { open = localStorage.getItem('eocBriefEditOpen') === '1'; } catch (e) {}
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
+}
+function _eaToggleCollapse() {
+  const body = document.getElementById('eoc_brief_edit_body');
+  const chev = document.getElementById('eoc_brief_edit_chevron');
+  if (!body) return;
+  const wasOpen = body.style.display !== 'none';
+  const nextOpen = !wasOpen;
+  body.style.display = nextOpen ? '' : 'none';
+  if (chev) chev.style.transform = nextOpen ? 'rotate(90deg)' : '';
+  try { localStorage.setItem('eocBriefEditOpen', nextOpen ? '1' : '0'); } catch (e) {}
+}
+window._eaToggleCollapse = _eaToggleCollapse;
 // Nach loadCheck explizit aufrufen (deferred — Elemente existieren ggf. erst spät)
 window._eaInit = _eaInit;
 window.renderEocBrief = renderEocBrief;
