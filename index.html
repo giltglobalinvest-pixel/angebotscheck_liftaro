@@ -3471,6 +3471,62 @@ const pdfWorkerReady = Promise.resolve();</script>
 </div>
 
 <!-- Lernprotokoll Modal -->
+<!-- V12.98: KI-Anschreiben-Modal -->
+<div id="eocAiModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.78);z-index:5300;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px">
+  <div style="background:#fff;border-radius:16px;width:min(760px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
+    <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <span style="color:#fff;font-size:15px;font-weight:700">🪄 KI-Anschreiben-Bearbeitung</span>
+        <span style="color:rgba(255,255,255,.6);font-size:11px;margin-left:10px">Markdown-Konventionen werden beibehalten</span>
+      </div>
+      <button type="button" onclick="_eaCloseAiModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px">
+      <!-- Modus -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">Modus</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="flex:1 1 200px;display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#fff" id="eocAiMode_modify_wrap">
+            <input type="radio" name="eocAiMode" value="modify" id="eocAiMode_modify" checked style="margin-top:2px">
+            <div>
+              <div style="font-weight:600;font-size:13px;color:var(--text)">✏️ Aktuellen Text überarbeiten</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">KI bekommt den aktuellen Text + deine Anweisung</div>
+            </div>
+          </label>
+          <label style="flex:1 1 200px;display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#fff" id="eocAiMode_new_wrap">
+            <input type="radio" name="eocAiMode" value="new" id="eocAiMode_new" style="margin-top:2px">
+            <div>
+              <div style="font-weight:600;font-size:13px;color:var(--text)">🆕 Komplett neu schreiben</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">KI generiert von Grund auf nach deinem Briefing</div>
+            </div>
+          </label>
+        </div>
+      </div>
+      <!-- Schnellauswahl -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px">Schnellauswahl <span style="font-weight:400;color:var(--muted);font-size:11px">— klick fügt unten ein</span></div>
+        <div id="eocAiQuick" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+      <!-- Anweisung -->
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px">Deine Anweisung an die KI</div>
+        <textarea id="eocAiInstruction" rows="9" placeholder="z. B.: Mache den Ton wärmer und persönlicher, weniger juristisch. Erkläre den 25 %-Erfolgsmodell-Punkt mit einem konkreten Beispiel. Behalte die drei Bullet-Points unter „Probleme" bei, aber formuliere sie schärfer." style="width:100%;font-family:inherit;font-size:13px;line-height:1.55;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+      <!-- Hinweis -->
+      <div id="eocAiHint" style="font-size:11px;color:var(--muted);background:#f7f9fb;padding:10px 12px;border-radius:6px;border:1px solid var(--border)">
+        💡 Die KI behält Markdown-Konventionen (<code>#</code>, <code>##</code>, <code>-</code>, <code>**</code>) bei. Die Platzhalter <code>{STANDORT}</code> und <code>{VERTRAGSENDE}</code> bleiben unverändert.
+      </div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0">
+      <small id="eocAiStatus" style="color:var(--muted);font-size:11px"></small>
+      <div style="display:flex;gap:8px">
+        <button type="button" onclick="_eaCloseAiModal()" style="padding:9px 16px;border:1px solid var(--border);background:#fff;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px">Abbrechen</button>
+        <button type="button" id="eocAiSubmit" onclick="_eaSubmitAiModal()" style="padding:9px 18px;border:1px solid var(--navy);background:var(--navy);color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🪄 KI starten</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="lernModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,.8);z-index:5000;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
   <div style="background:#fff;border-radius:16px;width:min(680px,94vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="background:var(--navy);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -5634,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.97';
+const APP_VERSION = 'V12.98';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7690,33 +7746,132 @@ async function _eaDeleteSelectedVorlage() {
   }
 }
 
-async function _eaModifyWithAi() {
-  const ta = document.getElementById('eaedit_fulltext');
-  if (!ta) return;
-  const instruction = (prompt(
-    'Wie soll die KI den Anschreiben-Text bearbeiten?\n\nBeispiele:\n• Mache den Ton freundlicher\n• Kürze auf 50 % der Länge\n• Mehr Schwerpunkt auf Wirtschaftlichkeit\n• Schreibe ohne Anglizismen\n• Erkläre Equipment under Control ausführlicher'
-  ) || '').trim();
-  if (!instruction) return;
+// V12.98: Schnellauswahl-Vorschläge (klick fügt Text in die Anweisung)
+const EOC_AI_QUICK_PROMPTS = {
+  modify: [
+    { label: '😊 Freundlicher', text: 'Mache den Ton wärmer und persönlicher — weniger juristisch, aber genauso präzise.' },
+    { label: '✂️ 30 % kürzer', text: 'Kürze den Text um etwa 30 %, behalte alle Kernaussagen.' },
+    { label: '💼 Förmlicher', text: 'Formuliere den gesamten Text formeller und distanzierter, klassisches Geschäftsdeutsch.' },
+    { label: '📊 Wirtschaftlicher', text: 'Mehr Fokus auf wirtschaftliche Argumente und konkrete Zahlen, weniger emotionale Bilder.' },
+    { label: '🇩🇪 Ohne Anglizismen', text: 'Ersetze alle Anglizismen durch deutsche Begriffe (Beispiel: „Equipment under Control" durch „Anlagen-Überwachung-Modell" oder ähnlich).' },
+    { label: '🔍 EuC ausführlicher', text: 'Erkläre das Equipment-under-Control-Modell ausführlicher und konkreter, mit einem Beispiel zum 25 %-Erfolgsmodell.' },
+    { label: '⚖️ Rechts-Fokus', text: 'Mehr Fokus auf die rechtliche Lage von Wartungsverträgen mit Bindefristen und auf die Pflichten der WEG-Verwaltung.' },
+    { label: '🎯 Bullet-Liste schärfen', text: 'Behalte die drei Bullet-Punkte unter „Probleme" bei, aber formuliere sie konkreter und mit klaren Zahlen.' },
+  ],
+  new: [
+    { label: '📨 Kurz & klar', text: 'Schreibe ein knappes, sehr direktes Anschreiben (max. 3 Absätze + Betreff), das Equipment under Control mit klaren Vorteilen für die WEG erklärt.' },
+    { label: '📚 Ausführlich', text: 'Schreibe ein ausführliches Anschreiben mit mehreren Zwischenüberschriften: Problemlage, Lösung, Konditionen, nächste Schritte. Persönlicher Ton.' },
+    { label: '⚖️ Sachlich-juristisch', text: 'Schreibe einen sachlich-juristischen Brief, der die Pflichten der WEG-Verwaltung gemäß WEG-Recht betont und Equipment under Control als Compliance-Lösung darstellt.' },
+    { label: '💡 Story-Telling', text: 'Schreibe einen Brief, der mit einem konkreten Beispielfall beginnt (eine WEG, die jährlich 8.000 € sparte). Daraus die Vorteile von Equipment under Control ableiten.' },
+    { label: '📊 Daten-getrieben', text: 'Schreibe einen Brief mit klarem Fokus auf Zahlen und Marktdaten. Konkrete Beispiele für überteuerte Reparaturen.' },
+  ],
+};
+
+function _eaOpenAiModal() {
   if (!APP_KEYS.anthropicKey) {
     if (typeof showToast === 'function') showToast('KI nicht konfiguriert (anthropicKey fehlt)', 'error');
     return;
   }
-  const currentText = ta.value;
-  const systemPrompt = 'Du bist Texter für Anschreiben an Wohnungseigentümergemeinschaften (WEG) zum Thema Aufzugswartung. Der Text verwendet folgendes Mini-Markdown:\n' +
-    '- "# Titel" am Zeilenanfang = Betreff (genau eine Zeile, oben)\n' +
+  const modal = document.getElementById('eocAiModal');
+  if (!modal) return;
+  // Reset state
+  const inst = document.getElementById('eocAiInstruction');
+  if (inst) { inst.value = ''; setTimeout(() => inst.focus(), 50); }
+  const status = document.getElementById('eocAiStatus');
+  if (status) status.textContent = '';
+  const submit = document.getElementById('eocAiSubmit');
+  if (submit) { submit.disabled = false; submit.textContent = '🪄 KI starten'; }
+  // Default-Modus: modify
+  const mModify = document.getElementById('eocAiMode_modify');
+  if (mModify) mModify.checked = true;
+  // Mode-Listener für Quick-Prompts + Hint
+  document.querySelectorAll('input[name="eocAiMode"]').forEach(r => {
+    r.removeEventListener('change', _eaUpdateAiMode);
+    r.addEventListener('change', _eaUpdateAiMode);
+  });
+  _eaUpdateAiMode();
+  modal.style.display = 'flex';
+}
+
+function _eaCloseAiModal() {
+  const modal = document.getElementById('eocAiModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function _eaGetAiMode() {
+  const r = document.querySelector('input[name="eocAiMode"]:checked');
+  return r ? r.value : 'modify';
+}
+
+function _eaUpdateAiMode() {
+  const mode = _eaGetAiMode();
+  // Selected wrapper highlighten
+  ['modify','new'].forEach(m => {
+    const w = document.getElementById('eocAiMode_' + m + '_wrap');
+    if (w) {
+      w.style.borderColor = (m === mode) ? 'var(--navy)' : 'var(--border)';
+      w.style.background = (m === mode) ? '#f0f5fb' : '#fff';
+    }
+  });
+  // Quick-Buttons befüllen
+  const wrap = document.getElementById('eocAiQuick');
+  if (wrap) {
+    wrap.innerHTML = '';
+    (EOC_AI_QUICK_PROMPTS[mode] || []).forEach(q => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = q.label;
+      b.style.cssText = 'padding:6px 10px;border:1px solid var(--border);background:#fff;color:var(--text);border-radius:14px;cursor:pointer;font-size:12px';
+      b.addEventListener('click', () => {
+        const inst = document.getElementById('eocAiInstruction');
+        if (!inst) return;
+        const cur = inst.value.trim();
+        inst.value = cur ? (cur + '\n\n' + q.text) : q.text;
+        inst.focus();
+      });
+      wrap.appendChild(b);
+    });
+  }
+  // Hint anpassen
+  const hint = document.getElementById('eocAiHint');
+  if (hint) {
+    if (mode === 'new') {
+      hint.innerHTML = '🆕 Modus „Neu schreiben": die KI bekommt NUR deine Anweisung und erstellt einen kompletten Brief von Grund auf. Markdown-Konventionen (<code>#</code>, <code>##</code>, <code>-</code>, <code>**</code>) und Platzhalter (<code>{STANDORT}</code>, <code>{VERTRAGSENDE}</code>) werden im Briefing erklärt.';
+    } else {
+      hint.innerHTML = '✏️ Modus „Überarbeiten": die KI bekommt deinen aktuellen Text + Anweisung. Markdown-Konventionen (<code>#</code>, <code>##</code>, <code>-</code>, <code>**</code>) und Platzhalter (<code>{STANDORT}</code>, <code>{VERTRAGSENDE}</code>) bleiben erhalten.';
+    }
+  }
+}
+
+async function _eaSubmitAiModal() {
+  const inst = document.getElementById('eocAiInstruction');
+  const instruction = (inst?.value || '').trim();
+  if (!instruction) {
+    if (inst) inst.focus();
+    if (typeof showToast === 'function') showToast('Bitte eine Anweisung eingeben', 'error');
+    return;
+  }
+  const ta = document.getElementById('eaedit_fulltext');
+  if (!ta) return;
+  const mode = _eaGetAiMode();
+  const submit = document.getElementById('eocAiSubmit');
+  const status = document.getElementById('eocAiStatus');
+  const systemBase = 'Du bist Texter für Anschreiben an Wohnungseigentümergemeinschaften (WEG) zum Thema Aufzugswartung. Der Text verwendet folgendes Mini-Markdown:\n' +
+    '- "# Titel" am Zeilenanfang = Betreff (genau EINE Zeile am Anfang)\n' +
     '- "## Titel" = Zwischenüberschrift\n' +
     '- "- Item" = Bullet-Punkt (mehrere am Stück = eine Liste)\n' +
     '- "**Text**" = fett\n' +
     '- "{STANDORT}" = dynamischer Platzhalter (DARF NICHT umgeschrieben oder entfernt werden!)\n' +
     '- "{VERTRAGSENDE}" = dynamischer Platzhalter (DARF NICHT umgeschrieben werden!)\n' +
     '- Leerzeile = neuer Absatz\n\n' +
-    'Gib NUR den überarbeiteten Brief-Text zurück: kein Vorwort, keine Erklärungen, keine Code-Fences, keine Anführungszeichen um den ganzen Text. Behalte die Markdown-Konventionen bei. Antworte auf Deutsch.';
-  const userMessage = 'Aktueller Anschreiben-Text:\n\n' + currentText + '\n\n---\n\nBitte überarbeite den Text wie folgt: ' + instruction + '\n\nGib NUR den überarbeiteten Brief-Text zurück (mit Markdown-Konventionen, ohne Trennlinien oder Erklärungen).';
-  const btn = document.getElementById('eoc_vorlage_ai');
-  const prevLabel = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '… KI arbeitet …'; }
+    'Kontext: Die Firma Liftaro bietet das Modell „Equipment under Control" (EuC) an — Liftaro übernimmt die Vertragsverwaltung gegenüber dem bestehenden Wartungsanbieter als Schutzmantel der WEG, berechnet 25 % der nachweisbaren Ersparnis, Grundbetreuung ist kostenfrei.\n\n' +
+    'WICHTIG: Gib NUR den fertigen Brief-Text zurück — kein Vorwort, keine Erklärungen, keine Code-Fences, keine Anführungszeichen um den ganzen Text. Antworte auf Deutsch.';
+  const userMessage = (mode === 'new')
+    ? ('Erstelle einen kompletten neuen Anschreiben-Text gemäß folgender Vorgaben:\n\n' + instruction + '\n\nBeginne mit der Betreff-Zeile ("# ...") und nutze die Markdown-Konventionen. Verwende die Platzhalter {STANDORT} und {VERTRAGSENDE} an passender Stelle im Einleitungs-Absatz.')
+    : ('Aktueller Anschreiben-Text:\n\n' + ta.value + '\n\n---\n\nBitte überarbeite den Text wie folgt:\n\n' + instruction + '\n\nGib NUR den überarbeiteten Brief-Text zurück (mit Markdown-Konventionen, ohne Trennlinien oder Erklärungen).');
+  if (submit) { submit.disabled = true; submit.textContent = '… KI arbeitet …'; }
+  if (status) status.textContent = 'KI generiert Antwort …';
   try {
-    if (typeof showToast === 'function') showToast('KI überarbeitet den Text …', 'ok');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -7728,7 +7883,7 @@ async function _eaModifyWithAi() {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 4000,
-        system: systemPrompt,
+        system: systemBase,
         messages: [{ role: 'user', content: userMessage }],
       }),
     });
@@ -7738,20 +7893,25 @@ async function _eaModifyWithAi() {
     }
     const data = await res.json();
     let newText = (data.content?.[0]?.text || '').trim();
-    // Fence-Stripping, falls KI doch in ``` antwortet
     newText = newText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```\s*$/, '').trim();
     if (!newText) throw new Error('Leere KI-Antwort');
     ta.value = newText;
     window._eocBriefEdits.fulltext = newText;
     renderEocBrief();
-    if (typeof showToast === 'function') showToast('KI hat den Text überarbeitet', 'ok');
+    if (typeof showToast === 'function') showToast(mode === 'new' ? 'KI hat einen neuen Text erstellt' : 'KI hat den Text überarbeitet', 'ok');
+    _eaCloseAiModal();
   } catch (e) {
+    if (status) status.textContent = '';
     if (typeof showToast === 'function') showToast('KI-Fehler: ' + e.message, 'error');
-    console.error('[V12.97] modifyWithAi:', e);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = prevLabel; }
+    console.error('[V12.98] submitAiModal:', e);
+    if (submit) { submit.disabled = false; submit.textContent = '🪄 KI starten'; }
   }
 }
+
+// Alte Funktion auf neues Modal umlenken (Toolbar-Button ruft weiterhin _eaModifyWithAi)
+function _eaModifyWithAi() { _eaOpenAiModal(); }
+window._eaCloseAiModal = _eaCloseAiModal;
+window._eaSubmitAiModal = _eaSubmitAiModal;
 
 window._eaOnVorlageChange = _eaOnVorlageChange;
 window._eaSaveAsNewVorlage = _eaSaveAsNewVorlage;
