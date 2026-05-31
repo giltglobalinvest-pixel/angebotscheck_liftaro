@@ -3044,58 +3044,8 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <h2 style="font-size:32px;font-weight:700;color:var(--navy);margin:0;letter-spacing:-0.02em;line-height:1.15">Vertragscheck Inhaltsverzeichnis</h2>
                 <div style="height:3px;background:var(--navy);width:60px;margin-top:16px;border-radius:2px"></div>
               </div>
-              <!-- TOC-Items (V12.114: Reihenfolge passt jetzt zur tatsächlichen PDF-Seitenfolge) -->
-              <div style="display:flex;flex-direction:column">
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">01</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Equipment under Control — Vorschlag zur Vertragsbetreuung</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Kurzvorstellung des Schutzmantel-Modells für die WEG</div>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">02</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Anschreiben an die Eigentümergemeinschaft</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Einführung in Equipment under Control mit Bezug auf § 27 Abs. 1 Nr. 1 WEG</div>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">03</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Liftaro-Angebot Equipment under Control</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Konditionen, Erfolgsmodell und Leistungsumfang</div>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">04</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Vollmacht zur Handlungsbevollmächtigung</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Bevollmächtigung der Liftaro GmbH zur Vertretung gegenüber TÜV und Wartungsnehmer</div>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">05</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Bestehender Wartungsvertrag</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Original-Vertragsdokument, das zur Prüfung eingereicht wurde (Anlage)</div>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">06</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Bestandsvertrag — Eckdaten</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">Anbieter, Laufzeit, Kosten und enthaltene Leistungen im Überblick</div>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0">
-                  <div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:'DM Mono',monospace;line-height:1.2">07</div>
-                  <div style="flex:1">
-                    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">Zusammenfassung &amp; Empfehlung</div>
-                    <div style="font-size:14px;color:var(--muted);line-height:1.5">KI-gestützte Analyse und Handlungsempfehlung für die WEG</div>
-                  </div>
-                </div>
-              </div>
+              <!-- V12.115: TOC-Items werden dynamisch aus EUC_PDF_PAGE_GROUPS gerendert (siehe _renderEucInhaltTocItems) -->
+              <div id="eoc_inhalt_toc_items" style="display:flex;flex-direction:column"></div>
             </div>
           </div>
 
@@ -5864,7 +5814,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.114';
+const APP_VERSION = 'V12.115';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7571,17 +7521,39 @@ const EOC_SHOW_WHEN_ACTIVE = [
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
   'eoc_sig_block',                // V12.93: Unterschriftsfeld für HV-Beauftragung
 ];
-// V12.105/V12.112/V12.113: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
+// V12.105/V12.112/V12.113/V12.115: Reihenfolge der PDF-Seiten (Gruppen) im EuC-Modus.
 // Jede Gruppe ist eine Liste sichtbarer IDs für genau eine PDF-Seite.
 // Andere EuC-Elemente werden während des Renders temporär versteckt.
+//
+// V12.115: tocEntries (oder tocTitle/tocSub) liefern die Daten fürs dynamische
+// Inhaltsverzeichnis. `skipToc: true` für Gruppen, die selbst das TOC sind.
+// `tocEntries[i].id` (optional) referenziert eine konkrete Section — wenn die
+// nicht sichtbar ist, fliegt der Eintrag automatisch aus dem TOC. So passen sich
+// Konstellationen (z.B. Zusammenfassung deaktiviert) automatisch an.
 const EUC_PDF_PAGE_GROUPS = [
-  { name: 'inhalt',      keep: ['section-eoc-inhalt'] },                                  // V12.112: Seite 1 — Inhaltsverzeichnis
-  { name: 'titel',       keep: ['section-eoc-titel'] },                                   // V12.113: Seite 2 — Cover Equipment under Control
-  { name: 'anschreiben', keep: ['section-eoc-anschreiben'] },
-  { name: 'angebot',     keep: ['section-eoc-angebot', 'legal-block', 'eoc_sig_block'] },
-  { name: 'vollmacht',   keep: ['section-eoc-vollmacht'] },
-  { name: 'altvertrag',  keep: ['section-eoc-altvertrag-deckblatt'] },
-  { name: 'restdoc',     keep: ['section-eoc-bestandsdaten', 'section-eoc-zusammenfassung'] },
+  { name: 'inhalt', keep: ['section-eoc-inhalt'], skipToc: true },
+  { name: 'titel', keep: ['section-eoc-titel'],
+    tocTitle: 'Equipment under Control — Vorschlag zur Vertragsbetreuung',
+    tocSub: 'Kurzvorstellung des Schutzmantel-Modells für die WEG' },
+  { name: 'anschreiben', keep: ['section-eoc-anschreiben'],
+    tocTitle: 'Anschreiben an die Eigentümergemeinschaft',
+    tocSub: 'Einführung in Equipment under Control mit Bezug auf § 27 Abs. 1 Nr. 1 WEG' },
+  { name: 'angebot', keep: ['section-eoc-angebot', 'legal-block', 'eoc_sig_block'],
+    tocTitle: 'Liftaro-Angebot Equipment under Control',
+    tocSub: 'Konditionen, Erfolgsmodell und Leistungsumfang' },
+  { name: 'vollmacht', keep: ['section-eoc-vollmacht'],
+    tocTitle: 'Vollmacht zur Handlungsbevollmächtigung',
+    tocSub: 'Bevollmächtigung der Liftaro GmbH zur Vertretung gegenüber TÜV und Wartungsnehmer' },
+  { name: 'altvertrag', keep: ['section-eoc-altvertrag-deckblatt'],
+    tocTitle: 'Bestehender Wartungsvertrag',
+    tocSub: 'Original-Vertragsdokument, das zur Prüfung eingereicht wurde (Anlage)' },
+  { name: 'restdoc', keep: ['section-eoc-bestandsdaten', 'section-eoc-zusammenfassung'],
+    tocEntries: [
+      { id: 'section-eoc-bestandsdaten',   title: 'Bestandsvertrag — Eckdaten',
+        sub: 'Anbieter, Laufzeit, Kosten und enthaltene Leistungen im Überblick' },
+      { id: 'section-eoc-zusammenfassung', title: 'Zusammenfassung & Empfehlung',
+        sub: 'KI-gestützte Analyse und Handlungsempfehlung für die WEG' },
+    ] },
 ];
 const EUC_PDF_ALL_IDS = Array.from(new Set(EUC_PDF_PAGE_GROUPS.flatMap(g => g.keep)));
 
@@ -7838,6 +7810,52 @@ async function _renderEucMultiPageCanvases(printArea, renderCanvas) {
   }
   return canvases;
 }
+
+// V12.115: Dynamisches Inhaltsverzeichnis für die EuC-PDF.
+// Iteriert EUC_PDF_PAGE_GROUPS, filtert tocSkip-Gruppen + unsichtbare Sections raus,
+// nummeriert die verbleibenden Einträge fortlaufend und schreibt sie in #eoc_inhalt_toc_items.
+// Dadurch passen sich Konstellationen (z.B. Zusammenfassung-Checkbox deaktiviert,
+// Altvertrag nicht beigefügt) automatisch im TOC an.
+function _renderEucInhaltTocItems() {
+  const container = document.getElementById('eoc_inhalt_toc_items');
+  if (!container) return;
+  const entries = [];
+  EUC_PDF_PAGE_GROUPS.forEach(group => {
+    if (group.skipToc) return;
+    // Gruppe wird nur ausgegeben, wenn mindestens ein 'keep'-Element sichtbar ist
+    const groupHasVisible = (group.keep || []).some(id => {
+      const el = document.getElementById(id);
+      return el && el.style.display !== 'none';
+    });
+    if (!groupHasVisible) return;
+    // tocEntries: pro Section ein TOC-Eintrag — wird wenn unsichtbar übersprungen
+    if (Array.isArray(group.tocEntries) && group.tocEntries.length) {
+      group.tocEntries.forEach(e => {
+        if (e.id) {
+          const el = document.getElementById(e.id);
+          if (!el || el.style.display === 'none') return;
+        }
+        entries.push({ title: e.title || '', sub: e.sub || '' });
+      });
+    } else if (group.tocTitle) {
+      entries.push({ title: group.tocTitle, sub: group.tocSub || '' });
+    }
+  });
+  const esc = s => String(s || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]));
+  container.innerHTML = entries.map((e, i) => {
+    const num = String(i + 1).padStart(2, '0');
+    const last = (i === entries.length - 1);
+    const border = last ? '' : ';border-bottom:1px solid var(--border)';
+    return '<div style="display:flex;align-items:flex-start;gap:24px;padding:18px 0' + border + '">' +
+             '<div style="font-size:22px;font-weight:700;color:var(--navy);min-width:42px;font-family:\'DM Mono\',monospace;line-height:1.2">' + num + '</div>' +
+             '<div style="flex:1">' +
+               '<div style="font-size:18px;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:5px">' + esc(e.title) + '</div>' +
+               '<div style="font-size:14px;color:var(--muted);line-height:1.5">' + esc(e.sub) + '</div>' +
+             '</div>' +
+           '</div>';
+  }).join('');
+}
+window._renderEucInhaltTocItems = _renderEucInhaltTocItems;
 
 // ─── V12.97: Vorlagen-CRUD + KI-Modifikation ───────────────────────────────
 const EOC_VORLAGEN_TABLE = 'Anschreiben-Vorlagen';
@@ -8420,6 +8438,8 @@ function _refreshEocDisplays() {
         if (!img.src) img.src = srcImg.src;
       });
     }
+    // V12.115: Inhaltsverzeichnis dynamisch rendern
+    if (typeof _renderEucInhaltTocItems === 'function') _renderEucInhaltTocItems();
     // Vollmacht-Daten: HV-Block (Firma + Anschrift + Ansprechpartner) + Standort + Vertragsende
     const hvFirma = (_g('f_firma') || '').trim();
     const hvAnschr = (_g('f_hv_anschrift') || '').trim();
@@ -12571,6 +12591,10 @@ async function generatePDF() {
 
     if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
     hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
+
+    // V12.115: TOC nach dem Anwenden von hideForPdf neu rendern — falls Checkboxen
+    // (z.B. "Zusammenfassung in PDF") Sections deaktiviert haben, fliegen sie aus dem TOC
+    if (typeof _renderEucInhaltTocItems === 'function') { try { _renderEucInhaltTocItems(); } catch (_) {} }
 
     restoreLayout = _forcePdfLayout();
 
@@ -21084,6 +21108,8 @@ async function buildCheckCoverBlob() {
   const prev = hideForPdf.map(el => el ? el.style.display : null);
   hideForPdf.forEach(el => { if (el) el.style.display = 'none'; });
   if (typeof syncKuendigungAbDisplay === 'function') syncKuendigungAbDisplay();
+  // V12.115: TOC nach hideForPdf neu rendern — Checkbox-Toggles werden berücksichtigt
+  if (typeof _renderEucInhaltTocItems === 'function') { try { _renderEucInhaltTocItems(); } catch (_) {} }
   const restoreLayout = _forcePdfLayout();
   // V12.108: User-Font-Scale auch in der Cover-Generierung anwenden
   const _restoreUserFontScale3 = (typeof _applyPdfFontScale === 'function')
