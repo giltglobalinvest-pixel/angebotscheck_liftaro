@@ -2285,7 +2285,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         Vorschau
       </button>
       <!-- V12.108: PDF-Schriftgrößen-Stepper (wirkt auf ALLE Text-Elemente im PDF, persistent via localStorage) -->
-      <div id="pdfFontStepper" title="Schriftgröße für die PDF — wirkt nur beim PDF-Erstellen, nicht auf die App-Ansicht" style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:3px 4px;font-family:'DM Sans',sans-serif">
+      <div id="pdfFontStepper" title="Schriftgröße für die PDF — wirkt nur auf den Brief-/Vertrags-Body-Text. Überschriften, Tabellen, Beträge und Badges bleiben unverändert." style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:3px 4px;font-family:'DM Sans',sans-serif">
         <button type="button" onclick="_pdfFontStep(-0.05)" style="background:transparent;border:none;color:var(--navy);font-weight:700;cursor:pointer;padding:4px 9px;border-radius:5px;font-size:13px;font-family:inherit" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='transparent'" title="Schrift kleiner">A−</button>
         <span id="pdfFontStepperLabel" style="font-family:'DM Mono',monospace;font-size:11.5px;color:var(--muted);min-width:38px;text-align:center">100 %</span>
         <button type="button" onclick="_pdfFontStep(0.05)" style="background:transparent;border:none;color:var(--navy);font-weight:700;cursor:pointer;padding:4px 9px;border-radius:5px;font-size:15px;font-family:inherit" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='transparent'" title="Schrift größer">A+</button>
@@ -5810,7 +5810,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.108';
+const APP_VERSION = 'V12.109';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -12200,25 +12200,79 @@ if (typeof document !== 'undefined') {
   setTimeout(_pdfFontUpdateLabel, 50);
 }
 
-// Skaliert alle font-size-Werte in `printArea`. Gibt Restore-Funktion zurück.
-// Skala 1.0 → no-op. Iteriert pro Element via getComputedStyle und setzt einen
-// neuen Wert mit !important auf den inline-style. Restore stellt den vorherigen
-// inline-style wieder her (auch wenn er leer war).
+// V12.109: Gezielte Skalierung — nur Body-Text in Lesetext-Containern,
+// nicht Überschriften, Badges, große Zahlen oder Tabellen.
+//
+// Strategie:
+//   1) WHITELIST von Selektoren — nur dort wird überhaupt geschaut.
+//   2) SIZE-GATE: nur Elemente mit computed font-size im Range 11–15.5 px
+//      werden skaliert. Headlines (≥18px) + große Zahlen (≥18px) sind
+//      automatisch geschützt. Winzige Footnotes (<11px) ebenfalls.
+//   3) BLACKLIST: Elemente innerhalb bekannter "dekorativer" Container
+//      (.section-title, .savings-display, badges, banner) werden übersprungen.
+const PDF_SCALE_WHITELIST_SELECTORS = [
+  // EuC-Anschreiben — Body-Text (Brief-Body wird via renderEocBrief() befüllt)
+  '#eoc_brief_body_rendered p',
+  '#eoc_brief_body_rendered li',
+  '#eoc_brief_body_rendered div',
+  // EuC-Angebot / Vertrag — Body
+  '#section-eoc-angebot p',
+  '#section-eoc-angebot li',
+  '#section-eoc-angebot ol',
+  '#section-eoc-angebot ul',
+  // EuC-Vollmacht — Body
+  '#section-eoc-vollmacht p',
+  '#section-eoc-vollmacht li',
+  '#section-eoc-vollmacht ul',
+  // EuC-Altvertrag-Deckblatt — Erläuterungstext
+  '#section-eoc-altvertrag-deckblatt p',
+  // EuC-Zusammenfassung — Body
+  '#section-eoc-zusammenfassung p',
+  '#eoc_zusammenfassung_text',
+  // Legal-Block (Kleingedrucktes)
+  '#legal-block',
+  // Reparatur-/Vertrags-Empfehlung
+  '#f_empfehlung',
+  '[contenteditable="true"]',
+];
+const PDF_SCALE_BLACKLIST_SELECTORS = [
+  '.section-title',
+  '.savings-display',
+  '.btn-badge',
+  '.dr-pill',
+  '#f_requestid_display',
+  '#aufzugBanner',
+  '#checkFrozenBanner',
+];
 function _applyPdfFontScale(printArea, scale) {
   if (!printArea || !scale || scale === 1) return () => {};
-  const all = printArea.querySelectorAll('*');
+  // Sammle Kandidaten via Whitelist (de-dupliziert)
+  const seen = new Set();
+  const candidates = [];
+  PDF_SCALE_WHITELIST_SELECTORS.forEach(sel => {
+    let nodes;
+    try { nodes = printArea.querySelectorAll(sel); } catch (e) { return; }
+    nodes.forEach(el => {
+      if (seen.has(el)) return;
+      seen.add(el);
+      candidates.push(el);
+    });
+  });
+  // Skip wenn unter einem Blacklist-Container
+  const blacklistJoined = PDF_SCALE_BLACKLIST_SELECTORS.join(',');
+  const isUnderBlacklist = (el) => {
+    try { return !!el.closest(blacklistJoined); } catch (e) { return false; }
+  };
   const restore = [];
-  // Auch das printArea selbst skalieren
-  const targets = [printArea, ...all];
-  targets.forEach(el => {
-    // Inputs/Textareas/Selects: Cursor- und Layout-relevant — auch skalieren
+  candidates.forEach(el => {
+    if (isUnderBlacklist(el)) return;
     let computed;
     try { computed = window.getComputedStyle(el); } catch (e) { return; }
     if (!computed) return;
-    const fsStr = computed.fontSize;
-    if (!fsStr) return;
-    const fs = parseFloat(fsStr);
+    const fs = parseFloat(computed.fontSize);
     if (!fs || isNaN(fs)) return;
+    // SIZE-GATE: nur Body-Text-Range (11–15.5px) skalieren — Headlines/große Zahlen bleiben unangetastet
+    if (fs < 11 || fs > 15.5) return;
     const newFs = (fs * scale).toFixed(2) + 'px';
     restore.push({ el, prev: el.style.getPropertyValue('font-size'), prio: el.style.getPropertyPriority('font-size') });
     el.style.setProperty('font-size', newFs, 'important');
