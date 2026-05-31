@@ -5690,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.99';
+const APP_VERSION = 'V12.100';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -19853,7 +19853,8 @@ function renderDashboard() {
     : '';
 
   // ── Vorabcheck-Stats (öffentliche Landing) ──
-  const vorabchecksAll = window._dashAllVorabchecks || [];
+  // V12.100: archivierte Vorabchecks aus Dashboard-Stats komplett ausblenden
+  const vorabchecksAll = (window._dashAllVorabchecks || []).filter(v => v.archived !== '1');
   // Filter-State init
   window._dashVcHidden  = window._dashVcHidden  || false;
   window._dashVcAmpFilt = window._dashVcAmpFilt || new Set();
@@ -23128,11 +23129,13 @@ function renderVchHubList() {
   const stats = document.getElementById('vch-overview-stats');
   const list  = document.getElementById('vch-overview-list');
   const allRowsRaw = window._vchHubAllRows || [];
-  // V12.99: archivierte standardmäßig ausblenden
+  // V12.99/V12.100: Archivierte werden grundsätzlich NICHT in Stats gezählt,
+  // sondern nur optional in der Liste angezeigt (Toggle).
+  const allActive = allRowsRaw.filter(r => r.archived !== '1');
   const showArchived = !!window._vchHubShowArchived;
-  const archivedCount = allRowsRaw.filter(r => r.archived === '1').length;
-  const allRows = showArchived ? allRowsRaw : allRowsRaw.filter(r => r.archived !== '1');
-  // Filter anwenden
+  const archivedCount = allRowsRaw.length - allActive.length;
+  const allRows = showArchived ? allRowsRaw : allActive; // nur für Listen-Rendering
+  // Filter anwenden (auf der gerenderten Menge)
   const q = window._vchHubSearch || '';
   const rows = allRows.filter(r => {
     if (window._vchHubAmpFilt.size  && !window._vchHubAmpFilt.has(r.ampel || ''))  return false;
@@ -23143,18 +23146,20 @@ function renderVchHubList() {
     }
     return true;
   });
-  // Stats (basieren auf allRows = inkl/exkl. Archiv je nach Toggle)
-  const total = allRows.length;
-  const gruen = allRows.filter(r => r.ampel === 'gruen').length;
-  const gelb  = allRows.filter(r => r.ampel === 'gelb').length;
-  const rot   = allRows.filter(r => r.ampel === 'rot').length;
-  const sumSavings = rows.reduce((s, r) => s + (Number(r.savings_estimate_eur) || 0), 0);
+  // V12.100: Stats IMMER auf nicht-archivierte basieren (unabhängig vom Toggle)
+  // → Ersparnis-Pool zählt nur aktive Vorabchecks, die zum Filter passen.
+  const rowsActive = rows.filter(r => r.archived !== '1');
+  const total = allActive.length;
+  const gruen = allActive.filter(r => r.ampel === 'gruen').length;
+  const gelb  = allActive.filter(r => r.ampel === 'gelb').length;
+  const rot   = allActive.filter(r => r.ampel === 'rot').length;
+  const sumSavings = rowsActive.reduce((s, r) => s + (Number(r.savings_estimate_eur) || 0), 0);
   stats.innerHTML =
-    statCard('Gesamt', String(total), '#1a3a5c', rows.length !== total ? ('Filter aktiv · zeigt ' + rows.length) : '') +
+    statCard('Gesamt', String(total), '#1a3a5c', rowsActive.length !== total ? ('Filter aktiv · zeigt ' + rowsActive.length) : '') +
     statCard('🟢 Grün',  String(gruen),  '#3d7a14', 'Marktüblich · kein Handlungsbedarf') +
     statCard('🟡 Gelb',  String(gelb),   '#a06a00', 'Optimierungs-Potenzial · Prüfung empfohlen') +
     statCard('🔴 Rot',   String(rot),    '#a8312f', 'Eindeutige Fehler / Übertreuerung · Handlungsbedarf') +
-    statCard('Ersparnis-Pool', _fmtEuro(sumSavings), '#0e6655', rows.length !== total ? 'Summe gefilterter Ersparnisse' : 'Summe geschätzter Jahres-Ersparnisse');
+    statCard('Ersparnis-Pool', _fmtEuro(sumSavings), '#0e6655', rowsActive.length !== total ? 'Summe gefilterter Ersparnisse' : 'Summe geschätzter Jahres-Ersparnisse');
   const badge = document.getElementById('vorabcheckCountBadge');
   if (badge) { badge.textContent = String(total); badge.style.display = total ? 'inline-block' : 'none'; }
   if (!total) {
@@ -23187,7 +23192,7 @@ function renderVchHubList() {
       '<span style="width:1px;height:14px;background:var(--border);margin:0 4px"></span>' +
       '<input type="search" id="vch-hub-search" placeholder="🔍 Check-Nr, Objekt, HV …" value="' + escapeHtmlSafe(q) + '" oninput="_vchHubSetSearch(this.value)" style="background:#fff;border:1.5px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;outline:none;width:200px">' +
       (anyFilter ? '<button type="button" onclick="_vchHubResetFilters()" style="padding:4px 10px;border-radius:14px;font-size:11.5px;cursor:pointer;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:inherit">✕ Reset</button>' : '') +
-      '<span style="margin-left:auto;font-size:11px;color:var(--muted)">' + rows.length + ' / ' + total + '</span>' +
+      '<span style="margin-left:auto;font-size:11px;color:var(--muted)">' + rowsActive.length + ' / ' + total + (archivedCount > 0 ? ' · ' + archivedCount + ' archiviert' : '') + '</span>' +
     '</div>';
   const headerRow =
     '<div class="vch-list-header">' +
@@ -24007,7 +24012,8 @@ function renderInbox() {
   const filterEl = document.getElementById('vch-inbox-filterbar');
   const listEl   = document.getElementById('vch-inbox-list');
   if (!statsEl || !listEl || !filterEl) return;
-  const all = window._vchHubAllRows || [];
+  // V12.100: archivierte Vorabchecks tauchen NIE im Posteingang auf
+  const all = (window._vchHubAllRows || []).filter(r => r.archived !== '1');
   // Inbox-Filter: Check ist relevant wenn …
   //   • role = eigentuemer/verwalter (klassischer Workflow), ODER
   //   • HV hat über die Verwalter-Landing geantwortet, ODER
