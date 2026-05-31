@@ -1140,7 +1140,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   .fh-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
   .fh-sub span { color: var(--green); font-weight: 600; }
   .fh-logo { z-index: 1; }
-  .fh-logo img { height: 56px; width: auto; border-radius: 6px; }
+  .fh-logo img { height: 32px; width: auto; border-radius: 6px; }
 
   .form-body { padding: 0 36px 32px; }
 
@@ -1520,7 +1520,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     }
     .topbar > div:nth-child(1) > div:first-child { gap: 8px !important; flex-shrink: 1; min-width: 0; }
     /* Auf Mobile: Logo-PNG ausreichend, Wordmark + Subtitle ausblenden um Platz zu sparen */
-    #topbarLogoImg { height: 32px !important; padding: 3px 7px !important; flex-shrink: 0; }
+    #topbarLogoImg { height: 18px !important; padding: 3px 7px !important; flex-shrink: 0; }
     body:has(#topbarLogoImg[src]) .topbar-title { display: none !important; }
     body:has(#topbarLogoImg[src]) .topbar-sub { display: none !important; }
     #connStatus { display: none !important; }
@@ -1758,7 +1758,7 @@ const pdfWorkerReady = Promise.resolve();</script>
     .fh-title { font-size: 18px !important; line-height: 1.2 !important; }
     .fh-sub { font-size: 11px !important; margin-top: 3px !important; }
     .fh-logo { flex-shrink: 0; }
-    .fh-logo img { height: 36px !important; }
+    .fh-logo img { height: 22px !important; }
     .form-body { padding: 0 16px 24px !important; }
 
     /* Section-Wrapper rand-sicher */
@@ -2144,7 +2144,7 @@ const pdfWorkerReady = Promise.resolve();</script>
   <!-- Row 1: Brand + Status + User -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 28px;border-bottom:1px solid rgba(255,255,255,.07)">
     <div style="display:flex;align-items:center;gap:12px">
-      <img id="topbarLogoImg" alt="Liftaro" style="height:36px;width:auto;border-radius:6px;flex-shrink:0;display:none;background:rgba(255,255,255,.95);padding:4px 9px;border:1px solid rgba(255,255,255,.2)">
+      <img id="topbarLogoImg" alt="Liftaro" style="height:20px;width:auto;border-radius:6px;flex-shrink:0;display:none;background:rgba(255,255,255,.95);padding:4px 9px;border:1px solid rgba(255,255,255,.2)">
       <div>
         <div class="topbar-title">liftaro</div>
         <div class="topbar-sub">Angebotscheck &middot; Transparent. Effizient. Optimiert.</div>
@@ -2471,7 +2471,7 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <input type="hidden" id="f_requestid">
               </div>
               <!-- V12.76: Liftaro-Logo im Banner (gleiches Asset wie Form-Header, per JS geklont) -->
-              <img id="checkBannerLogoImg" alt="Liftaro" style="height:38px;width:auto;border-radius:6px;background:rgba(255,255,255,.95);padding:4px 9px;border:1px solid rgba(255,255,255,.25);flex-shrink:0;display:none">
+              <img id="checkBannerLogoImg" alt="Liftaro" style="height:22px;width:auto;border-radius:6px;background:rgba(255,255,255,.95);padding:4px 9px;border:1px solid rgba(255,255,255,.25);flex-shrink:0;display:none">
               <div style="text-align:right">
                 <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;opacity:.8">Anfragenummer</div>
                 <input type="text" id="f_anfrageNr" placeholder="Anfragenummer" oninput="updateEmail()" style="background:#fff;border:1.5px solid rgba(255,255,255,.3);color:#1a3a5c;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;outline:none;text-align:right;min-width:160px;margin-top:4px">
@@ -5641,7 +5641,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.90';
+const APP_VERSION = 'V12.91';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
