@@ -5690,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.103';
+const APP_VERSION = 'V12.104';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7611,7 +7611,8 @@ async function _loadEocVorlagen() {
   const apiKey = (typeof APP_KEYS !== 'undefined' && APP_KEYS.user?.api_key) || 'unknown';
   try {
     const filter = "AND({template_type}='eoc_brief', {api_key}='" + apiKey.replace(/'/g, "\\'") + "')";
-    const recs = await atRead(EOC_VORLAGEN_TABLE, filter);
+    // V12.104: sort:false zwingend — die Tabelle hat kein savedAt-Feld (sonst 422)
+    const recs = await atRead(EOC_VORLAGEN_TABLE, filter, { sort: false });
     window._eocVorlagen = recs.map(r => ({
       recordId: r.id,
       name: r.fields.name || '(unbenannt)',
@@ -7619,8 +7620,10 @@ async function _loadEocVorlagen() {
       created_at: r.fields.created_at || '',
     })).sort((a, b) => a.name.localeCompare(b.name, 'de'));
   } catch (e) {
-    console.warn('[V12.97] loadEocVorlagen:', e.message);
-    window._eocVorlagen = [];
+    console.warn('[V12.104] loadEocVorlagen:', e.message);
+    // Auf Fehler: bestehende _eocVorlagen behalten (nicht resetten),
+    // damit gerade hinzugefügte Einträge sichtbar bleiben.
+    if (!Array.isArray(window._eocVorlagen)) window._eocVorlagen = [];
   }
 }
 
@@ -7706,13 +7709,21 @@ async function _eaSaveAsNewVorlage() {
       created_at: new Date().toISOString().split('T')[0],
     };
     const result = await atWrite(EOC_VORLAGEN_TABLE, fields);
-    await _loadEocVorlagen();
+    // V12.104: optimistisch in lokale Liste einfügen — _loadEocVorlagen könnte fehlschlagen
+    if (result?.id) {
+      const newEntry = { recordId: result.id, name, content: ta.value, created_at: fields.created_at };
+      if (!Array.isArray(window._eocVorlagen)) window._eocVorlagen = [];
+      if (!window._eocVorlagen.some(v => v.recordId === result.id)) window._eocVorlagen.push(newEntry);
+      window._eocVorlagen.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    }
+    // Server-Refresh trotzdem versuchen (für andere parallele Edits)
+    try { await _loadEocVorlagen(); } catch (_) {}
     window._eocVorlageSelected = result?.id || 'default';
     _eaPopulateVorlagenSelect();
     if (typeof showToast === 'function') showToast('Vorlage „' + name + '" gespeichert', 'ok');
   } catch (e) {
     if (typeof showToast === 'function') showToast('Fehler beim Speichern: ' + e.message, 'error');
-    console.error('[V12.97] saveAsNew:', e);
+    console.error('[V12.104] saveAsNew:', e);
   }
 }
 
