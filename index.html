@@ -5634,7 +5634,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.96';
+const APP_VERSION = 'V12.97';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -6989,6 +6989,8 @@ function collectFormData() {
       if (typeof EOC_BRIEF_DEFAULT_FULLTEXT !== 'undefined' && v === EOC_BRIEF_DEFAULT_FULLTEXT) return {};
       return { eaedit_fulltext: String(v) };
     })(),
+    // V12.97: Welche Vorlage zuletzt im Anschreiben-Editor ausgewählt war
+    eoc_vorlage_id: window._eocVorlageSelected || 'default',
   };
 }
 
@@ -7461,6 +7463,27 @@ function _eaBuildEditPanel() {
   const body = document.getElementById('eoc_brief_edit_body');
   if (!body || body.dataset._built === '1') return;
   body.dataset._built = '1';
+  // V12.97: Vorlagen-Toolbar (Dropdown + Neu/Überschreiben/Löschen)
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;padding:10px 12px;background:#f7f9fb;border:1px solid var(--border);border-radius:8px';
+  toolbar.innerHTML =
+    '<label style="font-size:12px;font-weight:600;color:var(--navy);margin:0">📚 Vorlage:</label>' +
+    '<select id="eoc_vorlage_select" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;min-width:220px;flex:1 1 220px">' +
+      '<option value="default">— Standard-Vorlage —</option>' +
+    '</select>' +
+    '<button type="button" onclick="_eaSaveAsNewVorlage()" style="padding:6px 10px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:12px" title="Aktuellen Text als neue Vorlage speichern">+ Neu speichern</button>' +
+    '<button type="button" id="eoc_vorlage_update" onclick="_eaUpdateSelectedVorlage()" disabled style="padding:6px 10px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:12px" title="Aktuellen Text in die ausgewählte Vorlage speichern">⤴ Überschreiben</button>' +
+    '<button type="button" id="eoc_vorlage_delete" onclick="_eaDeleteSelectedVorlage()" disabled style="padding:6px 10px;border:1px solid #e88;color:#a44;background:#fff;border-radius:6px;cursor:pointer;font-size:12px" title="Diese Vorlage löschen">🗑 Löschen</button>';
+  body.appendChild(toolbar);
+  const sel = toolbar.querySelector('#eoc_vorlage_select');
+  if (sel) sel.addEventListener('change', _eaOnVorlageChange);
+  // KI-Bar
+  const aiBar = document.createElement('div');
+  aiBar.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px';
+  aiBar.innerHTML =
+    '<button type="button" id="eoc_vorlage_ai" onclick="_eaModifyWithAi()" style="padding:8px 14px;border:1px solid var(--navy);background:var(--navy);color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🪄 Mit KI bearbeiten…</button>' +
+    '<small style="color:var(--muted);font-size:11px;line-height:1.4">Gib eine Anweisung wie „Mache den Ton freundlicher" oder „Kürze auf 50 %" — die KI überarbeitet den aktuellen Text. Speichern danach mit „+ Neu speichern" oder „⤴ Überschreiben".</small>';
+  body.appendChild(aiBar);
   // Eine einzige große Textarea für den kompletten Brief
   const ta = document.createElement('textarea');
   ta.id = 'eaedit_fulltext';
@@ -7489,6 +7512,8 @@ function _eaBuildEditPanel() {
   resetBtn.addEventListener('click', _eaResetAll);
   resetRow.appendChild(resetBtn);
   body.appendChild(resetRow);
+  // Vorlagen im Hintergrund laden + Dropdown befüllen
+  _eaLoadAndPopulateVorlagen();
 }
 function _eaResetAll() {
   if (!confirm('Anschreiben-Text auf den Standard zurücksetzen?')) return;
@@ -7502,11 +7527,245 @@ function _eaSyncFromFormData() {
   const ta = document.getElementById('eaedit_fulltext');
   if (ta) ta.value = _eocBriefStoredFulltext();
 }
+
+// ─── V12.97: Vorlagen-CRUD + KI-Modifikation ───────────────────────────────
+const EOC_VORLAGEN_TABLE = 'Anschreiben-Vorlagen';
+window._eocVorlagen = window._eocVorlagen || [];
+window._eocVorlageSelected = window._eocVorlageSelected || 'default';
+
+async function _ensureEocVorlagenTable() {
+  try {
+    await ensureTable(EOC_VORLAGEN_TABLE, [
+      { name: 'name',          type: 'singleLineText' },
+      { name: 'template_type', type: 'singleLineText' },
+      { name: 'content',       type: 'multilineText'  },
+      { name: 'api_key',       type: 'singleLineText' },
+      { name: 'created_at',    type: 'singleLineText' },
+    ]);
+  } catch (e) { console.warn('[V12.97] ensureEocVorlagenTable:', e.message); }
+}
+
+async function _loadEocVorlagen() {
+  const apiKey = (typeof APP_KEYS !== 'undefined' && APP_KEYS.user?.api_key) || 'unknown';
+  try {
+    const filter = "AND({template_type}='eoc_brief', {api_key}='" + apiKey.replace(/'/g, "\\'") + "')";
+    const recs = await atRead(EOC_VORLAGEN_TABLE, filter);
+    window._eocVorlagen = recs.map(r => ({
+      recordId: r.id,
+      name: r.fields.name || '(unbenannt)',
+      content: r.fields.content || '',
+      created_at: r.fields.created_at || '',
+    })).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  } catch (e) {
+    console.warn('[V12.97] loadEocVorlagen:', e.message);
+    window._eocVorlagen = [];
+  }
+}
+
+function _eaPopulateVorlagenSelect() {
+  const sel = document.getElementById('eoc_vorlage_select');
+  if (!sel) return;
+  const want = window._eocVorlageSelected || 'default';
+  sel.innerHTML = '';
+  const optD = document.createElement('option');
+  optD.value = 'default';
+  optD.textContent = '— Standard-Vorlage —';
+  sel.appendChild(optD);
+  window._eocVorlagen.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.recordId;
+    opt.textContent = v.name;
+    sel.appendChild(opt);
+  });
+  // Wert nur setzen, wenn er existiert (sonst Fallback auf default)
+  if (Array.from(sel.options).some(o => o.value === want)) {
+    sel.value = want;
+  } else {
+    sel.value = 'default';
+    window._eocVorlageSelected = 'default';
+  }
+  _eaUpdateVorlagenButtons();
+}
+
+function _eaUpdateVorlagenButtons() {
+  const sel = document.getElementById('eoc_vorlage_select');
+  const updateBtn = document.getElementById('eoc_vorlage_update');
+  const delBtn = document.getElementById('eoc_vorlage_delete');
+  const isDefault = !sel || sel.value === 'default';
+  if (updateBtn) updateBtn.disabled = isDefault;
+  if (delBtn) delBtn.disabled = isDefault;
+}
+
+async function _eaLoadAndPopulateVorlagen() {
+  await _ensureEocVorlagenTable();
+  await _loadEocVorlagen();
+  _eaPopulateVorlagenSelect();
+}
+
+function _eaOnVorlageChange() {
+  const sel = document.getElementById('eoc_vorlage_select');
+  const ta = document.getElementById('eaedit_fulltext');
+  if (!sel || !ta) return;
+  const val = sel.value;
+  window._eocVorlageSelected = val;
+  let content;
+  if (val === 'default') {
+    content = EOC_BRIEF_DEFAULT_FULLTEXT;
+    delete window._eocBriefEdits.fulltext;
+  } else {
+    const v = window._eocVorlagen.find(x => x.recordId === val);
+    if (!v) { _eaUpdateVorlagenButtons(); return; }
+    content = v.content || '';
+    window._eocBriefEdits.fulltext = content;
+  }
+  ta.value = content;
+  renderEocBrief();
+  _eaUpdateVorlagenButtons();
+  if (typeof showToast === 'function') showToast('Vorlage übernommen', 'ok');
+}
+
+async function _eaSaveAsNewVorlage() {
+  const ta = document.getElementById('eaedit_fulltext');
+  if (!ta) return;
+  const name = (prompt('Name der neuen Vorlage:') || '').trim();
+  if (!name) return;
+  if (window._eocVorlagen.some(v => v.name.toLowerCase() === name.toLowerCase())) {
+    if (!confirm('Eine Vorlage mit diesem Namen existiert bereits. Trotzdem speichern (als Duplikat)?')) return;
+  }
+  try {
+    if (typeof showToast === 'function') showToast('Vorlage wird gespeichert …', 'ok');
+    await _ensureEocVorlagenTable();
+    const apiKey = (typeof APP_KEYS !== 'undefined' && APP_KEYS.user?.api_key) || 'unknown';
+    const fields = {
+      name: name,
+      template_type: 'eoc_brief',
+      content: ta.value,
+      api_key: apiKey,
+      created_at: new Date().toISOString().split('T')[0],
+    };
+    const result = await atWrite(EOC_VORLAGEN_TABLE, fields);
+    await _loadEocVorlagen();
+    window._eocVorlageSelected = result?.id || 'default';
+    _eaPopulateVorlagenSelect();
+    if (typeof showToast === 'function') showToast('Vorlage „' + name + '" gespeichert', 'ok');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Fehler beim Speichern: ' + e.message, 'error');
+    console.error('[V12.97] saveAsNew:', e);
+  }
+}
+
+async function _eaUpdateSelectedVorlage() {
+  const sel = document.getElementById('eoc_vorlage_select');
+  const ta = document.getElementById('eaedit_fulltext');
+  if (!sel || !ta || sel.value === 'default') return;
+  const v = window._eocVorlagen.find(x => x.recordId === sel.value);
+  if (!v) return;
+  if (!confirm('Vorlage „' + v.name + '" mit aktuellem Text überschreiben?')) return;
+  try {
+    if (typeof showToast === 'function') showToast('Vorlage wird aktualisiert …', 'ok');
+    await atUpdate(EOC_VORLAGEN_TABLE, sel.value, { content: ta.value });
+    v.content = ta.value;
+    if (typeof showToast === 'function') showToast('Vorlage „' + v.name + '" aktualisiert', 'ok');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Fehler: ' + e.message, 'error');
+    console.error('[V12.97] updateSelected:', e);
+  }
+}
+
+async function _eaDeleteSelectedVorlage() {
+  const sel = document.getElementById('eoc_vorlage_select');
+  if (!sel || sel.value === 'default') return;
+  const v = window._eocVorlagen.find(x => x.recordId === sel.value);
+  if (!v) return;
+  if (!confirm('Vorlage „' + v.name + '" wirklich löschen?')) return;
+  try {
+    await atDelete(EOC_VORLAGEN_TABLE, sel.value);
+    window._eocVorlagen = window._eocVorlagen.filter(x => x.recordId !== sel.value);
+    window._eocVorlageSelected = 'default';
+    _eaPopulateVorlagenSelect();
+    if (typeof showToast === 'function') showToast('Vorlage gelöscht', 'ok');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Fehler: ' + e.message, 'error');
+    console.error('[V12.97] deleteSelected:', e);
+  }
+}
+
+async function _eaModifyWithAi() {
+  const ta = document.getElementById('eaedit_fulltext');
+  if (!ta) return;
+  const instruction = (prompt(
+    'Wie soll die KI den Anschreiben-Text bearbeiten?\n\nBeispiele:\n• Mache den Ton freundlicher\n• Kürze auf 50 % der Länge\n• Mehr Schwerpunkt auf Wirtschaftlichkeit\n• Schreibe ohne Anglizismen\n• Erkläre Equipment under Control ausführlicher'
+  ) || '').trim();
+  if (!instruction) return;
+  if (!APP_KEYS.anthropicKey) {
+    if (typeof showToast === 'function') showToast('KI nicht konfiguriert (anthropicKey fehlt)', 'error');
+    return;
+  }
+  const currentText = ta.value;
+  const systemPrompt = 'Du bist Texter für Anschreiben an Wohnungseigentümergemeinschaften (WEG) zum Thema Aufzugswartung. Der Text verwendet folgendes Mini-Markdown:\n' +
+    '- "# Titel" am Zeilenanfang = Betreff (genau eine Zeile, oben)\n' +
+    '- "## Titel" = Zwischenüberschrift\n' +
+    '- "- Item" = Bullet-Punkt (mehrere am Stück = eine Liste)\n' +
+    '- "**Text**" = fett\n' +
+    '- "{STANDORT}" = dynamischer Platzhalter (DARF NICHT umgeschrieben oder entfernt werden!)\n' +
+    '- "{VERTRAGSENDE}" = dynamischer Platzhalter (DARF NICHT umgeschrieben werden!)\n' +
+    '- Leerzeile = neuer Absatz\n\n' +
+    'Gib NUR den überarbeiteten Brief-Text zurück: kein Vorwort, keine Erklärungen, keine Code-Fences, keine Anführungszeichen um den ganzen Text. Behalte die Markdown-Konventionen bei. Antworte auf Deutsch.';
+  const userMessage = 'Aktueller Anschreiben-Text:\n\n' + currentText + '\n\n---\n\nBitte überarbeite den Text wie folgt: ' + instruction + '\n\nGib NUR den überarbeiteten Brief-Text zurück (mit Markdown-Konventionen, ohne Trennlinien oder Erklärungen).';
+  const btn = document.getElementById('eoc_vorlage_ai');
+  const prevLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '… KI arbeitet …'; }
+  try {
+    if (typeof showToast === 'function') showToast('KI überarbeitet den Text …', 'ok');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || ('HTTP ' + res.status));
+    }
+    const data = await res.json();
+    let newText = (data.content?.[0]?.text || '').trim();
+    // Fence-Stripping, falls KI doch in ``` antwortet
+    newText = newText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```\s*$/, '').trim();
+    if (!newText) throw new Error('Leere KI-Antwort');
+    ta.value = newText;
+    window._eocBriefEdits.fulltext = newText;
+    renderEocBrief();
+    if (typeof showToast === 'function') showToast('KI hat den Text überarbeitet', 'ok');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('KI-Fehler: ' + e.message, 'error');
+    console.error('[V12.97] modifyWithAi:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prevLabel; }
+  }
+}
+
+window._eaOnVorlageChange = _eaOnVorlageChange;
+window._eaSaveAsNewVorlage = _eaSaveAsNewVorlage;
+window._eaUpdateSelectedVorlage = _eaUpdateSelectedVorlage;
+window._eaDeleteSelectedVorlage = _eaDeleteSelectedVorlage;
+window._eaModifyWithAi = _eaModifyWithAi;
+
 function _eaInit() {
   _eaBuildEditPanel();
   _eaSyncFromFormData();
   renderEocBrief();
   _eaApplyCollapseState();
+  // Dropdown auf aktuellen State aktualisieren (falls bereits geladen)
+  _eaPopulateVorlagenSelect();
 }
 // V12.95: Edit-Panel einklappbar (Default: zugeklappt; Status in localStorage)
 function _eaApplyCollapseState() {
@@ -8240,6 +8499,8 @@ async function loadCheck(data) {
       }
     });
   }
+  // V12.97: Gewählte Vorlage wiederherstellen (für Dropdown nach _eaInit)
+  window._eocVorlageSelected = (data && data.eoc_vorlage_id) ? String(data.eoc_vorlage_id) : 'default';
   // V12.3: Email-Quelle des aktuell geladenen Checks für Reply-CTA cachen
   window._currentCheckEmailSrc = data?.email_source_id || null;
   window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
