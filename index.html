@@ -5690,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.100';
+const APP_VERSION = 'V12.101';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -19966,7 +19966,9 @@ function renderDashboard() {
           } else if (bst === 'erledigt') {
             statusBadge = `<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:9px;font-size:10.5px;font-weight:700;white-space:nowrap">✅ Erledigt</span>`;
           }
-          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 85px 90px 40px minmax(120px,1fr) auto auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
+          // V12.101: Inline-Archivieren pro Zeile (kleines 📦-Icon, ohne onclick-Bubble)
+          const archCell = `<button onclick="event.stopPropagation();archiveVorabcheck('${cnEsc}', true)" title="Diesen Vorabcheck archivieren" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:4px 7px;font-size:11px;cursor:pointer;white-space:nowrap;font-family:inherit;line-height:1" onmouseover="this.style.background='#f1f5f9';this.style.color='#64748b';this.style.borderColor='#64748b'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)';this.style.borderColor='var(--border)'">📦</button>`;
+          return `<div onclick="openVorabcheckDetail('${cnEsc}')" style="display:grid;grid-template-columns:55px 26px 85px 90px 40px minmax(120px,1fr) auto auto auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--sky)'" onmouseout="this.style.background='#fff'">
             <span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px">${date}</span>
             <span style="text-align:center">${ampLab}</span>
             <span style="color:var(--text);text-transform:capitalize">${v.check_type || '–'}</span>
@@ -19974,6 +19976,7 @@ function renderDashboard() {
             <span style="font-family:'DM Mono',monospace;color:var(--text);text-align:center" title="Aufzüge">${aufz || '–'}</span>
             <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${objekt}</span>
             <span>${statusBadge}</span>
+            <span>${archCell}</span>
             <span style="justify-self:end">${actionCell}</span>
           </div>`;
         }).join('');
@@ -23041,6 +23044,9 @@ async function archiveVorabcheck(checkNr, doArchive) {
     }
     showToast('Vorabcheck ' + checkNr + (doArchive ? ' archiviert.' : ' wiederhergestellt.'), 'ok');
     if (typeof renderVchHubList === 'function') renderVchHubList();
+    // V12.101: Dashboard + Inbox auch neu rendern, damit archivierte sofort verschwinden
+    if (typeof renderDashboard === 'function') { try { renderDashboard(); } catch (_) {} }
+    if (typeof renderInbox === 'function') { try { renderInbox(); } catch (_) {} }
     // Detail-Modal: wenn offen → neu rendern (mit aktualisierten Daten)
     const dm = document.getElementById('vorabcheckDetailModal');
     if (dm && dm.style.display === 'flex') {
