@@ -5690,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.102';
+const APP_VERSION = 'V12.103';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7379,6 +7379,7 @@ const EOC_HIDE_WHEN_ACTIVE = [
   'wartung-variants-section',    // Eingegangene Partner-Angebote
   'section-ergebnis',            // Ergebnis Liftaro (Empfehlungstext)
   'vertragInvoiceHistory',       // Jahresrechnungs-Historie
+  'sig-line-betreiber',          // V12.103: Im EuC-Modus durch eoc_sig_block (HV + Liftaro) ersetzt — die alte Betreiber-Unterschrift entfällt komplett
 ];
 // V12.51/V12.53/V12.55: Diese Sections sind NUR im EuC-Modus sichtbar.
 // (eoc_section_w bleibt dauerhaft hidden — enthält nur noch versteckte Persistenz-Inputs)
