@@ -2860,10 +2860,22 @@ const pdfWorkerReady = Promise.resolve();</script>
 
           <!-- ▼▼▼ PDF-RELEVANTE SECTIONS (werden ins Ergebnis-PDF gerendert) ▼▼▼ -->
 
+          <!-- V12.94: Edit-Panel für Anschreiben-Texte (nicht im PDF) -->
+          <div id="section-eoc-anschreiben-edit" class="section" style="margin-top:20px;display:none">
+            <div class="section-title">
+              ✏️ Anschreiben-Texte bearbeiten
+              <small style="font-weight:400;color:var(--muted);margin-left:8px;font-size:12px">— Änderungen erscheinen sofort im Anschreiben unten · <code>{STANDORT}</code> und <code>{VERTRAGSENDE}</code> werden ersetzt · <code>**Text**</code> wird fett</small>
+            </div>
+            <div class="section-inner" id="eoc_brief_edit_body" style="padding:18px 22px">
+              <!-- generated dynamically via _eaBuildEditPanel() -->
+            </div>
+          </div>
+
           <!-- V12.56: Section 0 — Anschreiben an die WEG (kommt vor dem Angebot) -->
           <div id="section-eoc-anschreiben" class="section" style="margin-top:20px;display:none">
             <div class="section-title">📨 Anschreiben an die Eigentümergemeinschaft</div>
             <!-- V12.82: Noch eine Stufe größer — Body 15, Empfänger/Datum 14, Betreff 16, H4 15.5 -->
+            <!-- V12.94: Einzelne Text-Blöcke per ID adressiert; Inhalt wird via renderEocBrief() befüllt -->
             <div class="section-inner" style="padding:24px 28px;font-size:15px;line-height:1.65;color:var(--text);font-family:'DM Sans',sans-serif">
               <!-- Empfänger-Adresse oben links + Datum rechts -->
               <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:36px;flex-wrap:wrap">
@@ -2873,39 +2885,23 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <div id="eoc_brief_datum" style="font-size:14px;color:var(--muted);white-space:nowrap">–</div>
               </div>
               <!-- Betreff -->
-              <div id="eoc_brief_betreff" style="font-weight:700;color:var(--navy);margin-bottom:18px;font-size:16px">Wartungsvertrag Ihrer Aufzugsanlage — Vorschlag zur Vertragsbetreuung bis zum regulären Vertragsende</div>
+              <div id="eoc_brief_betreff" style="font-weight:700;color:var(--navy);margin-bottom:18px;font-size:16px"></div>
               <!-- Anrede -->
-              <div style="margin-bottom:14px">Sehr geehrte Damen und Herren,</div>
+              <div id="eoc_brief_anrede" style="margin-bottom:14px"></div>
               <!-- Brief-Body -->
-              <p style="margin:0 0 12px">
-                wir haben den Wartungsvertrag Ihrer Aufzugsanlage am Standort <strong id="eoc_brief_adresse_inline">–</strong> geprüft. Im Gegensatz zu unserem Standard-Vertragscheck können wir hier <strong>keinen Anbieterwechsel empfehlen</strong> — der bestehende Vertrag läuft noch bis <strong id="eoc_brief_endet">–</strong> und ist bis dahin nicht ordentlich kündbar.
-              </p>
-              <h4 style="margin:18px 0 8px;font-size:15.5px;color:var(--navy);font-weight:700">Warum lange Vertragsbindungen ein Problem sind</h4>
-              <p style="margin:0 0 8px">
-                Lange Bindungen werden von Wartungsfirmen häufig als Hebel genutzt, um unterjährig zusätzliche Umsätze zu generieren — meist deutlich über dem marktüblichen Niveau. Typische Beobachtungen aus unserer Praxis:
-              </p>
-              <ul style="margin:0 0 12px;padding-left:22px">
-                <li>„Der Aufzug ist nicht mehr instandsetzbar — eine <strong>Modernisierung über 50 000 €</strong> ist erforderlich."</li>
-                <li><strong>Überhöhte Einsatzpauschalen und Stundensätze</strong> bei jeder Störung, jedem TÜV-Mängelbericht, jeder kleinen Reparatur.</li>
-                <li>Erfundene <strong>Sicherheitsrisiken</strong>, mit denen unnötige (und teure) Maßnahmen verkauft werden.</li>
-              </ul>
-              <h4 style="margin:18px 0 8px;font-size:15.5px;color:var(--navy);font-weight:700">Unsere Lösung: Equipment under Control</h4>
-              <p style="margin:0 0 10px">
-                Liftaro übernimmt für die Restlaufzeit des Bestandsvertrags die <strong>vollständige Vertragsverwaltung gegenüber dem aktuellen Wartungsnehmer</strong> — als Schutzmantel der Eigentümergemeinschaft. Sämtliche Korrespondenz, TÜV-Mängelberichte, Angebote und Rechnungen laufen über uns. Wir prüfen, ordnen ein, verhandeln nach.
-              </p>
-              <p style="margin:0 0 10px">
-                Gleichzeitig wird Ihre Anlage in unser <strong>Equipment-under-Control-System</strong> aufgenommen: Bei jedem Reparatur-Angebot des Bestandsanbieters können wir innerhalb von Stunden ein Vergleichsangebot eines geprüften alternativen Dienstleisters einholen. Wird das Angebot überteuert beauftragt, ist das Ihre Entscheidung. Wird es abgewiesen und das Vergleichsangebot beauftragt, sparen Sie sofort.
-              </p>
-              <h4 style="margin:18px 0 8px;font-size:15.5px;color:var(--navy);font-weight:700">Konditionen</h4>
-              <p style="margin:0 0 12px">
-                Für die laufende Betreuung <strong>zahlen Sie nichts</strong>. Liftaro berechnet ausschließlich <strong>25 % der nachweisbaren Ersparnis</strong> aus Vergleichsangeboten und Nachverhandlung. Ohne Ersparnis: keine Vergütung.
-              </p>
-              <p style="margin:0 0 12px">
-                Eine konkrete Vereinbarung zur Beschlussfassung auf der nächsten Eigentümerversammlung erhalten Sie als separates Dokument.
-              </p>
+              <p id="eoc_brief_intro" style="margin:0 0 12px"></p>
+              <h4 id="eoc_brief_h_probleme" style="margin:18px 0 8px;font-size:15.5px;color:var(--navy);font-weight:700"></h4>
+              <p id="eoc_brief_body_probleme" style="margin:0 0 8px"></p>
+              <ul id="eoc_brief_bullets" style="margin:0 0 12px;padding-left:22px"></ul>
+              <h4 id="eoc_brief_h_loesung" style="margin:18px 0 8px;font-size:15.5px;color:var(--navy);font-weight:700"></h4>
+              <p id="eoc_brief_body_loesung_1" style="margin:0 0 10px"></p>
+              <p id="eoc_brief_body_loesung_2" style="margin:0 0 10px"></p>
+              <h4 id="eoc_brief_h_konditionen" style="margin:18px 0 8px;font-size:15.5px;color:var(--navy);font-weight:700"></h4>
+              <p id="eoc_brief_body_konditionen" style="margin:0 0 12px"></p>
+              <p id="eoc_brief_body_vereinbarung" style="margin:0 0 12px"></p>
               <div style="margin-top:28px">
-                <div>Mit freundlichen Grüßen</div>
-                <div style="margin-top:36px;font-weight:700;color:var(--navy)">Liftaro GmbH</div>
+                <div id="eoc_brief_gruss"></div>
+                <div id="eoc_brief_signatur" style="margin-top:36px;font-weight:700;color:var(--navy)"></div>
               </div>
             </div>
           </div>
@@ -5655,7 +5651,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.93';
+const APP_VERSION = 'V12.94';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7003,6 +6999,18 @@ function collectFormData() {
     rc_show_ansprechpartner: document.getElementById('rc_show_ansprechpartner')?.checked ? 'true' : 'false',
     // Verknüpfung zu Vorabcheck (gesetzt durch createCheckFromVorabcheck)
     vorabcheck_ref: window._vorabcheckRefForNewCheck || '',
+    // V12.94: Editierte Anschreiben-Texte (nur die vom Default abweichenden Keys)
+    ...(function(){
+      const out = {};
+      const edits = window._eocBriefEdits || {};
+      Object.keys(edits).forEach(k => {
+        const v = edits[k];
+        if (v != null && v !== '' && (typeof EOC_BRIEF_DEFAULTS === 'undefined' || v !== EOC_BRIEF_DEFAULTS[k])) {
+          out['eaedit_' + k] = String(v);
+        }
+      });
+      return out;
+    })(),
   };
 }
 
@@ -7336,12 +7344,175 @@ const EOC_HIDE_WHEN_ACTIVE = [
 // (section-eoc-bedingungen wurde auf Wunsch dauerhaft ausgeblendet — Vereinbarung/Unterschrift kommt
 //  später ins separate ETV-Beschluss-Paket-PDF, nicht ins reguläre Ergebnis-PDF)
 const EOC_SHOW_WHEN_ACTIVE = [
+  'section-eoc-anschreiben-edit', // V12.94: Edit-Panel für Anschreiben-Texte (nur App, nicht PDF)
   'section-eoc-anschreiben',      // PDF: Anschreiben an die WEG (V12.56)
   'section-eoc-angebot',          // PDF: Liftaro-Angebot
   'section-eoc-bestandsdaten',    // PDF: Bestandsvertrag-Eckdaten + Leistungstabelle
   'section-eoc-zusammenfassung',  // PDF: KI-Zusammenfassung
   'eoc_sig_block',                // V12.93: Unterschriftsfeld für HV-Beauftragung
 ];
+
+// ============================================================================
+// V12.94: Anschreiben-Texte editierbar — Defaults, Render, Edit-Panel, Reset
+// ============================================================================
+const EOC_BRIEF_DEFAULTS = {
+  betreff:           'Wartungsvertrag Ihrer Aufzugsanlage — Vorschlag zur Vertragsbetreuung bis zum regulären Vertragsende',
+  anrede:            'Sehr geehrte Damen und Herren,',
+  intro:             'wir haben den Wartungsvertrag Ihrer Aufzugsanlage am Standort {STANDORT} geprüft. Im Gegensatz zu unserem Standard-Vertragscheck können wir hier **keinen Anbieterwechsel empfehlen** — der bestehende Vertrag läuft noch bis {VERTRAGSENDE} und ist bis dahin nicht ordentlich kündbar.',
+  h_probleme:        'Warum lange Vertragsbindungen ein Problem sind',
+  body_probleme:     'Lange Bindungen werden von Wartungsfirmen häufig als Hebel genutzt, um unterjährig zusätzliche Umsätze zu generieren — meist deutlich über dem marktüblichen Niveau. Typische Beobachtungen aus unserer Praxis:',
+  bullets:           '„Der Aufzug ist nicht mehr instandsetzbar — eine **Modernisierung über 50 000 €** ist erforderlich."\n**Überhöhte Einsatzpauschalen und Stundensätze** bei jeder Störung, jedem TÜV-Mängelbericht, jeder kleinen Reparatur.\nErfundene **Sicherheitsrisiken**, mit denen unnötige (und teure) Maßnahmen verkauft werden.',
+  h_loesung:         'Unsere Lösung: Equipment under Control',
+  body_loesung_1:    'Liftaro übernimmt für die Restlaufzeit des Bestandsvertrags die **vollständige Vertragsverwaltung gegenüber dem aktuellen Wartungsnehmer** — als Schutzmantel der Eigentümergemeinschaft. Sämtliche Korrespondenz, TÜV-Mängelberichte, Angebote und Rechnungen laufen über uns. Wir prüfen, ordnen ein, verhandeln nach.',
+  body_loesung_2:    'Gleichzeitig wird Ihre Anlage in unser **Equipment-under-Control-System** aufgenommen: Bei jedem Reparatur-Angebot des Bestandsanbieters können wir innerhalb von Stunden ein Vergleichsangebot eines geprüften alternativen Dienstleisters einholen. Wird das Angebot überteuert beauftragt, ist das Ihre Entscheidung. Wird es abgewiesen und das Vergleichsangebot beauftragt, sparen Sie sofort.',
+  h_konditionen:     'Konditionen',
+  body_konditionen:  'Für die laufende Betreuung **zahlen Sie nichts**. Liftaro berechnet ausschließlich **25 % der nachweisbaren Ersparnis** aus Vergleichsangeboten und Nachverhandlung. Ohne Ersparnis: keine Vergütung.',
+  body_vereinbarung: 'Eine konkrete Vereinbarung zur Beschlussfassung auf der nächsten Eigentümerversammlung erhalten Sie als separates Dokument.',
+  gruss:             'Mit freundlichen Grüßen',
+  signatur:          'Liftaro GmbH',
+};
+const EOC_BRIEF_FIELDS = [
+  { key: 'betreff',           label: 'Betreff',                   rows: 2 },
+  { key: 'anrede',            label: 'Anrede',                    rows: 1 },
+  { key: 'intro',             label: 'Einleitungs-Absatz',        rows: 4, hint: '{STANDORT} und {VERTRAGSENDE} werden dynamisch ersetzt' },
+  { key: 'h_probleme',        label: 'Überschrift „Probleme"',    rows: 1 },
+  { key: 'body_probleme',     label: 'Probleme-Text',             rows: 3 },
+  { key: 'bullets',           label: 'Bullet-Punkte',             rows: 5, hint: 'Eine Zeile = ein Bullet-Punkt' },
+  { key: 'h_loesung',         label: 'Überschrift „Lösung"',      rows: 1 },
+  { key: 'body_loesung_1',    label: 'Lösung-Absatz 1',           rows: 4 },
+  { key: 'body_loesung_2',    label: 'Lösung-Absatz 2',           rows: 4 },
+  { key: 'h_konditionen',     label: 'Überschrift „Konditionen"', rows: 1 },
+  { key: 'body_konditionen',  label: 'Konditionen-Text',          rows: 3 },
+  { key: 'body_vereinbarung', label: 'Vereinbarungs-Hinweis',     rows: 2 },
+  { key: 'gruss',             label: 'Grußformel',                rows: 1 },
+  { key: 'signatur',          label: 'Signatur',                  rows: 1 },
+];
+// Globale Wahrheitsquelle für editierte Anschreiben-Texte.
+// Schlüssel = EOC_BRIEF_FIELDS[].key (ohne Präfix). Wert = String.
+// Wird per collectFormData() als 'eaedit_KEY' nach Airtable serialisiert
+// und per loadCheck() wieder zurück in dieses Objekt geschrieben.
+if (!window._eocBriefEdits) window._eocBriefEdits = {};
+function _eocBriefStored(key) {
+  const stored = window._eocBriefEdits ? window._eocBriefEdits[key] : null;
+  return (stored != null && stored !== '') ? String(stored) : EOC_BRIEF_DEFAULTS[key];
+}
+function _eocBriefFmt(text, placeholders) {
+  if (text == null) return '';
+  // Erst Platzhalter durch Sentinels ersetzen, dann HTML-escapen, dann Sentinels in <strong> umwandeln
+  let s = String(text);
+  const phMap = {};
+  Object.keys(placeholders || {}).forEach((k, i) => {
+    const sentinel = 'PH' + i + '';
+    phMap[sentinel] = '<strong>' + String(placeholders[k] || '–').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</strong>';
+    s = s.split('{' + k + '}').join(sentinel);
+  });
+  s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // **bold** → <strong>
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  // Sentinels restoren
+  Object.keys(phMap).forEach(k => { s = s.split(k).join(phMap[k]); });
+  return s;
+}
+function renderEocBrief() {
+  // Aktuelle Werte für Platzhalter holen
+  let adresse = '–';
+  try {
+    if (typeof _g === 'function') {
+      adresse = _g('f_standort') || _g('f_firma') || '–';
+    }
+  } catch (e) {}
+  let endetStr = '–';
+  const endetEdit = document.getElementById('eoc_disp_endet_edit');
+  const endetHidden = document.getElementById('eoc_endet_am');
+  const endetAm = (endetEdit && endetEdit.value) || (endetHidden && endetHidden.value) || '';
+  if (endetAm) {
+    const end = new Date(endetAm);
+    if (!isNaN(end.getTime())) endetStr = end.toLocaleDateString('de-DE');
+  }
+  const placeholders = { STANDORT: adresse, VERTRAGSENDE: endetStr };
+  EOC_BRIEF_FIELDS.forEach(f => {
+    const el = document.getElementById('eoc_brief_' + f.key);
+    if (!el) return;
+    const txt = _eocBriefStored(f.key);
+    if (f.key === 'bullets') {
+      const lines = String(txt || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      el.innerHTML = lines.map(line => '<li>' + _eocBriefFmt(line, placeholders) + '</li>').join('');
+    } else {
+      el.innerHTML = _eocBriefFmt(txt, placeholders);
+    }
+  });
+}
+function _eaBuildEditPanel() {
+  const body = document.getElementById('eoc_brief_edit_body');
+  if (!body || body.dataset._built === '1') return;
+  body.dataset._built = '1';
+  EOC_BRIEF_FIELDS.forEach(f => {
+    const row = document.createElement('div');
+    row.style.marginBottom = '12px';
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px';
+    lbl.textContent = f.label;
+    if (f.hint) {
+      const hint = document.createElement('span');
+      hint.style.cssText = 'font-weight:400;color:var(--muted);margin-left:6px;font-size:11px';
+      hint.textContent = '— ' + f.hint;
+      lbl.appendChild(hint);
+    }
+    const ta = document.createElement('textarea');
+    ta.id = 'eaedit_' + f.key;
+    ta.rows = f.rows || 2;
+    ta.style.cssText = 'width:100%;font-family:inherit;font-size:13px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);resize:vertical;box-sizing:border-box';
+    ta.value = _eocBriefStored(f.key);
+    ta.addEventListener('input', () => {
+      const v = ta.value;
+      if (v == null || v === '' || v === EOC_BRIEF_DEFAULTS[f.key]) {
+        delete window._eocBriefEdits[f.key];
+      } else {
+        window._eocBriefEdits[f.key] = v;
+      }
+      renderEocBrief();
+      if (typeof scheduleAutoSave === 'function') { try { scheduleAutoSave(); } catch (e) {} }
+    });
+    row.appendChild(lbl);
+    row.appendChild(ta);
+    body.appendChild(row);
+  });
+  const resetRow = document.createElement('div');
+  resetRow.style.cssText = 'margin-top:14px;text-align:right';
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.textContent = '↺ Auf Standard zurücksetzen';
+  resetBtn.style.cssText = 'padding:8px 14px;border:1px solid var(--border);background:#fff;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px';
+  resetBtn.addEventListener('click', _eaResetAll);
+  resetRow.appendChild(resetBtn);
+  body.appendChild(resetRow);
+}
+function _eaResetAll() {
+  if (!confirm('Alle Anschreiben-Texte auf den Standard zurücksetzen?')) return;
+  window._eocBriefEdits = {};
+  EOC_BRIEF_FIELDS.forEach(f => {
+    const ta = document.getElementById('eaedit_' + f.key);
+    if (ta) ta.value = EOC_BRIEF_DEFAULTS[f.key];
+  });
+  renderEocBrief();
+  if (typeof scheduleAutoSave === 'function') { try { scheduleAutoSave(); } catch (e) {} }
+}
+function _eaSyncFromFormData() {
+  // Nach loadCheck: Textareas aus formData rehydrieren (falls Panel schon gebaut)
+  EOC_BRIEF_FIELDS.forEach(f => {
+    const ta = document.getElementById('eaedit_' + f.key);
+    if (!ta) return;
+    ta.value = _eocBriefStored(f.key);
+  });
+}
+function _eaInit() {
+  _eaBuildEditPanel();
+  _eaSyncFromFormData();
+  renderEocBrief();
+}
+// Nach loadCheck explizit aufrufen (deferred — Elemente existieren ggf. erst spät)
+window._eaInit = _eaInit;
+window.renderEocBrief = renderEocBrief;
 
 function _applyEocVisibility(eocActive) {
   EOC_HIDE_WHEN_ACTIVE.forEach(id => {
@@ -7368,6 +7539,10 @@ function _applyEocVisibility(eocActive) {
   });
   // Bei Aktivierung die Display-Felder aktuell halten
   if (eocActive && typeof _refreshEocDisplays === 'function') _refreshEocDisplays();
+  // V12.94: Edit-Panel bauen + Anschreiben rendern, sobald EuC aktiv ist
+  if (eocActive && typeof _eaInit === 'function') {
+    try { _eaInit(); } catch (e) { console.warn('[V12.94] _eaInit failed', e); }
+  }
   // Auch die savings-row im Wartungsblock (kein eigener ID — über Klasse + Position)
   // → wir vergeben einen Marker über JS, falls noch nicht da
   const sw = document.getElementById('section-wartung');
@@ -7521,11 +7696,12 @@ function _refreshEocDisplays() {
   // Datum — V12.93: Ort = Mainz (Liftaro-Sitz), nicht der Standort des Aufzugs/Kunden
   const datEl = document.getElementById('eoc_brief_datum');
   if (datEl) datEl.textContent = 'Mainz, ' + new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
-  // Inline-Adresse + Vertragsende im Brief-Body
-  const adrInline = document.getElementById('eoc_brief_adresse_inline');
-  if (adrInline) adrInline.textContent = adresse;
-  const endetInline = document.getElementById('eoc_brief_endet');
-  if (endetInline) endetInline.textContent = endetStr;
+  // V12.94: Anschreiben mit aktuellen Platzhaltern neu rendern (intro etc.)
+  // Die alten Inline-Spans eoc_brief_adresse_inline / eoc_brief_endet existieren nicht mehr —
+  // der vollständige Brief-Body wird jetzt aus EOC_BRIEF_DEFAULTS / formData['eaedit_*'] erzeugt.
+  if (typeof renderEocBrief === 'function') {
+    try { renderEocBrief(); } catch (e) { console.warn('[V12.94] renderEocBrief failed', e); }
+  }
   const totEl = document.getElementById('eoc_disp_total');
   if (totEl) totEl.textContent = totalS;
   const bestTot = document.getElementById('eoc_calc_bestand_total');
@@ -8036,6 +8212,16 @@ async function saveWithVisualization() {
 async function loadCheck(data) {
   const r = makeLoadReporter();
   r.step('fields');
+  // V12.94: Anschreiben-Edits aus formData zurückschreiben (vor _eaInit/_applyEocVisibility)
+  window._eocBriefEdits = {};
+  if (data && typeof data === 'object') {
+    Object.keys(data).forEach(k => {
+      if (k.startsWith('eaedit_')) {
+        const inner = k.slice(7);
+        if (data[k] != null && data[k] !== '') window._eocBriefEdits[inner] = String(data[k]);
+      }
+    });
+  }
   // V12.3: Email-Quelle des aktuell geladenen Checks für Reply-CTA cachen
   window._currentCheckEmailSrc = data?.email_source_id || null;
   window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
@@ -11484,6 +11670,8 @@ async function generatePDF() {
     document.getElementById('btnSaveAp'),
     document.getElementById('btnSaveTl'),
     document.getElementById('f_firma_label_hint'),
+    // V12.94: Edit-Panel für Anschreiben-Texte — nie im PDF
+    document.getElementById('section-eoc-anschreiben-edit'),
     // V12.76: Unterschriftszeile "Datum, Unterschrift (Betreiber)" raus aus PDF
     document.getElementById('sig-line-betreiber'),
     // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
@@ -19953,6 +20141,8 @@ async function buildCheckCoverBlob() {
     document.getElementById('btnSaveAp'),
     document.getElementById('btnSaveTl'),
     document.getElementById('f_firma_label_hint'),
+    // V12.94: Edit-Panel für Anschreiben-Texte — nie im PDF
+    document.getElementById('section-eoc-anschreiben-edit'),
     // V12.76: Unterschriftszeile "Datum, Unterschrift (Betreiber)" raus aus PDF
     document.getElementById('sig-line-betreiber'),
     // V12.25: aus PDF entfernen — Jahresrechnungs-Historie + Mode-Switch + Input-Panels
