@@ -5690,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.101';
+const APP_VERSION = 'V12.102';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -7047,6 +7047,11 @@ function collectFormData() {
     })(),
     // V12.97: Welche Vorlage zuletzt im Anschreiben-Editor ausgewählt war
     eoc_vorlage_id: window._eocVorlageSelected || 'default',
+    // V12.102: Pro Check ausgeblendete Partner-Angebote (JSON-Array von Anfrage-IDs)
+    ...(function(){
+      const ids = window._hiddenPartnerAnfrageIds ? Array.from(window._hiddenPartnerAnfrageIds) : [];
+      return ids.length ? { hidden_partner_anfrage_ids: JSON.stringify(ids) } : {};
+    })(),
   };
 }
 
@@ -8661,6 +8666,12 @@ async function loadCheck(data) {
   }
   // V12.97: Gewählte Vorlage wiederherstellen (für Dropdown nach _eaInit)
   window._eocVorlageSelected = (data && data.eoc_vorlage_id) ? String(data.eoc_vorlage_id) : 'default';
+  // V12.102: Ausgeblendete Partner-Anfragen wiederherstellen
+  window._hiddenPartnerAnfrageIds = new Set();
+  if (data && data.hidden_partner_anfrage_ids) {
+    try { JSON.parse(data.hidden_partner_anfrage_ids).forEach(id => window._hiddenPartnerAnfrageIds.add(String(id))); }
+    catch (e) { console.warn('[V12.102] hidden_partner_anfrage_ids parse failed:', e.message); }
+  }
   // V12.3: Email-Quelle des aktuell geladenen Checks für Reply-CTA cachen
   window._currentCheckEmailSrc = data?.email_source_id || null;
   window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
@@ -13116,6 +13127,8 @@ async function submitAuftragErteilen() {
 }
 
 // V12.15 Phase 4: Karten-Reihe oberhalb der Vergleichstabelle
+// V12.102: Per-Check ausblendbar (✕ auf jeder Karte; persistiert via formData.hidden_partner_anfrage_ids)
+if (!window._hiddenPartnerAnfrageIds) window._hiddenPartnerAnfrageIds = new Set();
 function _renderVariantsRow(angebote) {
   const section = document.getElementById('wartung-variants-section');
   const row     = document.getElementById('wartung-variants-row');
@@ -13126,12 +13139,61 @@ function _renderVariantsRow(angebote) {
     row.innerHTML = '';
     return;
   }
+  // V12.102: ausgeblendete Karten rausfiltern
+  const hidden = window._hiddenPartnerAnfrageIds || new Set();
+  const visible = angebote.filter(a => !hidden.has(String(a._id)));
+  const hiddenCount = angebote.length - visible.length;
+  if (!visible.length) {
+    // Alle ausgeblendet: Section zeigen, aber mit Hinweis + Reset-Button
+    section.style.display = 'block';
+    if (cnt) cnt.textContent = '0';
+    row.innerHTML = '<div style="grid-column:1/-1;background:#fff;border:1px dashed var(--border);border-radius:8px;padding:16px;text-align:center;color:var(--muted);font-size:12px">Alle ' + hiddenCount + ' Partner-Angebote ausgeblendet · <button type="button" onclick="_resetHiddenPartnerAnfragen()" style="background:transparent;border:none;color:var(--dr-blue);text-decoration:underline;cursor:pointer;font:inherit;padding:0">wieder anzeigen</button></div>';
+    _updateHiddenAnfragenPill(hiddenCount);
+    return;
+  }
   section.style.display = 'block';
-  if (cnt) cnt.textContent = String(angebote.length);
-  // Welche Karte ist aktiv? — wenn selected_by_liftaro gesetzt, sonst keine
-  const activeId = (angebote.find(a => a.selected_by_liftaro) || {})._id || null;
-  row.innerHTML = angebote.map(a => _renderVariantCard(a, a._id === activeId)).join('');
+  if (cnt) cnt.textContent = String(visible.length);
+  const activeId = (visible.find(a => a.selected_by_liftaro) || {})._id || null;
+  row.innerHTML = visible.map(a => _renderVariantCard(a, a._id === activeId)).join('');
+  _updateHiddenAnfragenPill(hiddenCount);
 }
+
+// V12.102: Pille im Section-Header — "n ausgeblendet · anzeigen"
+function _updateHiddenAnfragenPill(hiddenCount) {
+  const titleSpan = document.querySelector('#wartung-variants-section .section-title > span:first-child');
+  let pill = document.getElementById('wartung-variants-hidden-pill');
+  if (hiddenCount <= 0) {
+    if (pill) pill.remove();
+    return;
+  }
+  if (!pill && titleSpan) {
+    pill = document.createElement('button');
+    pill.type = 'button';
+    pill.id = 'wartung-variants-hidden-pill';
+    pill.onclick = _resetHiddenPartnerAnfragen;
+    pill.style.cssText = 'margin-left:8px;background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:2px 10px;font-family:"DM Mono",monospace;font-size:10.5px;font-weight:600;cursor:pointer;letter-spacing:.02em';
+    pill.onmouseover = function(){ this.style.color = 'var(--dr-blue)'; this.style.borderColor = 'var(--dr-blue-light)'; };
+    pill.onmouseout = function(){ this.style.color = 'var(--muted)'; this.style.borderColor = 'var(--border)'; };
+    titleSpan.appendChild(pill);
+  }
+  if (pill) pill.textContent = '👁 ' + hiddenCount + ' ausgeblendet · anzeigen';
+}
+
+function _hidePartnerAnfrage(anfrageId) {
+  if (!anfrageId) return;
+  window._hiddenPartnerAnfrageIds = window._hiddenPartnerAnfrageIds || new Set();
+  window._hiddenPartnerAnfrageIds.add(String(anfrageId));
+  if (typeof refreshAnfragenListForCurrentCheck === 'function') refreshAnfragenListForCurrentCheck();
+  if (typeof showToast === 'function') showToast('Angebot ausgeblendet', 'ok');
+}
+window._hidePartnerAnfrage = _hidePartnerAnfrage;
+
+function _resetHiddenPartnerAnfragen() {
+  window._hiddenPartnerAnfrageIds = new Set();
+  if (typeof refreshAnfragenListForCurrentCheck === 'function') refreshAnfragenListForCurrentCheck();
+  if (typeof showToast === 'function') showToast('Ausgeblendete Angebote wieder sichtbar', 'ok');
+}
+window._resetHiddenPartnerAnfragen = _resetHiddenPartnerAnfragen;
 
 function _renderVariantCard(a, isActive) {
   const idEsc = String(a._id || '').replace(/'/g, "\\'");
@@ -13148,11 +13210,14 @@ function _renderVariantCard(a, isActive) {
       : '<span style="background:var(--dr-surface-alt);color:var(--dr-ink-mute);border:1px solid var(--dr-border);border-radius:999px;padding:1px 9px;font-family:var(--dr-f-mono);font-size:9.5px;font-weight:700;letter-spacing:.04em">wählen</span>');
   const checkRow = (label, val) => val ? `<div style="display:flex;justify-content:space-between;gap:6px;font-size:11.5px;padding:2px 0"><span style="color:var(--muted)">${label}</span><strong style="color:var(--dr-ink)">${_esc(val)}</strong></div>` : '';
   const featChip = (label, on) => on ? `<span style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;font-family:var(--dr-f-mono);margin:1px">${_esc(label)}</span>` : '';
+  // V12.102: Auftrag erteilte Karten NICHT verstecken können (Sicherheit)
+  const hideBtn = isAuftrag ? '' : `<button type="button" onclick="event.stopPropagation();_hidePartnerAnfrage('${idEsc}')" title="Dieses Angebot ausblenden" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;border-radius:4px;flex-shrink:0" onmouseover="this.style.background='#fee2e2';this.style.color='#9F1B1F'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">✕</button>`;
   return `
     <div onclick="applyPartnerAnfrageVariant('${idEsc}')" style="background:${accentBg};border:1.5px solid ${accent};border-radius:var(--dr-r-md,10px);padding:14px 16px;cursor:pointer;transition:all .15s;box-shadow:${isActive ? '0 4px 14px rgba(36,86,229,.18)' : 'var(--elev-1, 0 1px 2px rgba(15,24,48,.05))'}" onmouseover="this.style.borderColor='var(--dr-blue)';this.style.boxShadow='0 4px 14px rgba(36,86,229,.18)'" onmouseout="this.style.borderColor='${accent}';this.style.boxShadow='${isActive ? '0 4px 14px rgba(36,86,229,.18)' : 'var(--elev-1, 0 1px 2px rgba(15,24,48,.05))'}'">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
         <strong style="font-size:13px;color:var(--dr-ink);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${partnerEsc}</strong>
         ${badge}
+        ${hideBtn}
       </div>
       <div style="font-size:22px;font-weight:800;color:${isActive ? 'var(--dr-blue-deep)' : 'var(--dr-ink)'};letter-spacing:-.02em;margin-bottom:4px">${preisFmt} €<span style="font-size:11px;font-weight:600;color:var(--muted);margin-left:4px">/ Jahr</span></div>
       <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:6px">
