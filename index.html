@@ -5690,7 +5690,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.98';
+const APP_VERSION = 'V12.99';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -18752,6 +18752,7 @@ async function openVorabcheckDetail(checkNr) {
   const vc = vorabchecks.find(v => v.check_nr === checkNr);
   const ld = leads.find(l => l.check_nr === checkNr);
   if (!vc) { showToast('Vorabcheck nicht gefunden: ' + checkNr, 'error'); return; }
+  const cnEsc = String(checkNr).replace(/'/g, "\\'"); // V12.99: für Archivieren-Button
   // Modal existiert ggf. noch nicht — DOM einbauen
   let m = document.getElementById('vorabcheckDetailModal');
   if (!m) {
@@ -18791,12 +18792,18 @@ async function openVorabcheckDetail(checkNr) {
   }
   m.innerHTML = `
     <div style="background:#fff;border-radius:16px;width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden">
-      <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-        <div>
+      <div style="background:var(--navy);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
           <span style="color:#fff;font-size:15px;font-weight:700">🛡️ Vorabcheck · ${checkNr}</span>
-          <span style="color:rgba(255,255,255,.55);font-size:11px;margin-left:8px">${date}</span>
+          ${vc.archived === '1' ? '<span style="background:#64748b;color:#fff;border-radius:8px;padding:2px 8px;font-size:10.5px;font-weight:700">📦 ARCHIV</span>' : ''}
+          <span style="color:rgba(255,255,255,.55);font-size:11px">${date}</span>
         </div>
-        <button onclick="document.getElementById('vorabcheckDetailModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${vc.archived === '1'
+            ? `<button onclick="archiveVorabcheck('${cnEsc}', false)" title="Wiederherstellen (Status zurück, wird wieder in der Liste angezeigt)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px">↩ Wiederherstellen</button>`
+            : `<button onclick="archiveVorabcheck('${cnEsc}', true)" title="Vorabcheck archivieren (aus Default-Liste ausblenden, bleibt erhalten)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px">📦 Archivieren</button>`}
+          <button onclick="document.getElementById('vorabcheckDetailModal').style.display='none'" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px">✕</button>
+        </div>
       </div>
       <div style="flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;font-size:13.5px">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -22994,6 +23001,57 @@ window._vchHubAmpFilt  = window._vchHubAmpFilt  || new Set();
 window._vchHubRollFilt = window._vchHubRollFilt || new Set();
 window._vchHubSearch   = window._vchHubSearch   || '';
 
+// V12.99: Vorabcheck archivieren / wiederherstellen
+window._vchHubShowArchived = window._vchHubShowArchived || false;
+function _toggleVchHubArch() { window._vchHubShowArchived = !window._vchHubShowArchived; if (typeof renderVchHubList === 'function') renderVchHubList(); }
+window._toggleVchHubArch = _toggleVchHubArch;
+
+async function archiveVorabcheck(checkNr, doArchive) {
+  if (!checkNr) return;
+  const verb = doArchive ? 'archivieren' : 'wiederherstellen';
+  if (!confirm('Vorabcheck ' + checkNr + ' ' + verb + '?')) return;
+  try {
+    // Schema-Feld idempotent sicherstellen (toleriert fehlende schema.bases:write Scope)
+    try { await ensureFields('Vorab-Checks', [{ name: 'archived', type: 'singleLineText' }]); }
+    catch (e) { console.warn('[V12.99] ensureFields(archived) failed:', e.message); }
+    // Record per check_nr finden (Cache könnte stale sein)
+    const recs = await atRead('Vorab-Checks', "{check_nr}='" + String(checkNr).replace(/'/g, "\\'") + "'");
+    if (!recs || !recs.length) { showToast('Vorabcheck nicht gefunden', 'error'); return; }
+    const recordId = recs[0].id;
+    const newVal = doArchive ? '1' : '';
+    // tryWrite-style: bei "Unknown field name" einmalig ensureFields nachholen und erneut versuchen
+    try {
+      await atUpdate('Vorab-Checks', recordId, { archived: newVal });
+    } catch (e) {
+      const m = (e.message || '').match(/Unknown field name: ?"?archived"?/i);
+      if (m) {
+        await ensureFields('Vorab-Checks', [{ name: 'archived', type: 'singleLineText' }]);
+        await atUpdate('Vorab-Checks', recordId, { archived: newVal });
+      } else { throw e; }
+    }
+    // Caches aktualisieren
+    if (window._vchHubAllRows) {
+      const row = window._vchHubAllRows.find(r => r.check_nr === checkNr);
+      if (row) row.archived = newVal;
+    }
+    if (window._dashAllVorabchecks) {
+      const row2 = window._dashAllVorabchecks.find(r => r.check_nr === checkNr);
+      if (row2) row2.archived = newVal;
+    }
+    showToast('Vorabcheck ' + checkNr + (doArchive ? ' archiviert.' : ' wiederhergestellt.'), 'ok');
+    if (typeof renderVchHubList === 'function') renderVchHubList();
+    // Detail-Modal: wenn offen → neu rendern (mit aktualisierten Daten)
+    const dm = document.getElementById('vorabcheckDetailModal');
+    if (dm && dm.style.display === 'flex') {
+      openVorabcheckDetail(checkNr);
+    }
+  } catch (e) {
+    showToast('Fehler beim Archivieren: ' + e.message, 'error');
+    console.error('archiveVorabcheck:', e);
+  }
+}
+window.archiveVorabcheck = archiveVorabcheck;
+
 async function loadVorabchecksList() {
   const stats = document.getElementById('vch-overview-stats');
   const list  = document.getElementById('vch-overview-list');
@@ -23069,7 +23127,11 @@ function _vchHubResetFilters() {
 function renderVchHubList() {
   const stats = document.getElementById('vch-overview-stats');
   const list  = document.getElementById('vch-overview-list');
-  const allRows = window._vchHubAllRows || [];
+  const allRowsRaw = window._vchHubAllRows || [];
+  // V12.99: archivierte standardmäßig ausblenden
+  const showArchived = !!window._vchHubShowArchived;
+  const archivedCount = allRowsRaw.filter(r => r.archived === '1').length;
+  const allRows = showArchived ? allRowsRaw : allRowsRaw.filter(r => r.archived !== '1');
   // Filter anwenden
   const q = window._vchHubSearch || '';
   const rows = allRows.filter(r => {
@@ -23081,7 +23143,7 @@ function renderVchHubList() {
     }
     return true;
   });
-  // Stats (basieren auf allRows, nicht gefiltert)
+  // Stats (basieren auf allRows = inkl/exkl. Archiv je nach Toggle)
   const total = allRows.length;
   const gruen = allRows.filter(r => r.ampel === 'gruen').length;
   const gelb  = allRows.filter(r => r.ampel === 'gelb').length;
@@ -23108,11 +23170,18 @@ function renderVchHubList() {
     const active = window._vchHubRollFilt.has(v);
     return '<button type="button" class="vch-chip" onclick="_toggleVchHubRoll(\'' + v + '\')" style="' + (active ? 'border-color:' + col + ';background:' + col + ';color:#fff' : 'color:' + col) + '">' + l + '</button>';
   };
-  const anyFilter = window._vchHubAmpFilt.size || window._vchHubRollFilt.size || q;
+  const anyFilter = window._vchHubAmpFilt.size || window._vchHubRollFilt.size || q || showArchived;
+  // V12.99: Archiv-Chip
+  const archChipStyle = showArchived
+    ? 'border-color:#64748b;background:#64748b;color:#fff'
+    : 'color:#64748b';
+  const archChip = '<button type="button" class="vch-chip" onclick="_toggleVchHubArch()" title="Archivierte Vorabchecks ' + (showArchived ? 'ausblenden' : 'anzeigen') + '" style="' + archChipStyle + '">📦 Archiv' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
   const filterBar =
     '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;background:var(--sky);border-bottom:1px solid var(--border);align-items:center">' +
       '<span style="font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-right:2px">Filter:</span>' +
       ampChip('gruen', '🟢 Grün', '#3d7a14') + ampChip('gelb', '🟡 Gelb', '#a06a00') + ampChip('rot', '🔴 Rot', '#a8312f') +
+      '<span style="width:1px;height:14px;background:var(--border);margin:0 4px"></span>' +
+      archChip +
       '<span style="width:1px;height:14px;background:var(--border);margin:0 4px"></span>' +
       rollChip('mieter', 'Mieter', '#94a3b8') + rollChip('eigentuemer', 'Eigentümer', '#7dc242') + rollChip('verwalter', 'Verwalter', '#2d5f96') +
       '<span style="width:1px;height:14px;background:var(--border);margin:0 4px"></span>' +
@@ -23131,8 +23200,10 @@ function renderVchHubList() {
     const objekt = r.objekt_adresse || r.hv_name || '';
     const rolle = r.role ? '· ' + r.role : '';
     const cnEsc = (r.check_nr || '').replace(/'/g, "\\'");
-    return '<div class="vch-row" onclick="openVorabcheckDetail(\'' + cnEsc + '\')">' +
-      '<div class="vch-c-nr">' + (r.check_nr || '–') + '</div>' +
+    const isArch = r.archived === '1';
+    const archMarker = isArch ? '<span style="background:#64748b;color:#fff;border-radius:8px;padding:1px 6px;font-size:9.5px;font-weight:700;margin-right:6px;vertical-align:middle">📦 ARCHIV</span>' : '';
+    return '<div class="vch-row" onclick="openVorabcheckDetail(\'' + cnEsc + '\')" style="' + (isArch ? 'opacity:.65' : '') + '">' +
+      '<div class="vch-c-nr">' + archMarker + (r.check_nr || '–') + '</div>' +
       '<div class="vch-c-ampel"><span class="vch-c-ampel-pill" style="background:' + ampelBg + '">' + ampelTxt + '</span></div>' +
       '<div class="vch-c-typ">' + (r.check_type || '–') + '</div>' +
       '<div class="vch-c-savings">' + Number(r.savings_estimate_eur || 0).toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €</div>' +
