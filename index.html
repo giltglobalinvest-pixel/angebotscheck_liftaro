@@ -3076,7 +3076,7 @@ const pdfWorkerReady = Promise.resolve();</script>
               </div>
               <div style="margin-bottom:22px">
                 <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Bevollmächtigte</div>
-                <div style="line-height:1.55">Liftaro GmbH<br>Augustinerstraße 21<br>55116 Mainz<br>vertreten durch Geschäftsführer Patrizio Fontanarosa</div>
+                <div style="line-height:1.55">Liftaro GmbH<br>Augustinerstraße 21<br>55116 Mainz<br>vertreten durch Geschäftsführer Francesco Ricioppo</div>
               </div>
               <div style="margin-bottom:22px">
                 <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Gegenstand der Vollmacht</div>
@@ -5818,7 +5818,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.118';
+const APP_VERSION = 'V12.119';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -23149,6 +23149,33 @@ function _erSetAttachByCheckId(cid) {
 }
 window._erSetAttachByCheckId = _erSetAttachByCheckId;
 
+// V12.119: Anhang-Vorschau — öffnet die aktuell ausgewählte PDF in neuem Tab.
+// Lädt das Blob frisch (URL kann signed sein und expired), erstellt object-URL.
+async function _erOpenAttachPreview() {
+  if (!_erContext || !_erContext.pdfUrl) {
+    if (typeof showToast === 'function') showToast('Kein PDF zum Anzeigen', 'error');
+    return;
+  }
+  try {
+    if (typeof showToast === 'function') showToast('Lade PDF zur Vorschau …', 'ok');
+    const res = await fetch(_erContext.pdfUrl);
+    if (!res.ok) throw new Error('Download fehlgeschlagen: HTTP ' + res.status);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const w = window.open(objUrl, '_blank');
+    if (!w) {
+      // Pop-up blockiert → manuell anbieten
+      if (typeof showToast === 'function') showToast('Pop-up blockiert — bitte Browser-Sperre für diese Seite deaktivieren', 'error', 5000);
+    }
+    // ObjectURL nach 60s wieder freigeben
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+  } catch (e) {
+    console.error('[V12.119] Anhang-Vorschau fehlgeschlagen:', e);
+    if (typeof showToast === 'function') showToast('Vorschau fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+window._erOpenAttachPreview = _erOpenAttachPreview;
+
 async function openEmailReplyModal(recId) {
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) { showToast('Email nicht gefunden', 'error'); return; }
@@ -23207,9 +23234,11 @@ async function openEmailReplyModal(recId) {
         _erContext.pdfUrl = initial.attachment.url;
         _erContext.pdfName = initial.attachment.filename || ('Liftaro_Check_' + initial.checkId + '.pdf');
         window._erEligibles = eligibles;
+        // V12.119: Vorschau-Button — öffnet das PDF in neuem Tab
+        const previewBtn = '<button type="button" onclick="_erOpenAttachPreview()" title="PDF in neuem Tab öffnen — Vorschau prüfen vor dem Senden" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:6px;padding:5px 11px;font-family:\'DM Sans\',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-left:auto"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Vorschau</button>';
         if (eligibles.length === 1) {
           const att = initial.attachment;
-          attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt · Check <strong>${_esc(initial.checkId)}</strong></div></div></div>`;
+          attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div style="flex:1"><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt · Check <strong>${_esc(initial.checkId)}</strong></div></div>${previewBtn}</div>`;
         } else {
           // V12.118: Mehrere Checks mit PDF — Dropdown
           const opts = eligibles.map((e, i) =>
@@ -23222,7 +23251,10 @@ async function openEmailReplyModal(recId) {
             '<select onchange="_erSetAttachByCheckId(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:13px;background:#fff">' +
               opts +
             '</select>' +
-            '<div id="erAttachActiveLabel" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px"><span style="font-size:16px">📎</span><span style="color:var(--muted)"><strong>' + _esc(initial.attachment.filename || 'check.pdf') + '</strong> · Check <strong>' + _esc(initial.checkId) + '</strong></span></div>';
+            '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px">' +
+              '<div id="erAttachActiveLabel" style="flex:1;display:flex;align-items:center;gap:8px"><span style="font-size:16px">📎</span><span style="color:var(--muted)"><strong>' + _esc(initial.attachment.filename || 'check.pdf') + '</strong> · Check <strong>' + _esc(initial.checkId) + '</strong></span></div>' +
+              previewBtn +
+            '</div>';
         }
       }
     } catch (e) {
