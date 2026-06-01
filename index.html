@@ -4057,8 +4057,12 @@ const pdfWorkerReady = Promise.resolve();</script>
     </div>
     <div style="padding:18px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1">
       <div>
-        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Empfänger</label>
+        <label style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">
+          <span>Empfänger <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;font-size:10.5px;margin-left:4px">— editierbar</span></span>
+          <button type="button" onclick="_erUseTestRecipient()" id="erTestBtn" title="An deine eigene Email senden — die ursprüngliche Email im Postfach wird NICHT als „geantwortet" markiert" style="background:#fff;border:1.5px solid #7c3aed;color:#7c3aed;border-radius:5px;padding:3px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;text-transform:none;letter-spacing:0">🧪 Test an mich</button>
+        </label>
         <input type="text" id="erTo" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
+        <div id="erTestBanner" style="display:none;margin-top:8px;padding:8px 12px;background:#f3eafc;border:1px solid #d4baf5;border-radius:6px;font-size:12px;color:#5b21b6;font-weight:600">🧪 Test-Modus aktiv · Postfach-Status wird NICHT verändert</div>
       </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Betreff</label>
@@ -5814,7 +5818,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.116';
+const APP_VERSION = 'V12.117';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -23095,7 +23099,36 @@ async function createCheckFromVorgang(recId, vIdx) {
 // ════════════════════════════════════════════════════════════════
 //  EMAIL-REPLY (Phase 3) — "Antwort senden" via val.town /v1/email
 // ════════════════════════════════════════════════════════════════
-let _erContext = null;  // { emailRec, checkRec?, pdfBlob? }
+let _erContext = null;  // { emailRec, checkRec?, pdfBlob?, testMode? }
+
+// V12.117: Test-Modus aktivieren — sendet an die eigene Email statt an den HV
+// und überspringt das Status-Update im Postfach (Email bleibt "neu"/"in_bearbeitung").
+function _erUseTestRecipient() {
+  if (!_erContext || !_erContext.emailRec) return;
+  const userEmail = (APP_KEYS.user && APP_KEYS.user.email) || '';
+  const prefill = userEmail || '';
+  const chosen = (prompt('Test-Email an welche Adresse senden?\n\n• Postfach-Status der ursprünglichen Email bleibt unverändert\n• Email kommt ganz normal mit Anhang an', prefill) || '').trim();
+  if (!chosen) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(chosen)) {
+    if (typeof showToast === 'function') showToast('Bitte eine gültige Email eingeben', 'error');
+    return;
+  }
+  _erContext.testMode = true;
+  _erContext.originalRecipient = document.getElementById('erTo').value;
+  document.getElementById('erTo').value = chosen;
+  // Betreff mit [TEST]-Prefix markieren (nur wenn nicht schon drin)
+  const subjEl = document.getElementById('erSubject');
+  if (subjEl && !/^\s*\[TEST\]/i.test(subjEl.value)) subjEl.value = '[TEST] ' + subjEl.value;
+  const tb = document.getElementById('erTestBanner');
+  if (tb) {
+    tb.style.display = 'block';
+    tb.innerHTML = '🧪 Test-Modus aktiv · Empfänger ist <strong>' + chosen.replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c])) + '</strong> · Postfach-Status wird NICHT verändert';
+  }
+  const btn = document.getElementById('erTestBtn');
+  if (btn) { btn.style.background = '#7c3aed'; btn.style.color = '#fff'; btn.textContent = '🧪 Test-Modus an'; }
+  if (typeof showToast === 'function') showToast('Test-Modus aktiv — sendet an ' + chosen, 'ok');
+}
+window._erUseTestRecipient = _erUseTestRecipient;
 
 async function openEmailReplyModal(recId) {
   const r = _eiAllRecords.find(x => x._id === recId);
@@ -23104,7 +23137,11 @@ async function openEmailReplyModal(recId) {
     showToast('Email-Sender nicht konfiguriert — bitte App neu laden (Master-Base "emailSenderUrl"/"emailSenderSecret")', 'error');
     return;
   }
-  _erContext = { emailRec: r, checkRec: null, pdfBlob: null, pdfName: null };
+  _erContext = { emailRec: r, checkRec: null, pdfBlob: null, pdfName: null, testMode: false };
+
+  // V12.117: Test-Banner zurücksetzen
+  const _tb = document.getElementById('erTestBanner');
+  if (_tb) _tb.style.display = 'none';
 
   // Modal vorausfüllen
   document.getElementById('erTo').value      = r.from_email || '';
@@ -23327,23 +23364,32 @@ async function doSendEmailReply() {
       throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 300));
     }
 
-    // 4. Email-Record updaten
-    await atUpdate('Emails', r._id, {
-      status:           'geantwortet',
-      status_at:        new Date().toISOString(),
-      replied_at:       new Date().toISOString(),
-      replied_subject:  subject,
-      replied_body:     body.slice(0, 95000),
-      bearbeiter_name:  _eiCurrentUserName(),
-    });
-    // State lokal
-    r.status          = 'geantwortet';
-    r.replied_at      = new Date().toISOString();
-    r.replied_subject = subject;
-    r.replied_body    = body;
+    // V12.117: Im Test-Modus Postfach-Status NICHT verändern
+    const isTest = !!(_erContext && _erContext.testMode);
+    if (!isTest) {
+      // 4. Email-Record updaten
+      await atUpdate('Emails', r._id, {
+        status:           'geantwortet',
+        status_at:        new Date().toISOString(),
+        replied_at:       new Date().toISOString(),
+        replied_subject:  subject,
+        replied_body:     body.slice(0, 95000),
+        bearbeiter_name:  _eiCurrentUserName(),
+      });
+      // State lokal
+      r.status          = 'geantwortet';
+      r.replied_at      = new Date().toISOString();
+      r.replied_subject = subject;
+      r.replied_body    = body;
+    }
 
-    status.innerHTML = '<span style="color:#0e6655;font-weight:600">✓ Antwort gesendet</span>';
-    showToast('Antwort an ' + to + ' versendet.', 'success');
+    status.innerHTML = isTest
+      ? '<span style="color:#7c3aed;font-weight:600">✓ Test-Email gesendet · Postfach-Status unverändert</span>'
+      : '<span style="color:#0e6655;font-weight:600">✓ Antwort gesendet</span>';
+    showToast(
+      isTest ? ('Test-Email an ' + to + ' versendet (Postfach unverändert).') : ('Antwort an ' + to + ' versendet.'),
+      'success'
+    );
     setTimeout(() => {
       closeEmailReplyModal();
       renderEmailInboxList();
