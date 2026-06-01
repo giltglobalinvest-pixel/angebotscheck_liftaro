@@ -2666,7 +2666,7 @@ const pdfWorkerReady = Promise.resolve();</script>
                 <label style="white-space:nowrap">Erfolgsprämie Liftaro:</label>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                   <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
-                    <input type="number" id="liftaro_pct" value="50" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
+                    <input type="number" id="liftaro_pct" value="25" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
                       style="width:54px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
                     <span style="font-size:12.5px;color:var(--muted);font-weight:600">%</span>
                   </div>
@@ -2814,7 +2814,7 @@ const pdfWorkerReady = Promise.resolve();</script>
                   <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">% von Ersparnis oder Festbetrag:</span>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <div style="display:inline-flex;align-items:center;gap:4px;background:var(--sky);border:1px solid var(--border);border-radius:7px;padding:2px 6px 2px 8px">
-                      <input type="number" id="liftaro_pct_w" value="50" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
+                      <input type="number" id="liftaro_pct_w" value="25" min="0" max="100" step="0.5" oninput="calcSavings()" data-frozen-allow
                         style="width:54px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);text-align:right;padding:4px 2px;outline:none">
                       <span style="font-size:12.5px;color:var(--muted);font-weight:600">%</span>
                     </div>
@@ -3239,7 +3239,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
 
         <div class="legal-block" id="legal-block">
-          Die Vergütung von Liftaro beträgt 50 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.
+          Die Vergütung von Liftaro beträgt 25 % der realisierten Einsparung und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.
         </div>
         <!-- V12.93: Unterschriftsfeld für EuC-Beauftragung durch die HV — nur sichtbar im EuC-Modus -->
         <div id="eoc_sig_block" style="display:none;margin-top:36px;page-break-inside:avoid">
@@ -4769,8 +4769,8 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
         <div class="field">
           <label>Erfolgsbeteiligung § 4 (%) <span style="font-weight:400;color:var(--muted);font-size:10.5px">· 0–50</span></label>
-          <input type="number" id="v_erfolg_pct" placeholder="50" min="0" max="50" step="0.5" value="50">
-          <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Standard 50 %. Bei Bedarf reduzieren — gilt für Wartung/Notruf <strong>und</strong> Reparatur/Nachrüstung.</div>
+          <input type="number" id="v_erfolg_pct" placeholder="25" min="0" max="100" step="0.5" value="25">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">Standard 25 %. Bei Bedarf anpassen — gilt für Wartung/Notruf <strong>und</strong> Reparatur/Nachrüstung.</div>
         </div>
       </div>
       <!-- V12.64: EuC-Zusatzklausel (§5a) optional -->
@@ -5821,7 +5821,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.120';
+const APP_VERSION = 'V12.121';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -5939,13 +5939,13 @@ const INVOICE_DEFAULT_LEISTUNG_REPARATUR =
   '• Einholung und Vergleich eines Alternativangebots\n' +
   '• Wirtschaftliche und technische Bewertung gemäß Beratervertrag §2\n' +
   '• Empfehlung zur Vergabeentscheidung\n\n' +
-  'Vergütung gemäß §4 Beratervertrag: 50 % der realisierten Nettoeinsparung.';
+  'Vergütung gemäß §4 Beratervertrag: 25 % der realisierten Nettoeinsparung.';
 const INVOICE_DEFAULT_LEISTUNG_WARTUNG =
   'Beratungsleistung Wartungs-/Servicevertrags-Optimierung:\n' +
   '• Analyse des bestehenden Wartungsvertrags\n' +
   '• Einholung eines optimierten Alternativvertrags\n' +
   '• Begleitung des Vertragswechsels gemäß Beratervertrag §2\n\n' +
-  'Vergütung gemäß §4 Beratervertrag: 50 % der jährlichen Nettoeinsparung.';
+  'Vergütung gemäß §4 Beratervertrag: 25 % der jährlichen Nettoeinsparung.';
 const INVOICE_MWST = 0.19;
 const _k1 = 'patu8KWM';
 const _k2 = '8aWByxCGL';
@@ -6960,7 +6960,7 @@ function resetForm() {
     if (id === 'savings-liftaro') el.style.background = '#8a9ab0';
   });
   // V12.11: Provisions-Inputs auf Defaults zurücksetzen
-  ['liftaro_pct','liftaro_pct_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '50'; });
+  ['liftaro_pct','liftaro_pct_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '25'; });
   ['liftaro_eur','liftaro_eur_w'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   // V12.23: Vergütungs-Modus zurück auf "erfolg" + Pauschale leeren
   const pj = document.getElementById('liftaro_jahresgebuehr_w'); if (pj) pj.value = '';
@@ -7345,14 +7345,14 @@ function _wartungLegalBlockText() {
     return `Die Vergütung von Liftaro ist eine Service-Pauschale von ${jahresGeb}/Jahr über die Vertragslaufzeit. Gegenleistung: Prüfung eingehender Wartungs-/Reparatur-Angebote auf inhaltliche, fachliche und preisliche Plausibilität; Beratung zu sonstigen Aufzug-bezogenen Fragen; Hinweise zur Betriebssicherheitsverordnung (BetrSichV) und zugehöriger Vorschriften. Liftaro übernimmt die Organisation der Beauftragung und überwacht den Wartungsvertrag.`;
   }
   // Erfolgsbasiert: Prozentwert oder absoluter Festbetrag aus dem Input lesen
-  const pct = g('liftaro_pct_w') || '50';
+  const pct = g('liftaro_pct_w') || '25';
   const eurO = g('liftaro_eur_w');
   const basis = eurO ? `als fester Jahresbetrag von ${formatEuro(parsePrice(eurO))}` : `jährlich ${pct} % der realisierten Einsparung`;
   return `Die Vergütung von Liftaro beträgt ${basis} und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht den Wartungsvertrag.`;
 }
 function _reparaturLegalBlockText() {
   const g = id => (document.getElementById(id)?.value || '').toString().trim();
-  const pct = g('liftaro_pct') || '50';
+  const pct = g('liftaro_pct') || '25';
   const eurO = g('liftaro_eur');
   const basis = eurO ? `als fester Betrag von ${formatEuro(parsePrice(eurO))}` : `${pct} % der realisierten Einsparung`;
   return `Die Vergütung von Liftaro beträgt ${basis} und erfolgt vollständig erfolgsbasiert. Liftaro übernimmt die Organisation der Beauftragung und überwacht die Montagearbeiten bis zum Abschluss.`;
@@ -7447,7 +7447,7 @@ function _renderLvPdfSummary(show) {
       </div>`;
   } else {
     // Erfolgsbasiert
-    const pct = g('liftaro_pct_w') || '50';
+    const pct = g('liftaro_pct_w') || '25';
     const eurO = g('liftaro_eur_w');
     const basisInfo = eurO ? `(absoluter Festbetrag)` : `(${pct} % von Ersparnis)`;
     const total = (laufzeitJahre > 0 && liftaroJahrText !== '– €') ? ` · über ${laufzeitJahre} J. = ${(function(){
@@ -9167,10 +9167,10 @@ async function loadCheck(data) {
   sc('wv_kosten', data.wv_kosten); sc('wa_kosten', data.wa_kosten);
   sc('wv_zusammen', data.wv_zusammen); sc('wa_zusammen', data.wa_zusammen);
   // V12.11: Flexible Liftaro-Provision wiederherstellen (Reparatur + Wartung).
-  // Default 50% wenn nichts gespeichert. Absolut-Override bleibt leer wenn ungesetzt.
-  sc('liftaro_pct',   data.liftaro_pct   != null && data.liftaro_pct   !== '' ? data.liftaro_pct   : '50');
+  // V12.121: Default 25 % wenn nichts gespeichert. Absolut-Override bleibt leer wenn ungesetzt.
+  sc('liftaro_pct',   data.liftaro_pct   != null && data.liftaro_pct   !== '' ? data.liftaro_pct   : '25');
   sc('liftaro_eur',   data.liftaro_eur   || '');
-  sc('liftaro_pct_w', data.liftaro_pct_w != null && data.liftaro_pct_w !== '' ? data.liftaro_pct_w : '50');
+  sc('liftaro_pct_w', data.liftaro_pct_w != null && data.liftaro_pct_w !== '' ? data.liftaro_pct_w : '25');
   sc('liftaro_eur_w', data.liftaro_eur_w || '');
   // V12.23: Service-Pauschale-Modus wiederherstellen (nur Wartung)
   sc('liftaro_jahresgebuehr_w', data.liftaro_jahresgebuehr_w || '');
@@ -15472,8 +15472,8 @@ function clearVertragForm() {
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   // Default-Variante zurück auf "standard"
   const va = document.getElementById('v_variante'); if (va) va.value = 'standard';
-  // V12.65: Erfolgsbeteiligung zurück auf 50 %
-  const ep = document.getElementById('v_erfolg_pct'); if (ep) ep.value = '50';
+  // V12.121: Erfolgsbeteiligung zurück auf 25 % (Standard seit V12.121)
+  const ep = document.getElementById('v_erfolg_pct'); if (ep) ep.value = '25';
   // V12.64: EuC-Klausel-Checkbox zurücksetzen
   const ec = document.getElementById('v_euc_klausel'); if (ec) ec.checked = false;
   window._currentVertragAnpassungen = {};
@@ -15664,9 +15664,9 @@ async function buildVertragPDF() {
   txt('p4_1', 'Der Aufbau, die Pflege und Aktualisierung der Anlagendatenbank ist für den AG grundsätzlich kostenlos.');
   txt('p4_2_h', '2. Erfolgsabhängige Vergütung – Einsparungen');
   txt('p4_2_1', '(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.');
-  // V12.65: Erfolgsbeteiligung dynamisch (0–50 %, Default 50)
+  // V12.121: Erfolgsbeteiligung dynamisch (0–100 %, Default 25)
   const _erfRaw = Number(d.erfolgsbeteiligung_pct);
-  const erfPctP4 = Number.isFinite(_erfRaw) ? Math.max(0, Math.min(50, _erfRaw)) : 50;
+  const erfPctP4 = Number.isFinite(_erfRaw) ? Math.max(0, Math.min(100, _erfRaw)) : 25;
   const erfPctStrP4 = (Number.isInteger(erfPctP4) ? String(erfPctP4) : erfPctP4.toLocaleString('de-DE')) + ' %';
   txt('p4_2_2', '(2) Der Berater erhält:');
   bul('p4_b1', erfPctStrP4 + ' der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)');
@@ -16748,8 +16748,8 @@ const _BERATER_PARA_DEFAULTS = {
   'p4_2_h':'2. Erfolgsabhängige Vergütung – Einsparungen',
   'p4_2_1':'(1) Als Einsparung gilt die Differenz zwischen dem zuletzt gültigen Netto-Vertragswert und dem durch den Berater neu verhandelten Netto-Vertragswert über die jeweilige Vertragslaufzeit.',
   'p4_2_2':'(2) Der Berater erhält:',
-  'p4_b1':'50 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)',
-  'p4_b2':'50 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen',
+  'p4_b1':'25 % der Nettoeinsparung bei Wartungs-, und Notrufverträgen (laufzeitbezogen)',
+  'p4_b2':'25 % der Nettoeinsparung einmalig bei Reparatur- und Nachrüstmaßnahmen',
   'p4_2_3':'(3) Die Einsparungsberechnung erfolgt transparent und nachvollziehbar und wird dem AG schriftlich dargelegt.',
   'h5':  '§5 Besondere Beratungsleistungen',
   'p5_1':'Leistungen außerhalb des vereinbarten Umfangs werden nur nach vorheriger schriftlicher Beauftragung vergütet und vorab separat von Liftaro angeboten.',
@@ -20687,14 +20687,14 @@ function renderDashboard() {
           <div style="font-family:var(--dr-f-mono);font-size:10px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Mögliche Ersparnis · Status 1 (Check gemacht)</div>
           <div class="dr-kpi-grid">
             ${kachel('Mögliche Ersparnis',           _fmtEuro(ersparnisRepMoeglich),  '#94a3b8', 'noch nicht beauftragt')}
-            ${kachel('Mögl. Liftaro-Beteiligung',    _fmtEuro(liftaroBetRepMoeglich), '#94a3b8', '50 % einmalig (potenziell)')}
+            ${kachel('Mögl. Liftaro-Beteiligung',    _fmtEuro(liftaroBetRepMoeglich), '#94a3b8', '25 % einmalig (potenziell)')}
           </div>
         </div>
         <div>
           <div style="font-family:var(--dr-f-mono);font-size:10px;font-weight:700;color:var(--dr-green-deep);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Tatsächliche Ersparnis · Status ≥ 2</div>
           <div class="dr-kpi-grid">
             ${kachel('Tatsächliche Ersparnis',        _fmtEuro(ersparnisRepReal),  '#3d7a14', 'beauftragt / abgerechnet')}
-            ${kachel('Tats. Liftaro-Beteiligung',     _fmtEuro(liftaroBetRepReal), '#2a5c3a', '50 % einmalig (realisiert)')}
+            ${kachel('Tats. Liftaro-Beteiligung',     _fmtEuro(liftaroBetRepReal), '#2a5c3a', '25 % einmalig (realisiert)')}
           </div>
         </div>
       </div>
@@ -20712,14 +20712,14 @@ function renderDashboard() {
           <div style="font-family:var(--dr-f-mono);font-size:10px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Mögliche Ersparnis · Status 1 (Check gemacht)</div>
           <div class="dr-kpi-grid">
             ${kachel('Mögliche Ersparnis',           _fmtEuro(ersparnisWarMoeglich),  '#94a3b8', 'Vertrag noch nicht aktiv')}
-            ${kachel('Mögl. Liftaro-Beteiligung',    _fmtEuro(liftaroBetWarMoeglich), '#94a3b8', '50 % über Laufzeit (potenziell)')}
+            ${kachel('Mögl. Liftaro-Beteiligung',    _fmtEuro(liftaroBetWarMoeglich), '#94a3b8', '25 % über Laufzeit (potenziell)')}
           </div>
         </div>
         <div>
           <div style="font-family:var(--dr-f-mono);font-size:10px;font-weight:700;color:var(--dr-green-deep);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Tatsächliche Ersparnis · Status ≥ 2</div>
           <div class="dr-kpi-grid">
             ${kachel('Tatsächliche Ersparnis',        _fmtEuro(ersparnisWarReal),  '#0e6655', 'Vertrag wurde umgesetzt')}
-            ${kachel('Tats. Liftaro-Beteiligung',     _fmtEuro(liftaroBetWarReal), '#0a4a3c', '50 % über Laufzeit (realisiert)')}
+            ${kachel('Tats. Liftaro-Beteiligung',     _fmtEuro(liftaroBetWarReal), '#0a4a3c', '25 % über Laufzeit (realisiert)')}
           </div>
         </div>
       </div>
