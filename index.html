@@ -5827,7 +5827,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.122';
+const APP_VERSION = 'V12.123';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -23382,6 +23382,7 @@ async function regenerateReplyBody(extraInstruction) {
         'Anrede: persönlich wenn Name in Signatur erkennbar (z.B. "Sehr geehrter Herr Brandl,"), sonst "Sehr geehrte Damen und Herren,". ' +
         'Signatur: "Mit freundlichen Grüßen\\nLiftaro GmbH\\nIhr Liftaro-Team". ' +
         'WICHTIG: Schreibe "Equipment under Control" wortwörtlich aus. Niemals abkürzen zu "Energieuntergliedung", "Energievertrag" o.ä. KEINE erfundenen Zahlen — bei Geldbeträgen NUR die unten genannten Werte verwenden, sonst gar nicht. ' +
+        'V12.123: Verwende im Subject und Body NUR normale ASCII-Bindestriche "-", KEINE em-dashes (–) oder en-dashes. Nutze normale gerade Anführungszeichen ", keine „typografischen". Statt drei Punkten "..." nutzen, kein "…". Diese Sonderzeichen brechen sonst die Mail-Anzeige auf iOS. ' +
         'Antworte AUSSCHLIESSLICH mit gültigem JSON: { "subject": "...", "body": "..." }';
       modeContext =
         'MODUS: Equipment under Control (EuC) — kein Anbieterwechsel möglich.\n' +
@@ -23398,6 +23399,7 @@ async function regenerateReplyBody(extraInstruction) {
         'Anrede: persönlich wenn Name in Signatur erkennbar (z.B. "Sehr geehrter Herr Brandl,"), sonst "Sehr geehrte Damen und Herren,". ' +
         'Signatur: "Mit freundlichen Grüßen\\nLiftaro GmbH\\nIhr Liftaro-Team". ' +
         'WICHTIG: Nutze NUR Zahlen + Anbieternamen aus dem Liftaro-Ergebnis unten — erfinde NICHTS. Wenn ein Wert fehlt, weglassen statt schätzen. ' +
+        'V12.123: Verwende im Subject und Body NUR normale ASCII-Bindestriche "-", KEINE em-dashes (–) oder en-dashes. Nutze normale gerade Anführungszeichen ", keine „typografischen". Statt drei Punkten "..." nutzen, kein "…". Diese Sonderzeichen brechen sonst die Mail-Anzeige auf iOS. ' +
         'Antworte AUSSCHLIESSLICH mit gültigem JSON: { "subject": "...", "body": "..." }';
       modeContext =
         'MODUS: Vergleichsangebot (klassischer Vertragscheck).\n' +
@@ -23483,6 +23485,21 @@ async function doSendEmailReply() {
   if (!subject) { showToast('Betreff fehlt', 'error'); return; }
   if (!body || !body.trim()) { showToast('Nachricht ist leer', 'error'); return; }
 
+  // V12.123: Subject-Sanitizer — em-dashes, en-dashes, smart-quotes, ellipsis im
+  // Betreff durch ASCII-Äquivalente ersetzen. iOS Mail kann Subjects mit langem
+  // RFC 2047 Q-Encoding (entsteht bei em-dash etc.) teilweise nicht parsen und
+  // zeigt dann die rohe MIME-Quelle an. Body bleibt mit Umlauten erhalten —
+  // dort wird quoted-printable von iOS Mail korrekt dekodiert.
+  const subjectSanitized = String(subject)
+    .replace(/[–—]/g, '-')        // – em/en-dash → -
+    .replace(/[‘’‚]/g, "'")  // ' ‚ → '
+    .replace(/[“”„]/g, '"')  // " „ → "
+    .replace(/…/g, '...')              // … → ...
+    .replace(/ /g, ' ');               // NBSP → normales Leerzeichen
+  if (subjectSanitized !== subject) {
+    console.log('[V12.123] Subject sanitized:', JSON.stringify({ before: subject, after: subjectSanitized }));
+  }
+
   sendBtn.disabled = true;
   status.innerHTML = '<span style="color:var(--navy)">⏳ Senden läuft …</span>';
 
@@ -23514,7 +23531,7 @@ async function doSendEmailReply() {
     status.innerHTML = '<span style="color:var(--navy)">⏳ Sende über check@liftaro.de …</span>';
     const payload = {
       to:        to,
-      subject:   subject,
+      subject:   subjectSanitized,   // V12.123: sanitized statt roh
       text:      body,
       replyTo:   'check@liftaro.de',
       inReplyTo: r.message_id || undefined,
