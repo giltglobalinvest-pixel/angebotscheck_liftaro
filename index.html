@@ -5827,7 +5827,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.123';
+const APP_VERSION = 'V12.124';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -9277,6 +9277,14 @@ async function loadCheck(data) {
   // uploadedFiles für ggf. nicht geladene Slots leeren
   uploadedFiles[1] = null;
   uploadedFiles[2] = null;
+  // V12.124: Airtable-Attachment-Meta global cachen, damit generatePDF im EuC-Modus
+  // den Original-Vertrag auch dann nachladen kann, wenn das initiale Fetch hier
+  // in loadCheck noch nicht durch ist (Race) oder fehlschlug (CORS/Expired).
+  window._currentCheckAttachmentMeta = {
+    vorliegend: (data._attVorliegend && data._attVorliegend[0]) || null,
+    alternativ: (data._attAlternativ && data._attAlternativ[0]) || null,
+    ergebnis:   (data._attErgebnis   && data._attErgebnis[0])   || null,
+  };
   const attMap = [
     { num: 1, key: 'fetch_vorliegendes_pdf', list: data._attVorliegend, slot: 1 },
     { num: 2, key: 'fetch_alternativ_pdf',   list: data._attAlternativ, slot: 2 },
@@ -12718,15 +12726,35 @@ async function generatePDF() {
       await _canvasToA4Pages(mergedDoc, canvas, { fitToOnePage: _fitOnePdf });
     }
 
-    for (const [num, label] of [[2,'Alternativangebot'],[1,'Vorliegendes Angebot']]) {
-      if (!uploadedFiles[num]) continue;
-      setProgress(label + ' wird angehängt …');
+    // V12.124: Anhängen von Original-Vertrag (1) + Alternativ-Angebot (2).
+    // Fallback auf Airtable-URL aus _currentCheckAttachmentMeta, falls uploadedFiles
+    // leer ist — passiert wenn der Check geladen wird und das initiale Fetch in
+    // loadCheck noch nicht durch ist oder fehlschlug (CORS / expired URL).
+    const _attachMap = [
+      { num: 2, label: 'Alternativangebot',   metaKey: 'alternativ' },
+      { num: 1, label: 'Vorliegendes Angebot', metaKey: 'vorliegend' },
+    ];
+    for (const entry of _attachMap) {
+      let srcBlob = uploadedFiles[entry.num] || null;
+      if (!srcBlob) {
+        const meta = window._currentCheckAttachmentMeta && window._currentCheckAttachmentMeta[entry.metaKey];
+        if (meta && meta.url) {
+          setProgress(entry.label + ' wird aus Airtable nachgeladen …');
+          try {
+            const _r = await fetch(meta.url);
+            if (_r.ok) srcBlob = await _r.blob();
+            else console.warn('[V12.124]', entry.label, 'Airtable-fetch HTTP', _r.status);
+          } catch (e) { console.warn('[V12.124]', entry.label, 'Airtable-fetch failed:', e.message); }
+        }
+      }
+      if (!srcBlob) continue;
+      setProgress(entry.label + ' wird angehängt …');
       try {
-        const bytes = await uploadedFiles[num].arrayBuffer();
+        const bytes = await srcBlob.arrayBuffer();
         const srcDoc = await PDFDocument.load(bytes);
         const pages = await mergedDoc.copyPages(srcDoc, srcDoc.getPageIndices());
         pages.forEach(p => mergedDoc.addPage(p));
-      } catch(e) { console.warn('Append failed:', e); }
+      } catch(e) { console.warn('[V12.124] Append', entry.label, 'failed:', e); }
     }
 
     mergedDoc.setTitle('Reparaturangebot – Liftaro GmbH');
