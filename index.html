@@ -5818,7 +5818,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.117';
+const APP_VERSION = 'V12.118';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -23130,6 +23130,25 @@ function _erUseTestRecipient() {
 }
 window._erUseTestRecipient = _erUseTestRecipient;
 
+// V12.118: Anhang-Dropdown — wechselt zwischen mehreren verlinkten Check-PDFs
+function _erSetAttachByCheckId(cid) {
+  const e = (window._erEligibles || []).find(x => x.checkId === cid);
+  if (!e || !_erContext) return;
+  _erContext.checkRec = e.fields;
+  _erContext.pdfUrl = e.attachment.url;
+  _erContext.pdfName = e.attachment.filename || ('Liftaro_Check_' + cid + '.pdf');
+  const lbl = document.getElementById('erAttachActiveLabel');
+  if (lbl) {
+    const esc = s => String(s || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]));
+    lbl.innerHTML = '<span style="font-size:16px">📎</span><span style="color:var(--muted)"><strong>' +
+      esc(e.attachment.filename || 'check.pdf') + '</strong>' +
+      (e.attachment.size ? ' · ' + Math.round(e.attachment.size/1024) + ' KB' : '') +
+      ' · Check <strong>' + esc(cid) + '</strong></span>';
+  }
+  if (typeof showToast === 'function') showToast('Anhang gewechselt zu Check ' + cid, 'ok');
+}
+window._erSetAttachByCheckId = _erSetAttachByCheckId;
+
 async function openEmailReplyModal(recId) {
   const r = _eiAllRecords.find(x => x._id === recId);
   if (!r) { showToast('Email nicht gefunden', 'error'); return; }
@@ -23151,23 +23170,22 @@ async function openEmailReplyModal(recId) {
   document.getElementById('erStatus').textContent = '';
   document.getElementById('erSendBtn').disabled = false;
 
-  // Verlinkter Check vorhanden? → Full-PDF als Anhang vorbereiten
-  // V12.116: Robustere Suche — iteriert alle verlinkten Checks, probiert sowohl
-  // {id} als auch {requestId} und nimmt den ERSTEN gefundenen Check mit PDF.
+  // V12.116/V12.118: Verlinkter Check → PDF als Anhang vorbereiten.
+  //   - Iteriert ALLE verlinkten Checks, sortiert NEUESTE ZUERST (linked_check_ids
+  //     wird per push() befüllt — letzter Eintrag = neuester Check)
+  //   - Probiert sowohl {id} als auch {requestId} als Filter
+  //   - Bei mehreren Checks mit PDF: Dropdown zum Auswählen, Default = neuester
   const linkedIds = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
   const attachInfo = document.getElementById('erAttachInfo');
   if (linkedIds.length > 0) {
     attachInfo.innerHTML = `<span style="color:var(--muted)">Lade Check(s) ${_esc(linkedIds.join(', '))} und PDF …</span>`;
     try {
-      let foundCheck = null;
-      let foundPdfAtt = null;
-      let foundCheckId = null;
+      const eligibles = []; // { checkId, attachment, fields }
       const tried = [];
-      for (const cid of linkedIds) {
-        // 1. Try by id
+      const linkedIdsReversed = [...linkedIds].reverse(); // neueste zuerst
+      for (const cid of linkedIdsReversed) {
         let recs = await atRead('Checks', "{id}='" + cid.replace(/'/g, "\\'") + "'");
         tried.push({ cid, by: 'id', count: recs?.length || 0 });
-        // 2. Fallback: try by requestId
         if (!recs || !recs.length) {
           recs = await atRead('Checks', "{requestId}='" + cid.replace(/'/g, "\\'") + "'");
           tried.push({ cid, by: 'requestId', count: recs?.length || 0 });
@@ -23175,33 +23193,40 @@ async function openEmailReplyModal(recId) {
         if (!recs || !recs.length) continue;
         const fields = recs[0].fields;
         const pdfField = fields.ergebnis_pdf;
-        if (Array.isArray(pdfField) && pdfField.length && pdfField[0] && (pdfField[0].url || pdfField[0].id)) {
-          foundCheck = fields;
-          foundPdfAtt = pdfField[0];
-          foundCheckId = cid;
-          break;
+        if (Array.isArray(pdfField) && pdfField.length && pdfField[0] && pdfField[0].url) {
+          eligibles.push({ checkId: cid, attachment: pdfField[0], fields });
         }
-        // Erinnern für besseres Error-Reporting
-        if (!foundCheck) { foundCheck = fields; foundCheckId = cid; }
       }
-      console.log('[V12.116] Email-Reply Check-Lookup:', { linkedIds, tried, foundCheckId, hasPdf: !!foundPdfAtt });
-      if (foundPdfAtt && foundPdfAtt.url) {
-        _erContext.checkRec = foundCheck;
-        const att = foundPdfAtt;
-        attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt · Check ${_esc(foundCheckId)}</div></div></div>`;
-        _erContext.pdfUrl  = att.url;
-        _erContext.pdfName = att.filename || `Liftaro_Check_${foundCheckId}.pdf`;
-      } else if (foundCheck) {
-        // Check gefunden, aber kein PDF — vielleicht Field-Name falsch?
-        const fieldKeys = Object.keys(foundCheck);
-        const pdfKeys = fieldKeys.filter(k => /pdf|attachment|datei|file/i.test(k));
-        console.warn('[V12.116] Check gefunden, aber kein ergebnis_pdf. Available fields:', fieldKeys, 'Possible PDF fields:', pdfKeys);
-        attachInfo.innerHTML = `<span style="color:#b8740c">⚠ Check „${_esc(foundCheckId)}" hat noch kein Ergebnis-PDF in Airtable. Bitte im Check auf „PDF erstellen" klicken (das speichert es ins Feld ergebnis_pdf), dann nochmal antworten.<br><small style="font-size:10.5px;color:var(--muted)">Falls das PDF eigentlich da ist: Check-Tab öffnen, einmal „Speichern" klicken — manchmal hilft das.</small></span>`;
+      console.log('[V12.118] Email-Reply Check-Lookup:', { linkedIds, reversedOrder: linkedIdsReversed, tried, eligibles: eligibles.map(e => ({ id: e.checkId, file: e.attachment.filename })) });
+      if (eligibles.length === 0) {
+        attachInfo.innerHTML = `<span style="color:#b8740c">⚠ Keiner der verlinkten Checks (${_esc(linkedIds.join(', '))}) hat ein Ergebnis-PDF in Airtable. Bitte im Check auf „PDF erstellen" klicken, dann nochmal antworten.</span>`;
       } else {
-        attachInfo.innerHTML = `<span style="color:#a8312f">Check(s) „${_esc(linkedIds.join(', '))}" nicht in App-Base gefunden. (Lookup probiert: ${tried.length}× — siehe Console-Log)</span>`;
+        // Default: neuester Check mit PDF
+        const initial = eligibles[0];
+        _erContext.checkRec = initial.fields;
+        _erContext.pdfUrl = initial.attachment.url;
+        _erContext.pdfName = initial.attachment.filename || ('Liftaro_Check_' + initial.checkId + '.pdf');
+        window._erEligibles = eligibles;
+        if (eligibles.length === 1) {
+          const att = initial.attachment;
+          attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt · Check <strong>${_esc(initial.checkId)}</strong></div></div></div>`;
+        } else {
+          // V12.118: Mehrere Checks mit PDF — Dropdown
+          const opts = eligibles.map((e, i) =>
+            '<option value="' + _esc(e.checkId) + '"' + (i === 0 ? ' selected' : '') + '>Check ' + _esc(e.checkId) + ' · ' + _esc(e.attachment.filename || 'check.pdf') + (e.attachment.size ? ' (' + Math.round(e.attachment.size/1024) + ' KB)' : '') + (i === 0 ? ' — neuester' : '') + '</option>'
+          ).join('');
+          attachInfo.innerHTML =
+            '<div style="background:#fff7e6;border:1px solid #f0d4a8;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:11.5px;color:#7a4d00">' +
+              '⚠ Mehrere Checks verlinkt — bitte das richtige PDF auswählen:' +
+            '</div>' +
+            '<select onchange="_erSetAttachByCheckId(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:13px;background:#fff">' +
+              opts +
+            '</select>' +
+            '<div id="erAttachActiveLabel" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px"><span style="font-size:16px">📎</span><span style="color:var(--muted)"><strong>' + _esc(initial.attachment.filename || 'check.pdf') + '</strong> · Check <strong>' + _esc(initial.checkId) + '</strong></span></div>';
+        }
       }
     } catch (e) {
-      console.error('[V12.116] Email-Reply Check-Lookup-Fehler:', e);
+      console.error('[V12.118] Email-Reply Check-Lookup-Fehler:', e);
       attachInfo.innerHTML = `<span style="color:#a8312f">Fehler beim Laden des Checks: ${_esc(e.message)}</span>`;
     }
   } else {
@@ -23341,10 +23366,21 @@ async function doSendEmailReply() {
 
     // 3. POST an liftaroEmailSender (SMTP-Wrapper über All-Inkl)
     status.innerHTML = '<span style="color:var(--navy)">⏳ Sende über check@liftaro.de …</span>';
+    // V12.118: UTF-8-Fix — zusätzlich HTML-Version mit explizitem charset mitschicken,
+    // damit Umlaute auch dann korrekt ankommen, wenn der SMTP-Server die plain-text
+    // Variante ohne charset-Header weiterleitet. Empfänger-Clients bevorzugen die
+    // HTML-Version (multipart/alternative).
+    const _htmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const htmlBody =
+      '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"></head>' +
+      '<body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#1a1a1a">' +
+      _htmlEscape(body).replace(/\r?\n/g, '<br>') +
+      '</body></html>';
     const payload = {
       to:        to,
       subject:   subject,
       text:      body,
+      html:      htmlBody,        // V12.118
       replyTo:   'check@liftaro.de',
       inReplyTo: r.message_id || undefined,
     };
@@ -23353,7 +23389,7 @@ async function doSendEmailReply() {
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',   // V12.118: explizit UTF-8
         'X-App-Secret': APP_KEYS.emailSenderSecret,
       },
       body: JSON.stringify(payload),
