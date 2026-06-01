@@ -5827,7 +5827,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.124';
+const APP_VERSION = 'V12.125';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -12812,8 +12812,11 @@ async function generatePDF() {
     // Voll-PDF für Download-Button bereitstellen
     _fullResultPdfBlob = fullBlob;
     _fullResultPdfName = `Liftaro_Angebotscheck_${rid}.pdf`;
-    // Cover für nächsten Speichervorgang in Airtable bereitstellen
-    _pendingErgebnisPdfBlob = coverBlob;
+    // V12.125: VOLL-PDF (inkl. Original-Vertrag + Alternativ) statt nur Cover in
+    // Airtable speichern. Damit ist beim erneuten Öffnen des Checks das komplette
+    // PDF verfügbar (kein Neu-Generieren nötig) UND beim Email-Reply wird der
+    // Original-Vertrag automatisch mitgeschickt.
+    _pendingErgebnisPdfBlob = fullBlob;
     _pendingErgebnisPdfName = `Liftaro_Check_${rid}.pdf`;
 
     // Lokal in Ordner ablegen (nur, wenn der Nutzer einen Ordner gewählt hat)
@@ -21238,6 +21241,33 @@ async function buildCheckCoverBlob() {
     } else {
       const _fitOne = (checkType === 'wartung');
       await _canvasToA4Pages(doc, canvases[0], { fitToOnePage: _fitOne });
+    }
+    // V12.125: Vorliegenden Vertrag (1) und Alternativangebot (2) anhängen — analog
+    // zu generatePDF. Damit hat das auto-generierte ergebnis_pdf in Airtable den
+    // Original-Vertrag mit drin und beim Email-Reply ist alles komplett.
+    const _bcAttachMap = [
+      { num: 2, label: 'Alternativangebot',    metaKey: 'alternativ' },
+      { num: 1, label: 'Vorliegendes Angebot', metaKey: 'vorliegend' },
+    ];
+    for (const entry of _bcAttachMap) {
+      let srcBlob = uploadedFiles[entry.num] || null;
+      if (!srcBlob) {
+        const meta = window._currentCheckAttachmentMeta && window._currentCheckAttachmentMeta[entry.metaKey];
+        if (meta && meta.url) {
+          try {
+            const _r = await fetch(meta.url);
+            if (_r.ok) srcBlob = await _r.blob();
+            else console.warn('[V12.125] buildCheckCoverBlob:', entry.label, 'HTTP', _r.status);
+          } catch (e) { console.warn('[V12.125] buildCheckCoverBlob fetch failed:', e.message); }
+        }
+      }
+      if (!srcBlob) continue;
+      try {
+        const _srcBytes = await srcBlob.arrayBuffer();
+        const _srcDoc = await PDFLib.PDFDocument.load(_srcBytes);
+        const _pages = await doc.copyPages(_srcDoc, _srcDoc.getPageIndices());
+        _pages.forEach(p => doc.addPage(p));
+      } catch (e) { console.warn('[V12.125] buildCheckCoverBlob append', entry.label, 'failed:', e.message); }
     }
     const bytes = await doc.save();
     return new Blob([bytes], { type: 'application/pdf' });
