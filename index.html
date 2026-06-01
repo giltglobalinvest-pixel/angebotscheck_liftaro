@@ -5827,7 +5827,19 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.125';
+const APP_VERSION = 'V12.126';
+
+// V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
+//   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
+//   - Vor V12.125 wurde das Cover-only PDF (~200 KB) gespeichert.
+//   - Ab V12.125 wird das Voll-PDF (mit Original-Vertrag) gespeichert.
+//   - Das Voll-PDF ist IMMER deutlich größer als das Cover.
+//   - Deshalb wählen wir das GRÖSSTE — robust gegen Order-Inkonsistenzen
+//     und gegen Legacy-Cover-Einträge in alten Records.
+function pickBestErgebnisAttachment(arr) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return arr.reduce((best, a) => (!best || (a.size||0) > (best.size||0)) ? a : best, null);
+}
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -8800,6 +8812,18 @@ async function saveCheck(reporter) {
         const stepKey = 'upload_' + u.field;
         r.step(stepKey, `Upload ${u.field}: ${u.name}`);
         try {
+          // V12.126: Vor ergebnis_pdf-Upload das Feld leeren — sonst sammeln sich
+          // bei jedem Save alte Versionen an (Airtable uploadAttachment APPENDED).
+          // Damit ist im Array IMMER nur das aktuellste Voll-PDF (V12.125), und
+          // die Email-Reply hängt zuverlässig die richtige Datei an.
+          if (u.field === 'ergebnis_pdf') {
+            try {
+              await atUpdate('Checks', recordId, { ergebnis_pdf: [] });
+              console.log('[V12.126] ergebnis_pdf field cleared before new upload');
+            } catch (clrErr) {
+              console.warn('[V12.126] ergebnis_pdf clear failed (continuing with append):', clrErr.message);
+            }
+          }
           await atUploadAttachment(recordId, u.field, u.blob, u.name);
           r.done(stepKey, `${(u.blob.size/1024).toFixed(0)} KB hochgeladen`);
         } catch(e) {
@@ -9283,7 +9307,9 @@ async function loadCheck(data) {
   window._currentCheckAttachmentMeta = {
     vorliegend: (data._attVorliegend && data._attVorliegend[0]) || null,
     alternativ: (data._attAlternativ && data._attAlternativ[0]) || null,
-    ergebnis:   (data._attErgebnis   && data._attErgebnis[0])   || null,
+    // V12.126: GRÖSSTES Attachment nehmen (= Voll-PDF mit Vertrag), nicht [0]
+    // (= ältestes = Pre-V12.125 Cover-only). Siehe pickBestErgebnisAttachment.
+    ergebnis:   pickBestErgebnisAttachment(data._attErgebnis),
   };
   const attMap = [
     { num: 1, key: 'fetch_vorliegendes_pdf', list: data._attVorliegend, slot: 1 },
@@ -9317,8 +9343,31 @@ async function loadCheck(data) {
     }
   }
   if (data._attErgebnis && data._attErgebnis.length) {
+    // V12.126: bestes (= größtes) Attachment auswählen
+    const bestErg = pickBestErgebnisAttachment(data._attErgebnis);
     r.step('fetch_ergebnis_pdf');
-    r.done('fetch_ergebnis_pdf', `${(data._attErgebnis[0].size/1024).toFixed(0)} KB vorhanden`);
+    r.done('fetch_ergebnis_pdf', `${((bestErg && bestErg.size || 0)/1024).toFixed(0)} KB vorhanden`);
+    // V12.126: Das gespeicherte Voll-PDF in _fullResultPdfBlob restaurieren,
+    // damit der "Gesamt-PDF herunterladen"-Button nach Re-Open ohne erneutes
+    // "PDF erstellen" sofort funktioniert.
+    if (bestErg && bestErg.url) {
+      (async () => {
+        try {
+          const _resp = await fetch(bestErg.url);
+          if (!_resp.ok) return;
+          const _blob = await _resp.blob();
+          _fullResultPdfBlob = _blob;
+          _fullResultPdfName = bestErg.filename || ('Liftaro_Check_' + (data.requestId || data.id || 'neu') + '.pdf');
+          const _btnDl = document.getElementById('btnDownloadFull');
+          if (_btnDl) _btnDl.style.display = 'inline-flex';
+          const _mobDl = document.getElementById('mobileDownloadFullBtn');
+          if (_mobDl) _mobDl.style.display = 'flex';
+          console.log('[V12.126] _fullResultPdfBlob restored:', (_blob.size/1024).toFixed(0), 'KB ·', _fullResultPdfName);
+        } catch (e) {
+          console.warn('[V12.126] _fullResultPdfBlob restore failed:', e.message);
+        }
+      })();
+    }
   }
   updateStatus();
   r.finish(true);
@@ -9327,7 +9376,9 @@ async function loadCheck(data) {
   if (typeof renderMobileResultPdf === 'function') {
     const vUrl = (data._attVorliegend && data._attVorliegend.length) ? data._attVorliegend[0].url : '';
     const aUrl = (data._attAlternativ && data._attAlternativ.length) ? data._attAlternativ[0].url : '';
-    const ergUrl = (data._attErgebnis  && data._attErgebnis.length)  ? data._attErgebnis[0].url  : '';
+    // V12.126: bestes (= größtes) ergebnis_pdf für Mobile-Thumbnail
+    const _bestErgForMob = pickBestErgebnisAttachment(data._attErgebnis);
+    const ergUrl = _bestErgForMob ? _bestErgForMob.url : '';
     renderMobileVorliegendPdf(vUrl);
     renderMobileAlternativPdf(aUrl);
     renderMobileResultPdf(ergUrl);
@@ -21115,8 +21166,10 @@ async function buildRechnungPDF() {
         const recs = await atRead('Checks', "{id}='" + d.check_id + "'");
         const rec = recs && recs[0];
         const att = rec?.fields?.ergebnis_pdf;
-        if (att && att.length && att[0].url) {
-          const resp = await fetch(att[0].url);
+        // V12.126: bestes (= größtes) Attachment nehmen statt [0]
+        const bestAtt = pickBestErgebnisAttachment(att);
+        if (bestAtt && bestAtt.url) {
+          const resp = await fetch(bestAtt.url);
           if (resp.ok) checkPdfBlob = await resp.blob();
         }
       } catch(e) { console.warn('Check-PDF-Lookup:', e.message); }
@@ -23333,11 +23386,13 @@ async function openEmailReplyModal(recId) {
         const fields = recs[0].fields;
         const pdfField = fields.ergebnis_pdf;
         if (Array.isArray(pdfField) && pdfField.length) {
-          // V12.120: ALLE Attachments im Feld loggen + IMMER das LETZTE (neueste) nehmen.
-          // Airtable hängt neue Uploads ans Ende des Arrays — [0] wäre der ÄLTESTE.
-          console.log('[V12.120] ergebnis_pdf Array für Check ' + cid + ':', pdfField.map((a, i) => ({ i, filename: a.filename, size: a.size, id: a.id })));
-          const latest = pdfField[pdfField.length - 1];
+          // V12.126: Statt "letztes Element" (Order nicht garantiert + alte Cover-
+          // Versionen können letztes sein) das GRÖSSTE Attachment wählen. Voll-PDF
+          // (mit Original-Vertrag, V12.125) ist immer > Cover-only.
+          console.log('[V12.126] ergebnis_pdf Array für Check ' + cid + ':', pdfField.map((a, i) => ({ i, filename: a.filename, size: a.size, id: a.id })));
+          const latest = pickBestErgebnisAttachment(pdfField);
           if (latest && latest.url) {
+            console.log('[V12.126] gewählt: idx=' + pdfField.indexOf(latest) + ', size=' + latest.size + ', file=' + latest.filename);
             eligibles.push({ checkId: cid, attachment: latest, fields });
           }
         }
