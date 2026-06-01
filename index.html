@@ -5814,7 +5814,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.115';
+const APP_VERSION = 'V12.116';
 
 // ── PWA: Service-Worker registrieren + Install-Prompt-Handling ────
 (function _initPWA() {
@@ -23115,28 +23115,56 @@ async function openEmailReplyModal(recId) {
   document.getElementById('erSendBtn').disabled = false;
 
   // Verlinkter Check vorhanden? → Full-PDF als Anhang vorbereiten
+  // V12.116: Robustere Suche — iteriert alle verlinkten Checks, probiert sowohl
+  // {id} als auch {requestId} und nimmt den ERSTEN gefundenen Check mit PDF.
   const linkedIds = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
   const attachInfo = document.getElementById('erAttachInfo');
   if (linkedIds.length > 0) {
-    attachInfo.innerHTML = `<span style="color:var(--muted)">Lade Check ${_esc(linkedIds[0])} und PDF …</span>`;
+    attachInfo.innerHTML = `<span style="color:var(--muted)">Lade Check(s) ${_esc(linkedIds.join(', '))} und PDF …</span>`;
     try {
-      const checkRecs = await atRead('Checks', "{id}='" + linkedIds[0] + "'");
-      if (checkRecs && checkRecs.length) {
-        _erContext.checkRec = checkRecs[0].fields;
-        const pdfField = checkRecs[0].fields.ergebnis_pdf;
-        if (Array.isArray(pdfField) && pdfField[0] && pdfField[0].url) {
-          const att = pdfField[0];
-          attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt</div></div></div>`;
-          // PDF lazy laden (erst beim Senden)
-          _erContext.pdfUrl  = att.url;
-          _erContext.pdfName = att.filename || `Liftaro_Check_${linkedIds[0]}.pdf`;
-        } else {
-          attachInfo.innerHTML = `<span style="color:#b8740c">⚠ Check „${_esc(linkedIds[0])}" hat noch kein Ergebnis-PDF. Bitte erst im Check „PDF erstellen" ausführen, dann nochmal antworten.</span>`;
+      let foundCheck = null;
+      let foundPdfAtt = null;
+      let foundCheckId = null;
+      const tried = [];
+      for (const cid of linkedIds) {
+        // 1. Try by id
+        let recs = await atRead('Checks', "{id}='" + cid.replace(/'/g, "\\'") + "'");
+        tried.push({ cid, by: 'id', count: recs?.length || 0 });
+        // 2. Fallback: try by requestId
+        if (!recs || !recs.length) {
+          recs = await atRead('Checks', "{requestId}='" + cid.replace(/'/g, "\\'") + "'");
+          tried.push({ cid, by: 'requestId', count: recs?.length || 0 });
         }
+        if (!recs || !recs.length) continue;
+        const fields = recs[0].fields;
+        const pdfField = fields.ergebnis_pdf;
+        if (Array.isArray(pdfField) && pdfField.length && pdfField[0] && (pdfField[0].url || pdfField[0].id)) {
+          foundCheck = fields;
+          foundPdfAtt = pdfField[0];
+          foundCheckId = cid;
+          break;
+        }
+        // Erinnern für besseres Error-Reporting
+        if (!foundCheck) { foundCheck = fields; foundCheckId = cid; }
+      }
+      console.log('[V12.116] Email-Reply Check-Lookup:', { linkedIds, tried, foundCheckId, hasPdf: !!foundPdfAtt });
+      if (foundPdfAtt && foundPdfAtt.url) {
+        _erContext.checkRec = foundCheck;
+        const att = foundPdfAtt;
+        attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt · Check ${_esc(foundCheckId)}</div></div></div>`;
+        _erContext.pdfUrl  = att.url;
+        _erContext.pdfName = att.filename || `Liftaro_Check_${foundCheckId}.pdf`;
+      } else if (foundCheck) {
+        // Check gefunden, aber kein PDF — vielleicht Field-Name falsch?
+        const fieldKeys = Object.keys(foundCheck);
+        const pdfKeys = fieldKeys.filter(k => /pdf|attachment|datei|file/i.test(k));
+        console.warn('[V12.116] Check gefunden, aber kein ergebnis_pdf. Available fields:', fieldKeys, 'Possible PDF fields:', pdfKeys);
+        attachInfo.innerHTML = `<span style="color:#b8740c">⚠ Check „${_esc(foundCheckId)}" hat noch kein Ergebnis-PDF in Airtable. Bitte im Check auf „PDF erstellen" klicken (das speichert es ins Feld ergebnis_pdf), dann nochmal antworten.<br><small style="font-size:10.5px;color:var(--muted)">Falls das PDF eigentlich da ist: Check-Tab öffnen, einmal „Speichern" klicken — manchmal hilft das.</small></span>`;
       } else {
-        attachInfo.innerHTML = `<span style="color:#a8312f">Check „${_esc(linkedIds[0])}" nicht in App-Base gefunden</span>`;
+        attachInfo.innerHTML = `<span style="color:#a8312f">Check(s) „${_esc(linkedIds.join(', '))}" nicht in App-Base gefunden. (Lookup probiert: ${tried.length}× — siehe Console-Log)</span>`;
       }
     } catch (e) {
+      console.error('[V12.116] Email-Reply Check-Lookup-Fehler:', e);
       attachInfo.innerHTML = `<span style="color:#a8312f">Fehler beim Laden des Checks: ${_esc(e.message)}</span>`;
     }
   } else {
