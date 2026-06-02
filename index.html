@@ -5840,7 +5840,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.132';
+const APP_VERSION = 'V12.133';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -9368,7 +9368,10 @@ async function loadCheck(data) {
   ];
   let loadedFromAirtable = false;
   for (const a of attMap) {
-    if (!a.list || !a.list.length) continue;
+    if (!a.list || !a.list.length) {
+      console.log('[V12.133] loadCheck slot ' + a.slot + ': KEIN Attachment in data._att' + (a.slot === 1 ? 'Vorliegend' : 'Alternativ'));
+      continue;
+    }
     const att = a.list[0]; // wir speichern jeweils nur eine Datei pro Feld
     r.step(a.key);
     try {
@@ -9387,9 +9390,10 @@ async function loadCheck(data) {
       const rb = document.getElementById('reanalyzeBtn' + a.slot);
       if (rb) rb.classList.add('visible');
       r.done(a.key, `${(blob.size/1024).toFixed(0)} KB · ${file.name}`);
+      console.log('[V12.133] loadCheck slot ' + a.slot + ': fetched OK — ' + (blob.size/1024).toFixed(0) + ' KB, name=' + file.name + ', type=' + (blob.type || '?'));
       loadedFromAirtable = true;
     } catch(e) {
-      console.warn('Attachment-Download fehlgeschlagen:', a.key, e.message);
+      console.warn('[V12.133] loadCheck slot ' + a.slot + ': FETCH FAIL — ' + e.message + ' (URL: ' + (att.url || 'n/a').slice(0, 80) + '…)');
       r.error(a.key, e.message);
     }
   }
@@ -12141,7 +12145,22 @@ function downloadFullResult() {
 
 async function openPreview(num) {
   const file = uploadedFiles[num];
-  if (!file) return;
+  // V12.133: Diagnose-Log + klarer Fehler statt silent return wenn File leer
+  console.log('[V12.133] openPreview(' + num + ') — uploadedFiles[' + num + ']=' +
+    (file ? '{name="' + file.name + '", size=' + file.size + ', type="' + file.type + '"}' : 'NULL'));
+  if (!file) {
+    if (typeof showToast === 'function') {
+      showToast('Datei nicht im Speicher — bitte Check neu laden oder Datei manuell hochladen', 'error');
+    }
+    return;
+  }
+  if (file.size === 0) {
+    if (typeof showToast === 'function') {
+      showToast('Datei ist leer (0 Bytes) — wahrscheinlich Download-Fehler beim Check-Laden', 'error');
+    }
+    console.warn('[V12.133] openPreview: file.size=0');
+    return;
+  }
 
   // Zoom auf 100% zurücksetzen, wenn neue PDF geöffnet wird
   previewZoom = 1.0;
@@ -12155,12 +12174,23 @@ async function openPreview(num) {
   document.getElementById('previewWrap').innerHTML =
     '<div class="preview-loading"><div class="spin" style="width:20px;height:20px;border:3px solid #555;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite"></div> Wird geladen …</div>';
 
-  await pdfWorkerReady;
-  const arrayBuffer = await file.arrayBuffer();
-  previewPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
-  previewTotalPages = previewPdfDoc.numPages;
-
-  await renderAllPreviewPages();
+  try {
+    await pdfWorkerReady;
+    const arrayBuffer = await file.arrayBuffer();
+    previewPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+    previewTotalPages = previewPdfDoc.numPages;
+    console.log('[V12.133] openPreview: pdfjs loaded ' + previewTotalPages + ' page(s)');
+    await renderAllPreviewPages();
+  } catch (e) {
+    console.error('[V12.133] openPreview: PDF konnte nicht gerendert werden:', e);
+    document.getElementById('previewWrap').innerHTML =
+      `<div style="padding:30px;text-align:center;color:#a8312f;font-family:'DM Sans',sans-serif">
+        <div style="font-size:32px;margin-bottom:8px">⚠</div>
+        <div style="font-weight:600;margin-bottom:6px">PDF kann nicht angezeigt werden</div>
+        <div style="font-size:12px;color:var(--muted)">${_esc(e.message || 'Unbekannter Fehler')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Datei evtl. verschlüsselt / kein gültiges PDF / nur Bild</div>
+      </div>`;
+  }
 }
 
 async function renderAllPreviewPages() {
@@ -12869,7 +12899,9 @@ async function generatePDF() {
         _gpDiag.push({ field: entry.label, source: srcSource, sizeKB: (srcBlob.size/1024).toFixed(0), result: 'FAIL: ' + e.message });
       }
     }
-    console.log('[V12.132] generatePDF append-Diagnose:', _gpDiag);
+    // V12.133: Diag-Log als JSON-string + console.table — sofort lesbar ohne Expand
+    console.log('[V12.133] generatePDF append-Diagnose:\n' + JSON.stringify(_gpDiag, null, 2));
+    try { console.table(_gpDiag); } catch(_){}
 
     mergedDoc.setTitle('Reparaturangebot – Liftaro GmbH');
     mergedDoc.setAuthor('Liftaro GmbH');
