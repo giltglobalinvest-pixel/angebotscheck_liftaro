@@ -5827,7 +5827,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.127';
+const APP_VERSION = 'V12.128';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -13928,6 +13928,44 @@ async function applyPartnerAnfrageVariant(anfrageId) {
     try { recomputeWartungKuendigung('a'); } catch (_) {}
   }
   showToast(`Variante von ${a.partner_name || a.partner_id} übernommen — Vergleichstabelle gefüllt`, 'success', 3500);
+
+  // V12.128: Partner-Angebot-PDF als Alternativangebot übernehmen.
+  // Das Backend speichert das vom Partner eingereichte PDF in `response_pdf`
+  // (Airtable-Attachment-Array). Wir laden es als File in uploadedFiles[2],
+  // damit es im Ergebnis-PDF (Cover + Vorliegend + Alternativ) als Anhang
+  // landet und somit auch im Email-Reply mitgeschickt wird.
+  const pdfAtt = Array.isArray(a.response_pdf) ? a.response_pdf[0] : null;
+  if (pdfAtt && pdfAtt.url) {
+    try {
+      showToast('Partner-Angebot-PDF wird geladen …', 'ok', 2500);
+      const pdfResp = await fetch(pdfAtt.url);
+      if (pdfResp.ok) {
+        const pdfBlob = await pdfResp.blob();
+        const partnerName = a.partner_name || a.partner_id || 'Partner';
+        const safeName = pdfAtt.filename || (`Angebot_${partnerName}.pdf`.replace(/[/\\?%*:|"<>]/g, '_'));
+        uploadedFiles[2] = new File([pdfBlob], safeName, { type: pdfBlob.type || 'application/pdf' });
+        const zone2 = document.getElementById('zone2');
+        if (zone2) zone2.classList.add('has-file');
+        const fname2El = document.getElementById('fname2');
+        if (fname2El) fname2El.textContent = '✓ ' + safeName + ' (Partner)';
+        const pb2 = document.getElementById('previewBtn2');
+        if (pb2) pb2.classList.add('visible');
+        const rb2 = document.getElementById('reanalyzeBtn2');
+        if (rb2) rb2.classList.add('visible');
+        if (typeof updateStatus === 'function') updateStatus();
+        console.log('[V12.128] Partner-Angebot als Alternativangebot übernommen:', safeName, '·', (pdfBlob.size/1024).toFixed(0) + ' KB');
+        showToast('Partner-PDF als Alternativangebot übernommen (' + (pdfBlob.size/1024).toFixed(0) + ' KB)', 'success', 3500);
+      } else {
+        console.warn('[V12.128] Partner-Angebot-PDF-Fetch HTTP', pdfResp.status);
+        showToast('Partner-PDF konnte nicht geladen werden (HTTP ' + pdfResp.status + ')', 'error', 4000);
+      }
+    } catch (e) {
+      console.warn('[V12.128] Partner-Angebot-PDF konnte nicht geladen werden:', e.message);
+      showToast('Partner-PDF-Fetch fehlgeschlagen: ' + e.message, 'error', 4000);
+    }
+  } else {
+    console.log('[V12.128] Anfrage ohne response_pdf — kein Partner-PDF zum Übernehmen');
+  }
   // V12.15 Phase 4: aktive Wahl in Airtable markieren (und andere Varianten desselben Checks unmarkieren)
   try {
     const now = new Date().toISOString();
