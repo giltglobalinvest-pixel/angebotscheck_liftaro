@@ -449,7 +449,10 @@
           </div>
 
           <div class="field">
-            <label class="label">PDF-Angebot anhängen <span style="color:var(--ink-subtle);text-transform:none">(optional, max 8 MB)</span></label>
+            <label class="label">PDF-Angebot anhängen <span style="color:#9F1B1F;font-weight:700;text-transform:none">★ dringend empfohlen</span> <span style="color:var(--ink-subtle);text-transform:none">(max 8 MB)</span></label>
+            <div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.5;margin-bottom:8px">
+              <strong>⚠ Ohne PDF kann die Hausverwaltung Ihr Angebot nicht als formales Dokument prüfen.</strong> Wir leiten die PDF 1:1 mit unserer Vergleichs-Analyse an die WEG weiter. Ohne Anhang müssen wir Sie manuell nachfassen und das verzögert die Auftragserteilung.
+            </div>
             <div id="pdfZone" class="pdf-zone" onclick="document.getElementById('pdfFile').click()">
               <div id="pdfZoneText">📎 Klick hier um Ihr Angebots-PDF anzuhängen — oder Drag&amp;Drop</div>
             </div>
@@ -725,6 +728,15 @@
     const laufzeit = parseInt(get('f_laufzeit'), 10);
     if (!preisRaw || isNaN(preis) || preis <= 0) { showSubmitStatus('Bitte gültigen Preis netto eingeben', 'error'); return; }
     if (!laufzeit || laufzeit < 1) { showSubmitStatus('Bitte Laufzeit (Jahre) eingeben', 'error'); return; }
+
+    // Hinweis: ohne PDF noch einmal bestätigen lassen — wir möchten dass das
+    // Angebots-PDF immer mitgeliefert wird (sonst muss Liftaro manuell nachfassen).
+    if (!_pdfBase64 || !_pdfFile) {
+      const ok = confirm('Sie senden das Angebot OHNE PDF-Anhang ab.\n\n' +
+        'Ohne PDF kann die Hausverwaltung Ihr Angebot nicht formal prüfen und Liftaro muss bei Ihnen manuell nachfassen — das verzögert die Auftragserteilung.\n\n' +
+        'Trotzdem ohne PDF absenden?');
+      if (!ok) return;
+    }
 
     const body = {
       response_offer_id:               get('f_offer_id'),
