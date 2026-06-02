@@ -4088,8 +4088,17 @@ const pdfWorkerReady = Promise.resolve();</script>
         <textarea id="erBody" style="width:100%;min-height:240px;border:1.5px solid var(--border);border-radius:7px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.65;background:var(--sky);resize:vertical;white-space:pre-wrap"></textarea>
       </div>
       <div id="erAttachmentBox" style="background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Anhang</div>
-        <div id="erAttachInfo" style="font-size:12px;color:var(--text);line-height:1.5">Wird geladen …</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Anhänge <span id="erAttachCountBadge" style="display:none;background:var(--navy);color:#fff;border-radius:999px;padding:1px 8px;font-size:10px;margin-left:4px"></span></div>
+          <button type="button" id="erAddAttachBtn" onclick="document.getElementById('erAddAttachInput').click()" style="background:#fff;border:1.5px solid var(--border);color:var(--navy);border-radius:6px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Datei(en) hinzufügen — PDF, Bild, Doc, beliebig">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Datei hinzufügen
+          </button>
+          <input type="file" id="erAddAttachInput" multiple style="display:none" onchange="_erHandleManualFiles(this.files); this.value='';">
+        </div>
+        <div id="erCheckSwitcher" style="display:none"></div>
+        <div id="erAttachInfo" style="font-size:12px;color:var(--text);line-height:1.5;display:flex;flex-direction:column;gap:6px">Wird geladen …</div>
+        <div id="erAttachTotalSize" style="font-size:10.5px;color:var(--muted);font-style:italic;display:none"></div>
       </div>
       <div id="erStatus" style="font-size:12px;color:var(--muted);min-height:18px"></div>
     </div>
@@ -5827,7 +5836,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.129';
+const APP_VERSION = 'V12.130';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23389,22 +23398,162 @@ function _erUseTestRecipient() {
 }
 window._erUseTestRecipient = _erUseTestRecipient;
 
-// V12.118: Anhang-Dropdown — wechselt zwischen mehreren verlinkten Check-PDFs
+// ────────────────────────────────────────────────────────────────────
+// V12.130: Multi-Attachment-Verwaltung im Email-Reply-Modal
+// ────────────────────────────────────────────────────────────────────
+// Datenstruktur: _erContext.attachments = [
+//   { id, kind: 'check'|'manual',
+//     filename, size, contentType,
+//     url? (kind=check),  blob? (kind=manual) }
+// ]
+// kind='check' wird beim Öffnen / Check-Dropdown-Wechsel gesetzt — ein
+// Eintrag pro aktivem Check-PDF. Manuell hinzugefügte Dateien sind
+// kind='manual' und bleiben auch beim Check-Wechsel erhalten.
+
+let _erAttachIdCounter = 0;
+function _erNextAttachId() { _erAttachIdCounter++; return 'erA_' + _erAttachIdCounter; }
+
+function _erRenderAttachmentList() {
+  if (!_erContext || !Array.isArray(_erContext.attachments)) return;
+  const host = document.getElementById('erAttachInfo');
+  if (!host) return;
+  const arr = _erContext.attachments;
+  // Count-Badge + Total-Size
+  const badge = document.getElementById('erAttachCountBadge');
+  if (badge) {
+    if (arr.length > 0) {
+      badge.textContent = String(arr.length);
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+  const total = arr.reduce((s, a) => s + (a.size || 0), 0);
+  const totalEl = document.getElementById('erAttachTotalSize');
+  if (totalEl) {
+    if (arr.length > 1) {
+      const warn = total > 20 * 1024 * 1024 ? ' ⚠ über 20 MB — manche Mail-Server lehnen ab' : '';
+      totalEl.textContent = `Summe: ${(total/1024).toFixed(0)} KB${warn}`;
+      totalEl.style.color = total > 20 * 1024 * 1024 ? '#9F1B1F' : 'var(--muted)';
+      totalEl.style.display = 'block';
+    } else {
+      totalEl.style.display = 'none';
+    }
+  }
+  if (arr.length === 0) {
+    host.innerHTML = '<div style="color:var(--muted);font-style:italic;padding:6px 2px">Keine Anhänge — Klick „Datei hinzufügen" um etwas anzuhängen.</div>';
+    return;
+  }
+  host.innerHTML = arr.map((a, i) => {
+    const sizeStr = a.size ? Math.round(a.size/1024) + ' KB' : '?';
+    const meta = a.kind === 'check'
+      ? `Check ${_esc(a.checkId || '?')}`
+      : 'eigene Datei';
+    const icon = (a.contentType || '').startsWith('image/') ? '🖼' :
+                 (a.contentType || '').includes('pdf')      ? '📎' :
+                 (a.contentType || '').startsWith('text/')   ? '📄' : '📎';
+    return `<div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:6px;padding:7px 10px">
+        <span style="font-size:16px">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(a.filename)}">${_esc(a.filename)}</div>
+          <div style="font-size:11px;color:var(--muted)">${sizeStr} · ${meta}</div>
+        </div>
+        <button type="button" onclick="_erPreviewAttachById('${a.id}')" title="Vorschau" style="background:transparent;border:1.5px solid var(--border);color:var(--navy);border-radius:5px;padding:4px 9px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Vorschau
+        </button>
+        <button type="button" onclick="_erRemoveAttachById('${a.id}')" title="Entfernen" style="background:transparent;border:1.5px solid #f0c5c5;color:#a8312f;border-radius:5px;padding:4px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;line-height:1">×</button>
+      </div>`;
+  }).join('');
+}
+window._erRenderAttachmentList = _erRenderAttachmentList;
+
+function _erRemoveAttachById(id) {
+  if (!_erContext || !Array.isArray(_erContext.attachments)) return;
+  const idx = _erContext.attachments.findIndex(a => a.id === id);
+  if (idx < 0) return;
+  const removed = _erContext.attachments.splice(idx, 1)[0];
+  _erRenderAttachmentList();
+  if (typeof showToast === 'function') showToast('Anhang entfernt: ' + (removed.filename || ''), 'ok');
+}
+window._erRemoveAttachById = _erRemoveAttachById;
+
+async function _erPreviewAttachById(id) {
+  if (!_erContext || !Array.isArray(_erContext.attachments)) return;
+  const a = _erContext.attachments.find(x => x.id === id);
+  if (!a) return;
+  try {
+    let blob = a.blob || null;
+    if (!blob && a.url) {
+      if (typeof showToast === 'function') showToast('Lade Vorschau …', 'ok');
+      const res = await fetch(a.url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      blob = await res.blob();
+    }
+    if (!blob) throw new Error('Keine Quelle (weder URL noch Blob)');
+    const objUrl = URL.createObjectURL(blob);
+    const w = window.open(objUrl, '_blank');
+    if (!w && typeof showToast === 'function') showToast('Pop-up blockiert', 'error');
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+  } catch (e) {
+    console.error('[V12.130] Anhang-Vorschau fehlgeschlagen:', e);
+    if (typeof showToast === 'function') showToast('Vorschau fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+window._erPreviewAttachById = _erPreviewAttachById;
+
+function _erHandleManualFiles(fileList) {
+  if (!_erContext) return;
+  if (!Array.isArray(_erContext.attachments)) _erContext.attachments = [];
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  let added = 0;
+  for (const f of files) {
+    if (f.size > 20 * 1024 * 1024) {
+      if (typeof showToast === 'function') showToast(`„${f.name}" (${(f.size/1024/1024).toFixed(1)} MB) > 20 MB — bitte kleiner machen`, 'error');
+      continue;
+    }
+    _erContext.attachments.push({
+      id: _erNextAttachId(),
+      kind: 'manual',
+      filename: f.name,
+      size: f.size,
+      contentType: f.type || 'application/octet-stream',
+      blob: f,
+    });
+    added++;
+  }
+  _erRenderAttachmentList();
+  if (added && typeof showToast === 'function') {
+    showToast(added === 1 ? `1 Anhang hinzugefügt` : `${added} Anhänge hinzugefügt`, 'ok');
+  }
+}
+window._erHandleManualFiles = _erHandleManualFiles;
+
+// V12.118 (+ V12.130 multi-attach): Check-Dropdown — ersetzt im
+// _erContext.attachments den vorhandenen kind='check' Eintrag durch
+// den neuen. Manuell hinzugefügte Anhänge (kind='manual') bleiben.
 function _erSetAttachByCheckId(cid) {
   const e = (window._erEligibles || []).find(x => x.checkId === cid);
   if (!e || !_erContext) return;
   _erContext.checkRec = e.fields;
+  // Backcompat-Pointer (manche andere Stellen lesen das noch)
   _erContext.pdfUrl = e.attachment.url;
   _erContext.pdfName = e.attachment.filename || ('Liftaro_Check_' + cid + '.pdf');
-  const lbl = document.getElementById('erAttachActiveLabel');
-  if (lbl) {
-    const esc = s => String(s || '').replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c]));
-    lbl.innerHTML = '<span style="font-size:16px">📎</span><span style="color:var(--muted)"><strong>' +
-      esc(e.attachment.filename || 'check.pdf') + '</strong>' +
-      (e.attachment.size ? ' · ' + Math.round(e.attachment.size/1024) + ' KB' : '') +
-      ' · Check <strong>' + esc(cid) + '</strong></span>';
-  }
-  if (typeof showToast === 'function') showToast('Anhang gewechselt zu Check ' + cid, 'ok');
+  if (!Array.isArray(_erContext.attachments)) _erContext.attachments = [];
+  // Bestehenden kind='check' Eintrag entfernen, neuen vorne reinpacken
+  _erContext.attachments = _erContext.attachments.filter(a => a.kind !== 'check');
+  _erContext.attachments.unshift({
+    id: _erNextAttachId(),
+    kind: 'check',
+    checkId: cid,
+    filename: e.attachment.filename || ('Liftaro_Check_' + cid + '.pdf'),
+    size: e.attachment.size || 0,
+    contentType: 'application/pdf',
+    url: e.attachment.url,
+  });
+  _erRenderAttachmentList();
+  if (typeof showToast === 'function') showToast('Check-Anhang gewechselt zu ' + cid, 'ok');
 }
 window._erSetAttachByCheckId = _erSetAttachByCheckId;
 
@@ -23442,7 +23591,7 @@ async function openEmailReplyModal(recId) {
     showToast('Email-Sender nicht konfiguriert — bitte App neu laden (Master-Base "emailSenderUrl"/"emailSenderSecret")', 'error');
     return;
   }
-  _erContext = { emailRec: r, checkRec: null, pdfBlob: null, pdfName: null, testMode: false };
+  _erContext = { emailRec: r, checkRec: null, pdfBlob: null, pdfName: null, testMode: false, attachments: [] };
 
   // V12.117: Test-Banner zurücksetzen
   const _tb = document.getElementById('erTestBanner');
@@ -23464,10 +23613,15 @@ async function openEmailReplyModal(recId) {
   //     wird per push() befüllt — letzter Eintrag = neuester Check)
   //   - Probiert sowohl {id} als auch {requestId} als Filter
   //   - Bei mehreren Checks mit PDF: Dropdown zum Auswählen, Default = neuester
-  const linkedIds = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  // V12.130: Initial Liste rendern (leer) + Check-Switcher zurücksetzen
+  const _switcher = document.getElementById('erCheckSwitcher');
+  if (_switcher) { _switcher.style.display = 'none'; _switcher.innerHTML = ''; }
   const attachInfo = document.getElementById('erAttachInfo');
+  attachInfo.innerHTML = '<span style="color:var(--muted)">Lade Anhänge …</span>';
+  _erRenderAttachmentList();
+
+  const linkedIds = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
   if (linkedIds.length > 0) {
-    attachInfo.innerHTML = `<span style="color:var(--muted)">Lade Check(s) ${_esc(linkedIds.join(', '))} und PDF …</span>`;
     try {
       const eligibles = []; // { checkId, attachment, fields }
       const tried = [];
@@ -23496,43 +23650,46 @@ async function openEmailReplyModal(recId) {
       }
       console.log('[V12.118] Email-Reply Check-Lookup:', { linkedIds, reversedOrder: linkedIdsReversed, tried, eligibles: eligibles.map(e => ({ id: e.checkId, file: e.attachment.filename })) });
       if (eligibles.length === 0) {
-        attachInfo.innerHTML = `<span style="color:#b8740c">⚠ Keiner der verlinkten Checks (${_esc(linkedIds.join(', '))}) hat ein Ergebnis-PDF in Airtable. Bitte im Check auf „PDF erstellen" klicken, dann nochmal antworten.</span>`;
+        attachInfo.innerHTML = `<div style="color:#b8740c;padding:6px 2px">⚠ Keiner der verlinkten Checks (${_esc(linkedIds.join(', '))}) hat ein Ergebnis-PDF in Airtable. Bitte im Check auf „PDF erstellen" klicken — oder unten Datei manuell hinzufügen.</div>`;
       } else {
-        // Default: neuester Check mit PDF
+        // Default: neuester Check mit PDF → als kind='check' Item ins Array
         const initial = eligibles[0];
         _erContext.checkRec = initial.fields;
         _erContext.pdfUrl = initial.attachment.url;
         _erContext.pdfName = initial.attachment.filename || ('Liftaro_Check_' + initial.checkId + '.pdf');
         window._erEligibles = eligibles;
-        // V12.119: Vorschau-Button — öffnet das PDF in neuem Tab
-        const previewBtn = '<button type="button" onclick="_erOpenAttachPreview()" title="PDF in neuem Tab öffnen — Vorschau prüfen vor dem Senden" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:6px;padding:5px 11px;font-family:\'DM Sans\',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-left:auto"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Vorschau</button>';
-        if (eligibles.length === 1) {
-          const att = initial.attachment;
-          attachInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📎</span><div style="flex:1"><div style="font-weight:600">${_esc(att.filename || 'check.pdf')}</div><div style="font-size:11px;color:var(--muted)">${att.size ? Math.round(att.size/1024) + ' KB' : ''} · wird beim Senden angehängt · Check <strong>${_esc(initial.checkId)}</strong></div></div>${previewBtn}</div>`;
-        } else {
-          // V12.118: Mehrere Checks mit PDF — Dropdown
+        _erContext.attachments.push({
+          id: _erNextAttachId(),
+          kind: 'check',
+          checkId: initial.checkId,
+          filename: initial.attachment.filename || ('Liftaro_Check_' + initial.checkId + '.pdf'),
+          size: initial.attachment.size || 0,
+          contentType: 'application/pdf',
+          url: initial.attachment.url,
+        });
+        // V12.130: Bei mehreren Checks Dropdown in den Switcher-Container
+        if (eligibles.length > 1 && _switcher) {
           const opts = eligibles.map((e, i) =>
             '<option value="' + _esc(e.checkId) + '"' + (i === 0 ? ' selected' : '') + '>Check ' + _esc(e.checkId) + ' · ' + _esc(e.attachment.filename || 'check.pdf') + (e.attachment.size ? ' (' + Math.round(e.attachment.size/1024) + ' KB)' : '') + (i === 0 ? ' — neuester' : '') + '</option>'
           ).join('');
-          attachInfo.innerHTML =
-            '<div style="background:#fff7e6;border:1px solid #f0d4a8;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:11.5px;color:#7a4d00">' +
-              '⚠ Mehrere Checks verlinkt — bitte das richtige PDF auswählen:' +
+          _switcher.innerHTML =
+            '<div style="background:#fff7e6;border:1px solid #f0d4a8;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:11.5px;color:#7a4d00">' +
+              '⚠ Mehrere Checks verlinkt — bitte den richtigen wählen (manuell hinzugefügte Anhänge bleiben):' +
             '</div>' +
-            '<select onchange="_erSetAttachByCheckId(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:13px;background:#fff">' +
+            '<select onchange="_erSetAttachByCheckId(this.value)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:13px;background:#fff;margin-bottom:8px">' +
               opts +
-            '</select>' +
-            '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px">' +
-              '<div id="erAttachActiveLabel" style="flex:1;display:flex;align-items:center;gap:8px"><span style="font-size:16px">📎</span><span style="color:var(--muted)"><strong>' + _esc(initial.attachment.filename || 'check.pdf') + '</strong> · Check <strong>' + _esc(initial.checkId) + '</strong></span></div>' +
-              previewBtn +
-            '</div>';
+            '</select>';
+          _switcher.style.display = 'block';
         }
+        _erRenderAttachmentList();
       }
     } catch (e) {
       console.error('[V12.118] Email-Reply Check-Lookup-Fehler:', e);
-      attachInfo.innerHTML = `<span style="color:#a8312f">Fehler beim Laden des Checks: ${_esc(e.message)}</span>`;
+      attachInfo.innerHTML = `<div style="color:#a8312f;padding:6px 2px">Fehler beim Laden des Checks: ${_esc(e.message)}</div>`;
     }
   } else {
-    attachInfo.innerHTML = '<span style="color:var(--muted)">Keine Check-Erstellung verknüpft — Antwort wird ohne PDF-Anhang versendet (z.B. Rückfrage bei Korrespondenz).</span>';
+    // Kein Check verlinkt — leere Liste rendern, User kann manuell anhängen
+    _erRenderAttachmentList();
   }
 
   // From-Adresse: check@liftaro.de via All-Inkl-SMTP-Wrapper
@@ -23714,19 +23871,28 @@ async function doSendEmailReply() {
   status.innerHTML = '<span style="color:var(--navy)">⏳ Senden läuft …</span>';
 
   try {
-    // 1. Anhang lazy laden (falls vorhanden) — base64 für SMTP-Wrapper
+    // 1. V12.130: Multi-Anhänge — alle Items aus _erContext.attachments base64-encoden
     let attachments = [];
-    if (_erContext.pdfUrl) {
-      status.innerHTML = '<span style="color:var(--navy)">⏳ Lade PDF-Anhang …</span>';
-      const pdfRes = await fetch(_erContext.pdfUrl);
-      if (!pdfRes.ok) throw new Error('PDF-Download fehlgeschlagen (HTTP ' + pdfRes.status + ')');
-      const blob = await pdfRes.blob();
-      const b64 = await _blobToBase64Raw(blob);
-      attachments.push({
-        filename:      _erContext.pdfName || 'Liftaro_Check.pdf',
-        contentType:   'application/pdf',
-        contentBase64: b64,
-      });
+    const items = Array.isArray(_erContext.attachments) ? _erContext.attachments : [];
+    if (items.length) {
+      for (let i = 0; i < items.length; i++) {
+        const a = items[i];
+        status.innerHTML = `<span style="color:var(--navy)">⏳ Lade Anhang ${i+1}/${items.length}: ${_esc(a.filename || '')} …</span>`;
+        let blob = a.blob || null;
+        if (!blob && a.url) {
+          const r2 = await fetch(a.url);
+          if (!r2.ok) throw new Error('Anhang-Download fehlgeschlagen: ' + a.filename + ' (HTTP ' + r2.status + ')');
+          blob = await r2.blob();
+        }
+        if (!blob) throw new Error('Anhang ohne Quelle: ' + a.filename);
+        const b64 = await _blobToBase64Raw(blob);
+        attachments.push({
+          filename:      a.filename || ('Anhang_' + (i+1)),
+          contentType:   a.contentType || 'application/octet-stream',
+          contentBase64: b64,
+        });
+      }
+      console.log('[V12.130] ' + attachments.length + ' Anhang/Anhänge encoded für Send');
     }
 
     // 2. Endpoint + Secret aus Master-Base
