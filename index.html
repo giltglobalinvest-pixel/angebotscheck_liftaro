@@ -5827,7 +5827,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.128';
+const APP_VERSION = 'V12.129';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -13882,14 +13882,22 @@ function _renderAnfrageCard(a) {
         <span style="background:${s.bg};color:${s.col};border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">${s.label}</span>
       </div>
       <div style="color:var(--muted);font-family:var(--dr-f-mono);font-size:10.5px">Sent: ${sentAtShort} · Frist: ${deadlineShort}</div>
-      ${isAngeboten ? `
+      ${isAngeboten ? (() => {
+        // V12.129: PDF-Status-Indikator pro Anfrage
+        const pdfArr = Array.isArray(a.response_pdf) ? a.response_pdf : null;
+        const pdfAtt = (pdfArr && pdfArr.length) ? pdfArr[0] : null;
+        const pdfBadge = pdfAtt
+          ? `<div style="margin-top:6px;background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:5px;padding:4px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px">📎 PDF angehängt${pdfAtt.size ? ` · ${Math.round(pdfAtt.size/1024)} KB` : ''}</div>`
+          : `<div style="margin-top:6px;background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:5px;padding:4px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px">⚠ kein PDF eingereicht — manuell nachfassen</div>`;
+        return `
         <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--dr-border);font-size:11.5px;color:var(--dr-ink)">
           ${a.response_preis_netto ? `<div><strong>${_esc(a.response_preis_netto)} €</strong> netto / Jahr</div>` : ''}
           ${a.response_laufzeit_jahre ? `<div>Laufzeit: ${_esc(a.response_laufzeit_jahre)} Jahre</div>` : ''}
           ${a.response_kuendigungsfrist_monate ? `<div>Kündigungsfrist: ${_esc(a.response_kuendigungsfrist_monate)} Monate</div>` : ''}
+          ${pdfBadge}
         </div>
-        <button onclick="applyPartnerAnfrageVariant('${idEsc}')" style="margin-top:8px;width:100%;background:var(--dr-green);color:#fff;border:none;border-radius:6px;padding:7px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer">✓ Diese Variante übernehmen</button>
-      ` : ''}
+        <button onclick="applyPartnerAnfrageVariant('${idEsc}')" style="margin-top:8px;width:100%;background:var(--dr-green);color:#fff;border:none;border-radius:6px;padding:7px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;cursor:pointer">✓ Diese Variante übernehmen</button>`;
+      })() : ''}
       ${tokenLanding && !isAngeboten ? `
         <div style="margin-top:6px"><a href="${_esc(tokenLanding)}" target="_blank" style="font-size:10.5px;color:var(--dr-blue);text-decoration:none;font-family:var(--dr-f-mono)">↗ Landing-Link öffnen</a></div>
       ` : ''}
@@ -13964,7 +13972,12 @@ async function applyPartnerAnfrageVariant(anfrageId) {
       showToast('Partner-PDF-Fetch fehlgeschlagen: ' + e.message, 'error', 4000);
     }
   } else {
-    console.log('[V12.128] Anfrage ohne response_pdf — kein Partner-PDF zum Übernehmen');
+    // V12.129: Statt nur Konsole-Log einen lauten Toast — der User soll sofort
+    // verstehen, dass das Alternativangebot-PDF fehlt und manuell hochgeladen
+    // werden muss (z.B. wenn der Partner per Email statt Landing geantwortet hat).
+    console.log('[V12.129] Anfrage ohne response_pdf — kein Partner-PDF zum Übernehmen');
+    const partnerName = a.partner_name || a.partner_id || 'Partner';
+    showToast(`${partnerName} hat kein PDF eingereicht — bitte manuell ins „Alternativangebot"-Feld ziehen, sonst fehlt es im Email-Anhang.`, 'error');
   }
   // V12.15 Phase 4: aktive Wahl in Airtable markieren (und andere Varianten desselben Checks unmarkieren)
   try {
