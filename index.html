@@ -5827,7 +5827,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.126';
+const APP_VERSION = 'V12.127';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6904,6 +6904,8 @@ let pendingAfterKey = null;
 // Wichtig: KEIN confirm() — Reset soll instant ausführen, damit man sofort
 // einen neuen Check beginnen kann, ohne den aktiven Tab zu verlassen.
 function resetForm() {
+  // V12.127: User-PDF-Lock-Marker leeren bei „neuer Check"
+  window._pendingErgebnisPdfFromUser = false;
   // Vorabcheck-Verknüpfung zurücksetzen (gesetzt von createCheckFromVorabcheck)
   window._vorabcheckRefForNewCheck = null;
   window._vorabcheckRefForNewCheckSavedAt = null;
@@ -8756,49 +8758,71 @@ async function saveCheck(reporter) {
 
     // PDF-Anhänge hochladen (Vorliegendes + Alternativangebot, sofern vorhanden)
     if (recordId) {
-      // ── V12.28: Auto-Regenerate Ergebnis-PDF (immer) ─────────────────
+      // ── V12.28: Auto-Regenerate Ergebnis-PDF (nur wenn nötig) ────────
       // Garantiert, dass das in Airtable gespeicherte ergebnis_pdf immer
       // exakt dem aktuellen Formular-Stand entspricht (z.B. nach Toggle
       // Service-Pauschale ↔ Erfolgsprämie oder Prozent-Änderung).
-      // Wir regenerieren JEDES MAL beim Speichern (für wartung/reparatur
-      // /rechnung), unabhängig davon ob _pendingErgebnisPdfBlob gesetzt ist.
-      // Vorher werden calcSavings() + _refreshLegalBlock() forciert, damit
-      // alle abhängigen Anzeigewerte (Prozente, Beträge, Legal-Text) frisch
-      // im DOM stehen, bevor html2canvas rendert.
+      //
+      // V12.127: AUSNAHME — wenn der User gerade per „PDF erstellen"-Button
+      // ein Voll-PDF generiert hat (`_pendingErgebnisPdfFromUser === true`),
+      // dann ist das _pendingErgebnisPdfBlob bereits das saubere fullBlob mit
+      // Cover + Vorliegend + Alternativ angehängt — und genau DAS will der
+      // User in der Email haben. Wir dürfen es NICHT durch eine kleinere
+      // buildCheckCoverBlob()-Version ersetzen (deren PDF-Append-Pfad in
+      // manchen Race-Bedingungen den Original-Vertrag verliert).
+      //
+      // autopdf läuft nur noch wenn:
+      //  - der User „nur Zwischenspeichern" geklickt hat (kein PDF-Button),
+      //  - oder _pendingErgebnisPdfBlob aus anderen Quellen kommt (Vorabcheck-
+      //    Übernahme etc., V12.97).
       const _ctype = data.checkType || 'reparatur';
-      try {
-        if (typeof calcSavings === 'function') calcSavings();
-      } catch(e) { console.warn('calcSavings vor autopdf:', e.message); }
-      try {
-        if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
-      } catch(e) { console.warn('_refreshLegalBlock vor autopdf:', e.message); }
-      r.step('autopdf', 'Ergebnis-PDF wird auf aktuellen Stand neu generiert …');
-      console.log('[autopdf] start, checkType=' + _ctype + ', pending=' + !!_pendingErgebnisPdfBlob);
-      if (typeof showToast === 'function') {
-        try { showToast('PDF wird auf aktuellen Stand neu erzeugt …', 'ok'); } catch(_){}
-      }
-      try {
-        let freshBlob = null;
-        let freshName = `Liftaro_Check_${data.requestId || data.id || 'neu'}.pdf`;
-        if (_ctype === 'rechnung' && typeof buildRechnungscheckPDF === 'function') {
-          const out = await buildRechnungscheckPDF();
-          freshBlob = out && out.blob;
-          if (out && out.filename) freshName = out.filename;
-        } else if (typeof buildCheckCoverBlob === 'function') {
-          freshBlob = await buildCheckCoverBlob();
+      const _userPdfLocked = !!window._pendingErgebnisPdfFromUser && !!_pendingErgebnisPdfBlob;
+      if (_userPdfLocked) {
+        r.step('autopdf', 'Voll-PDF vom Button wird 1:1 hochgeladen (keine Regeneration)');
+        const _sz = (_pendingErgebnisPdfBlob.size/1024).toFixed(0);
+        console.log('[V12.127] autopdf SKIPPED — user-generated fullBlob (' + _sz + ' KB) wird 1:1 hochgeladen');
+        r.done('autopdf', `${_sz} KB · vom Button (Cover + Vorliegend + Alternativ)`);
+      } else {
+        try {
+          if (typeof calcSavings === 'function') calcSavings();
+        } catch(e) { console.warn('calcSavings vor autopdf:', e.message); }
+        try {
+          if (typeof _refreshLegalBlock === 'function') _refreshLegalBlock();
+        } catch(e) { console.warn('_refreshLegalBlock vor autopdf:', e.message); }
+        r.step('autopdf', 'Ergebnis-PDF wird auf aktuellen Stand neu generiert …');
+        console.log('[autopdf] start, checkType=' + _ctype + ', pending=' + !!_pendingErgebnisPdfBlob);
+        if (typeof showToast === 'function') {
+          try { showToast('PDF wird auf aktuellen Stand neu erzeugt …', 'ok'); } catch(_){}
         }
-        if (freshBlob) {
-          _pendingErgebnisPdfBlob = freshBlob;
-          _pendingErgebnisPdfName = freshName;
-          r.done('autopdf', `${(freshBlob.size/1024).toFixed(0)} KB frisch generiert`);
-          console.log('[autopdf] success, ' + (freshBlob.size/1024).toFixed(0) + ' KB');
-        } else {
-          r.error('autopdf', 'kein Blob erzeugt (Builder lieferte null)');
-          console.warn('[autopdf] builder returned null');
+        try {
+          let freshBlob = null;
+          let freshName = `Liftaro_Check_${data.requestId || data.id || 'neu'}.pdf`;
+          if (_ctype === 'rechnung' && typeof buildRechnungscheckPDF === 'function') {
+            const out = await buildRechnungscheckPDF();
+            freshBlob = out && out.blob;
+            if (out && out.filename) freshName = out.filename;
+          } else if (typeof buildCheckCoverBlob === 'function') {
+            // V12.127: Diagnose-Log — welche Quellen für Vorliegend/Alternativ stehen bereit?
+            const _vSrc = uploadedFiles[1] ? 'uploadedFiles[1]=' + (uploadedFiles[1].size/1024).toFixed(0) + 'KB'
+              : (window._currentCheckAttachmentMeta?.vorliegend?.url ? 'meta.vorliegend.url' : 'NONE');
+            const _aSrc = uploadedFiles[2] ? 'uploadedFiles[2]=' + (uploadedFiles[2].size/1024).toFixed(0) + 'KB'
+              : (window._currentCheckAttachmentMeta?.alternativ?.url ? 'meta.alternativ.url' : 'NONE');
+            console.log('[V12.127] buildCheckCoverBlob sources: vorliegend=' + _vSrc + ', alternativ=' + _aSrc);
+            freshBlob = await buildCheckCoverBlob();
+          }
+          if (freshBlob) {
+            _pendingErgebnisPdfBlob = freshBlob;
+            _pendingErgebnisPdfName = freshName;
+            r.done('autopdf', `${(freshBlob.size/1024).toFixed(0)} KB frisch generiert`);
+            console.log('[autopdf] success, ' + (freshBlob.size/1024).toFixed(0) + ' KB');
+          } else {
+            r.error('autopdf', 'kein Blob erzeugt (Builder lieferte null)');
+            console.warn('[autopdf] builder returned null');
+          }
+        } catch(e) {
+          console.warn('[autopdf] failed:', e.message);
+          r.error('autopdf', e.message);
         }
-      } catch(e) {
-        console.warn('[autopdf] failed:', e.message);
-        r.error('autopdf', e.message);
       }
       const uploads = [];
       if (uploadedFiles[1]) uploads.push({ field: 'vorliegendes_pdf', blob: uploadedFiles[1], name: uploadedFiles[1].name });
@@ -8840,6 +8864,14 @@ async function saveCheck(reporter) {
       if (_pendingErgebnisPdfBlob) {
         _pendingErgebnisPdfBlob = null;
         _pendingErgebnisPdfName = null;
+      }
+      // V12.127: User-Lock-Marker zurücksetzen — bei nächstem Speichern (z.B.
+      // wenn der User nur Werte ändert und „Zwischenspeichern" klickt) läuft
+      // autopdf wieder regulär. Erst nach erneutem „PDF erstellen"-Klick wird
+      // der Marker wieder true und schützt das frische Voll-PDF.
+      if (window._pendingErgebnisPdfFromUser) {
+        window._pendingErgebnisPdfFromUser = false;
+        console.log('[V12.127] _pendingErgebnisPdfFromUser marker reset after upload');
       }
       // V12.28: Nach erfolgreichem Ergebnis-PDF-Upload das Mobile-Thumbnail
       // mit der neu hochgeladenen Datei aktualisieren (statt das alte Cache-
@@ -9062,6 +9094,12 @@ async function loadCheck(data) {
   // V12.3: Email-Quelle des aktuell geladenen Checks für Reply-CTA cachen
   window._currentCheckEmailSrc = data?.email_source_id || null;
   window._currentCheckHasErgebnisPdf = !!(Array.isArray(data?._attErgebnis) && data._attErgebnis.length > 0);
+  // V12.127: User-PDF-Lock-Marker zurücksetzen — bei Check-Wechsel darf das
+  // alte Marker-Flag aus dem vorherigen Check nicht in den neuen Check
+  // hinüberlecken (sonst würde autopdf für den neuen Check fälschlich
+  // skippen und das alte fullBlob aus Check A unter Check B's recordId
+  // hochladen). Marker wird wieder true erst beim nächsten generatePDF().
+  window._pendingErgebnisPdfFromUser = false;
   // V12.68 EuC-I: Aufzug-Kontext aus formData wiederherstellen
   window._currentCheckPipedriveOrgId = data?.pipedrive_org_id || data?.aufzug_hv_org_id || '';
   // V12.70: Hidden-Feld für HV-Org-ID synchron halten
@@ -12869,6 +12907,14 @@ async function generatePDF() {
     // Original-Vertrag automatisch mitgeschickt.
     _pendingErgebnisPdfBlob = fullBlob;
     _pendingErgebnisPdfName = `Liftaro_Check_${rid}.pdf`;
+    // V12.127: Marker — dieses Blob ist exakt das, was der User gerade in der
+    // Vorschau sieht (Cover + Vorliegend + Alternativ angehängt). Der autopdf-
+    // Block in saveCheck darf es NICHT überschreiben, sonst wird das saubere
+    // Voll-PDF durch eine kleinere buildCheckCoverBlob-Version ersetzt und das
+    // Email-Reply hängt dann eine reduzierte Variante an (Original-Vertrag fehlt
+    // oder ist unvollständig). Marker wird nach dem Upload zurückgesetzt.
+    window._pendingErgebnisPdfFromUser = true;
+    console.log('[V12.127] _pendingErgebnisPdfBlob set from generatePDF() — ' + (fullBlob.size/1024).toFixed(0) + ' KB, marker locked');
 
     // Lokal in Ordner ablegen (nur, wenn der Nutzer einen Ordner gewählt hat)
     saveFileToFolder(new Blob([coverBytes], {type:'application/pdf'}), `Liftaro_Check_${rid}.pdf`);
