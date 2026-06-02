@@ -4090,6 +4090,10 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div id="erAttachmentBox" style="background:var(--sky);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Anhänge <span id="erAttachCountBadge" style="display:none;background:var(--navy);color:#fff;border-radius:999px;padding:1px 8px;font-size:10px;margin-left:4px"></span></div>
+          <button type="button" id="erRegenPdfBtn" onclick="_erRegenerateMemoryPdf()" style="background:#fff;border:1.5px solid #ffba47;color:#7a4d00;border-radius:6px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:none;align-items:center;gap:5px" title="Voll-PDF mit aktuellem Vorliegend + Alternativangebot neu erstellen (z.B. wenn Partner-Angebot später dazukam)">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+            PDF neu erstellen
+          </button>
           <button type="button" id="erAddAttachBtn" onclick="document.getElementById('erAddAttachInput').click()" style="background:#fff;border:1.5px solid var(--border);color:var(--navy);border-radius:6px;padding:4px 10px;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Datei(en) hinzufügen — PDF, Bild, Doc, beliebig">
             <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Datei hinzufügen
@@ -5836,7 +5840,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.131';
+const APP_VERSION = 'V12.132';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -12832,28 +12836,40 @@ async function generatePDF() {
       { num: 2, label: 'Alternativangebot',   metaKey: 'alternativ' },
       { num: 1, label: 'Vorliegendes Angebot', metaKey: 'vorliegend' },
     ];
+    // V12.132: Detailliertes Logging — pro Eintrag sehen wir SOURCE, SIZE und
+    // APPEND-RESULT. Damit wissen wir sofort warum ein Anhang fehlt.
+    const _gpDiag = [];
     for (const entry of _attachMap) {
       let srcBlob = uploadedFiles[entry.num] || null;
+      let srcSource = srcBlob ? 'uploadedFiles[' + entry.num + ']' : null;
       if (!srcBlob) {
         const meta = window._currentCheckAttachmentMeta && window._currentCheckAttachmentMeta[entry.metaKey];
         if (meta && meta.url) {
           setProgress(entry.label + ' wird aus Airtable nachgeladen …');
           try {
             const _r = await fetch(meta.url);
-            if (_r.ok) srcBlob = await _r.blob();
+            if (_r.ok) { srcBlob = await _r.blob(); srcSource = 'meta.' + entry.metaKey + '.url'; }
             else console.warn('[V12.124]', entry.label, 'Airtable-fetch HTTP', _r.status);
           } catch (e) { console.warn('[V12.124]', entry.label, 'Airtable-fetch failed:', e.message); }
         }
       }
-      if (!srcBlob) continue;
+      if (!srcBlob) {
+        _gpDiag.push({ field: entry.label, source: 'NONE', sizeKB: 0, result: 'skip (kein Blob, weder uploadedFiles noch meta)' });
+        continue;
+      }
       setProgress(entry.label + ' wird angehängt …');
       try {
         const bytes = await srcBlob.arrayBuffer();
         const srcDoc = await PDFDocument.load(bytes);
         const pages = await mergedDoc.copyPages(srcDoc, srcDoc.getPageIndices());
         pages.forEach(p => mergedDoc.addPage(p));
-      } catch(e) { console.warn('[V12.124] Append', entry.label, 'failed:', e); }
+        _gpDiag.push({ field: entry.label, source: srcSource, sizeKB: (srcBlob.size/1024).toFixed(0), result: 'appended ' + pages.length + ' page(s)' });
+      } catch(e) {
+        console.error('[V12.132] Append', entry.label, 'FAIL:', e.message, e);
+        _gpDiag.push({ field: entry.label, source: srcSource, sizeKB: (srcBlob.size/1024).toFixed(0), result: 'FAIL: ' + e.message });
+      }
     }
+    console.log('[V12.132] generatePDF append-Diagnose:', _gpDiag);
 
     mergedDoc.setTitle('Reparaturangebot – Liftaro GmbH');
     mergedDoc.setAuthor('Liftaro GmbH');
@@ -23418,6 +23434,12 @@ function _erRenderAttachmentList() {
   const host = document.getElementById('erAttachInfo');
   if (!host) return;
   const arr = _erContext.attachments;
+  // V12.132: Regenerate-Button sichtbar wenn ein memory-Anhang da ist
+  const regenBtn = document.getElementById('erRegenPdfBtn');
+  if (regenBtn) {
+    const hasMemory = arr.some(a => a.kind === 'memory' || a.kind === 'check');
+    regenBtn.style.display = hasMemory ? 'inline-flex' : 'none';
+  }
   // Count-Badge + Total-Size
   const badge = document.getElementById('erAttachCountBadge');
   if (badge) {
@@ -23501,6 +23523,57 @@ async function _erPreviewAttachById(id) {
   }
 }
 window._erPreviewAttachById = _erPreviewAttachById;
+
+// V12.132: PDF neu erstellen — schließt Modal, ruft generatePDF() auf, öffnet
+// Modal mit gleichem Email-Kontext wieder. Damit gibt's einen Notausgang wenn
+// der User nach „PDF erstellen" das Alternativangebot via „Variante übernehmen"
+// nachgeladen hat und das fehlt im Anhang.
+async function _erRegenerateMemoryPdf() {
+  if (!_erContext || !_erContext.emailRec) {
+    if (typeof showToast === 'function') showToast('Kein Email-Kontext', 'error');
+    return;
+  }
+  // Werte merken
+  const stash = {
+    recId: _erContext.emailRec._id,
+    to: document.getElementById('erTo')?.value || '',
+    subject: document.getElementById('erSubject')?.value || '',
+    body: document.getElementById('erBody')?.value || '',
+    extraAttachments: (_erContext.attachments || []).filter(a => a.kind === 'manual'),
+  };
+  window._erStash = stash;
+  console.log('[V12.132] Regenerate-Klick — Modal schließt, generatePDF läuft …');
+  if (typeof showToast === 'function') showToast('Modal kurz geschlossen — PDF wird neu erstellt …', 'ok');
+  closeEmailReplyModal();
+  // GeneratePDF triggern + warten
+  try {
+    await generatePDF();
+  } catch(e) {
+    console.error('[V12.132] generatePDF im Modal-Refresh fehlgeschlagen:', e);
+    if (typeof showToast === 'function') showToast('PDF-Erstellung fehlgeschlagen: ' + e.message, 'error');
+    window._erStash = null;
+    return;
+  }
+  // Modal neu öffnen — V12.131 packt das frische _fullResultPdfBlob automatisch ins Array
+  await openEmailReplyModal(stash.recId);
+  // Werte wiederherstellen (kurze Verzögerung damit Modal-Init durch ist)
+  setTimeout(() => {
+    const elTo = document.getElementById('erTo');     if (elTo) elTo.value = stash.to;
+    const elSub = document.getElementById('erSubject'); if (elSub) elSub.value = stash.subject;
+    const elBody = document.getElementById('erBody');  if (elBody) elBody.value = stash.body;
+    if (_erContext && Array.isArray(_erContext.attachments)) {
+      for (const ma of stash.extraAttachments) {
+        if (!_erContext.attachments.some(x => x.filename === ma.filename && x.size === ma.size)) {
+          _erContext.attachments.push({ ...ma, id: _erNextAttachId() });
+        }
+      }
+      _erRenderAttachmentList();
+    }
+    window._erStash = null;
+    if (typeof showToast === 'function') showToast('Voll-PDF aktualisiert — Anhang ersetzt', 'ok');
+  }, 150);
+}
+window._erRegenerateMemoryPdf = _erRegenerateMemoryPdf;
 
 function _erHandleManualFiles(fileList) {
   if (!_erContext) return;
