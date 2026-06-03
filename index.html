@@ -4926,7 +4926,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="field"><label>Vertragsbeginn</label><input type="text" id="lv_beginn" placeholder="01.05.2026"></div>
-        <div class="field"><label>Erfolgsbeteiligung (%)</label><input type="number" id="lv_erfolg_pct" placeholder="25" min="0" max="100" step="0.5" oninput="renderLightWegsInEditor(document.getElementById('lv_id').value)"></div>
+        <div class="field"><label>Erfolgsbeteiligung (%)</label><input type="number" id="lv_erfolg_pct" placeholder="25" min="0" max="100" step="0.5" oninput="renderAufzuegeInEuCEditor(document.getElementById('lv_id').value)"></div>
         <div class="field"><label>Erfolgsbeteiligung-Dauer (Jahre)</label><input type="number" id="lv_erfolg_jahre" placeholder="3" min="1" max="10"></div>
       </div>
       <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
@@ -4951,13 +4951,17 @@ const pdfWorkerReady = Promise.resolve();</script>
           <input type="text" id="lv_link_v" placeholder="z.B. V_2026105">
         </div>
       </div>
-      <!-- WEGs unter dieser Vereinbarung -->
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center">
-        <span>WEGs unter dieser Vereinbarung <span id="lv_wegSum" style="color:var(--blue-mid);font-weight:600">(0 WEGs · 0 Aufzüge · 0 €/Jahr)</span></span>
-        <button id="lv_addWeg" onclick="openLightWegEditor()" style="background:#fff;border:1.5px solid var(--blue-mid);color:var(--blue-mid);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:0">+ WEG</button>
+      <!-- V12.141: Verknüpfte Aufzüge direkt (kein WEG-Layer mehr) -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <span>Verknüpfte Aufzüge <span id="lv_aufzugSum" style="color:var(--blue-mid);font-weight:600">(0 Aufzüge · 0 €/Jahr)</span></span>
+        <button id="lv_addAufzuege" onclick="openAufzugPickerForEuCVertrag()" style="background:#1e40af;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:0;display:inline-flex;align-items:center;gap:5px">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Aufzüge zuordnen
+        </button>
       </div>
-      <div id="lv_wegList" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
-        <p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Noch keine WEGs hinzugefügt. Erst Vereinbarung speichern, dann WEGs anlegen.</p>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.5">Aufzüge werden direkt an den EuC-Vertrag der Hausverwaltung gebunden. Pro Aufzug die <strong>aktuellen Jahreskosten (Wartung+Notruf)</strong> als Basis für die Erfolgsbeteiligung eintragen.</div>
+      <div id="lv_aufzugList" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+        <p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Noch keine Aufzüge verknüpft. Erst Vereinbarung speichern, dann „Aufzüge zuordnen" klicken.</p>
       </div>
       <!-- Kommentar -->
       <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-top:12px">
@@ -5863,7 +5867,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.140';
+const APP_VERSION = 'V12.141';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6800,6 +6804,13 @@ async function setupTables() {
     ]);
     console.log('[V12.140] ensureFields(Light-Vertraege) OK');
   } catch(e) { console.warn('[V12.140] ensureFields(Light-Vertraege) failed:', e.message); }
+  // V12.141: Aufzüge-Tabelle — Jahreskosten-Feld als Basis für Erfolgsbeteiligung
+  try {
+    await ensureFields('Aufzuege', [
+      { name: 'jahreskosten_alt_eur', type: 'number', options: { precision: 0 } },
+    ]);
+    console.log('[V12.141] ensureFields(Aufzuege: jahreskosten_alt_eur) OK');
+  } catch(e) { console.warn('[V12.141] ensureFields(Aufzuege) failed:', e.message); }
   // Verträge-Tabelle
   try {
     await ensureTable('Vertraege', [
@@ -17953,15 +17964,15 @@ function openLightVertragEditor(data) {
       sigInfo.textContent = 'Noch keine unterschriebene Version hochgeladen.';
     }
     // WEGs nachladen + rendern
-    renderLightWegsInEditor(data.id);
+    renderAufzuegeInEuCEditor(data.id);
   } else {
     document.getElementById('lightVertragEditorTitle').textContent = 'Neue EuC-Vereinbarung';
     document.getElementById('lv_btnDelete').style.display = 'none';
     document.getElementById('lv_uploadSection').style.display = 'none';
     document.getElementById('lv_wegList').innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Erst Vereinbarung speichern, dann WEGs anlegen.</p>';
     document.getElementById('lv_wegSum').textContent = '(0 WEGs · 0 Aufzüge · 0 €/Jahr)';
-    document.getElementById('lv_addWeg').disabled = true;
-    document.getElementById('lv_addWeg').style.opacity = '.5';
+    document.getElementById('lv_addAufzuege').disabled = true;
+    document.getElementById('lv_addAufzuege').style.opacity = '.5';
   }
   document.getElementById('lightVertragEditorModal').style.display = 'flex';
 }
@@ -17980,8 +17991,8 @@ function clearLightVertragForm() {
   document.getElementById('lv_haftung').value = LIGHT_DEFAULTS.haftung;
   document.getElementById('lv_gerichtsstand').value = LIGHT_DEFAULTS.gerichtsstand;
   document.getElementById('lv_status').value = 'entwurf';
-  document.getElementById('lv_addWeg').disabled = false;
-  document.getElementById('lv_addWeg').style.opacity = '1';
+  document.getElementById('lv_addAufzuege').disabled = false;
+  document.getElementById('lv_addAufzuege').style.opacity = '1';
 }
 
 function setLightVertragForm(d) {
@@ -18070,9 +18081,9 @@ async function saveLightVertrag() {
     document.getElementById('lightVertragEditorTitle').textContent = 'Light-Vereinbarung · ' + (d.firma || lvId);
     document.getElementById('lv_btnDelete').style.display = 'inline-flex';
     document.getElementById('lv_uploadSection').style.display = 'block';
-    document.getElementById('lv_addWeg').disabled = false;
-    document.getElementById('lv_addWeg').style.opacity = '1';
-    await renderLightWegsInEditor(lvId);
+    document.getElementById('lv_addAufzuege').disabled = false;
+    document.getElementById('lv_addAufzuege').style.opacity = '1';
+    await renderAufzuegeInEuCEditor(lvId);
     // Hintergrund: Liste neu laden
     loadLightVertraege().then(items => {
       window._lightVertraegeCache = items;
@@ -18100,9 +18111,13 @@ async function deleteLightVertragCurrent() {
   } catch (e) { showToast('Löschen fehlgeschlagen: ' + e.message, 'error'); }
 }
 
-async function renderLightWegsInEditor(lightVertragId) {
+// V12.141: Legacy-Renderer (alt: WEG-Liste). Wird nicht mehr aus dem EuC-Editor
+// aufgerufen — die neue Implementation (siehe unten) rendert Aufzüge direkt.
+// Hier umbenannt, damit Function-Hoisting die NEUE Definition nicht überschreibt.
+async function _legacyRenderLightWegsInEditor(lightVertragId) {
   const listEl = document.getElementById('lv_wegList');
   const sumEl  = document.getElementById('lv_wegSum');
+  if (!listEl) return;
   if (!lightVertragId) { listEl.innerHTML = ''; return; }
   const wegs = await loadLightWegs(lightVertragId);
   window._currentLightWegs = wegs;
@@ -18272,7 +18287,7 @@ async function saveLightWeg() {
         console.warn('Aufzug-Sync nach WEG-Save:', e.message));
     }
     closeLightWegEditor();
-    renderLightWegsInEditor(lightVertragId);
+    renderAufzuegeInEuCEditor(lightVertragId);
   } catch (e) {
     if (/NOT_FOUND|TABLE_NOT_FOUND/i.test(e.message || '')) {
       showToast('Tabelle „Light-WEGs" nicht angelegt. Siehe Konsole.', 'error', 5000);
@@ -18296,7 +18311,7 @@ async function deleteLightWegCurrent() {
     }
     showToast('WEG entfernt', 'ok');
     closeLightWegEditor();
-    renderLightWegsInEditor(lvId);
+    renderAufzuegeInEuCEditor(lvId);
   } catch (e) { showToast('Löschen fehlgeschlagen: ' + e.message, 'error'); }
 }
 
@@ -18740,8 +18755,138 @@ function _refreshAufzugLinkSelCount() {
   if (el) el.textContent = window._aufzugLinkPickerSelected?.size || 0;
 }
 
-function applyAufzugLinkSelection() {
+// V12.141: Aufzug-Picker direkt vom EuC-Vertrag (kein WEG-Zwischenlayer)
+async function openAufzugPickerForEuCVertrag() {
+  const lvId = document.getElementById('lv_id').value;
+  if (!lvId) { showToast('Bitte erst die EuC-Vereinbarung speichern.', 'error'); return; }
+  const lvFirma = (document.getElementById('lv_firma')?.value || '').trim();
+  window._aufzugPickerEucMode = true;
+  window._aufzugPickerEucVertragId = lvId;
+  document.getElementById('aufzugLinkPickerModal').style.display = 'flex';
+  document.getElementById('aufzugLinkPickerSubtitle').textContent =
+    'Aufzüge der HV „' + (lvFirma || '–') + '" · Mehrfachauswahl';
+  document.getElementById('aufzugLinkPickerSearch').value = '';
+  const filterFreiEl = document.getElementById('aufzugLinkFilterFrei');
+  if (filterFreiEl) filterFreiEl.checked = true;
+  document.getElementById('aufzugLinkPickerList').innerHTML =
+    '<div style="padding:24px;text-align:center;color:var(--dr-ink-mute)">Aufzüge werden geladen …</div>';
+  try {
+    const recs = await loadAufzuege();
+    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    // HV-Filter (fuzzy via name)
+    const lvFirmaNorm = _normFirma(lvFirma);
+    const filtered = items.filter(a => {
+      if (!lvFirmaNorm) return true;
+      const aNorm = _normFirma(a.hv_name || '');
+      return aNorm && aNorm === lvFirmaNorm;
+    });
+    window._aufzugLinkPickerAll = filtered;
+    // Initial: alle die schon mit diesem EuC verknüpft sind, sind angehakt
+    const alreadyLinked = filtered.filter(a => (a.euc_vertrag_id || '') === lvId).map(a => a.id).filter(Boolean);
+    window._aufzugLinkPickerSelected = new Set(alreadyLinked);
+    filterAufzugLinkPicker();
+  } catch(e) {
+    document.getElementById('aufzugLinkPickerList').innerHTML =
+      '<div style="padding:20px;text-align:center;color:#a8312f">Fehler: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+window.openAufzugPickerForEuCVertrag = openAufzugPickerForEuCVertrag;
+
+// V12.141: Aufzug-Liste im EuC-Editor rendern (alle Aufzüge die diesem
+// EuC-Vertrag zugeordnet sind, mit Inline-Jahreskosten-Eingabe)
+async function renderAufzuegeInEuCEditor(lvId) {
+  const listEl = document.getElementById('lv_aufzugList');
+  const sumEl  = document.getElementById('lv_aufzugSum');
+  if (!listEl) return;
+  if (!lvId) {
+    listEl.innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Erst Vereinbarung speichern, dann Aufzüge zuordnen.</p>';
+    if (sumEl) sumEl.textContent = '(0 Aufzüge · 0 €/Jahr)';
+    return;
+  }
+  try {
+    const recs = await loadAufzuege();
+    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }))
+      .filter(a => (a.euc_vertrag_id || '') === lvId);
+    if (!items.length) {
+      listEl.innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Noch keine Aufzüge verknüpft. Klick oben „Aufzüge zuordnen".</p>';
+      if (sumEl) sumEl.textContent = '(0 Aufzüge · 0 €/Jahr)';
+      return;
+    }
+    let total = 0;
+    listEl.innerHTML = items.map(a => {
+      const kosten = parseInt(a.jahreskosten_alt_eur, 10) || 0;
+      total += kosten;
+      const idEsc = (a.id || '').replace(/'/g, "\\'");
+      const recIdEsc = (a._recordId || '').replace(/'/g, "\\'");
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:6px;flex-wrap:wrap">'
+        + '<span style="font-family:var(--dr-f-mono);color:var(--blue-mid);font-size:11.5px;font-weight:700;flex-shrink:0">' + escapeHtml(a.id || '–') + '</span>'
+        + '<span style="font-weight:600;font-size:12.5px;flex-shrink:0">Fabr.-Nr. ' + escapeHtml(a.fabriknummer || '?') + '</span>'
+        + '<span style="flex:1;min-width:0;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(a.standort || '–') + '</span>'
+        + '<label style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:600">€/Jahr:</label>'
+        + '<input type="number" value="' + (kosten || '') + '" placeholder="0" min="0" onchange="_saveAufzugJahreskosten(\'' + recIdEsc + '\', this.value)" style="width:90px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;font-family:\'DM Mono\',monospace">'
+        + '<button type="button" onclick="_unlinkAufzugFromEuC(\'' + recIdEsc + '\', \'' + idEsc + '\')" title="Aufzug aus diesem EuC entfernen" style="background:transparent;border:1.5px solid #e0a09a;color:#a8312f;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;line-height:1;font-weight:700">×</button>'
+      + '</div>';
+    }).join('');
+    if (sumEl) sumEl.textContent = '(' + items.length + ' Aufzug' + (items.length === 1 ? '' : 'üge') + ' · ' + total.toLocaleString('de-DE') + ' €/Jahr)';
+  } catch (e) {
+    console.warn('[V12.141] renderAufzuegeInEuCEditor failed:', e.message);
+  }
+}
+window.renderAufzuegeInEuCEditor = renderAufzuegeInEuCEditor;
+
+async function _saveAufzugJahreskosten(recId, val) {
+  const n = parseInt(val, 10) || 0;
+  try {
+    await atUpdate('Aufzuege', recId, { jahreskosten_alt_eur: n });
+    showToast('Jahreskosten gespeichert', 'ok', 1500);
+    const lvId = document.getElementById('lv_id').value;
+    if (lvId) renderAufzuegeInEuCEditor(lvId);
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+window._saveAufzugJahreskosten = _saveAufzugJahreskosten;
+
+async function _unlinkAufzugFromEuC(recId, azId) {
+  if (!confirm('Aufzug ' + azId + ' aus diesem EuC-Vertrag entfernen?\n(Aufzug bleibt im System, wird nur entkoppelt.)')) return;
+  try {
+    await atUpdate('Aufzuege', recId, { im_euc: '', euc_vertrag_id: '' });
+    showToast('Aufzug ' + azId + ' entfernt', 'ok');
+    const lvId = document.getElementById('lv_id').value;
+    if (lvId) renderAufzuegeInEuCEditor(lvId);
+  } catch (e) {
+    showToast('Entfernen fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+window._unlinkAufzugFromEuC = _unlinkAufzugFromEuC;
+
+async function applyAufzugLinkSelection() {
   const ids = Array.from(window._aufzugLinkPickerSelected || []);
+  // V12.141: EuC-Modus — direkt an die Aufzüge persistieren
+  if (window._aufzugPickerEucMode) {
+    const lvId = window._aufzugPickerEucVertragId;
+    const all = window._aufzugLinkPickerAll || [];
+    const toLink = all.filter(a => ids.includes(a.id) && (a.euc_vertrag_id || '') !== lvId);
+    const toUnlink = all.filter(a => !ids.includes(a.id) && (a.euc_vertrag_id || '') === lvId);
+    let errs = 0;
+    for (const a of toLink) {
+      try { await atUpdate('Aufzuege', a._recordId, { im_euc: '1', euc_vertrag_id: lvId }); }
+      catch (e) { errs++; console.warn('[V12.141] link', a.id, 'failed:', e.message); }
+    }
+    for (const a of toUnlink) {
+      try { await atUpdate('Aufzuege', a._recordId, { im_euc: '', euc_vertrag_id: '' }); }
+      catch (e) { errs++; console.warn('[V12.141] unlink', a.id, 'failed:', e.message); }
+    }
+    closeAufzugLinkPicker();
+    window._aufzugPickerEucMode = false;
+    window._aufzugPickerEucVertragId = null;
+    const total = ids.length;
+    if (errs > 0) showToast('⚠ ' + errs + ' Fehler bei Sync (siehe Console). ' + (total - errs) + ' OK.', 'error', 5000);
+    else showToast('✓ ' + total + ' Aufzug' + (total === 1 ? '' : 'üge') + ' am EuC-Vertrag', 'success', 2800);
+    renderAufzuegeInEuCEditor(lvId);
+    return;
+  }
+  // Alt-Pfad (Legacy WEG-Editor)
   document.getElementById('lw_aufzug_ids').value = ids.join(',');
   _refreshLwAufzugChipsFromIds(ids.join(','));
   closeAufzugLinkPicker();
