@@ -5786,12 +5786,19 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
       <div id="vcsetupResult" style="display:none;background:#f3faea;border:1px solid #d1ecb1;border-radius:8px;padding:12px 14px;font-size:13px;color:#3d7a14"></div>
     </div>
-    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px">
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <button onclick="document.getElementById('vorabcheckSetupModal').style.display='none'" style="background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Abbrechen</button>
-      <button id="vcsetupRunBtn" onclick="runVorabcheckSetup(this)" style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:9px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6"/><path d="M21 3v6h-6"/></svg>
-        Proxy aktualisieren
-      </button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <!-- V12.138: Email-Sender-Val aktualisieren (separater Button) -->
+        <button id="emailSenderUpdateBtn" onclick="runEmailSenderUpdate(this)" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:8px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px" title="Email-Sender-Val auf val.town mit aktuellem Code aktualisieren (z.B. für BCC-Support)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Email-Sender aktualisieren
+        </button>
+        <button id="vcsetupRunBtn" onclick="runVorabcheckSetup(this)" style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:9px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6"/><path d="M21 3v6h-6"/></svg>
+          Proxy aktualisieren
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -5849,7 +5856,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.137';
+const APP_VERSION = 'V12.138';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6279,6 +6286,110 @@ async function valtownApi(token, method, path, body) {
   return data;
 }
 async function valtownMe(token)              { return valtownApi(token, 'GET', '/v1/me'); }
+
+// V12.138: Email-Sender-Val aktualisieren — minimal-invasiv, mit Backup
+// in localStorage und Verifikation. Lädt den TS-Code aus der eigenen Domain
+// (gerade deployed unter /vorabcheck/valtown-email-sender.ts).
+async function updateEmailSenderVal() {
+  const token = APP_KEYS.valtownKey;
+  if (!token) throw new Error('val.town API-Key fehlt — bitte erst „Proxy aktualisieren" mit gültigem Token');
+  // 1. Code von eigener Domain fetchen
+  const codeUrl = new URL('vorabcheck/valtown-email-sender.ts', window.location.href).toString();
+  console.log('[V12.138] Lade Code von', codeUrl);
+  const codeRes = await fetch(codeUrl, { cache: 'no-store' });
+  if (!codeRes.ok) throw new Error('Code-Datei nicht erreichbar: HTTP ' + codeRes.status);
+  const code = await codeRes.text();
+  if (code.length < 4000) throw new Error('Code-Datei verdächtig kurz (' + code.length + ' bytes) — Abbruch');
+  if (!code.includes('SMTPClient')) throw new Error('Code-Datei sieht nicht wie der Email-Sender aus (kein SMTPClient)');
+  if (!code.includes('V12.138')) console.warn('[V12.138] Code enthält keinen V12.138-Marker — evtl. veraltete Version?');
+  console.log('[V12.138] Code geladen:', code.length, 'bytes');
+  // 2. Val-ID finden (cached oder via list)
+  let valId = '';
+  try { valId = localStorage.getItem('liftaro_emailsender_valid') || ''; } catch (_) {}
+  if (!valId) {
+    console.log('[V12.138] Keine cached Val-ID, suche via /v1/me/vals …');
+    let list;
+    try { list = await valtownApi(token, 'GET', '/v1/me/vals?limit=100'); }
+    catch (e) { throw new Error('Val-Liste laden fehlgeschlagen: ' + e.message); }
+    const vals = list?.data || list?.vals || (Array.isArray(list) ? list : []);
+    if (!Array.isArray(vals) || vals.length === 0) throw new Error('Keine Vals im val.town-Account gefunden');
+    console.log('[V12.138]', vals.length, 'Vals gefunden, suche nach EmailSender …');
+    const target = vals.find(v => /emailsender|email-sender|email_sender/i.test(v.name || ''));
+    if (!target) {
+      const names = vals.map(v => v.name).filter(Boolean).slice(0, 20).join(', ');
+      throw new Error('Kein Val mit Name wie „liftaroEmailSender" gefunden. Vorhandene: ' + names);
+    }
+    valId = target.id;
+    console.log('[V12.138] Val gefunden:', target.name, '(' + valId + ')');
+    try { localStorage.setItem('liftaro_emailsender_valid', valId); } catch (_) {}
+  }
+  // 3. Aktuellen Code als Backup in localStorage sichern
+  let backup = '';
+  try {
+    const cur = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent('main.tsx'));
+    backup = cur?.content || cur?.code || '';
+    if (backup) {
+      const key = 'liftaro_emailsender_backup_' + new Date().toISOString().replace(/[:.]/g,'-');
+      localStorage.setItem(key, backup);
+      console.log('[V12.138] Backup in localStorage:', key, backup.length, 'bytes');
+    }
+  } catch (e) { console.warn('[V12.138] Backup-Lesen fehlgeschlagen (nicht-blockierend):', e.message); }
+  // 4. Update durchführen
+  await valtownUpdateFile(token, valId, code);
+  console.log('[V12.138] Update geschickt');
+  // 5. Verifikation — V12.138-Marker im neuen Code prüfen
+  try {
+    const verified = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent('main.tsx'));
+    const newCode = verified?.content || verified?.code || '';
+    if (!newCode.includes('V12.138')) {
+      console.warn('[V12.138] Verifikation: V12.138-Marker nicht im neuen Code — Update evtl. nicht angekommen');
+      throw new Error('Verifikation fehlgeschlagen — V12.138-Marker fehlt im aktualisierten Code');
+    }
+    console.log('[V12.138] Verifikation OK — V12.138-Marker im neuen Code vorhanden');
+  } catch (e) {
+    if (e.message.startsWith('Verifikation')) throw e;
+    console.warn('[V12.138] Verifikation-Lesen fehlgeschlagen:', e.message);
+  }
+  return { valId, codeBytes: code.length, backupBytes: backup.length };
+}
+window.updateEmailSenderVal = updateEmailSenderVal;
+
+// V12.138: Button-Handler — ruft updateEmailSenderVal mit Logging im
+// vcsetupProgress-Container (selbe UX wie Proxy-Update) und Toast.
+async function runEmailSenderUpdate(btn) {
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  const list = document.getElementById('vcsetupProgressList');
+  const prog = document.getElementById('vcsetupProgress');
+  if (prog) prog.style.display = 'block';
+  const log = (msg, type = 'info') => {
+    const colors = { info: '#cbd5e1', ok: '#9ee880', warn: '#ffd478', error: '#ff8585' };
+    const icon = { info: '·', ok: '✓', warn: '⚠', error: '✗' };
+    if (list) {
+      const li = document.createElement('li');
+      li.style.color = colors[type] || colors.info;
+      li.textContent = (icon[type] || '·') + ' ' + msg;
+      list.appendChild(li);
+      list.parentElement.scrollTop = list.parentElement.scrollHeight;
+    }
+    console.log('[V12.138]', type, msg);
+  };
+  log('Email-Sender-Val Update startet …');
+  try {
+    const result = await updateEmailSenderVal();
+    log('Code geladen: ' + result.codeBytes + ' bytes', 'ok');
+    log('Backup gespeichert: ' + result.backupBytes + ' bytes (localStorage)', 'ok');
+    log('Update durchgeführt für Val ' + (result.valId || '?'), 'ok');
+    log('Verifikation: V12.138-Marker im neuen Code vorhanden', 'ok');
+    log('FERTIG — BCC ist jetzt einsatzbereit.', 'ok');
+    if (typeof showToast === 'function') showToast('✓ Email-Sender aktualisiert — BCC funktioniert jetzt', 'success', 4500);
+  } catch (e) {
+    log('FEHLER: ' + e.message, 'error');
+    if (typeof showToast === 'function') showToast('Update fehlgeschlagen: ' + e.message, 'error', 6000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+}
+window.runEmailSenderUpdate = runEmailSenderUpdate;
 async function valtownCreateVal(token, name, description = '', privacy = 'public') {
   const body = { name, privacy };
   if (description) body.description = description.slice(0, 64);
