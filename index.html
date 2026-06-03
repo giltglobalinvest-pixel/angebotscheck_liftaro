@@ -4064,6 +4064,15 @@ const pdfWorkerReady = Promise.resolve();</script>
         <input type="text" id="erTo" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
         <div id="erTestBanner" style="display:none;margin-top:8px;padding:8px 12px;background:#f3eafc;border:1px solid #d4baf5;border-radius:6px;font-size:12px;color:#5b21b6;font-weight:600">🧪 Test-Modus aktiv · Postfach-Status wird NICHT verändert</div>
       </div>
+      <!-- V12.137: BCC-Feld — optional, wird beim Senden ans Backend weitergegeben.
+           Letzter Wert wird in localStorage gespeichert + beim nächsten Mal vorbefüllt. -->
+      <div>
+        <label style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">
+          <span>BCC <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;font-size:10.5px;margin-left:4px">— optional, mehrere mit Komma getrennt</span></span>
+          <button type="button" onclick="document.getElementById('erBcc').value='';localStorage.removeItem('liftaro_last_bcc');showToast('BCC geleert','ok')" style="background:transparent;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-transform:none;letter-spacing:0">leeren</button>
+        </label>
+        <input type="text" id="erBcc" placeholder="z.B. archiv@firma.de" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px">
+      </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Betreff</label>
         <input type="text" id="erSubject" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px">
@@ -5840,7 +5849,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.136';
+const APP_VERSION = 'V12.137';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6627,6 +6636,17 @@ async function setupTables() {
     // V12.68 EuC-I (nachträglich in V12.80 registriert): Aufzug-Verknüpfung als Top-Level-Filter-Index
     { name: 'aufzug_id',         type: 'singleLineText' },
   ]);
+  // V12.137: Emails-Tabelle — Felder für outgoing/sent-Records (Antwort-Verlauf)
+  try {
+    await ensureFields('Emails', [
+      { name: 'direction',            type: 'singleLineText' },  // 'outgoing' | (sonst leer = incoming)
+      { name: 'sent_at',              type: 'singleLineText' },
+      { name: 'to_email',             type: 'singleLineText' },
+      { name: 'bcc_email',            type: 'singleLineText' },
+      { name: 'body',                 type: 'multilineText' },
+      { name: 'attachment_filenames', type: 'singleLineText' },
+    ]);
+  } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // Verträge-Tabelle
   try {
     await ensureTable('Vertraege', [
@@ -22174,19 +22194,29 @@ function renderEmailInboxList() {
     const cls = String(r.ki_classification || 'unklar').toLowerCase();
     const conf = String(r.ki_confidence || 'low').toLowerCase();
     const status = r.status || 'neu';
-    const date = String(r.received_at || '').slice(0, 16).replace('T', ' ');
+    // V12.137: outgoing-Records zeigen sent_at statt received_at + grünen Marker
+    const isOut = (r.direction === 'outgoing');
+    const date = String((isOut ? (r.sent_at || r.status_at) : r.received_at) || '').slice(0, 16).replace('T', ' ');
     const vcnt = r.ki_vorgaenge_count || 0;
     const fwdMark = r.is_forwarded
       ? '<span title="Weitergeleitet" style="display:inline-flex;align-items:center;font-size:10px;color:#9A3412;font-weight:700;margin-right:4px">↪</span>'
       : '';
+    // V12.137: outgoing — eigener Style + "📤 An: …" statt Absender
+    const outStyle = isOut ? ' style="border-left:3px solid #16a34a;background:#f0fdf4"' : '';
+    const fromLabel = isOut
+      ? '<span style="color:#16a34a;font-weight:700;margin-right:5px">📤</span>An: ' + _esc(r.to_email || '(?)')
+      : (fwdMark + _esc(r.from_name || r.from_email || '(unbekannt)'));
+    const statusPill = isOut
+      ? '<span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">gesendet</span>'
+      : ('<span class="ei-status-pill ei-status-' + status + '">' + _esc(status) + '</span>');
     return (
-      `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">` +
-        `<div class="ei-row-from">${fwdMark}${_esc(r.from_name || r.from_email || '(unbekannt)')}</div>` +
+      `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')"${outStyle}>` +
+        `<div class="ei-row-from">${fromLabel}</div>` +
         `<div class="ei-row-subj">${_esc(r.subject || '(kein Betreff)')}</div>` +
         `<div class="ei-row-meta">` +
-          `<span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>` +
-          (vcnt > 0 ? `<span style="font-size:10.5px;color:var(--muted);font-weight:600">${vcnt} Vorgang${vcnt>1?'änge':''}</span>` : '') +
-          `<span class="ei-status-pill ei-status-${status}">${_esc(status)}</span>` +
+          (isOut ? '' : `<span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>`) +
+          (vcnt > 0 && !isOut ? `<span style="font-size:10.5px;color:var(--muted);font-weight:600">${vcnt} Vorgang${vcnt>1?'änge':''}</span>` : '') +
+          statusPill +
           `<span class="ei-row-date">${_esc(date)}</span>` +
         `</div>` +
       `</div>`
@@ -22217,6 +22247,37 @@ function renderEmailInboxDetail() {
   }
   const r = _eiAllRecords.find(x => x._id === _eiSelectedId);
   if (!r) { detEl.innerHTML = '<div style="padding:40px;color:#9F1B1F">Email nicht gefunden</div>'; return; }
+
+  // V12.137: outgoing-Records eigene einfache Detail-View
+  if (r.direction === 'outgoing') {
+    const sentDate = String(r.sent_at || r.status_at || '').replace('T', ' ').slice(0, 19);
+    const att = String(r.attachment_filenames || '').trim();
+    const bcc = String(r.bcc_email || '').trim();
+    const bodyHtml = _esc(r.body || '').replace(/\n/g, '<br>');
+    detEl.innerHTML = `<div style="padding:20px 24px">
+      <button class="ei-mobile-back" onclick="backToInboxList()" style="background:var(--dr-surface);border:1px solid var(--dr-border);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;align-items:center;gap:7px;margin-bottom:14px;box-shadow:var(--dr-elev-1)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <span>Zurück zur Liste</span>
+      </button>
+      <div class="dr-section" style="padding:16px 18px;border-left:4px solid #16a34a">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:20px">📤</span>
+          <span style="background:#dcfce7;color:#166534;border-radius:9px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.04em">Gesendet · ${_esc(sentDate)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--dr-ink);line-height:1.7;margin-bottom:12px">
+          <div><strong>An:</strong> ${_esc(r.to_email || '(?)')}</div>
+          ${bcc ? `<div><strong>BCC:</strong> ${_esc(bcc)}</div>` : ''}
+          <div><strong>Betreff:</strong> ${_esc(r.subject || '(kein Betreff)')}</div>
+          <div><strong>Von:</strong> ${_esc(r.from_email || 'check@liftaro.de')}</div>
+          ${r.bearbeiter_name ? `<div><strong>Bearbeiter:</strong> ${_esc(r.bearbeiter_name)}</div>` : ''}
+          ${r.linked_check_ids ? `<div><strong>Verlinkte Checks:</strong> <code style="font-size:11.5px">${_esc(r.linked_check_ids)}</code></div>` : ''}
+          ${att ? `<div><strong>Anhänge:</strong> ${_esc(att)}</div>` : ''}
+        </div>
+        <div style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:8px;padding:14px 16px;font-size:13.5px;color:var(--dr-ink);line-height:1.6;white-space:pre-wrap">${bodyHtml || '<em style="color:var(--dr-ink-mute)">(kein Body)</em>'}</div>
+      </div>
+    </div>`;
+    return;
+  }
 
   // Parse Vorgänge
   let vorgaenge = [];
@@ -23912,6 +23973,12 @@ async function openEmailReplyModal(recId) {
   // Modal vorausfüllen
   document.getElementById('erTo').value      = r.from_email || '';
   document.getElementById('erSubject').value = _ensureRePrefix(r.subject || '');
+  // V12.137: BCC aus localStorage vorausfüllen (zuletzt verwendete Adresse)
+  try {
+    const lastBcc = localStorage.getItem('liftaro_last_bcc') || '';
+    const bccEl = document.getElementById('erBcc');
+    if (bccEl) bccEl.value = lastBcc;
+  } catch (_) {}
   // Default-Body: vorhandener KI-Reply-Draft, sonst leer
   document.getElementById('erBody').value    = r.reply_draft || '';
   document.getElementById('erStatus').textContent = '';
@@ -24275,6 +24342,14 @@ async function doSendEmailReply() {
     // einen kaputten Multipart-Header verursacht (iOS Mail zeigte rohen MIME-Quellcode).
     // Backend (denomailer) macht UTF-8-text/plain mit quoted-printable von alleine korrekt.
     status.innerHTML = '<span style="color:var(--navy)">⏳ Sende über check@liftaro.de …</span>';
+    // V12.137: BCC aus Modal-Input lesen + persistieren (für nächstes Mal)
+    const bccRaw = (document.getElementById('erBcc')?.value || '').trim();
+    let bccList = [];
+    if (bccRaw) {
+      bccList = bccRaw.split(',').map(s => s.trim()).filter(Boolean);
+      try { localStorage.setItem('liftaro_last_bcc', bccRaw); } catch (_) {}
+      console.log('[V12.137] BCC:', bccList);
+    }
     const payload = {
       to:        to,
       subject:   subjectSanitized,   // V12.123: sanitized statt roh
@@ -24282,6 +24357,7 @@ async function doSendEmailReply() {
       replyTo:   'check@liftaro.de',
       inReplyTo: r.message_id || undefined,
     };
+    if (bccList.length) payload.bcc = bccList;
     if (attachments.length) payload.attachments = attachments;
 
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
@@ -24315,6 +24391,32 @@ async function doSendEmailReply() {
       r.replied_at      = new Date().toISOString();
       r.replied_subject = subject;
       r.replied_body    = body;
+      // V12.137: Sent-Record in Emails-Tabelle anlegen, damit die Antwort
+      // im Posteingang als Verlauf sichtbar ist. Fehler nicht-blockierend.
+      try {
+        const sentAt = new Date().toISOString();
+        const attNames = (attachments || []).map(a => a.filename).filter(Boolean).join(', ');
+        const sentFields = {
+          direction:        'outgoing',
+          from_email:       'check@liftaro.de',
+          to_email:         to,
+          subject:          subject,
+          body:             body.slice(0, 95000),
+          sent_at:          sentAt,
+          status:           'gesendet',
+          status_at:        sentAt,
+          in_reply_to:      r.message_id || '',
+          linked_check_ids: r.linked_check_ids || '',
+          bearbeiter_name:  _eiCurrentUserName(),
+        };
+        if (bccList.length) sentFields.bcc_email = bccList.join(', ');
+        if (attNames) sentFields.attachment_filenames = attNames;
+        await atWrite('Emails', sentFields);
+        console.log('[V12.137] Sent-Record in Emails angelegt');
+      } catch (sentErr) {
+        console.warn('[V12.137] Sent-Record konnte nicht angelegt werden:', sentErr.message);
+        // Hinweis (nicht-blockierend) — kann an fehlenden Airtable-Feldern liegen
+      }
     }
 
     status.innerHTML = isTest
