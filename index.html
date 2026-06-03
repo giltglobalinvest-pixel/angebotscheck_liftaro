@@ -5867,7 +5867,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.141';
+const APP_VERSION = 'V12.142';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16419,22 +16419,20 @@ function _shortenZahlungsziel(s) {
 // ═══════════════════════════════════════════════════════════════════
 async function buildLightVertragPDF() {
   const d = getLightVertragForm();
-  // WEGs/Aufzüge aus dem Editor laden (oder Cache nutzen)
-  let wegs = Array.isArray(window._currentLightWegs) ? window._currentLightWegs : [];
-  if (d.id) {
-    try { wegs = await loadLightWegs(d.id); } catch (e) { /* fallback Cache */ }
-  }
-  const wegCount = wegs.length;
-  const aufzSum  = wegs.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
-  const kostenAltSum = wegs.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
-  // V12.69 EuC-J: verknüpfte Aufzüge pro WEG für die Anlage A
-  let aufzugById = {};
+  // V12.142: Aufzüge direkt aus Aufzuege-Tabelle (kein WEG-Layer mehr).
+  // Filter auf euc_vertrag_id === d.id. Jahreskosten aus jahreskosten_alt_eur.
+  let aufzuege = [];
   try {
     const recs = await loadAufzuege();
-    (recs || []).forEach(r => {
-      if (r.fields?.id) aufzugById[r.fields.id] = r.fields;
-    });
-  } catch (_) { /* silent */ }
+    aufzuege = (recs || [])
+      .map(r => ({ ...r.fields, _recordId: r.id }))
+      .filter(a => (a.euc_vertrag_id || '') === d.id);
+  } catch (e) { console.warn('[V12.142] loadAufzuege failed:', e.message); }
+  const aufzSum = aufzuege.length;
+  const kostenAltSum = aufzuege.reduce((s, a) => s + (Number(a.jahreskosten_alt_eur) || 0), 0);
+  // Backcompat — wegCount: Anzahl unterschiedlicher Standorte (für Vertragstext)
+  const standortSet = new Set(aufzuege.map(a => (a.standort || '').trim()).filter(Boolean));
+  const wegCount = standortSet.size || 1;
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
   const helv     = await doc.embedFont(StandardFonts.Helvetica);
@@ -16614,65 +16612,52 @@ async function buildLightVertragPDF() {
   title('Anlage A: Erfasste Aufzugsanlagen');
   draw('Die folgenden WEGs/Objekte mit insgesamt ' + aufzSum + ' Aufzugsanlagen sind verbindlicher Bestandteil dieser Rahmenvereinbarung gemäß § 1 Abs. 2. Die dokumentierten jährlichen Wartungs- und Notrufkosten dienen als Status quo für die Berechnung der Erfolgsbeteiligung gemäß § 4 Abs. 3.', { color: MUTED, after: 10 });
 
-  if (wegCount === 0) {
+  if (aufzSum === 0) {
     draw('— Bisher wurden keine Aufzugsanlagen erfasst. Bitte ergänzen Sie die Liste vor Vertragsunterzeichnung. —', { color: MUTED, font: helvBold, after: 10 });
   } else {
-    // Tabellen-Header
-    const colX     = { nr: MARGIN_X, weg: MARGIN_X + 22, anz: MARGIN_X + 280, dl: MARGIN_X + 320, kost: PAGE_W - MARGIN_X - 70 };
+    // V12.142: Tabelle pro Aufzug (kein WEG-Zwischenlayer mehr)
+    const colX     = { nr: MARGIN_X, az: MARGIN_X + 22, fab: MARGIN_X + 78, kost: PAGE_W - MARGIN_X - 70 };
     const rowH     = 14;
     const headerH  = 18;
     function drawTableHeader() {
       ensure(headerH + 4);
       page.drawRectangle({ x: MARGIN_X - 4, y: y - headerH + 4, width: PAGE_W - 2*MARGIN_X + 8, height: headerH, color: rgb(0.93,0.94,0.96) });
-      page.drawText('#',                   { x: colX.nr,   y: y - 11, size: 9, font: helvBold, color: COLOR });
-      page.drawText('WEG / Objekt',        { x: colX.weg,  y: y - 11, size: 9, font: helvBold, color: COLOR });
-      page.drawText('Aufz.',               { x: colX.anz,  y: y - 11, size: 9, font: helvBold, color: COLOR });
-      page.drawText('Aktueller Wartungs-Dienstl.', { x: colX.dl, y: y - 11, size: 9, font: helvBold, color: COLOR });
-      page.drawText('Kosten/Jahr',         { x: colX.kost, y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('#',              { x: colX.nr,   y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('Aufzug-ID',      { x: colX.az,   y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('Fabr.-Nr. · Standort · Hersteller', { x: colX.fab, y: y - 11, size: 9, font: helvBold, color: COLOR });
+      page.drawText('Kosten/Jahr',    { x: colX.kost, y: y - 11, size: 9, font: helvBold, color: COLOR });
       y -= headerH + 2;
     }
     drawTableHeader();
 
-    wegs.forEach((w, idx) => {
-      const nr   = String(idx + 1) + '.';
-      const name = w.weg_name || w.id || '—';
-      const adr  = [w.weg_strasse, [w.weg_plz, w.weg_ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-      const anz  = Number(w.anzahl_aufzuege) || 0;
-      const dl   = w.aktueller_dienstleister || '—';
-      const kost = Number(w.aktuelle_jahreskosten_eur) || 0;
-      // V12.69 EuC-J: verknüpfte Aufzug-IDs der WEG
-      const azIds = ((w.aufzug_ids || '').toString()).split(',').map(s => s.trim()).filter(Boolean);
-      const linkedAufzuege = azIds.map(id => aufzugById[id]).filter(Boolean);
-      const azLine = linkedAufzuege.length
-        ? 'Fabr.-Nrn.: ' + linkedAufzuege.map(a => a.fabriknummer || '?').join(', ')
-        : '';
-      // Row-Höhe: 2 Zeilen (Name + Adresse) + ggf. 1 Zeile für Fabr.-Nrn.
-      const extraLines = azLine ? 1 : 0;
-      ensure(rowH * (2 + extraLines) + 6);
-      // Zeile 1: Name + Anzahl + Dienstleister + Kosten
-      const dlShort = dl.length > 26 ? dl.slice(0, 24) + '…' : dl;
-      page.drawText(_safeWinAnsi(nr),                  { x: colX.nr,   y: y - 10, size: 9.5, font: helvBold, color: COLOR });
-      page.drawText(_safeWinAnsi(name.length > 42 ? name.slice(0, 40) + '…' : name),
-                                                       { x: colX.weg,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
-      // Anzeige der Anzahl: bei verknüpften Aufzügen die tatsächliche Zahl, sonst manuelle anz
-      const anzDisp = linkedAufzuege.length > 0 ? linkedAufzuege.length : anz;
-      page.drawText(String(anzDisp),                   { x: colX.anz,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
-      page.drawText(_safeWinAnsi(dlShort),             { x: colX.dl,   y: y - 10, size: 9,   font: helv,     color: COLOR });
+    aufzuege.forEach((a, idx) => {
+      const nr     = String(idx + 1) + '.';
+      const azId   = a.id || '—';
+      const fab    = 'Fabr.-Nr. ' + (a.fabriknummer || '?');
+      const standort = (a.standort || '').trim();
+      const hersteller = (a.hersteller || '').trim();
+      const kost   = Number(a.jahreskosten_alt_eur) || 0;
+      // Row-Höhe: 2 Zeilen (Fabr.-Nr. + Standort/Hersteller)
+      const hasZeile2 = !!(standort || hersteller);
+      const extraLines = hasZeile2 ? 1 : 0;
+      ensure(rowH * (1 + extraLines) + 6);
+      // Zeile 1: Nr · AZ-ID · Fabr.-Nr. · Kosten
+      page.drawText(_safeWinAnsi(nr),    { x: colX.nr, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+      page.drawText(_safeWinAnsi(azId),  { x: colX.az, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+      const fabShort = fab.length > 56 ? fab.slice(0, 54) + '…' : fab;
+      page.drawText(_safeWinAnsi(fabShort), { x: colX.fab, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
       const kostStr = kost > 0 ? fmt(kost) + ' EUR' : '—';
       const kostW   = helv.widthOfTextAtSize(kostStr, 9);
-      page.drawText(_safeWinAnsi(kostStr),             { x: PAGE_W - MARGIN_X - kostW, y: y - 10, size: 9, font: helv, color: COLOR });
+      page.drawText(_safeWinAnsi(kostStr), { x: PAGE_W - MARGIN_X - kostW, y: y - 10, size: 9, font: helv, color: COLOR });
       y -= rowH;
-      // Zeile 2: Adresse (kursiv-Effekt via MUTED)
-      if (adr) {
-        page.drawText(_safeWinAnsi(adr.length > 70 ? adr.slice(0, 68) + '…' : adr),
-                                                       { x: colX.weg,  y: y - 10, size: 8.5, font: helv, color: MUTED });
-      }
-      y -= rowH;
-      // Zeile 3 (optional): Fabr.-Nrn. der verknüpften Aufzüge
-      if (azLine) {
-        const cap = azLine.length > 95 ? azLine.slice(0, 92) + '…' : azLine;
-        page.drawText(_safeWinAnsi(cap),
-                                                       { x: colX.weg,  y: y - 10, size: 8.5, font: helvBold, color: rgb(0.12, 0.25, 0.55) });
+      // Zeile 2: Standort + Hersteller
+      if (hasZeile2) {
+        const line2parts = [];
+        if (standort) line2parts.push(standort);
+        if (hersteller) line2parts.push(hersteller);
+        const line2 = line2parts.join(' · ');
+        const cap = line2.length > 70 ? line2.slice(0, 68) + '…' : line2;
+        page.drawText(_safeWinAnsi(cap), { x: colX.fab, y: y - 10, size: 8.5, font: helv, color: MUTED });
         y -= rowH;
       }
       // Trennlinie
@@ -16680,17 +16665,16 @@ async function buildLightVertragPDF() {
       y -= 4;
     });
 
-    // Summenzeile
+    // Summenzeile (V12.142: Aufzug-direkt)
     ensure(rowH + 6);
     page.drawRectangle({ x: MARGIN_X - 4, y: y - rowH + 2, width: PAGE_W - 2*MARGIN_X + 8, height: rowH, color: rgb(0.93,0.94,0.96) });
-    page.drawText('Summe',                              { x: colX.weg,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
-    page.drawText(String(aufzSum),                       { x: colX.anz,  y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+    page.drawText('Summe (' + aufzSum + ' Anlage' + (aufzSum === 1 ? '' : 'n') + ')', { x: colX.az, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
     const sumStr = fmt(kostenAltSum) + ' EUR';
     const sumW   = helvBold.widthOfTextAtSize(sumStr, 9.5);
-    page.drawText(_safeWinAnsi(sumStr),                 { x: PAGE_W - MARGIN_X - sumW, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
+    page.drawText(_safeWinAnsi(sumStr), { x: PAGE_W - MARGIN_X - sumW, y: y - 10, size: 9.5, font: helvBold, color: COLOR });
     y -= rowH + 8;
 
-    draw('Erläuterung: Die Spalte "Kosten/Jahr" entspricht den dokumentierten Netto-Jahres-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme. Dieser Wert dient als Berechnungsgrundlage (Status quo) für die Erfolgsbeteiligung gemäß § 4.', { color: MUTED, size: 8.5, after: 4 });
+    draw('Erläuterung: Die Spalte "Kosten/Jahr" entspricht den dokumentierten Netto-Jahres-Wartungs- und Notrufkosten pro Aufzugsanlage zum Zeitpunkt der Aufnahme. Dieser Wert dient als Berechnungsgrundlage (Status quo) für die Erfolgsbeteiligung gemäß § 4.', { color: MUTED, size: 8.5, after: 4 });
   }
 
   // ── ANLAGE B: Vollmacht-Muster (neue Seite)
@@ -18071,30 +18055,37 @@ async function saveLightVertrag() {
     savedAt: new Date().toISOString(),
     createdBy: APP_KEYS.user?.email || '',
   };
+  console.log('[V12.142] saveLightVertrag start —', d._recordId ? 'UPDATE recId=' + d._recordId : 'NEW', '— fields:', Object.keys(fields));
   try {
     let rec;
     if (d._recordId) rec = await atUpdate('Light-Vertraege', d._recordId, fields);
     else rec = await atWrite('Light-Vertraege', fields);
-    showToast('Light-Vereinbarung gespeichert', 'ok');
-    document.getElementById('lv_recordId').value = rec.id;
-    document.getElementById('lv_id').value = lvId;
-    document.getElementById('lightVertragEditorTitle').textContent = 'Light-Vereinbarung · ' + (d.firma || lvId);
-    document.getElementById('lv_btnDelete').style.display = 'inline-flex';
-    document.getElementById('lv_uploadSection').style.display = 'block';
-    document.getElementById('lv_addAufzuege').disabled = false;
-    document.getElementById('lv_addAufzuege').style.opacity = '1';
+    console.log('[V12.142] saveLightVertrag OK — rec.id=' + (rec?.id || '?'));
+    showToast('EuC-Vereinbarung gespeichert', 'success', 2500);
+    // Defensive: alle DOM-Updates in eigenen try/catch damit ein null-Element
+    // den Toast-Erfolg nicht in einen Fehler-Toast verwandelt
+    try {
+      document.getElementById('lv_recordId').value = rec.id;
+      document.getElementById('lv_id').value = lvId;
+      document.getElementById('lightVertragEditorTitle').textContent = 'EuC-Vereinbarung · ' + (d.firma || lvId);
+      document.getElementById('lv_btnDelete').style.display = 'inline-flex';
+      document.getElementById('lv_uploadSection').style.display = 'block';
+      const addBtn = document.getElementById('lv_addAufzuege');
+      if (addBtn) { addBtn.disabled = false; addBtn.style.opacity = '1'; }
+    } catch (uiErr) { console.warn('[V12.142] Post-Save UI-Update Warnung:', uiErr.message); }
     await renderAufzuegeInEuCEditor(lvId);
     // Hintergrund: Liste neu laden
     loadLightVertraege().then(items => {
       window._lightVertraegeCache = items;
       _updateLightVertraegeBadge(items.length);
-    });
+    }).catch(e => console.warn('[V12.142] loadLightVertraege bg-reload failed:', e.message));
   } catch (e) {
+    console.error('[V12.142] saveLightVertrag FAIL:', e);
     if (/NOT_FOUND|TABLE_NOT_FOUND/i.test(e.message || '')) {
       showToast('Tabelle „Light-Vertraege" nicht angelegt. Siehe Konsolen-Log.', 'error', 5000);
       console.warn('Bitte Airtable-Tabelle „Light-Vertraege" anlegen mit den Feldern aus loadLightVertraege.');
     } else {
-      showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+      showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 6000);
     }
   }
 }
