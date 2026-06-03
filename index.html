@@ -4890,10 +4890,17 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Hausverwaltung</div>
       <div class="field-row r4" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
         <div class="field" style="position:relative">
-          <label>Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· tippe Name → Pipedrive-Vorschläge</span>
-            <button type="button" onclick="enrichHvFromWeb('lv')" title="Adresse, USt-IdNr und Steuernr per Web-Suche ergänzen" style="float:right;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">🔍 Web-Daten holen</button>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+            <span>Firma <span style="font-weight:400;color:var(--muted);font-size:10.5px">· HV aus Pipedrive</span></span>
+            <span style="display:inline-flex;gap:5px">
+              <button type="button" onclick="openHvPickerForLightVertrag()" title="Hausverwaltung aus Pipedrive wählen (mit Kontakt-Auswahl)" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:5px;padding:2px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                HV wählen
+              </button>
+              <button type="button" onclick="enrichHvFromWeb('lv')" title="Adresse, USt-IdNr und Steuernr per Web-Suche ergänzen" style="background:#fff;border:1.5px solid #7c3aed;color:#7c3aed;border-radius:5px;padding:1px 9px;font-size:10.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif">🌐 Web-Daten</button>
+            </span>
           </label>
-          <input type="text" id="lv_firma" placeholder="Firmenname" autocomplete="off" oninput="_hvPickerSearch('lv')">
+          <input type="text" id="lv_firma" placeholder="🔍 Klicke „HV wählen" — Suche in Pipedrive" autocomplete="off" oninput="_hvPickerSearch('lv')">
           <div id="lv_firma_sug" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.10);z-index:60;max-height:220px;overflow-y:auto;margin-top:4px"></div>
         </div>
         <div class="field"><label>Geschäftsführer / Inhaber</label><input type="text" id="lv_gf" placeholder="Vor- und Nachname"></div>
@@ -5856,7 +5863,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.138';
+const APP_VERSION = 'V12.139';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -19220,7 +19227,34 @@ window._hvPickerCheckResults = [];
 window._hvPickerCheckTimer = null;
 window._hvPickerCheckLastQ = '';
 
+// V12.139: Target-Tracking für das HV-Picker-Modal (wird recycelt zwischen
+// Check-Form ('f') und EuC-Editor ('lv')). Default: 'f' (Backcompat).
+window._hvPickerTarget = 'f';
+
+// V12.139: HV-Picker-Modal für EuC-Vertragseditor öffnen — gleiche UX
+// wie Vertragscheck, aber Pick-Callback befüllt lv_* Felder statt f_*.
+function openHvPickerForLightVertrag() {
+  window._hvPickerTarget = 'lv';
+  const modal = document.getElementById('hvPickerCheckModal');
+  modal.style.display = 'flex';
+  const input = document.getElementById('hvPickerCheckSearchInput');
+  const status = document.getElementById('hvPickerCheckStatus');
+  const list = document.getElementById('hvPickerCheckList');
+  // Aktuellen lv_firma als Vorbelegung
+  const cur = (document.getElementById('lv_firma')?.value || '').trim();
+  if (input) {
+    input.value = cur;
+    setTimeout(() => { input.focus(); input.select(); }, 80);
+  }
+  if (status) status.textContent = '';
+  list.innerHTML = '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:30px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Tippe oben, um in Pipedrive zu suchen.</div>';
+  window._hvPickerCheckLastQ = '';
+  if (cur.length >= 3) _hvPickerCheckSearchDebounced();
+}
+window.openHvPickerForLightVertrag = openHvPickerForLightVertrag;
+
 function openHvPickerForCheck() {
+  window._hvPickerTarget = 'f';  // V12.139: Target setzen
   // Wenn Aufzug gebunden → HV vom Aufzug abhängig, kein direkter Wechsel
   if (window._currentCheckAufzug?.id) {
     showToast('HV ist über den gebundenen Aufzug fest — wechsle den Aufzug oder löse die Bindung.', 'info', 4000);
@@ -19317,6 +19351,23 @@ async function pickHvForCheckFromModal(idx) {
   if (status) status.innerHTML = '<span style="display:inline-block;width:11px;height:11px;border:2px solid var(--dr-border-strong);border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle"></span> Lade Details + Kontakte …';
   let details = null;
   try { details = await _fetchOrgDetails(hit.org_id); } catch(_) {}
+  // V12.139: Target-Dispatch — bei 'lv' direkt EuC-Editor befüllen + Modal schließen
+  const target = window._hvPickerTarget || 'f';
+  if (target === 'lv') {
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+    set('lv_firma',   details?.firma || hit.name);
+    set('lv_gf',      details?.gf);
+    set('lv_strasse', details?.strasse);
+    set('lv_plz',     details?.plz);
+    set('lv_ort',     details?.ort);
+    set('lv_tel',     details?.tel);
+    set('lv_email',   details?.email);
+    const orgIdEl = document.getElementById('lv_hv_pipedrive_org_id');
+    if (orgIdEl) orgIdEl.value = hit.org_id || '';
+    closeHvPickerForCheck();
+    showToast('✓ HV „' + (details?.firma || hit.name || '') + '" übernommen — klick „🌐 Web-Daten" für USt/Steuer', 'ok', 4500);
+    return;
+  }
   const orgInfo = {
     org_id: hit.org_id,
     firma: details?.firma || hit.name || '',
