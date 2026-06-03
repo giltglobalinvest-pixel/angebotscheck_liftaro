@@ -5840,7 +5840,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.134';
+const APP_VERSION = 'V12.135';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7248,6 +7248,22 @@ async function generateAufzugId() {
 // V12.62 EuC-F: Aufzug anhand Fabriknummer suchen.
 // Eindeutigkeit ist pro HV (hv_pipedrive_org_id) — Aufzug mit gleicher Fabriknummer
 // in anderer HV ist OK. Wenn orgId nicht übergeben: alle Treffer zurückgeben.
+// V12.135: GLOBALE Duplikat-Suche — returnt ALLE Aufzüge mit dieser Fabriknummer,
+// egal welche HV. Genutzt im saveAufzug-Pfad als Anti-Duplikat-Check (Fabriknummer
+// ist physisch ein eindeutiger Identifier des Geräts — gestanzt vom Hersteller).
+// Bei Verwalterwechsel wird der existierende Eintrag upgedatet, nicht dupliziert.
+async function findAufzuegeByFabriknummerAll(fabriknummer) {
+  const fn = (fabriknummer || '').toString().trim();
+  if (!fn) return [];
+  try {
+    const recs = await atRead('Aufzuege', "{fabriknummer}='" + fn.replace(/'/g, "\\'") + "'");
+    return recs.map(r => ({ ...r.fields, _recordId: r.id }));
+  } catch(e) {
+    console.warn('[V12.135] findAufzuegeByFabriknummerAll failed:', e.message);
+    return [];
+  }
+}
+
 async function findAufzugByFabriknummer(fabriknummer, hvOrgId) {
   const fn = (fabriknummer || '').toString().trim();
   if (!fn) return null;
@@ -7284,8 +7300,17 @@ async function upsertAufzug(data) {
   const fn = (data.fabriknummer || '').toString().trim();
   const orgId = (data.hv_pipedrive_org_id || '').toString().trim();
   if (!fn) throw new Error('Fabriknummer ist Pflicht');
-  // Prüfen ob bereits vorhanden (gleiche Fabriknummer + gleiche HV)
-  const existing = orgId ? await findAufzugByFabriknummer(fn, orgId) : null;
+  // V12.135: Erst HV-strict suchen, dann fallback global. Damit wird bei
+  // strict-Miss (HV-ID fehlt/unterscheidet sich) der bestehende Eintrag
+  // wiederverwendet statt ein Duplikat anzulegen.
+  let existing = orgId ? await findAufzugByFabriknummer(fn, orgId) : null;
+  if (!existing) {
+    const allMatches = await findAufzuegeByFabriknummerAll(fn);
+    if (allMatches.length > 0) {
+      existing = allMatches[0];
+      console.log('[V12.135] upsertAufzug: Fabr.-Nr. ' + fn + ' existiert bereits global (' + existing.id + ') — wiederverwenden statt neuer Eintrag');
+    }
+  }
   const now = new Date().toISOString();
   const apiKey = APP_KEYS.user?.api_key || 'unknown';
   if (existing && existing._recordId) {
@@ -18171,8 +18196,8 @@ function renderAufzuegeList(items, query) {
     const standortLine = a.standort ? escapeHtml(a.standort) : '–';
     const hersteller = a.hersteller ? ' · ' + escapeHtml(a.hersteller) : '';
     const wegPart = a.weg_id ? ' · ' + escapeHtml(a.weg_id) : '';
-    return '<div style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--dr-blue)\'" onmouseout="this.style.borderColor=\'var(--dr-border)\'" onclick="openAufzugByIndex(' + cacheIdx + ')">'
-      + '<div style="flex:1;min-width:0">'
+    return '<div style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px;display:flex;align-items:center;gap:10px;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--dr-blue)\'" onmouseout="this.style.borderColor=\'var(--dr-border)\'">'
+      + '<div style="flex:1;min-width:0;cursor:pointer" onclick="openAufzugByIndex(' + cacheIdx + ')">'
         + '<div style="font-weight:700;font-size:13.5px;color:var(--dr-ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
           + '<span style="font-family:var(--dr-f-mono);color:var(--dr-blue);font-size:12px">' + escapeHtml(a.id || '—') + '</span>'
           + '<span style="font-weight:600">Fabr.-Nr. ' + (a.fabriknummer ? escapeHtml(a.fabriknummer) : '<span style="color:#a8312f">fehlt</span>') + '</span>'
@@ -18182,7 +18207,9 @@ function renderAufzuegeList(items, query) {
         + '<div style="font-size:12px;color:var(--dr-ink-mute);margin-top:3px">' + standortLine + wegPart + '</div>'
         + '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">HV: <strong style="color:var(--dr-ink)">' + hvLine + '</strong></div>'
       + '</div>'
-      + '<svg width="18" height="18" fill="none" stroke="var(--dr-ink-mute)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
+      // V12.135: Lösch-Button direkt aus der Liste
+      + '<button type="button" onclick="event.stopPropagation(); deleteAufzugFromList(' + cacheIdx + ')" title="Aufzug löschen" style="background:transparent;border:1px solid #e0a09a;color:#a8312f;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onmouseover="this.style.background=\'#fdf2f2\'" onmouseout="this.style.background=\'transparent\'">🗑</button>'
+      + '<svg width="18" height="18" fill="none" stroke="var(--dr-ink-mute)" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;cursor:pointer" onclick="openAufzugByIndex(' + cacheIdx + ')"><polyline points="9 18 15 12 9 6"/></svg>'
     + '</div>';
   }).join('');
 }
@@ -18284,15 +18311,30 @@ async function saveAufzug() {
   const d = getAufzugForm();
   if (!d.fabriknummer) { showToast('Fabriknummer ist Pflicht', 'error'); return; }
   if (!d.hv_pipedrive_org_id) { showToast('Bitte erst eine Hausverwaltung auswählen', 'error'); return; }
-  // Eindeutigkeit (Fabriknummer + HV) prüfen — nur beim Neuanlegen
+  // V12.135: GLOBALE Eindeutigkeit (Fabriknummer) prüfen — egal welche HV.
+  // Eine Fabriknummer ist physisch eindeutig (vom Hersteller gestanzt). Bei
+  // Verwalterwechsel: bestehender Eintrag wird upgedatet, nicht dupliziert.
   if (!d._recordId) {
     try {
-      const existing = await findAufzugByFabriknummer(d.fabriknummer, d.hv_pipedrive_org_id);
-      if (existing) {
-        showToast('Aufzug mit Fabr.-Nr. ' + d.fabriknummer + ' existiert bereits bei dieser HV (' + existing.id + ').', 'error', 4500);
-        return;
+      const allMatches = await findAufzuegeByFabriknummerAll(d.fabriknummer);
+      if (allMatches.length > 0) {
+        const lines = allMatches.map(a =>
+          `  • ${a.id || '(?)'} · HV: ${a.hv_name || '(keine)'} · Standort: ${a.standort || '(?)'}`
+        ).join('\n');
+        const msg = `⚠ Aufzug mit Fabr.-Nr. ${d.fabriknummer} existiert bereits:\n\n${lines}\n\n` +
+          `Eine Fabriknummer ist physisch eindeutig.\n\n` +
+          `[OK]        = Trotzdem neu anlegen (z.B. Verwalterwechsel)\n` +
+          `[Abbrechen] = Bestehenden öffnen statt neu anlegen`;
+        const goAhead = confirm(msg);
+        if (!goAhead) {
+          // Bestehenden öffnen
+          document.getElementById('aufzugEditorModal').style.display = 'none';
+          setTimeout(() => openAufzugEditor(allMatches[0]), 100);
+          return;
+        }
+        console.log('[V12.135] saveAufzug: User hat Duplikat trotzdem angelegt — Fabr.-Nr.', d.fabriknummer);
       }
-    } catch(e) { /* nicht-blockierend */ }
+    } catch(e) { console.warn('[V12.135] Duplikat-Check failed:', e.message); }
   }
   const now = new Date().toISOString();
   const fields = {
@@ -18684,20 +18726,71 @@ function renderAufzugPickerList(items, query) {
       : '';
     const hv = a.hv_name ? escapeHtml(a.hv_name) : '<span style="color:#a8312f">— HV fehlt</span>';
     const standort = a.standort ? escapeHtml(a.standort) : '–';
-    return '<button type="button" onclick="pickAufzugForCheck(' + idx + ')" style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;font-family:inherit;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor=\'var(--dr-blue)\';this.style.background=\'#f8fbff\'" onmouseout="this.style.borderColor=\'var(--dr-border)\';this.style.background=\'var(--dr-surface)\'">'
-      + '<div style="flex:1;min-width:0">'
-        + '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'
-          + '<span style="font-family:var(--dr-f-mono);color:var(--dr-blue);font-size:11.5px;font-weight:600">' + escapeHtml(a.id || '—') + '</span>'
-          + '<span style="font-weight:700;font-size:13px;color:var(--dr-ink)">Fabr.-Nr. ' + (a.fabriknummer ? escapeHtml(a.fabriknummer) : '<span style="color:#a8312f">?</span>') + '</span>'
-          + (a.hersteller ? '<span style="font-size:11.5px;color:var(--dr-ink-mute)">· ' + escapeHtml(a.hersteller) + '</span>' : '')
-          + eucBadge
+    return '<div style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:10px 14px;display:flex;align-items:center;gap:10px;font-family:inherit;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor=\'var(--dr-blue)\'" onmouseout="this.style.borderColor=\'var(--dr-border)\'">'
+      + '<button type="button" onclick="pickAufzugForCheck(' + idx + ')" style="flex:1;min-width:0;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;gap:10px;text-align:left;padding:0;font-family:inherit">'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'
+            + '<span style="font-family:var(--dr-f-mono);color:var(--dr-blue);font-size:11.5px;font-weight:600">' + escapeHtml(a.id || '—') + '</span>'
+            + '<span style="font-weight:700;font-size:13px;color:var(--dr-ink)">Fabr.-Nr. ' + (a.fabriknummer ? escapeHtml(a.fabriknummer) : '<span style="color:#a8312f">?</span>') + '</span>'
+            + (a.hersteller ? '<span style="font-size:11.5px;color:var(--dr-ink-mute)">· ' + escapeHtml(a.hersteller) + '</span>' : '')
+            + eucBadge
+          + '</div>'
+          + '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">' + standort + ' · HV: ' + hv + '</div>'
         + '</div>'
-        + '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">' + standort + ' · HV: ' + hv + '</div>'
-      + '</div>'
-      + '<svg width="16" height="16" fill="none" stroke="var(--dr-blue)" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
-    + '</button>';
+        + '<svg width="16" height="16" fill="none" stroke="var(--dr-blue)" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
+      + '</button>'
+      // V12.135: Lösch-Button rechts — direkt aus dem Picker entfernbar
+      + '<button type="button" onclick="event.stopPropagation(); deleteAufzugFromPicker(' + idx + ')" title="Aufzug löschen" style="background:transparent;border:1px solid #e0a09a;color:#a8312f;border-radius:6px;padding:5px 9px;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0" onmouseover="this.style.background=\'#fdf2f2\'" onmouseout="this.style.background=\'transparent\'">🗑</button>'
+    + '</div>';
   }).join('');
 }
+
+// V12.135: Gemeinsame Lösch-Logik — wird aus Picker und Hauptliste aufgerufen
+async function _deleteAufzugByRecord(a) {
+  if (!a) return;
+  const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
+  const msg = eucActive
+    ? `⚠ ${a.id || ''} ist aktuell in einer EuC-Vereinbarung!\n\nFabr.-Nr. ${a.fabriknummer || '?'} · ${a.standort || ''}\nHV: ${a.hv_name || '(keine)'}\n\nWirklich löschen?\n(Die EuC-Vereinbarung bleibt bestehen, der Aufzug-Eintrag verschwindet.)`
+    : `Aufzug ${a.id || ''} wirklich löschen?\n\nFabr.-Nr. ${a.fabriknummer || '?'}\n${a.standort || ''}\nHV: ${a.hv_name || '(keine)'}`;
+  if (!confirm(msg)) return;
+  if (!a._recordId) { showToast('Kein Record-ID — Aufzug ist nicht in Airtable', 'error'); return; }
+  try {
+    await atDelete('Aufzuege', a._recordId);
+    // Wenn dieser Aufzug gerade am Check gebunden ist → vom Check lösen
+    if (window._currentCheckAufzug?.id === a.id) {
+      window._currentCheckAufzug = null;
+      if (typeof renderAufzugBanner === 'function') renderAufzugBanner();
+    }
+    showToast('Aufzug ' + (a.id || '') + ' gelöscht', 'ok');
+    // Cache + Listen auffrischen
+    const fresh = await loadAufzuege();
+    window._aufzuegeCache = (fresh || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    window._aufzugPickerCache = window._aufzuegeCache;
+    if (typeof _updateAufzuegeBadge === 'function') _updateAufzuegeBadge(window._aufzuegeCache.length);
+    // Picker neu rendern falls offen
+    if (document.getElementById('aufzugPickerModal')?.style.display === 'flex') {
+      renderAufzugPickerList(window._aufzugPickerCache, '');
+    }
+    // Hauptliste auch refreshen falls offen
+    if (document.getElementById('aufzuegeModal')?.style.display === 'flex') {
+      renderAufzuegeList(window._aufzuegeCache, '');
+    }
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+
+async function deleteAufzugFromList(idx) {
+  const a = (window._aufzuegeCache || [])[idx];
+  return _deleteAufzugByRecord(a);
+}
+window.deleteAufzugFromList = deleteAufzugFromList;
+
+async function deleteAufzugFromPicker(idx) {
+  const a = (window._aufzugPickerCache || [])[idx];
+  return _deleteAufzugByRecord(a);
+}
+window.deleteAufzugFromPicker = deleteAufzugFromPicker;
 
 async function pickAufzugForCheck(idx) {
   const a = (window._aufzugPickerCache || [])[idx];
