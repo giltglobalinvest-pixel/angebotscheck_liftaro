@@ -41,6 +41,7 @@ type SendPayload = {
   subject: string;
   text?: string;
   html?: string;
+  bcc?: string | string[];          // V12.138: BCC-Empfänger (optional, mehrere möglich)
   replyTo?: string;
   inReplyTo?: string;
   references?: string;
@@ -106,8 +107,13 @@ export default async function (req: Request): Promise<Response> {
   const pass = Deno.env.get("SMTP_PASS") || "";
   const fromAddr = Deno.env.get("SMTP_FROM") || user;
   const fromName = Deno.env.get("SMTP_FROM_NAME") || "Liftaro GmbH";
-  if (!host || !user || !pass) {
-    return json({ error: "SMTP not configured (HOST/USER/PASS missing)" }, 500, ALLOW);
+  // Präzise Fehlermeldung: welche Variable fehlt?
+  const missing: string[] = [];
+  if (!host) missing.push("SMTP_HOST");
+  if (!user) missing.push("SMTP_USER");
+  if (!pass) missing.push("SMTP_PASS");
+  if (missing.length) {
+    return json({ error: "SMTP not configured — missing env-vars: " + missing.join(", ") }, 500, ALLOW);
   }
 
   // 4. Custom Headers für In-Reply-To / References (für Thread-Anbindung)
@@ -139,9 +145,14 @@ export default async function (req: Request): Promise<Response> {
 
   try {
     const fromHeader = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+    // V12.138: BCC mitschicken — als Array normalisiert, undefined wenn leer
+    const bccList = body.bcc
+      ? (Array.isArray(body.bcc) ? body.bcc.filter(Boolean) : [body.bcc].filter(Boolean))
+      : undefined;
     await client.send({
       from: fromHeader,
       to: to,
+      bcc: (bccList && bccList.length) ? bccList : undefined,
       replyTo: body.replyTo || fromAddr,
       subject: body.subject,
       content: body.text || "",
