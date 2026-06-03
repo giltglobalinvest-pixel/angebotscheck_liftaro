@@ -5863,7 +5863,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.139';
+const APP_VERSION = 'V12.140';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6127,7 +6127,12 @@ async function atWrite(table, fields) {
     headers: { 'Authorization': 'Bearer ' + APP_KEYS.airtableWriteKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
-  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || 'Schreiben fehlgeschlagen'); }
+  if (!res.ok) {
+    const e = await res.json().catch(()=>({}));
+    // V12.140: Voller Error-Body in Console damit wir sehen WELCHES Feld bei 422 streikt
+    console.error('[atWrite] ' + table + ' HTTP ' + res.status + ' — error:', e, 'sent fields:', Object.keys(fields));
+    throw new Error((e.error?.message || e.error?.type || 'Schreiben fehlgeschlagen') + ' (' + table + ', HTTP ' + res.status + ')');
+  }
   return await res.json();
 }
 
@@ -6765,6 +6770,36 @@ async function setupTables() {
       { name: 'attachment_filenames', type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
+  // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
+  // Wenn die Tabelle existiert aber einzelne Felder fehlen → 422 beim Speichern.
+  // ensureFields ergänzt fehlende, ohne existierende anzufassen.
+  try {
+    await ensureFields('Light-Vertraege', [
+      { name: 'id',                              type: 'singleLineText' },
+      { name: 'firma',                           type: 'singleLineText' },
+      { name: 'gf',                              type: 'singleLineText' },
+      { name: 'strasse',                         type: 'singleLineText' },
+      { name: 'plz',                             type: 'singleLineText' },
+      { name: 'ort',                             type: 'singleLineText' },
+      { name: 'tel',                             type: 'singleLineText' },
+      { name: 'email',                           type: 'singleLineText' },
+      { name: 'ustidnr',                         type: 'singleLineText' },
+      { name: 'steuernr',                        type: 'singleLineText' },
+      { name: 'vertragsbeginn',                  type: 'singleLineText' },
+      { name: 'erfolgsbeteiligung_pct',          type: 'number', options: { precision: 0 } },
+      { name: 'erfolgsbeteiligung_dauer_jahre',  type: 'number', options: { precision: 0 } },
+      { name: 'mindestlaufzeit_monate',          type: 'number', options: { precision: 0 } },
+      { name: 'kuendigungsfrist_monate',         type: 'number', options: { precision: 0 } },
+      { name: 'haftungsgrenze_eur',              type: 'number', options: { precision: 0 } },
+      { name: 'gerichtsstand',                   type: 'singleLineText' },
+      { name: 'status',                          type: 'singleLineText' },
+      { name: 'verknuepfter_rahmenvertrag_id',   type: 'singleLineText' },
+      { name: 'kommentar',                       type: 'multilineText' },
+      { name: 'savedAt',                         type: 'singleLineText' },
+      { name: 'createdBy',                       type: 'singleLineText' },
+    ]);
+    console.log('[V12.140] ensureFields(Light-Vertraege) OK');
+  } catch(e) { console.warn('[V12.140] ensureFields(Light-Vertraege) failed:', e.message); }
   // Verträge-Tabelle
   try {
     await ensureTable('Vertraege', [
