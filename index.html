@@ -5840,7 +5840,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.135';
+const APP_VERSION = 'V12.136';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23744,9 +23744,104 @@ function _erHandleManualFiles(fileList) {
 }
 window._erHandleManualFiles = _erHandleManualFiles;
 
-// V12.118 (+ V12.130 multi-attach): Check-Dropdown — ersetzt im
-// _erContext.attachments den vorhandenen kind='check' Eintrag durch
-// den neuen. Manuell hinzugefügte Anhänge (kind='manual') bleiben.
+// V12.136: Multi-Select — Check-Anhang an/aus toggeln (statt Single-Wechsel).
+// Wird aus Checkbox-Liste im Switcher aufgerufen + intern beim Picker.
+async function _erToggleCheckAttach(cid, checked) {
+  if (!_erContext || !cid) return;
+  if (!Array.isArray(_erContext.attachments)) _erContext.attachments = [];
+  if (!checked) {
+    // Entfernen
+    const before = _erContext.attachments.length;
+    _erContext.attachments = _erContext.attachments.filter(a => !(a.kind === 'check' && a.checkId === cid));
+    if (_erContext.attachments.length < before) {
+      console.log('[V12.136] check-attach entfernt:', cid);
+      if (typeof showToast === 'function') showToast('Check ' + cid + ' entfernt', 'ok');
+    }
+    _erRenderAttachmentList();
+    return;
+  }
+  // checked = true → hinzufügen (wenn noch nicht drin)
+  if (_erContext.attachments.some(a => a.kind === 'check' && a.checkId === cid)) {
+    _erRenderAttachmentList();
+    return;
+  }
+  // Erst in eligibles suchen (schon gefetched)
+  const e = (window._erEligibles || []).find(x => x.checkId === cid);
+  if (e) {
+    _erContext.attachments.push({
+      id: _erNextAttachId(),
+      kind: 'check',
+      checkId: cid,
+      filename: e.attachment.filename || ('Liftaro_Check_' + cid + '.pdf'),
+      size: e.attachment.size || 0,
+      contentType: 'application/pdf',
+      url: e.attachment.url,
+    });
+    console.log('[V12.136] check-attach hinzugefügt (aus eligibles):', cid);
+    _erRenderAttachmentList();
+    return;
+  }
+  // Nicht in eligibles → Airtable-Lookup
+  try {
+    if (typeof showToast === 'function') showToast('Lade Check ' + cid + ' …', 'ok', 1500);
+    let recs = await atRead('Checks', "{id}='" + cid.replace(/'/g, "\\'") + "'");
+    if (!recs || !recs.length) {
+      recs = await atRead('Checks', "{requestId}='" + cid.replace(/'/g, "\\'") + "'");
+    }
+    if (!recs || !recs.length) {
+      if (typeof showToast === 'function') showToast('Check ' + cid + ' nicht gefunden', 'error');
+      return;
+    }
+    const f = recs[0].fields;
+    const pdfField = f.ergebnis_pdf;
+    if (!Array.isArray(pdfField) || !pdfField.length) {
+      if (typeof showToast === 'function') showToast('Check ' + cid + ' hat noch kein Ergebnis-PDF — bitte erst „PDF erstellen" klicken', 'error', 5000);
+      return;
+    }
+    const latest = pickBestErgebnisAttachment(pdfField);
+    if (!latest || !latest.url) {
+      if (typeof showToast === 'function') showToast('Check ' + cid + ' PDF nicht ladbar', 'error');
+      return;
+    }
+    _erContext.attachments.push({
+      id: _erNextAttachId(),
+      kind: 'check',
+      checkId: cid,
+      filename: latest.filename || ('Liftaro_Check_' + cid + '.pdf'),
+      size: latest.size || 0,
+      contentType: 'application/pdf',
+      url: latest.url,
+    });
+    console.log('[V12.136] check-attach hinzugefügt (aus Airtable):', cid, latest.filename);
+    if (typeof showToast === 'function') showToast('✓ Check ' + cid + ' angehängt (' + Math.round((latest.size||0)/1024) + ' KB)', 'ok', 3000);
+    _erRenderAttachmentList();
+  } catch (err) {
+    console.error('[V12.136] _erToggleCheckAttach Airtable-Lookup fail:', err);
+    if (typeof showToast === 'function') showToast('Check-Lookup fehlgeschlagen: ' + err.message, 'error');
+  }
+}
+window._erToggleCheckAttach = _erToggleCheckAttach;
+
+// V12.136: Check per ID-Eingabe hinzufügen — z.B. EuC-Check der nicht
+// mit der Email verknüpft ist
+async function _erAddCheckByIdFromInput() {
+  const input = document.getElementById('erAddCheckIdInput');
+  let cid = (input?.value || '').trim();
+  if (!cid) {
+    if (typeof showToast === 'function') showToast('Bitte Check-Nr. eingeben', 'error');
+    return;
+  }
+  // Auto-Prefix wenn User nur Zahl eingibt (z.B. "1215" → "C_1215")
+  if (/^\d+$/.test(cid)) cid = 'C_' + cid;
+  await _erToggleCheckAttach(cid, true);
+  if (input) input.value = '';
+}
+window._erAddCheckByIdFromInput = _erAddCheckByIdFromInput;
+
+// V12.118 (+ V12.130 multi-attach + V12.136 multi-check): Check-Dropdown ist
+// nun Multi-Checkbox-Liste. Diese Single-Switch-Funktion bleibt als Backcompat
+// für ältere Aufrufe (z.B. _erRegenerateMemoryPdf), wird aber UI-seitig nicht
+// mehr aus dem Switcher aufgerufen — der Switcher nutzt _erToggleCheckAttach.
 function _erSetAttachByCheckId(cid) {
   const e = (window._erEligibles || []).find(x => x.checkId === cid);
   if (!e || !_erContext) return;
@@ -23914,20 +24009,37 @@ async function openEmailReplyModal(recId) {
           contentType: 'application/pdf',
           url: initial.attachment.url,
         });
-        // V12.130: Bei mehreren Checks Dropdown in den Switcher-Container
+        // V12.136: Bei mehreren Checks Multi-Checkbox-Liste statt Dropdown.
+        // Default: neuester (filteredEligibles[0]) ist aktiv (✓), andere aus.
+        // User kann beliebige zusätzliche Checks anhängen.
         if (filteredEligibles.length > 1 && _switcher) {
-          const opts = filteredEligibles.map((e, i) =>
-            '<option value="' + _esc(e.checkId) + '"' + (i === 0 ? ' selected' : '') + '>Check ' + _esc(e.checkId) + ' · ' + _esc(e.attachment.filename || 'check.pdf') + (e.attachment.size ? ' (' + Math.round(e.attachment.size/1024) + ' KB)' : '') + (i === 0 ? ' — neuester' : '') + '</option>'
-          ).join('');
+          const boxes = filteredEligibles.map((e, i) => {
+            const isInitial = i === 0;
+            const sz = e.attachment.size ? ' (' + Math.round(e.attachment.size/1024) + ' KB)' : '';
+            const lbl = 'Check ' + _esc(e.checkId) + ' · ' + _esc(e.attachment.filename || 'check.pdf') + sz + (isInitial ? ' — neuester' : '');
+            return '<label style="display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--border);border-radius:5px;padding:5px 9px;font-size:12px;cursor:pointer">' +
+              '<input type="checkbox" onchange="_erToggleCheckAttach(\'' + _esc(e.checkId) + '\', this.checked)"' + (isInitial ? ' checked' : '') + ' style="cursor:pointer">' +
+              '<span>' + lbl + '</span>' +
+            '</label>';
+          }).join('');
           _switcher.innerHTML =
             '<div style="background:#fff7e6;border:1px solid #f0d4a8;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:11.5px;color:#7a4d00">' +
-              '⚠ Mehrere Checks verlinkt — bitte den richtigen wählen (manuell hinzugefügte Anhänge bleiben):' +
+              '📎 Mehrere Checks verlinkt — wähle welche anzuhängen (Mehrfachauswahl):' +
             '</div>' +
-            '<select onchange="_erSetAttachByCheckId(this.value)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:13px;background:#fff;margin-bottom:8px">' +
-              opts +
-            '</select>';
+            '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">' + boxes + '</div>';
           _switcher.style.display = 'block';
         }
+      }
+      // V12.136: Input-Feld für Zusatz-Checks (z.B. EuC-Check der nicht
+      // mit dieser Email verknüpft ist) — immer sichtbar wenn Switcher schon aktiv
+      if (_switcher) {
+        const addRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
+          '<label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0">+ Weiterer Check:</label>' +
+          '<input id="erAddCheckIdInput" placeholder="z.B. C_1215 oder einfach 1215" onkeydown="if(event.key===&#x27;Enter&#x27;){event.preventDefault();_erAddCheckByIdFromInput();}" style="flex:1;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-family:\'DM Sans\',sans-serif;font-size:12px">' +
+          '<button type="button" onclick="_erAddCheckByIdFromInput()" style="background:var(--navy);border:none;color:#fff;border-radius:5px;padding:5px 12px;font-family:\'DM Sans\',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer">+ Anhängen</button>' +
+        '</div>';
+        _switcher.innerHTML = (_switcher.innerHTML || '') + addRow;
+        _switcher.style.display = 'block';
       }
       // V12.131: Immer Liste rendern — auch wenn nur Memory-Eintrag drin
       _erRenderAttachmentList();
@@ -23938,6 +24050,16 @@ async function openEmailReplyModal(recId) {
   } else {
     // Kein Check verlinkt — leere Liste rendern, User kann manuell anhängen
     _erRenderAttachmentList();
+    // V12.136: Input-Feld trotzdem anbieten — User kann Check-Nr. manuell anhängen
+    if (_switcher) {
+      _switcher.innerHTML =
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">' +
+          '<label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0">+ Check anhängen:</label>' +
+          '<input id="erAddCheckIdInput" placeholder="z.B. C_1215 oder einfach 1215" onkeydown="if(event.key===&#x27;Enter&#x27;){event.preventDefault();_erAddCheckByIdFromInput();}" style="flex:1;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-family:\'DM Sans\',sans-serif;font-size:12px">' +
+          '<button type="button" onclick="_erAddCheckByIdFromInput()" style="background:var(--navy);border:none;color:#fff;border-radius:5px;padding:5px 12px;font-family:\'DM Sans\',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer">+ Anhängen</button>' +
+        '</div>';
+      _switcher.style.display = 'block';
+    }
   }
 
   // From-Adresse: check@liftaro.de via All-Inkl-SMTP-Wrapper
