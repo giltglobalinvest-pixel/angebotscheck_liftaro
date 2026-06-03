@@ -5840,7 +5840,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.133';
+const APP_VERSION = 'V12.134';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -9352,6 +9352,22 @@ async function loadCheck(data) {
   // uploadedFiles für ggf. nicht geladene Slots leeren
   uploadedFiles[1] = null;
   uploadedFiles[2] = null;
+  // V12.134: DOM für Upload-Slots 1+2 zurücksetzen — sonst zeigen alte Dateinamen
+  // / Vorschau-Buttons vom vorherigen Check, obwohl uploadedFiles[n] = null ist.
+  // Symptom: User sieht "✓ XYZ.pdf" + Vorschau-Button, Klick öffnet aber nichts.
+  // Bei einem Attachment im neuen Check wird der State im Loop unten korrekt
+  // neu gesetzt; bei keinem Attachment bleibt der Slot sauber leer.
+  for (const slot of [1, 2]) {
+    const z = document.getElementById('zone' + slot);
+    if (z) z.classList.remove('has-file');
+    const f = document.getElementById('fname' + slot);
+    if (f) f.textContent = '';
+    const pb = document.getElementById('previewBtn' + slot);
+    if (pb) pb.classList.remove('visible');
+    const rb = document.getElementById('reanalyzeBtn' + slot);
+    if (rb) rb.classList.remove('visible');
+  }
+  console.log('[V12.134] loadCheck: Upload-Slot-DOM für slot 1+2 zurückgesetzt');
   // V12.124: Airtable-Attachment-Meta global cachen, damit generatePDF im EuC-Modus
   // den Original-Vertrag auch dann nachladen kann, wenn das initiale Fetch hier
   // in loadCheck noch nicht durch ist (Race) oder fehlschlug (CORS/Expired).
