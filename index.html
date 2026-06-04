@@ -4063,14 +4063,14 @@ const pdfWorkerReady = Promise.resolve();</script>
         <input type="text" id="erTo" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky)">
         <div id="erTestBanner" style="display:none;margin-top:8px;padding:8px 12px;background:#f3eafc;border:1px solid #d4baf5;border-radius:6px;font-size:12px;color:#5b21b6;font-weight:600">🧪 Test-Modus aktiv · Postfach-Status wird NICHT verändert</div>
       </div>
-      <!-- V12.137: BCC-Feld — optional, wird beim Senden ans Backend weitergegeben.
-           Letzter Wert wird in localStorage gespeichert + beim nächsten Mal vorbefüllt. -->
-      <div>
+      <!-- V12.137: BCC-Feld — V12.153 ausgeblendet (Backend-Update derzeit nicht möglich,
+           kann zu späterem Zeitpunkt reaktiviert werden indem das style="display:none" entfernt wird).
+           Hidden input bleibt im DOM, damit doSendEmailReply ohne Fehler getElementById nutzen kann. -->
+      <div style="display:none">
         <label style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">
-          <span>BCC <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;font-size:10.5px;margin-left:4px">— optional, mehrere mit Komma getrennt</span></span>
-          <button type="button" onclick="document.getElementById('erBcc').value='';localStorage.removeItem('liftaro_last_bcc');showToast('BCC geleert','ok')" style="background:transparent;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-transform:none;letter-spacing:0">leeren</button>
+          <span>BCC <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;font-size:10.5px;margin-left:4px">— derzeit deaktiviert</span></span>
         </label>
-        <input type="text" id="erBcc" placeholder="z.B. archiv@firma.de" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px">
+        <input type="text" id="erBcc" value="" placeholder="" style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px">
       </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Betreff</label>
@@ -5746,20 +5746,15 @@ const pdfWorkerReady = Promise.resolve();</script>
             <ul id="vchSetupProgressList" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px"></ul>
           </div>
           <div id="vchSetupResult" style="display:none;background:#f3faea;border:1px solid #d1ecb1;border-radius:8px;padding:12px 14px;font-size:13px;color:#3d7a14"></div>
-          <!-- V12.151/V12.152: Manueller Datei-Pfad + File-ID Override für Email-Sender-Update -->
-          <div class="field" style="display:flex;flex-direction:column;gap:6px">
-            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Email-Sender-Dateiname <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— Fallback wenn File-ID leer</span></label>
-            <input type="text" id="vchEmailSenderPathInput" placeholder="valtown-email-sender.ts" value="valtown-email-sender.ts" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
-          </div>
-          <div class="field" style="display:flex;flex-direction:column;gap:6px">
-            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Email-Sender File-ID <span style="color:#a8312f">★</span> <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— hat höchste Prio, robustester Weg</span></label>
-            <input type="text" id="vchEmailSenderFileIdInput" placeholder="becd45fa-5568-11f1-a876-ee650bb23af1" value="becd45fa-5568-11f1-a876-ee650bb23af1" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
-            <span style="font-size:11.5px;color:var(--muted)">Im val.town-Editor: Rechtsklick auf die Datei → Copy → „Copy file ID". val.town v2 API erlaubt PATCH direkt per File-ID — kein Pfad-Raten.</span>
+          <!-- V12.151/V12.152: Manueller Datei-Pfad + File-ID Override für Email-Sender-Update.
+               V12.153 ausgeblendet (Hidden Inputs bleiben für runEmailSenderUpdate-Code intakt). -->
+          <div style="display:none">
+            <input type="text" id="vchEmailSenderPathInput" value="valtown-email-sender.ts">
+            <input type="text" id="vchEmailSenderFileIdInput" value="becd45fa-5568-11f1-a876-ee650bb23af1">
           </div>
           <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
-            <!-- V12.145: Email-Sender-Val aktualisieren (neben Proxy-Button im Hub) -->
-            <button id="vchEmailSenderUpdateBtn" onclick="runEmailSenderUpdate(this)" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:8px;padding:10px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px" title="Email-Sender-Val auf val.town mit aktuellem Code aktualisieren (für BCC-Support)">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <!-- V12.145: Email-Sender-Val aktualisieren — V12.153 ausgeblendet -->
+            <button id="vchEmailSenderUpdateBtn" onclick="runEmailSenderUpdate(this)" style="display:none">
               Email-Sender aktualisieren
             </button>
             <button id="vchSetupRunBtn" onclick="runVchSetup(this)" style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:10px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px">
@@ -5881,7 +5876,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.152';
+const APP_VERSION = 'V12.153';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
