@@ -5871,7 +5871,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.148';
+const APP_VERSION = 'V12.149';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6382,69 +6382,84 @@ async function updateEmailSenderVal() {
     console.log('[V12.146] Val gefunden:', target.name, '(' + valId + ')');
     try { localStorage.setItem('liftaro_emailsender_valid', valId); } catch (_) {}
   }
-  // V12.148: Echte Files-Liste über /v2/vals/{id} (Val-Detail, returnt files[])
-  // Wenn das fehlschlägt, versuchen wir /v2/vals/{id}/files/list (Pagination-API).
-  // Wir loggen volle Response-Struktur damit Fehler sofort sichtbar sind.
-  let files = [];
-  let valDetails = null;
+  // V12.149: Drei Strategien hintereinander — die erste die einen filePath
+  // liefert gewinnt. Strategie 3 (brute-force GET) umgeht CORS-Issues weil
+  // die `?path=`-Route nachweislich CORS-Headers hat.
+  let filePath = null;
+
+  // Strategie 1: Val-Details (manchmal hat die response files-Array oder einen entrypoint)
   try {
-    valDetails = await valtownApi(token, 'GET', '/v2/vals/' + valId);
-    console.log('[V12.148] Val-Details (Keys):', Object.keys(valDetails || {}));
-    files = valDetails?.files || valDetails?.data?.files || [];
-    if (files.length) console.log('[V12.148] Files aus /v2/vals/{id}:', files.map(f => f.path || f.name || JSON.stringify(f)).join(', '));
-  } catch (e) {
-    console.warn('[V12.148] /v2/vals/{id} fail:', e.message);
-  }
-  // Fallback: Pagination-Endpunkt
-  if (!files.length) {
-    try {
-      const listResp = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files/list?limit=100');
-      const candidate = listResp?.data || listResp?.files || (Array.isArray(listResp) ? listResp : []);
-      console.log('[V12.148] /v2/vals/{id}/files/list response keys:', Object.keys(listResp || {}));
-      if (Array.isArray(candidate) && candidate.length) {
-        files = candidate;
-        console.log('[V12.148] Files aus /files/list:', files.map(f => f.path || f.name || JSON.stringify(f)).join(', '));
+    const valDetails = await valtownApi(token, 'GET', '/v2/vals/' + valId);
+    const detailsJson = JSON.stringify(valDetails, null, 2);
+    console.log('[V12.149] Val-Details (vollständig, ersten 2000 Zeichen):\n' + detailsJson.slice(0, 2000));
+    // Mögliche Felder: files[], entrypoint, main, type
+    const filesFromDetail = valDetails?.files || valDetails?.data?.files || [];
+    if (Array.isArray(filesFromDetail) && filesFromDetail.length) {
+      const findBy = (pred) => filesFromDetail.find(f => pred((f.path || f.name || '').toLowerCase()));
+      const pick = findBy(p => p === 'main.tsx') || findBy(p => p === 'main.ts')
+        || findBy(p => p === 'index.tsx') || findBy(p => p === 'index.ts')
+        || findBy(p => /\.tsx?$/.test(p)) || findBy(p => /\.jsx?$/.test(p)) || filesFromDetail[0];
+      if (pick) {
+        filePath = pick.path || pick.name;
+        console.log('[V12.149] Strategie 1 (Val-Details files[]): Datei =', filePath);
       }
-    } catch (e) {
-      console.warn('[V12.148] /v2/vals/{id}/files/list fail:', e.message);
+    } else if (typeof valDetails?.entrypoint === 'string') {
+      filePath = valDetails.entrypoint;
+      console.log('[V12.149] Strategie 1 (Val-Details entrypoint): Datei =', filePath);
+    }
+  } catch (e) { console.warn('[V12.149] Strategie 1 fail:', e.message); }
+
+  // Strategie 2: Val-Details mit ?expand=files (manche v2 endpoints expandieren erst auf Anfrage)
+  if (!filePath) {
+    try {
+      const exp = await valtownApi(token, 'GET', '/v2/vals/' + valId + '?expand=files');
+      console.log('[V12.149] Val-Details mit expand=files (Keys):', Object.keys(exp || {}));
+      const expFiles = exp?.files || exp?.data?.files || [];
+      if (Array.isArray(expFiles) && expFiles.length) {
+        const findBy = (pred) => expFiles.find(f => pred((f.path || f.name || '').toLowerCase()));
+        const pick = findBy(p => /\.tsx?$/.test(p)) || findBy(p => /\.jsx?$/.test(p)) || expFiles[0];
+        if (pick) {
+          filePath = pick.path || pick.name;
+          console.log('[V12.149] Strategie 2 (?expand=files): Datei =', filePath);
+        }
+      }
+    } catch (e) { console.warn('[V12.149] Strategie 2 fail:', e.message); }
+  }
+
+  // Strategie 3 (Brute-Force): bekannte Filenamen direkt per GET versuchen.
+  // Wenn 200 → die Datei existiert. Diese Route hat CORS — funktioniert garantiert.
+  if (!filePath) {
+    const candidates = [
+      'index.ts', 'index.tsx', 'main.ts', 'main.tsx',
+      'email-sender.ts', 'email-sender.tsx',
+      'valtown-email-sender.ts', 'valtown-email-sender.tsx',
+      'sender.ts', 'mod.ts', 'app.ts', 'server.ts'
+    ];
+    console.log('[V12.149] Strategie 3: Brute-Force über', candidates.length, 'Kandidaten …');
+    for (const cand of candidates) {
+      try {
+        const r = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent(cand));
+        if (r && (r.content || r.code || typeof r === 'string')) {
+          filePath = cand;
+          console.log('[V12.149] Strategie 3 HIT:', cand);
+          break;
+        }
+      } catch (_) { /* 404 → nicht da, weiter */ }
     }
   }
-  if (!files.length) {
-    throw new Error('Konnte Files-Liste des Vals nicht laden — bitte das genaue Console-Log schicken, ich passe den API-Endpunkt an.');
+
+  if (!filePath) {
+    throw new Error('Konnte keine Datei im Val finden — bitte im val.town-Editor des liftaroEmailSender-Vals die linke Datei-Sidebar checken und mir den exakten Dateinamen sagen (z.B. „server.ts" oder „handler.tsx").');
   }
 
-  // V12.148: Cleanup — wenn V12.147 fälschlich eine main.tsx angelegt hat
-  // UND es noch eine andere .ts/.tsx-Datei gibt, die main.tsx wieder löschen.
-  const hasBogusMainTsx = files.some(f => (f.path || f.name) === 'main.tsx');
-  const hasOtherEntry = files.some(f => {
-    const p = f.path || f.name || '';
-    return p !== 'main.tsx' && /\.(tsx?|jsx?)$/i.test(p);
-  });
-  if (hasBogusMainTsx && hasOtherEntry) {
+  // V12.148-Cleanup: wenn V12.147 versehentlich main.tsx angelegt hat UND
+  // der echte Pfad ein anderer ist → main.tsx löschen
+  if (filePath !== 'main.tsx') {
     try {
-      console.log('[V12.148] Cleanup: lösche versehentlich angelegte main.tsx (V12.147-Bug)');
       await valtownApi(token, 'DELETE', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent('main.tsx'));
-      files = files.filter(f => (f.path || f.name) !== 'main.tsx');
-      console.log('[V12.148] Cleanup OK — main.tsx gelöscht');
-    } catch (e) { console.warn('[V12.148] Cleanup-Delete failed (nicht-blockierend):', e.message); }
+      console.log('[V12.149] Cleanup: versehentliche main.tsx aus V12.147 gelöscht');
+    } catch (_) { /* war nicht da → OK */ }
   }
-
-  // Datei-Pfad auswählen — Prio: main.tsx, main.ts, erste .tsx, .ts, .jsx, .js
-  const findBy = (pred) => files.find(f => pred((f.path || f.name || '').toLowerCase()));
-  const pick =
-    findBy(p => p === 'main.tsx') ||
-    findBy(p => p === 'main.ts')  ||
-    findBy(p => p === 'index.tsx') ||
-    findBy(p => p === 'index.ts')  ||
-    findBy(p => /\.tsx$/.test(p)) ||
-    findBy(p => /\.ts$/.test(p)) ||
-    findBy(p => /\.jsx?$/.test(p)) ||
-    files[0];
-  if (!pick) {
-    throw new Error('Keine TS/JS-Datei im Val gefunden. Files: ' + files.map(f => f.path || f.name).join(', '));
-  }
-  const filePath = pick.path || pick.name;
-  console.log('[V12.148] Datei gewählt:', filePath);
 
   // Backup des aktuellen Codes
   let backup = '';
@@ -6454,9 +6469,9 @@ async function updateEmailSenderVal() {
     if (backup) {
       const key = 'liftaro_emailsender_backup_' + new Date().toISOString().replace(/[:.]/g,'-');
       localStorage.setItem(key, backup);
-      console.log('[V12.148] Backup in localStorage:', key, '·', backup.length, 'bytes');
+      console.log('[V12.149] Backup in localStorage:', key, '·', backup.length, 'bytes');
     }
-  } catch (e) { console.warn('[V12.148] Backup-Lesen fehlgeschlagen (nicht-blockierend):', e.message); }
+  } catch (e) { console.warn('[V12.149] Backup-Lesen fehlgeschlagen (nicht-blockierend):', e.message); }
 
   // Update durchführen — PUT auf die echte Datei
   await valtownApi(token, 'PUT', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent(filePath),
