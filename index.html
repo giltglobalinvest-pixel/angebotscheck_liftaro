@@ -5871,7 +5871,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.149';
+const APP_VERSION = 'V12.150';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6429,11 +6429,15 @@ async function updateEmailSenderVal() {
   // Strategie 3 (Brute-Force): bekannte Filenamen direkt per GET versuchen.
   // Wenn 200 → die Datei existiert. Diese Route hat CORS — funktioniert garantiert.
   if (!filePath) {
+    // V12.150: User hat im val.town-Editor bestätigt — die echte Datei heißt
+    // 'valtown-email-sender.ts'. Diese muss als ALLERERSTE probiert werden.
     const candidates = [
-      'index.ts', 'index.tsx', 'main.ts', 'main.tsx',
+      'valtown-email-sender.ts',  // ← echte Datei in deinem Val
+      'index.ts', 'index.tsx', 'main.ts',
       'email-sender.ts', 'email-sender.tsx',
-      'valtown-email-sender.ts', 'valtown-email-sender.tsx',
-      'sender.ts', 'mod.ts', 'app.ts', 'server.ts'
+      'valtown-email-sender.tsx',
+      'sender.ts', 'mod.ts', 'app.ts', 'server.ts',
+      'main.tsx',  // ← bewusst NACH der echten Datei (V12.147 hat hier müll angelegt)
     ];
     console.log('[V12.149] Strategie 3: Brute-Force über', candidates.length, 'Kandidaten …');
     for (const cand of candidates) {
