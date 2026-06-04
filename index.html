@@ -5871,7 +5871,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.145';
+const APP_VERSION = 'V12.146';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6327,20 +6327,59 @@ async function updateEmailSenderVal() {
   let valId = '';
   try { valId = localStorage.getItem('liftaro_emailsender_valid') || ''; } catch (_) {}
   if (!valId) {
-    console.log('[V12.138] Keine cached Val-ID, suche via /v1/me/vals …');
-    let list;
-    try { list = await valtownApi(token, 'GET', '/v1/me/vals?limit=100'); }
-    catch (e) { throw new Error('Val-Liste laden fehlgeschlagen: ' + e.message); }
-    const vals = list?.data || list?.vals || (Array.isArray(list) ? list : []);
-    if (!Array.isArray(vals) || vals.length === 0) throw new Error('Keine Vals im val.town-Account gefunden');
-    console.log('[V12.138]', vals.length, 'Vals gefunden, suche nach EmailSender …');
-    const target = vals.find(v => /emailsender|email-sender|email_sender/i.test(v.name || ''));
+    console.log('[V12.146] Keine cached Val-ID, suche Val via mehreren Endpunkten …');
+    // V12.146: Fallback-Strategie — val.town hat verschiedene Endpunkte je
+    // API-Version. Wir probieren in Reihenfolge bis einer ein Array liefert.
+    const endpoints = [
+      '/v2/me/vals?limit=100',
+      '/v1/me/vals?limit=100',
+      '/v2/search/vals?query=liftaroEmailSender&limit=20',
+      '/v1/search/vals?query=liftaroEmailSender&limit=20',
+    ];
+    let vals = [];
+    let lastError = null;
+    for (const ep of endpoints) {
+      try {
+        console.log('[V12.146] versuche', ep);
+        const list = await valtownApi(token, 'GET', ep);
+        const candidate = list?.data || list?.vals || list?.results || (Array.isArray(list) ? list : []);
+        if (Array.isArray(candidate) && candidate.length > 0) {
+          vals = candidate;
+          console.log('[V12.146] OK via', ep, '—', vals.length, 'Treffer');
+          break;
+        }
+        console.log('[V12.146]', ep, '→ leer/kein Array, weiter …');
+      } catch (e) {
+        lastError = e;
+        console.warn('[V12.146]', ep, 'fail:', e.message);
+      }
+    }
+    if (vals.length === 0) {
+      // Letzter Ausweg: über /v1/me die user.id holen + /v1/users/<id>/vals
+      try {
+        const me = await valtownApi(token, 'GET', '/v1/me');
+        const meId = me?.id || me?.user?.id;
+        if (meId) {
+          console.log('[V12.146] versuche /v1/users/' + meId + '/vals');
+          const list = await valtownApi(token, 'GET', '/v1/users/' + meId + '/vals?limit=100');
+          const candidate = list?.data || list?.vals || (Array.isArray(list) ? list : []);
+          if (Array.isArray(candidate) && candidate.length > 0) {
+            vals = candidate;
+            console.log('[V12.146] OK via user-id —', vals.length, 'Treffer');
+          }
+        }
+      } catch (e) { lastError = e; console.warn('[V12.146] /v1/users/<id>/vals fail:', e.message); }
+    }
+    if (vals.length === 0) {
+      throw new Error('Konnte Val-Liste von val.town nicht laden — ' + (lastError?.message || 'keine Treffer'));
+    }
+    const target = vals.find(v => /emailsender|email[-_]sender/i.test(v.name || ''));
     if (!target) {
       const names = vals.map(v => v.name).filter(Boolean).slice(0, 20).join(', ');
       throw new Error('Kein Val mit Name wie „liftaroEmailSender" gefunden. Vorhandene: ' + names);
     }
     valId = target.id;
-    console.log('[V12.138] Val gefunden:', target.name, '(' + valId + ')');
+    console.log('[V12.146] Val gefunden:', target.name, '(' + valId + ')');
     try { localStorage.setItem('liftaro_emailsender_valid', valId); } catch (_) {}
   }
   // 3. Aktuellen Code als Backup in localStorage sichern
