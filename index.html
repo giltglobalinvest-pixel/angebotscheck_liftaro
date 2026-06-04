@@ -5871,7 +5871,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.146';
+const APP_VERSION = 'V12.147';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6382,32 +6382,64 @@ async function updateEmailSenderVal() {
     console.log('[V12.146] Val gefunden:', target.name, '(' + valId + ')');
     try { localStorage.setItem('liftaro_emailsender_valid', valId); } catch (_) {}
   }
+  // V12.147: Datei-Pfad dynamisch ermitteln — der Email-Sender-Val nutzt nicht
+  // zwangsläufig main.tsx. Wir listen die Files und nehmen die erste .ts/.tsx.
+  let filePath = 'main.tsx';
+  try {
+    const filesResp = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files');
+    const files = filesResp?.data || filesResp?.files || (Array.isArray(filesResp) ? filesResp : []);
+    console.log('[V12.147] Val-Files:', files.map(f => f.path || f.name || JSON.stringify(f)).join(', '));
+    // Prio: 1) main.tsx, 2) main.ts, 3) erste .ts(x), 4) erste .js(x)
+    const findBy = (pred) => files.find(f => pred((f.path || f.name || '').toLowerCase()));
+    const pick =
+      findBy(p => p === 'main.tsx') ||
+      findBy(p => p === 'main.ts')  ||
+      findBy(p => /\.tsx?$/.test(p)) ||
+      findBy(p => /\.jsx?$/.test(p)) ||
+      files[0];
+    if (pick) {
+      filePath = pick.path || pick.name || filePath;
+      console.log('[V12.147] Datei gewählt:', filePath);
+    } else {
+      console.warn('[V12.147] keine Files im Val gefunden — verwende default main.tsx');
+    }
+  } catch (e) {
+    console.warn('[V12.147] Files-Liste-Lookup fehlgeschlagen, fallback main.tsx:', e.message);
+  }
   // 3. Aktuellen Code als Backup in localStorage sichern
   let backup = '';
   try {
-    const cur = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent('main.tsx'));
+    const cur = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent(filePath));
     backup = cur?.content || cur?.code || '';
     if (backup) {
       const key = 'liftaro_emailsender_backup_' + new Date().toISOString().replace(/[:.]/g,'-');
       localStorage.setItem(key, backup);
-      console.log('[V12.138] Backup in localStorage:', key, backup.length, 'bytes');
+      console.log('[V12.147] Backup in localStorage:', key, backup.length, 'bytes');
     }
-  } catch (e) { console.warn('[V12.138] Backup-Lesen fehlgeschlagen (nicht-blockierend):', e.message); }
-  // 4. Update durchführen
-  await valtownUpdateFile(token, valId, code);
-  console.log('[V12.138] Update geschickt');
+  } catch (e) { console.warn('[V12.147] Backup-Lesen fehlgeschlagen (nicht-blockierend):', e.message); }
+  // 4. Update durchführen — mit dem ermittelten filePath
+  try {
+    await valtownApi(token, 'PUT', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent(filePath),
+      { content: code });
+    console.log('[V12.147] Update via PUT', filePath, 'geschickt');
+  } catch (putErr) {
+    console.warn('[V12.147] PUT fail, versuche POST (Create-If-Missing):', putErr.message);
+    await valtownApi(token, 'POST', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent(filePath),
+      { type: 'http', content: code });
+    console.log('[V12.147] Update via POST', filePath, 'geschickt');
+  }
   // 5. Verifikation — V12.138-Marker im neuen Code prüfen
   try {
-    const verified = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent('main.tsx'));
+    const verified = await valtownApi(token, 'GET', '/v2/vals/' + valId + '/files?path=' + encodeURIComponent(filePath));
     const newCode = verified?.content || verified?.code || '';
     if (!newCode.includes('V12.138')) {
-      console.warn('[V12.138] Verifikation: V12.138-Marker nicht im neuen Code — Update evtl. nicht angekommen');
+      console.warn('[V12.147] Verifikation: V12.138-Marker nicht im neuen Code — Update evtl. nicht angekommen');
       throw new Error('Verifikation fehlgeschlagen — V12.138-Marker fehlt im aktualisierten Code');
     }
-    console.log('[V12.138] Verifikation OK — V12.138-Marker im neuen Code vorhanden');
+    console.log('[V12.147] Verifikation OK — V12.138-Marker im neuen Code vorhanden, Datei:', filePath);
   } catch (e) {
     if (e.message.startsWith('Verifikation')) throw e;
-    console.warn('[V12.138] Verifikation-Lesen fehlgeschlagen:', e.message);
+    console.warn('[V12.147] Verifikation-Lesen fehlgeschlagen:', e.message);
   }
   return { valId, codeBytes: code.length, backupBytes: backup.length };
 }
