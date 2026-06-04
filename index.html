@@ -5746,11 +5746,15 @@ const pdfWorkerReady = Promise.resolve();</script>
             <ul id="vchSetupProgressList" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px"></ul>
           </div>
           <div id="vchSetupResult" style="display:none;background:#f3faea;border:1px solid #d1ecb1;border-radius:8px;padding:12px 14px;font-size:13px;color:#3d7a14"></div>
-          <!-- V12.151: Manueller Datei-Pfad-Override für Email-Sender-Update -->
+          <!-- V12.151/V12.152: Manueller Datei-Pfad + File-ID Override für Email-Sender-Update -->
           <div class="field" style="display:flex;flex-direction:column;gap:6px">
-            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Email-Sender-Dateiname <span style="color:#a8312f">★</span> <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— wird beim „Email-Sender aktualisieren" verwendet</span></label>
+            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Email-Sender-Dateiname <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— Fallback wenn File-ID leer</span></label>
             <input type="text" id="vchEmailSenderPathInput" placeholder="valtown-email-sender.ts" value="valtown-email-sender.ts" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
-            <span style="font-size:11.5px;color:var(--muted)">Der exakte Dateiname im val.town-Editor (linke Sidebar). Default „valtown-email-sender.ts" passt für die Liftaro-Standard-Installation.</span>
+          </div>
+          <div class="field" style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Email-Sender File-ID <span style="color:#a8312f">★</span> <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— hat höchste Prio, robustester Weg</span></label>
+            <input type="text" id="vchEmailSenderFileIdInput" placeholder="becd45fa-5568-11f1-a876-ee650bb23af1" value="becd45fa-5568-11f1-a876-ee650bb23af1" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
+            <span style="font-size:11.5px;color:var(--muted)">Im val.town-Editor: Rechtsklick auf die Datei → Copy → „Copy file ID". val.town v2 API erlaubt PATCH direkt per File-ID — kein Pfad-Raten.</span>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
             <!-- V12.145: Email-Sender-Val aktualisieren (neben Proxy-Button im Hub) -->
@@ -5877,7 +5881,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.151';
+const APP_VERSION = 'V12.152';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6388,7 +6392,57 @@ async function updateEmailSenderVal() {
     console.log('[V12.146] Val gefunden:', target.name, '(' + valId + ')');
     try { localStorage.setItem('liftaro_emailsender_valid', valId); } catch (_) {}
   }
-  // V12.151: Manueller Path-Override hat höchste Priorität — wenn das
+  // V12.152: File-ID Override — höchste Priorität. val.town v2 API erlaubt
+  // direkten Update per /v2/files/{file_id} ohne Pfad-Raten oder Val-Verzweigung.
+  const manualFileId = (document.getElementById('vchEmailSenderFileIdInput')?.value || '').trim();
+  if (manualFileId) {
+    console.log('[V12.152] File-ID Override:', manualFileId);
+    // Backup vor Update
+    try {
+      const cur = await valtownApi(token, 'GET', '/v2/files/' + manualFileId);
+      const oldContent = cur?.content || cur?.code || '';
+      if (oldContent) {
+        const key = 'liftaro_emailsender_backup_' + new Date().toISOString().replace(/[:.]/g,'-');
+        localStorage.setItem(key, oldContent);
+        console.log('[V12.152] Backup via file-ID:', key, '·', oldContent.length, 'bytes');
+      }
+    } catch (e) { console.warn('[V12.152] File-ID Backup-Read fail:', e.message); }
+    // Update — versuchen PATCH dann PUT
+    let updated = false;
+    try {
+      await valtownApi(token, 'PATCH', '/v2/files/' + manualFileId, { content: code });
+      console.log('[V12.152] File-ID Update PATCH OK');
+      updated = true;
+    } catch (patchErr) {
+      console.warn('[V12.152] PATCH fail, versuche PUT:', patchErr.message);
+      try {
+        await valtownApi(token, 'PUT', '/v2/files/' + manualFileId, { content: code });
+        console.log('[V12.152] File-ID Update PUT OK');
+        updated = true;
+      } catch (putErr) {
+        console.error('[V12.152] PUT auch fail:', putErr.message);
+      }
+    }
+    if (updated) {
+      // Verifikation
+      try {
+        const verified = await valtownApi(token, 'GET', '/v2/files/' + manualFileId);
+        const newCode = verified?.content || verified?.code || '';
+        if (!newCode.includes('V12.138')) {
+          throw new Error('Verifikation fehlgeschlagen — V12.138-Marker fehlt im aktualisierten Code (File-ID: ' + manualFileId + ')');
+        }
+        console.log('[V12.152] Verifikation OK — V12.138 im neuen Code via File-ID');
+      } catch (e) {
+        if (e.message.startsWith('Verifikation')) throw e;
+        console.warn('[V12.152] Verifikation-Lesen fail:', e.message);
+      }
+      return { valId, codeBytes: code.length, backupBytes: 0, method: 'file-id' };
+    } else {
+      console.warn('[V12.152] File-ID-Path fail, fallback auf Path-basiertes Update');
+    }
+  }
+
+  // V12.151: Manueller Path-Override hat nächste Priorität — wenn das
   // Eingabefeld vchEmailSenderPathInput einen Wert hat, nutzen wir den direkt
   // und skippen Brute-Force komplett.
   let filePath = null;
