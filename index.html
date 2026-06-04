@@ -5746,6 +5746,12 @@ const pdfWorkerReady = Promise.resolve();</script>
             <ul id="vchSetupProgressList" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px"></ul>
           </div>
           <div id="vchSetupResult" style="display:none;background:#f3faea;border:1px solid #d1ecb1;border-radius:8px;padding:12px 14px;font-size:13px;color:#3d7a14"></div>
+          <!-- V12.151: Manueller Datei-Pfad-Override für Email-Sender-Update -->
+          <div class="field" style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Email-Sender-Dateiname <span style="color:#a8312f">★</span> <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— wird beim „Email-Sender aktualisieren" verwendet</span></label>
+            <input type="text" id="vchEmailSenderPathInput" placeholder="valtown-email-sender.ts" value="valtown-email-sender.ts" style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:13px;outline:none">
+            <span style="font-size:11.5px;color:var(--muted)">Der exakte Dateiname im val.town-Editor (linke Sidebar). Default „valtown-email-sender.ts" passt für die Liftaro-Standard-Installation.</span>
+          </div>
           <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
             <!-- V12.145: Email-Sender-Val aktualisieren (neben Proxy-Button im Hub) -->
             <button id="vchEmailSenderUpdateBtn" onclick="runEmailSenderUpdate(this)" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:8px;padding:10px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px" title="Email-Sender-Val auf val.town mit aktuellem Code aktualisieren (für BCC-Support)">
@@ -5871,7 +5877,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.150';
+const APP_VERSION = 'V12.151';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6382,10 +6388,20 @@ async function updateEmailSenderVal() {
     console.log('[V12.146] Val gefunden:', target.name, '(' + valId + ')');
     try { localStorage.setItem('liftaro_emailsender_valid', valId); } catch (_) {}
   }
+  // V12.151: Manueller Path-Override hat höchste Priorität — wenn das
+  // Eingabefeld vchEmailSenderPathInput einen Wert hat, nutzen wir den direkt
+  // und skippen Brute-Force komplett.
+  let filePath = null;
+  const manualPath = (document.getElementById('vchEmailSenderPathInput')?.value || '').trim();
+  if (manualPath) {
+    filePath = manualPath;
+    console.log('[V12.151] Manueller Path-Override:', filePath);
+  }
+
   // V12.149: Drei Strategien hintereinander — die erste die einen filePath
   // liefert gewinnt. Strategie 3 (brute-force GET) umgeht CORS-Issues weil
   // die `?path=`-Route nachweislich CORS-Headers hat.
-  let filePath = null;
+  if (!filePath) {
 
   // Strategie 1: Val-Details (manchmal hat die response files-Array oder einen entrypoint)
   try {
@@ -6451,9 +6467,10 @@ async function updateEmailSenderVal() {
       } catch (_) { /* 404 → nicht da, weiter */ }
     }
   }
+  } // <-- close V12.151 if (!filePath) {
 
   if (!filePath) {
-    throw new Error('Konnte keine Datei im Val finden — bitte im val.town-Editor des liftaroEmailSender-Vals die linke Datei-Sidebar checken und mir den exakten Dateinamen sagen (z.B. „server.ts" oder „handler.tsx").');
+    throw new Error('Konnte keine Datei im Val finden — bitte im Feld „Email-Sender-Dateiname" den exakten Namen eintragen (z.B. „valtown-email-sender.ts").');
   }
 
   // V12.148-Cleanup: wenn V12.147 versehentlich main.tsx angelegt hat UND
