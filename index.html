@@ -5866,7 +5866,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.143';
+const APP_VERSION = 'V12.144';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -24723,8 +24723,12 @@ async function doSendEmailReply() {
       r.replied_at      = new Date().toISOString();
       r.replied_subject = subject;
       r.replied_body    = body;
-      // V12.137: Sent-Record in Emails-Tabelle anlegen, damit die Antwort
-      // im Posteingang als Verlauf sichtbar ist. Fehler nicht-blockierend.
+      // V12.137 (+ V12.144): Sent-Record in Emails-Tabelle anlegen.
+      // status/status_at NICHT setzen — das Email-status-Feld ist ein Single-
+      // Select und akzeptiert die Option „gesendet" nicht (Airtable-422).
+      // Die Sichtbarkeit im Posteingang läuft über direction='outgoing'.
+      // V12.144: Fehler nicht mehr silent — lauter Toast damit User sofort
+      // merkt wenn der Verlauf-Eintrag nicht entstanden ist.
       try {
         const sentAt = new Date().toISOString();
         const attNames = (attachments || []).map(a => a.filename).filter(Boolean).join(', ');
@@ -24735,8 +24739,6 @@ async function doSendEmailReply() {
           subject:          subject,
           body:             body.slice(0, 95000),
           sent_at:          sentAt,
-          status:           'gesendet',
-          status_at:        sentAt,
           in_reply_to:      r.message_id || '',
           linked_check_ids: r.linked_check_ids || '',
           bearbeiter_name:  _eiCurrentUserName(),
@@ -24744,10 +24746,11 @@ async function doSendEmailReply() {
         if (bccList.length) sentFields.bcc_email = bccList.join(', ');
         if (attNames) sentFields.attachment_filenames = attNames;
         await atWrite('Emails', sentFields);
-        console.log('[V12.137] Sent-Record in Emails angelegt');
+        console.log('[V12.144] Sent-Record in Emails angelegt');
       } catch (sentErr) {
-        console.warn('[V12.137] Sent-Record konnte nicht angelegt werden:', sentErr.message);
-        // Hinweis (nicht-blockierend) — kann an fehlenden Airtable-Feldern liegen
+        console.error('[V12.144] Sent-Record FAIL:', sentErr);
+        // V12.144: Lauter Toast statt silent — User soll merken
+        showToast('⚠ Email wurde versendet, aber Verlauf-Eintrag fehlgeschlagen: ' + sentErr.message, 'error', 7000);
       }
     }
 
