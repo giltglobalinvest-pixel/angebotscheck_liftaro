@@ -5746,7 +5746,12 @@ const pdfWorkerReady = Promise.resolve();</script>
             <ul id="vchSetupProgressList" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px"></ul>
           </div>
           <div id="vchSetupResult" style="display:none;background:#f3faea;border:1px solid #d1ecb1;border-radius:8px;padding:12px 14px;font-size:13px;color:#3d7a14"></div>
-          <div style="display:flex;justify-content:flex-end;gap:10px">
+          <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+            <!-- V12.145: Email-Sender-Val aktualisieren (neben Proxy-Button im Hub) -->
+            <button id="vchEmailSenderUpdateBtn" onclick="runEmailSenderUpdate(this)" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:8px;padding:10px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px" title="Email-Sender-Val auf val.town mit aktuellem Code aktualisieren (für BCC-Support)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Email-Sender aktualisieren
+            </button>
             <button id="vchSetupRunBtn" onclick="runVchSetup(this)" style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:10px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.5 2.6"/><path d="M21 3v6h-6"/></svg>
               Proxy aktualisieren
@@ -5866,7 +5871,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.144';
+const APP_VERSION = 'V12.145';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -6373,8 +6378,9 @@ window.updateEmailSenderVal = updateEmailSenderVal;
 // vcsetupProgress-Container (selbe UX wie Proxy-Update) und Toast.
 async function runEmailSenderUpdate(btn) {
   if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
-  const list = document.getElementById('vcsetupProgressList');
-  const prog = document.getElementById('vcsetupProgress');
+  // V12.145: Logging-Container — versucht beide IDs (Legacy vcsetup* + Hub vchSetup*)
+  const list = document.getElementById('vchSetupProgressList') || document.getElementById('vcsetupProgressList');
+  const prog = document.getElementById('vchSetupProgress')     || document.getElementById('vcsetupProgress');
   if (prog) prog.style.display = 'block';
   const log = (msg, type = 'info') => {
     const colors = { info: '#cbd5e1', ok: '#9ee880', warn: '#ffd478', error: '#ff8585' };
