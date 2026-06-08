@@ -5884,7 +5884,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.160';
+const APP_VERSION = 'V12.161';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16825,7 +16825,7 @@ async function buildLightVertragPDF() {
   // Reparatur/Modernisierungs-Anteil einmalig nach erfolgter Leistung. Keine 3-Jahres-Befristung mehr.
   draw('(2) Erfolgsbeteiligung: Liftaro erhält ausschließlich ' + erfPctStr + ' der nachweisbaren Netto-Einsparung pro WEG, die sich durch eine von Liftaro vermittelte oder verhandelte Optimierung von (a) Wartungs- und/oder Notrufverträgen sowie (b) Reparatur- und Modernisierungsaufträgen ergibt.');
   draw('(3) Berechnungsgrundlage:');
-  draw('a) Wartung/Notruf — Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in die Betreuung (Status quo, ermittelt aus den von Liftaro gemäß § 1 Abs. 3 angeforderten Bestandsverträgen) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet. Einmalige Boni oder Sondervorteile bei Vertragswechsel bleiben unberücksichtigt.', { indent: 14, after: 3 });
+  draw('a) Wartung/Notruf — Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in die Betreuung (Status quo, ermittelt aus den von Liftaro gemäß § 1 Abs. 3 angeforderten Bestandsverträgen) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet.', { indent: 14, after: 3 });
   draw('b) Reparatur/Modernisierung — Differenz zwischen dem dokumentierten Ausgangs- oder Vergleichsangebot des bisherigen Anbieters und dem letztlich von der WEG beauftragten, von Liftaro vermittelten oder nachverhandelten Netto-Auftragswert.', { indent: 14, after: 4 });
   draw('(4) Abrechnung der Erfolgsbeteiligung:');
   draw('a) Wartung/Notruf — pro WEG, jährlich im Voraus zu Beginn jedes Vertragsjahres mit dem optimierten Dienstleister. Die Erfolgsbeteiligung wird jährlich abgerechnet, solange Liftaro die EuC-Betreuung für die jeweilige Aufzugsanlage erbringt. Mit Beendigung der Betreuung entfällt die Erfolgsbeteiligung; die volle Einsparung verbleibt fortan dauerhaft bei der WEG.', { indent: 14, after: 3 });
