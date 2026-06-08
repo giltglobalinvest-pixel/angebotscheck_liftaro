@@ -5884,7 +5884,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.162';
+const APP_VERSION = 'V12.163';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16808,8 +16808,8 @@ async function buildLightVertragPDF() {
   head('§ 3 Mitwirkungspflichten der Verwaltung');
   // V12.158: HV-weite Abfrage- und Verhandlungsvollmacht (Anlage A) — KEINE Einzelvollmacht je Aufzug/WEG mehr
   draw('(1) Die Verwaltung erteilt Liftaro mit Unterzeichnung dieser Rahmenvereinbarung die Abfrage- und Verhandlungsvollmacht gemäß Anlage A. Diese Vollmacht gilt umfassend für sämtliche durch die Verwaltung betreuten Aufzugsanlagen ihrer Mandanten und ist nicht an einzelne WEGs oder Aufzüge gebunden. Eine erneute Bevollmächtigung je Aufzug oder je WEG ist nicht erforderlich. Aufnahmen oder Streichungen einzelner Anlagen folgen § 1 Abs. 2.');
-  // V12.162: explizit klarstellen — Vollmacht umfasst KEINEN Vertrags-/Auftragsabschluss → kein Risiko für die Verwaltung
-  draw('Klarstellung — Umfang und Grenzen der Vollmacht: Die Vollmacht berechtigt Liftaro ausschließlich zum Einsehen von Vertragsunterlagen, zum Kündigen bestehender Verträge im Namen des Vollmachtgebers, zum Führen von Vertragsverhandlungen sowie zum Einholen von Reparatur- und Serviceangeboten. Liftaro ist ausdrücklich NICHT berechtigt, im Namen der Verwaltung oder einer WEG Verträge oder Aufträge abzuschließen. Die endgültige Beauftragungs- und Vertragsschluss-Entscheidung verbleibt in jedem Einzelfall ausschließlich bei der jeweiligen WEG bzw. ihrem dafür zuständigen Organ. Aus dem Handeln von Liftaro im Rahmen dieser Vollmacht entsteht der Verwaltung daher kein eigenes wirtschaftliches oder rechtliches Risiko.', { font: helvBold });
+  // V12.163: gekürzte Klarstellung — Kernaussage: keine Vertragsabschlüsse durch Liftaro
+  draw('Klarstellung: Liftaro ist ausdrücklich NICHT berechtigt, im Namen der Verwaltung oder einer WEG Verträge oder Aufträge abzuschließen. Die endgültige Entscheidung verbleibt in jedem Einzelfall bei der jeweiligen WEG.', { font: helvBold });
   draw('(2) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern — bzw. ermöglicht Liftaro, diese Unterlagen aufgrund der Vollmacht direkt beim jeweiligen Wartungsnehmer einzuholen (§ 1 Abs. 3).');
   draw('(3) Die Verwaltung benennt Liftaro einen festen Ansprechpartner auf Verwaltungsseite und teilt je betreuter WEG die Rechnungsanschrift mit, an die Liftaro die Erfolgsbeteiligung gemäß § 4 fakturiert.');
   draw('(4) Die Verwaltung wirkt an der nachvollziehbaren Dokumentation der Ausgangskosten (Status quo) je Aufzugsanlage mit, damit Einsparungen gemäß § 4 sauber berechnet werden können.');
