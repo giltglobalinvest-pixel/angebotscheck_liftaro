@@ -5878,7 +5878,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.157';
+const APP_VERSION = 'V12.158';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16800,9 +16800,10 @@ async function buildLightVertragPDF() {
 
   // ── §3 Mitwirkung
   head('§ 3 Mitwirkungspflichten der Verwaltung');
-  draw('(1) Die Verwaltung holt für jede betreute WEG eine Vollmacht ein (siehe Anlage A "Vollmacht WEG"), mit der die WEG Liftaro zur Vertretung in Vertrags- und Rechnungsangelegenheiten gegenüber Wartungs- und Notrufdienstleistern bevollmächtigt. Liftaro stellt das Vollmachtsformular zur Verfügung.');
-  draw('(2) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern.');
-  draw('(3) Die Verwaltung benennt je WEG einen Ansprechpartner (in der Regel Verwaltungsbeirat) und teilt Liftaro die Rechnungsanschrift der WEG mit.');
+  // V12.158: HV-weite Abfrage- und Verhandlungsvollmacht (Anlage A) — KEINE Einzelvollmacht je Aufzug/WEG mehr
+  draw('(1) Die Verwaltung erteilt Liftaro mit Unterzeichnung dieser Rahmenvereinbarung die Abfrage- und Verhandlungsvollmacht gemäß Anlage A. Diese Vollmacht gilt umfassend für sämtliche durch die Verwaltung betreuten Aufzugsanlagen ihrer Mandanten und ist nicht an einzelne WEGs oder Aufzüge gebunden. Eine erneute Bevollmächtigung je Aufzug oder je WEG ist nicht erforderlich. Aufnahmen oder Streichungen einzelner Anlagen folgen § 1 Abs. 2.');
+  draw('(2) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern — bzw. ermöglicht Liftaro, diese Unterlagen aufgrund der Vollmacht direkt beim jeweiligen Wartungsnehmer einzuholen (§ 1 Abs. 3).');
+  draw('(3) Die Verwaltung benennt Liftaro einen festen Ansprechpartner auf Verwaltungsseite und teilt je betreuter WEG die Rechnungsanschrift mit, an die Liftaro die Erfolgsbeteiligung gemäß § 4 fakturiert.');
   draw('(4) Die Verwaltung wirkt an der nachvollziehbaren Dokumentation der Ausgangskosten (Status quo) je Aufzugsanlage mit, damit Einsparungen gemäß § 4 sauber berechnet werden können.');
 
   // ── §4 Vergütung — Komplett kostenfrei + Erfolgsbeteiligung (dynamisch)
