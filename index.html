@@ -5884,7 +5884,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.161';
+const APP_VERSION = 'V12.162';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16808,6 +16808,8 @@ async function buildLightVertragPDF() {
   head('§ 3 Mitwirkungspflichten der Verwaltung');
   // V12.158: HV-weite Abfrage- und Verhandlungsvollmacht (Anlage A) — KEINE Einzelvollmacht je Aufzug/WEG mehr
   draw('(1) Die Verwaltung erteilt Liftaro mit Unterzeichnung dieser Rahmenvereinbarung die Abfrage- und Verhandlungsvollmacht gemäß Anlage A. Diese Vollmacht gilt umfassend für sämtliche durch die Verwaltung betreuten Aufzugsanlagen ihrer Mandanten und ist nicht an einzelne WEGs oder Aufzüge gebunden. Eine erneute Bevollmächtigung je Aufzug oder je WEG ist nicht erforderlich. Aufnahmen oder Streichungen einzelner Anlagen folgen § 1 Abs. 2.');
+  // V12.162: explizit klarstellen — Vollmacht umfasst KEINEN Vertrags-/Auftragsabschluss → kein Risiko für die Verwaltung
+  draw('Klarstellung — Umfang und Grenzen der Vollmacht: Die Vollmacht berechtigt Liftaro ausschließlich zum Einsehen von Vertragsunterlagen, zum Kündigen bestehender Verträge im Namen des Vollmachtgebers, zum Führen von Vertragsverhandlungen sowie zum Einholen von Reparatur- und Serviceangeboten. Liftaro ist ausdrücklich NICHT berechtigt, im Namen der Verwaltung oder einer WEG Verträge oder Aufträge abzuschließen. Die endgültige Beauftragungs- und Vertragsschluss-Entscheidung verbleibt in jedem Einzelfall ausschließlich bei der jeweiligen WEG bzw. ihrem dafür zuständigen Organ. Aus dem Handeln von Liftaro im Rahmen dieser Vollmacht entsteht der Verwaltung daher kein eigenes wirtschaftliches oder rechtliches Risiko.', { font: helvBold });
   draw('(2) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern — bzw. ermöglicht Liftaro, diese Unterlagen aufgrund der Vollmacht direkt beim jeweiligen Wartungsnehmer einzuholen (§ 1 Abs. 3).');
   draw('(3) Die Verwaltung benennt Liftaro einen festen Ansprechpartner auf Verwaltungsseite und teilt je betreuter WEG die Rechnungsanschrift mit, an die Liftaro die Erfolgsbeteiligung gemäß § 4 fakturiert.');
   draw('(4) Die Verwaltung wirkt an der nachvollziehbaren Dokumentation der Ausgangskosten (Status quo) je Aufzugsanlage mit, damit Einsparungen gemäß § 4 sauber berechnet werden können.');
@@ -16855,7 +16857,7 @@ async function buildLightVertragPDF() {
   // ── §7 Datenschutz
   head('§ 7 Vertraulichkeit und Datenschutz');
   draw('(1) Beide Parteien verpflichten sich zur vertraulichen Behandlung aller im Rahmen der Vertragsdurchführung bekannt gewordenen Informationen.');
-  draw('(2) Personenbezogene Daten werden ausschließlich zweckgebunden verarbeitet. Soweit Liftaro Daten im Auftrag der Verwaltung oder WEG verarbeitet, wird ergänzend eine Vereinbarung zur Auftragsverarbeitung nach Art. 28 DSGVO geschlossen.');
+  draw('(2) Personenbezogene Daten werden ausschließlich zweckgebunden verarbeitet. Die ergänzende Datenschutzvereinbarung gemäß Art. 13/14 DSGVO ist als Anlage B Bestandteil dieser Rahmenvereinbarung und regelt die Auftragsverarbeitung nach Art. 28 DSGVO im Detail.');
 
   // ── §8 Schlussbestimmungen
   head('§ 8 Schlussbestimmungen');
@@ -17032,11 +17034,135 @@ async function buildLightVertragPDF() {
   page.drawText(_safeWinAnsi('Ort, Datum'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
   page.drawText(_safeWinAnsi('Stempel, Unterschrift Vollmachtgeber'), { x: PAGE_W - MARGIN_X - 220, y, size: 9, font: helv, color: MUTED });
 
-  // Disclaimer
-  spacer(20);
+  // V12.157: Firmen-Footer auf der Vollmacht-Seite (analog Vorlage)
+  drawCompanyFooter();
+
+  // ── ANLAGE B: Datenschutzvereinbarung (V12.162 — analog Beratervertrag, auf Verwaltung bezogen)
+  newPage();
+  drawLogo({ maxW: 130, yTop: PAGE_H - 22 });
+  y = PAGE_H - MARGIN_TOP - 16;
+  title('Anlage B: Datenschutzvereinbarung');
+  draw('gemäß Art. 13/14 DSGVO');
+  draw('zur Verarbeitung personenbezogener Daten im Rahmen der Rahmenvereinbarung "Equipment under Control"');
+  spacer(4);
+
+  // Parteien-Block
+  draw('zwischen');
+  draw('Auftraggeber (Verantwortlicher):', { font: helvBold });
+  draw('Name / Firma: ' + (d.firma || ''), { size: 10.5 });
+  draw('Adresse: '      + (vollAdresse || ''), { size: 10.5 });
+  if (d.gf) draw('Vertreten durch: ' + d.gf, { size: 10.5 });
+  spacer(4);
+  draw('und');
+  draw('Berater (Auftragsverarbeiter):', { font: helvBold });
+  draw('Liftaro GmbH, Gustavburger Weg 6, 55116 Mainz');
+  draw('HRB 54013, Amtsgericht Mainz');
+  draw('— gemeinsam „Vertragsparteien" genannt —');
+
+  head('§ 1 Gegenstand und Zweck der Vereinbarung');
+  bul('Diese Datenschutzvereinbarung regelt die Verarbeitung personenbezogener Daten im Rahmen der zwischen den Vertragsparteien geschlossenen Rahmenvereinbarung "Equipment under Control" (EuC) zur laufenden technischen und wirtschaftlichen Betreuung der von der Verwaltung verantworteten Aufzugsanlagen ihrer Mandanten-WEGs.');
+  bul('Der Berater verarbeitet im Auftrag und nach Weisung des Auftraggebers Daten, die für die Erbringung der vereinbarten EuC-Leistungen (§ 2 der Rahmenvereinbarung) erforderlich sind.');
+  bul('Die Verarbeitung erfolgt ausschließlich für die in dieser Rahmenvereinbarung definierten Zwecke und in Übereinstimmung mit der EU-Datenschutz-Grundverordnung (DSGVO), dem Bundesdatenschutzgesetz (BDSG) sowie sonstigen anwendbaren Datenschutzvorschriften.');
+
+  head('§ 2 Art der verarbeiteten Daten');
+  draw('Im Rahmen der Zusammenarbeit werden folgende Kategorien personenbezogener und vertragsbezogener Daten verarbeitet:');
+  draw('2.1 Stammdaten der Verwaltung', { font: helvBold, after: 3 });
+  bul('Name und Anschrift der Hausverwaltung sowie der von ihr betreuten WEGs');
+  bul('Name und Kontaktdaten der verantwortlichen Ansprechpersonen auf Verwaltungsseite');
+  bul('Kommunikationsdaten (E-Mail, Telefon)');
+  draw('2.2 Vertragsdaten', { font: helvBold, before: 4, after: 3 });
+  bul('Bestehende Wartungs-, Notruf- und Serviceverträge der betreuten Aufzugsanlagen (inkl. Konditionen, Laufzeiten, Preise)');
+  bul('Angebote und Auftragsbestätigungen von Aufzug-Dienstleistern');
+  bul('Rechnungs- und Zahlungsinformationen im Zusammenhang mit der EuC-Betreuung');
+  draw('2.3 Anlagenbezogene Daten', { font: helvBold, before: 4, after: 3 });
+  bul('Technische Daten der in die EuC-Betreuung aufgenommenen Aufzugsanlagen (Standort, Baujahr, Typ, Fabrikat, Fabriknummer)');
+  bul('Prüf- und Wartungshistorien');
+  bul('ZÜS-Prüfberichte und Mängeldokumentationen');
+  draw('2.4 Daten Dritter', { font: helvBold, before: 4, after: 3 });
+  bul('Kontaktdaten von Wartungsnehmern und sonstigen Dienstleistern, sofern für die Leistungserbringung notwendig');
+  bul('Mieterdaten nur in dem Umfang, wie sie in Wartungs- oder Prüfprotokollen enthalten sind');
+  draw('Besondere Kategorien personenbezogener Daten im Sinne des Art. 9 DSGVO werden nicht verarbeitet.', { before: 4 });
+
+  head('§ 3 Rechtsgrundlagen der Verarbeitung');
+  draw('Die Verarbeitung personenbezogener Daten stützt sich auf folgende Rechtsgrundlagen:');
+  bul('Art. 6 Abs. 1 lit. b DSGVO — Erfüllung der EuC-Rahmenvereinbarung');
+  bul('Art. 6 Abs. 1 lit. c DSGVO — Erfüllung gesetzlicher Verpflichtungen (z. B. BetrSichV, TRBS)');
+  bul('Art. 6 Abs. 1 lit. f DSGVO — Wahrung berechtigter Interessen (wirtschaftliche und technische Optimierung des Anlagenbetriebs)');
+
+  head('§ 4 Pflichten des Beraters als Auftragsverarbeiter');
+  bul('Der Berater verarbeitet personenbezogene Daten ausschließlich auf dokumentierte Weisung des Auftraggebers, es sei denn, er ist nach EU- oder nationalem Recht zur Verarbeitung verpflichtet.');
+  bul('Der Berater gewährleistet, dass die mit der Verarbeitung befassten Personen zur Vertraulichkeit verpflichtet sind.');
+  bul('Der Berater ergreift alle gemäß Art. 32 DSGVO erforderlichen technischen und organisatorischen Maßnahmen zum Schutz der Daten (siehe § 6 dieser Vereinbarung).');
+  bul('Der Berater unterstützt den Auftraggeber soweit möglich bei der Erfüllung von Betroffenenrechten (Art. 15–22 DSGVO) sowie bei der Einhaltung der Meldepflichten nach Art. 33 und 34 DSGVO.');
+  bul('Der Berater stellt nach Beendigung der Rahmenvereinbarung alle Daten an den Auftraggeber zurück oder löscht diese, sofern keine gesetzliche Aufbewahrungspflicht entgegensteht.');
+  bul('Der Berater stellt dem Auftraggeber alle zur Nachweisführung der Einhaltung dieser Vereinbarung erforderlichen Informationen zur Verfügung und ermöglicht Überprüfungen.');
+
+  head('§ 5 Weiterleitung an Dritte und Unterauftragsverarbeiter');
+  bul('Eine Weitergabe von personenbezogenen Daten an Dritte erfolgt nur, soweit dies zur Erbringung der EuC-Leistung zwingend erforderlich ist (z. B. Einholung von Alternativangeboten bei Aufzugunternehmen) und nur mit vorheriger Information des Auftraggebers.');
+  bul('Der Berater setzt keine Unterauftragsverarbeiter ein, ohne den Auftraggeber vorab schriftlich zu informieren. Der Auftraggeber hat das Recht, berechtigte Einwände gegen den Einsatz eines Unterauftragsverarbeiters zu erheben.');
+  bul('Werden Unterauftragsverarbeiter eingesetzt, sind diese vertraglich mindestens in dem Umfang zu verpflichten, der dieser Vereinbarung entspricht.');
+  bul('Eine Übermittlung in Drittstaaten außerhalb der EU/des EWR findet nicht statt, sofern kein angemessenes Datenschutzniveau nach Art. 45 ff. DSGVO gewährleistet ist.');
+
+  head('§ 6 Technische und organisatorische Maßnahmen (TOM)');
+  draw('Der Berater trifft mindestens folgende technische und organisatorische Schutzmaßnahmen gemäß Art. 32 DSGVO:');
+  draw('Vertraulichkeit', { font: helvBold, before: 3, after: 3 });
+  bul('Zugriffskontrolle: Zugang zu personenbezogenen Daten nur für befugte Mitarbeiter');
+  bul('Verschlüsselung von Datenübertragungen (TLS/SSL)');
+  bul('Passwortschutz und gesicherte Zugänge zu IT-Systemen');
+  draw('Integrität', { font: helvBold, before: 3, after: 3 });
+  bul('Regelmäßige Sicherung aller relevanten Daten (Backups)');
+  bul('Protokollierung von Datenzugriffen und -änderungen');
+  draw('Verfügbarkeit', { font: helvBold, before: 3, after: 3 });
+  bul('Schutz vor unberechtigtem Datenverlust durch redundante Systeme');
+  bul('Wiederherstellungsmaßnahmen bei technischen Ausfällen');
+  draw('Belastbarkeit', { font: helvBold, before: 3, after: 3 });
+  bul('Regelmäßige Überprüfung und Aktualisierung der Sicherheitsmaßnahmen');
+  bul('Schulung der Mitarbeiter zu Datenschutz und Datensicherheit');
+
+  head('§ 7 Speicherdauer und Löschung');
+  bul('Personenbezogene Daten werden nur so lange gespeichert, wie es für die Zwecke der Verarbeitung erforderlich ist.');
+  bul('Nach Beendigung der Rahmenvereinbarung werden alle personenbezogenen Daten des Auftraggebers und Dritter gelöscht oder gesperrt, sofern keine gesetzlichen Aufbewahrungspflichten (insbesondere steuerrechtlicher Art gemäß §§ 147 AO, 257 HGB) entgegenstehen.');
+  bul('Vertragsdaten mit steuerlicher Relevanz werden bis zu 10 Jahre aufbewahrt. Technische Anlagendaten werden bis zu 5 Jahre nach Vertragsende gespeichert.');
+
+  head('§ 8 Rechte der betroffenen Personen');
+  draw('Betroffene Personen haben gegenüber dem Verantwortlichen (Auftraggeber) folgende Rechte gemäß DSGVO:');
+  bul('Recht auf Auskunft (Art. 15 DSGVO)');
+  bul('Recht auf Berichtigung (Art. 16 DSGVO)');
+  bul('Recht auf Löschung (Art. 17 DSGVO)');
+  bul('Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO)');
+  bul('Recht auf Datenübertragbarkeit (Art. 20 DSGVO)');
+  bul('Widerspruchsrecht (Art. 21 DSGVO)');
+  bul('Recht auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO)');
+  draw('Der Berater unterstützt den Auftraggeber auf Anfrage bei der Beantwortung von Betroffenenanfragen, soweit diese Daten betreffen, die im Rahmen der EuC-Rahmenvereinbarung verarbeitet werden.', { before: 4 });
+
+  head('§ 9 Meldepflicht bei Datenschutzverletzungen');
+  bul('Im Falle einer Verletzung des Schutzes personenbezogener Daten (Art. 4 Nr. 12 DSGVO) informiert der Berater den Auftraggeber unverzüglich, spätestens jedoch innerhalb von 24 Stunden nach Bekanntwerden des Vorfalls.');
+  bul('Die Meldung enthält mindestens: Art der Verletzung, betroffene Datenkategorien und -mengen, voraussichtliche Folgen sowie ergriffene oder geplante Gegenmaßnahmen.');
+  bul('Die gesetzliche Meldepflicht gegenüber der zuständigen Aufsichtsbehörde (Art. 33 DSGVO) obliegt dem Auftraggeber als Verantwortlichem.');
+
+  head('§ 10 Verantwortlicher und Datenschutzbeauftragter');
+  draw('Verantwortlicher im Sinne der DSGVO ist der Auftraggeber. Bei Fragen zur Datenverarbeitung durch die Liftaro GmbH wenden Sie sich an:');
+  draw('Liftaro GmbH', { before: 3 });
+  draw('Gustavburger Weg 6, 55116 Mainz');
+  draw('E-Mail: info@liftaro.de');
+  draw('Telefon: +49 1512 8189826');
+  draw('Sofern gesetzlich erforderlich, benennt die Liftaro GmbH einen betrieblichen Datenschutzbeauftragten und teilt dessen Kontaktdaten dem Auftraggeber mit.', { before: 4 });
+
+  head('§ 11 Laufzeit und Beendigung');
+  bul('Diese Datenschutzvereinbarung gilt ab dem Zeitpunkt der Unterzeichnung der EuC-Rahmenvereinbarung und endet mit deren Beendigung.');
+  bul('Regelungen zur Datenlöschung, Aufbewahrung und Vertraulichkeit (§§ 6, 7, 9) gelten auch nach Vertragsende fort.');
+
+  head('§ 12 Schlussbestimmungen');
+  bul('Änderungen und Ergänzungen dieser Vereinbarung bedürfen der Schriftform.');
+  bul('Sollte eine Bestimmung dieser Vereinbarung unwirksam sein oder werden, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt (Salvatorische Klausel).');
+  bul('Es gilt das Recht der Bundesrepublik Deutschland. Gerichtsstand ist, soweit zulässig, der Sitz der Liftaro GmbH.');
+  bul('Diese Vereinbarung ist Bestandteil der EuC-Rahmenvereinbarung zwischen den Parteien und kann nicht separat gekündigt werden.');
+
+  // Disclaimer am Ende
+  spacer(16);
   draw('Hinweis: Dieser Vertragsentwurf wurde durch eine Fachkanzlei nicht abschließend geprüft. Eine anwaltliche Prüfung wird vor Abschluss empfohlen.', { color: MUTED, size: 8.5, after: 0 });
 
-  // V12.157: Firmen-Footer auf der Vollmacht-Seite (analog Vorlage)
+  // Firmen-Footer auch auf der Datenschutz-Seite
   drawCompanyFooter();
 
   const bytes = await doc.save();
