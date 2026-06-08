@@ -5878,7 +5878,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.155';
+const APP_VERSION = 'V12.156';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16878,39 +16878,85 @@ async function buildLightVertragPDF() {
   }
   } // V12.154: close if(false) wrapper für deaktivierten Anlage-A-Block
 
-  // ── ANLAGE A: Vollmacht-Muster (V12.154: war bisher Anlage B, jetzt einzige Anlage)
+  // ── ANLAGE A: Abfrage- und Verhandlungsvollmacht (V12.156 — neu, allgemein gehalten)
   newPage();
-  title('Anlage A: Vollmacht (Muster — pro WEG)');
-  draw('Diese Vollmacht wird von der jeweiligen WEG (vertreten durch den Verwaltungsbeirat oder die Hausverwaltung) ausgestellt und gilt für sämtliche Aufzugsanlagen am bezeichneten Objekt.', { color: MUTED, after: 12 });
+  title('Anlage A: Abfrage- und Verhandlungsvollmacht');
+  spacer(6);
+  draw('Hiermit erteilt', { after: 8 });
 
-  head('Vollmachtgeber');
-  draw('Name der WEG: ____________________________________________', { after: 2 });
-  draw('Objekt-Adresse: ___________________________________________', { after: 6 });
-  draw('vertreten durch:', { after: 2 });
-  draw('☐ den Verwaltungsbeirat: ________________________________', { after: 2 });
-  draw('☐ die Hausverwaltung ' + (d.firma || '____________________') + ' auf Grundlage des Verwaltungsmandats', { after: 8 });
+  // Formularfelder Vollmachtgeber — vorbefüllt aus HV-Daten falls vorhanden
+  const lvAdresse = [d.strasse, [d.plz, d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  function drawFormRow(label, value, opts) {
+    const o = opts || {};
+    const labelW = o.labelW || 110;
+    ensure(20);
+    page.drawText(_safeWinAnsi(label), { x: MARGIN_X, y: y - 10, size: 10.5, font: helv, color: COLOR });
+    const lineX = MARGIN_X + labelW;
+    const lineW = PAGE_W - MARGIN_X - lineX;
+    page.drawLine({ start: { x: lineX, y: y - 12 }, end: { x: lineX + lineW, y: y - 12 }, thickness: 0.4, color: rgb(0.7, 0.72, 0.76) });
+    if (value) {
+      page.drawText(_safeWinAnsi(value), { x: lineX + 4, y: y - 10, size: 10.5, font: helv, color: COLOR });
+    }
+    y -= 22;
+  }
+  drawFormRow('Firma:',         d.firma || '');
+  drawFormRow('Anschrift:',     lvAdresse || '');
+  spacer(4);
+  draw('vertreten durch:', { after: 4 });
+  drawFormRow('Name:',          '');
+  drawFormRow('Vorname:',       '');
 
-  head('Bevollmächtigter');
-  draw('Liftaro GmbH, Gustavburger Weg 6, 55116 Mainz');
+  // Rechtsbündige Vollmachtgeber-Bezeichnung
+  y -= 4;
+  const giverLabel = '– Vollmachtgeber –';
+  const giverLabelW = helv.widthOfTextAtSize(giverLabel, 9.5);
+  page.drawText(_safeWinAnsi(giverLabel), { x: PAGE_W - MARGIN_X - giverLabelW, y: y - 10, size: 9.5, font: helvBold, color: MUTED });
+  y -= 22;
 
-  head('Umfang der Vollmacht');
-  draw('Die WEG bevollmächtigt Liftaro für sämtliche Aufzugsanlagen am oben genannten Objekt zu:');
-  draw('1. Einholung von Auskünften, Verträgen, Rechnungen und Unterlagen bei aktuellen und potentiellen Wartungs-, Notruf- und Reparaturdienstleistern.', { after: 2 });
-  draw('2. Verhandlungen mit Wartungs-, Notruf- und Reparaturdienstleistern zu Konditionen, Vertragsanpassungen und Streitfällen.', { after: 2 });
-  draw('3. Beanstandung und Klärung von Rechnungspositionen im Namen der WEG.', { after: 2 });
-  draw('4. Vorbereitung und Empfehlung von Vertragsänderungen, -wechseln und -kündigungen.');
+  draw('der', { font: helv, after: 4 });
+  draw('Liftaro GmbH, Gustavburger Weg 6, 55116 Mainz', { font: helvBold, after: 2 });
+  const takerLabel = '– Vollmachtnehmer –';
+  const takerLabelW = helv.widthOfTextAtSize(takerLabel, 9.5);
+  page.drawText(_safeWinAnsi(takerLabel), { x: PAGE_W - MARGIN_X - takerLabelW, y: y - 10, size: 9.5, font: helvBold, color: MUTED });
+  y -= 24;
 
-  head('Nicht umfasst');
-  draw('Diese Vollmacht umfasst NICHT: rechtsverbindlicher Vertragsabschluss, Zahlungsverpflichtungen im Namen der WEG, gerichtliche Vertretung. Diese Handlungen bedürfen jeweils der gesonderten Zustimmung der WEG.');
+  // Zentrierter, unterstrichener Titel „Vollmacht"
+  const vollTxt = 'Vollmacht';
+  const vollSize = 18;
+  const vollW = helvBold.widthOfTextAtSize(vollTxt, vollSize);
+  const vollX = (PAGE_W - vollW) / 2;
+  page.drawText(_safeWinAnsi(vollTxt), { x: vollX, y: y - vollSize, size: vollSize, font: helvBold, color: COLOR });
+  page.drawLine({ start: { x: vollX, y: y - vollSize - 3 }, end: { x: vollX + vollW, y: y - vollSize - 3 }, thickness: 1.2, color: COLOR });
+  y -= vollSize + 18;
 
-  head('Laufzeit');
-  draw('Diese Vollmacht gilt unbefristet, kann von der WEG jedoch jederzeit schriftlich widerrufen werden.');
+  draw('im Bereich Aufzüge und Fahrtreppen,', { after: 10 });
 
-  spacer(28); ensure(60);
+  // Nummerierte Aufzählung
+  function numItem(n, text, opts) {
+    const o = opts || {};
+    ensure(16);
+    page.drawText(String(n) + '.', { x: MARGIN_X, y: y - 11, size: 10.5, font: helv, color: COLOR });
+    draw(text, { indent: 18, leading: 14, after: o.after != null ? o.after : 6 });
+  }
+  numItem(1, 'alle vom Vollmachtgeber im Bereich Aufzüge und Fahrtreppen abgeschlossenen Verträge beim jeweiligen Vertragspartner einzusehen bzw. Kopien hiervon anzufordern;');
+  numItem(2, 'alle vom Vollmachtgeber im Bereich Aufzüge und Fahrtreppen abgeschlossenen Verträge gegenüber dem jeweiligen Vertragspartner für den Vollmachtgeber zu kündigen;');
+  numItem(3, 'für den Vollmachtgeber Vertragsverhandlungen über', { after: 2 });
+  draw('a) Anpassungen von bestehenden Verträgen im Bereich Aufzüge und Fahrtreppen sowie', { indent: 36, after: 2 });
+  draw('b) über neu abzuschließende Verträge im Bereich Aufzüge und Fahrtreppen zu führen;', { indent: 36, after: 6 });
+  numItem(4, 'für den Vollmachtgeber Reparatur- und Serviceangebote im Bereich Aufzüge und Fahrtreppen einzuholen und entsprechende Vertragsverhandlungen zu führen.');
+
+  spacer(8);
+  draw('Der endgültige Vertragsabschluss erfolgt jedoch jeweils durch den Vollmachtgeber selbst. Diese Vollmacht ist jederzeit ohne Angabe von Gründen widerruflich.');
+
+  // Unterschriften-Block
+  spacer(32); ensure(60);
   const sig2Y = y;
-  page.drawLine({ start: { x: MARGIN_X, y: sig2Y }, end: { x: MARGIN_X + 280, y: sig2Y }, thickness: 0.5, color: COLOR });
+  // Zwei Linien: links Ort/Datum, rechts Stempel/Unterschrift
+  page.drawLine({ start: { x: MARGIN_X, y: sig2Y }, end: { x: MARGIN_X + 200, y: sig2Y }, thickness: 0.5, color: COLOR });
+  page.drawLine({ start: { x: PAGE_W - MARGIN_X - 220, y: sig2Y }, end: { x: PAGE_W - MARGIN_X, y: sig2Y }, thickness: 0.5, color: COLOR });
   y = sig2Y - 14;
-  page.drawText(_safeWinAnsi('Ort, Datum · Unterschrift Vollmachtgeber'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi('Ort, Datum'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi('Stempel, Unterschrift Vollmachtgeber'), { x: PAGE_W - MARGIN_X - 220, y, size: 9, font: helv, color: MUTED });
 
   // Disclaimer
   spacer(20);
