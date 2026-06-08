@@ -4950,15 +4950,17 @@ const pdfWorkerReady = Promise.resolve();</script>
           <input type="text" id="lv_link_v" placeholder="z.B. V_2026105">
         </div>
       </div>
-      <!-- V12.141: Verknüpfte Aufzüge direkt (kein WEG-Layer mehr) -->
+      <!-- V12.141/V12.154: Bekannte Anlagen (intern, optional) — wird NICHT im Vertrags-PDF aufgeführt -->
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <span>Verknüpfte Aufzüge <span id="lv_aufzugSum" style="color:var(--blue-mid);font-weight:600">(0 Aufzüge · 0 €/Jahr)</span></span>
+        <span>📋 Bekannte Anlagen <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:10.5px">— intern, optional</span> <span id="lv_aufzugSum" style="color:var(--blue-mid);font-weight:600">(0 Aufzüge · 0 €/Jahr)</span></span>
         <button id="lv_addAufzuege" onclick="openAufzugPickerForEuCVertrag()" style="background:#1e40af;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:0;display:inline-flex;align-items:center;gap:5px">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Aufzüge zuordnen
         </button>
       </div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.5">Aufzüge werden direkt an den EuC-Vertrag der Hausverwaltung gebunden. Pro Aufzug die <strong>aktuellen Jahreskosten (Wartung+Notruf)</strong> als Basis für die Erfolgsbeteiligung eintragen.</div>
+      <div style="background:#fff7e6;border:1px solid #f0d4a8;border-radius:6px;padding:8px 12px;font-size:11.5px;color:#7a4d00;margin-bottom:10px;line-height:1.5">
+        ℹ <strong>Wird NICHT im Vertrags-PDF aufgeführt.</strong> Die offizielle Anlagenliste schickt der Kunde uns nach Vertragsunterzeichnung in Textform (Standort, Fabriknummer, Wartungsnehmer). Hier nur für die interne Übersicht — pro Anlage optional die Jahreskosten als Status-quo-Kalibrierung.
+      </div>
       <div id="lv_aufzugList" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
         <p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Noch keine Aufzüge verknüpft. Erst Vereinbarung speichern, dann „Aufzüge zuordnen" klicken.</p>
       </div>
@@ -5876,7 +5878,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.153';
+const APP_VERSION = 'V12.154';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16347,7 +16349,7 @@ async function buildVertragPDF() {
   if (d.euc_klausel) {
     head('h5a', '§ 5a Equipment under Control (Zusatzklausel)');
     txt('p5a_1', '(1) Die Parteien können — zusätzlich zu den vorstehenden Beratungsleistungen — die laufende administrative Betreuung der Aufzugsanlagen einer oder mehrerer vom Auftraggeber verwalteter Wohnungseigentümergemeinschaften (WEG) durch den Berater vereinbaren. Diese Leistung trägt den Namen „Equipment under Control" (EuC) und wird in einer separaten Rahmenvereinbarung („EuC-Rahmenvereinbarung", L_xxxx) zwischen dem Berater und dem Auftraggeber konkretisiert.');
-    txt('p5a_2', '(2) Leistungsumfang EuC: laufende Vertragsprüfung und Nachverhandlung mit Wartungs- und Notrufdienstleistern, Rechnungsprüfung, Begleitung bei Reparatur- und Modernisierungsangeboten, Erinnerung an Betreiberpflichten, halbjährliches Reporting je WEG. Die in EuC aufgenommenen Aufzugsanlagen sind in Anlage A der EuC-Rahmenvereinbarung abschließend benannt.');
+    txt('p5a_2', '(2) Leistungsumfang EuC: laufende Vertragsprüfung und Nachverhandlung mit Wartungs- und Notrufdienstleistern, Rechnungsprüfung, Begleitung bei Reparatur- und Modernisierungsangeboten, Erinnerung an Betreiberpflichten, halbjährliches Reporting je WEG. Die in EuC aufgenommenen Aufzugsanlagen ergeben sich aus der von der Verwaltung übermittelten Anlagenliste (Standort, Fabriknummer, aktueller Wartungsnehmer); Liftaro ist aufgrund der Vollmacht (Anlage A der Rahmenvereinbarung) bevollmächtigt, die zugehörigen Verträge und Unterlagen direkt beim Wartungsnehmer einzufordern.');
     txt('p5a_3', '(3) Vergütung EuC — vollständig erfolgsbasiert: Die Leistungen nach Abs. 2 sind für den Auftraggeber und die jeweilige WEG kostenfrei. Der Berater berechnet weder eine Pauschale noch eine Grund- oder Bereitstellungsgebühr. Als Vergütung erhält der Berater 25 % der nachweisbaren Netto-Jahres-Einsparung pro WEG, die sich durch eine vom Berater vermittelte oder verhandelte Optimierung der Wartungs- und/oder Notrufverträge ergibt — abgerechnet jährlich nachträglich für maximal drei (3) volle Vertragsjahre ab dem ersten optimierten Vertragsjahr. Tritt keine Einsparung ein, entstehen für den Auftraggeber und die WEG keinerlei Kosten.');
     txt('p5a_4', '(4) Abgrenzung zur Erfolgsvergütung nach § 4 Abs. 2: Die EuC-Erfolgsbeteiligung (25 %) tritt nur für solche Maßnahmen ein, die im Rahmen der laufenden EuC-Betreuung der jeweiligen WEG erfolgen. Beratungsmaßnahmen außerhalb des EuC (z. B. einmalige Optimierungen ohne EuC-Mandat) werden unverändert nach § 4 Abs. 2 (' + erfPctStrP4 + ') vergütet. Eine Doppelvergütung derselben Einsparung ist ausgeschlossen.');
     txt('p5a_5', '(5) Die EuC-Rahmenvereinbarung kann gleichzeitig mit diesem Beratervertrag oder zu einem späteren Zeitpunkt geschlossen werden. Diese Zusatzklausel hat informativen Charakter; verbindliche Vertragsbeziehungen aus EuC entstehen erst mit Unterzeichnung der separaten EuC-Rahmenvereinbarung durch beide Parteien.');
@@ -16704,18 +16706,16 @@ async function buildLightVertragPDF() {
 
   // ── Präambel
   head('Präambel', { size: 12 });
-  draw('Liftaro bietet ein laufendes Verwaltungs- und Optimierungsservice für Aufzugsanlagen an. Die Verwaltung beauftragt Liftaro mit der laufenden technischen und wirtschaftlichen Betreuung der in Anlage A erfassten Aufzugsanlagen, die sie als Hausverwalter im Auftrag von Wohnungseigentümergemeinschaften (WEG) und/oder Vermietern verwaltet.');
+  draw('Liftaro bietet ein laufendes Verwaltungs- und Optimierungsservice für Aufzugsanlagen an. Die Verwaltung beauftragt Liftaro mit der laufenden technischen und wirtschaftlichen Betreuung der Aufzugsanlagen, die sie als Hausverwalter im Auftrag von Wohnungseigentümergemeinschaften (WEG) und/oder Vermietern verwaltet.');
   draw('Der Service ist für die Verwaltung und die WEG vollständig kostenfrei. Liftaro finanziert sich ausschließlich aus einer Beteiligung an den durch Liftaro nachweisbar erzielten Einsparungen (siehe § 4).', { font: helvBold });
 
   // ── §1 Vertragsgegenstand
   head('§ 1 Vertragsgegenstand');
   draw('(1) Liftaro übernimmt das "Equipment under Control" (EuC) für die von der Verwaltung benannten Aufzugsanlagen. EuC umfasst die laufende Prüfung, Nachverhandlung und administrative Betreuung von Aufzug-Verträgen und -Rechnungen im Namen und Auftrag der jeweiligen WEG.');
-  if (wegCount > 0) {
-    draw('(2) Gegenstand der Betreuung sind die in Anlage A "Erfasste Aufzugsanlagen" konkret benannten ' + aufzSum + ' Aufzugsanlagen in ' + wegCount + ' Wohnungseigentümergemeinschaft' + (wegCount === 1 ? '' : 'en') + '. Eine Nachreichung einer Anlagen-Liste ist nicht erforderlich — die Anlagen sind mit Unterzeichnung dieser Vereinbarung verbindlich erfasst.');
-  } else {
-    draw('(2) Die konkret betreuten Aufzugsanlagen sind in Anlage A "Erfasste Aufzugsanlagen" abschließend aufgeführt. Eine Nachreichung einer Anlagen-Liste ist nicht erforderlich.');
-  }
-  draw('(3) Spätere Aufnahmen weiterer Aufzugsanlagen erfolgen durch schriftliche Ergänzung von Anlage A; gestrichene Anlagen werden in Anlage A entsprechend gekennzeichnet.');
+  // V12.154: Anlage A komplett raus — Erfassung erfolgt durch Liste in Textform,
+  // Einsichtsrecht über Vollmacht.
+  draw('(2) Erfassung der Anlagen. Die Verwaltung übermittelt Liftaro nach Vertragsunterzeichnung eine Liste der zu betreuenden Aufzugsanlagen in Textform (mindestens: Standort, Fabriknummer, aktueller Wartungsnehmer). Eine erschöpfende Aufzählung im Vertragsanhang ist nicht erforderlich. Spätere Aufnahmen oder Streichungen erfolgen formlos durch Aktualisierung dieser Liste; eine Nachtragsvereinbarung in Textform ist ausreichend.');
+  draw('(3) Einsichtsrecht. Liftaro ist aufgrund der Vollmacht gemäß Anlage A bevollmächtigt, sämtliche Wartungs-, Notruf- und Servicevereinbarungen sowie zugehörige Unterlagen (Vertragsentwürfe, Rechnungen, Wartungs- und ZÜS-Protokolle, Korrespondenz) direkt bei den jeweiligen Wartungsnehmern und Dienstleistern einzufordern, einzusehen und zu prüfen. Die Wartungsnehmer können sich Liftaro gegenüber nicht auf datenschutz- oder geheimhaltungsrechtliche Vorbehalte berufen, soweit die Vollmacht reicht.');
 
   // ── §2 Leistungsumfang
   head('§ 2 Leistungsumfang Liftaro');
@@ -16744,7 +16744,7 @@ async function buildLightVertragPDF() {
 
   // ── §3 Mitwirkung
   head('§ 3 Mitwirkungspflichten der Verwaltung');
-  draw('(1) Die Verwaltung holt für jede in Anlage A erfasste WEG eine Vollmacht ein (siehe Anlage B "Vollmacht WEG"), mit der die WEG Liftaro zur Vertretung in Vertrags- und Rechnungsangelegenheiten gegenüber Wartungs- und Notrufdienstleistern bevollmächtigt. Liftaro stellt das Vollmachtsformular zur Verfügung.');
+  draw('(1) Die Verwaltung holt für jede betreute WEG eine Vollmacht ein (siehe Anlage A "Vollmacht WEG"), mit der die WEG Liftaro zur Vertretung in Vertrags- und Rechnungsangelegenheiten gegenüber Wartungs- und Notrufdienstleistern bevollmächtigt. Liftaro stellt das Vollmachtsformular zur Verfügung.');
   draw('(2) Die Verwaltung stellt Liftaro alle erforderlichen Unterlagen zur Verfügung — insbesondere bestehende Wartungs- und Notrufverträge, ZÜS-Berichte, Reparatur- und Wartungsrechnungen sowie Korrespondenz mit Dienstleistern.');
   draw('(3) Die Verwaltung benennt je WEG einen Ansprechpartner (in der Regel Verwaltungsbeirat) und teilt Liftaro die Rechnungsanschrift der WEG mit.');
   draw('(4) Die Verwaltung wirkt an der nachvollziehbaren Dokumentation der Ausgangskosten (Status quo) je Aufzugsanlage mit, damit Einsparungen gemäß § 4 sauber berechnet werden können.');
@@ -16758,7 +16758,7 @@ async function buildLightVertragPDF() {
   const jahreWort = ['ein','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn'][erfJahre - 1] || String(erfJahre);
   draw('(1) Kostenfreiheit für die Verwaltung und die WEG: Liftaro berechnet für die in § 2 beschriebenen Leistungen weder eine Pauschale noch eine Grund- oder Bereitstellungsgebühr. Es gibt keine Mindestabnahme und keine Aufnahmegebühr je Aufzugsanlage.', { font: helvBold });
   draw('(2) Erfolgsbeteiligung: Liftaro erhält ausschließlich ' + erfPctStr + ' der nachweisbaren Netto-Jahres-Einsparung pro WEG, die sich durch eine von Liftaro vermittelte oder verhandelte Optimierung der Wartungs- und/oder Notrufverträge ergibt.');
-  draw('(3) Berechnungsgrundlage: Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in Anlage A (Status quo) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet. Einmalige Boni oder Sondervorteile bei Vertragswechsel bleiben unberücksichtigt.');
+  draw('(3) Berechnungsgrundlage: Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in die Betreuung (Status quo, ermittelt aus den von Liftaro gemäß § 1 Abs. 3 angeforderten Bestandsverträgen) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet. Einmalige Boni oder Sondervorteile bei Vertragswechsel bleiben unberücksichtigt.');
   draw('(4) Abrechnung der Erfolgsbeteiligung: pro WEG, jährlich nachträglich nach Ablauf des jeweiligen Vertragsjahres mit dem optimierten Dienstleister. Die Erfolgsbeteiligung wird für maximal ' + jahreWort + ' (' + erfJahre + ') volle Vertragsjahre ab dem ersten optimierten Vertragsjahr berechnet; danach verbleibt die volle Einsparung dauerhaft bei der WEG.');
   draw('(5) Rechnungsbeanstandungen: Identifiziert Liftaro im Rahmen der Rechnungsprüfung (§ 2.2) berechtigt beanstandungsfähige Positionen, die zu einer einmaligen Erstattung oder Gutschrift durch den Dienstleister führen, erhält Liftaro ' + erfPctStr + ' des nachweislich erstatteten Netto-Betrags — abgerechnet nach Eingang der Gutschrift bei der WEG.');
   draw('(6) Rechnungsstellung erfolgt einzeln pro WEG an die jeweilige WEG-Adresse, die die Verwaltung Liftaro mitteilt. Zahlungsziel: 14 Tage nach Rechnungsdatum, ohne Abzug. Alle genannten Prozent- und Eurobeträge verstehen sich netto zzgl. der gesetzlichen Umsatzsteuer.');
@@ -16803,10 +16803,14 @@ async function buildLightVertragPDF() {
   page.drawText(_safeWinAnsi('Ort, Datum · für Liftaro GmbH'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
   page.drawText(_safeWinAnsi('Ort, Datum · für ' + (d.firma || 'die Verwaltung')), { x: PAGE_W - MARGIN_X - 200, y, size: 9, font: helv, color: MUTED });
 
-  // ── ANLAGE A: Erfasste Aufzugsanlagen (neue Seite)
+  // V12.154: Anlage A (Aufzugslisten-Tabelle) entfällt — Anlagen werden separat
+  // per Liste übermittelt, Einsichtsrecht über Vollmacht (siehe § 1 Abs. 3).
+  // Block bleibt als Dead-Code erhalten weil if(false) das Rendering überspringt,
+  // ohne die spätere Logik (aufzSum/kostenAltSum/fmt-Helper-Definition unten) zu brechen.
+  if (false) {
   newPage();
-  title('Anlage A: Erfasste Aufzugsanlagen');
-  draw('Die folgenden WEGs/Objekte mit insgesamt ' + aufzSum + ' Aufzugsanlagen sind verbindlicher Bestandteil dieser Rahmenvereinbarung gemäß § 1 Abs. 2. Die dokumentierten jährlichen Wartungs- und Notrufkosten dienen als Status quo für die Berechnung der Erfolgsbeteiligung gemäß § 4 Abs. 3.', { color: MUTED, after: 10 });
+  title('Anlage X (deaktiviert): Erfasste Aufzugsanlagen');
+  draw('— deaktiviert in V12.154 —', { color: MUTED, after: 10 });
 
   if (aufzSum === 0) {
     draw('— Bisher wurden keine Aufzugsanlagen erfasst. Bitte ergänzen Sie die Liste vor Vertragsunterzeichnung. —', { color: MUTED, font: helvBold, after: 10 });
@@ -16872,10 +16876,11 @@ async function buildLightVertragPDF() {
 
     draw('Erläuterung: Die Spalte "Kosten/Jahr" entspricht den dokumentierten Netto-Jahres-Wartungs- und Notrufkosten pro Aufzugsanlage zum Zeitpunkt der Aufnahme. Dieser Wert dient als Berechnungsgrundlage (Status quo) für die Erfolgsbeteiligung gemäß § 4.', { color: MUTED, size: 8.5, after: 4 });
   }
+  } // V12.154: close if(false) wrapper für deaktivierten Anlage-A-Block
 
-  // ── ANLAGE B: Vollmacht-Muster (neue Seite)
+  // ── ANLAGE A: Vollmacht-Muster (V12.154: war bisher Anlage B, jetzt einzige Anlage)
   newPage();
-  title('Anlage B: Vollmacht (Muster — pro WEG)');
+  title('Anlage A: Vollmacht (Muster — pro WEG)');
   draw('Diese Vollmacht wird von der jeweiligen WEG (vertreten durch den Verwaltungsbeirat oder die Hausverwaltung) ausgestellt und gilt für sämtliche Aufzugsanlagen am bezeichneten Objekt.', { color: MUTED, after: 12 });
 
   head('Vollmachtgeber');
