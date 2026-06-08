@@ -3076,18 +3076,24 @@ const pdfWorkerReady = Promise.resolve();</script>
               </div>
               <div style="margin-bottom:22px">
                 <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Bevollmächtigte</div>
-                <div style="line-height:1.55">Liftaro GmbH<br>Augustinerstraße 21<br>55116 Mainz<br>vertreten durch Geschäftsführer Francesco Ricioppo</div>
+                <div style="line-height:1.55">Liftaro GmbH<br>Gustavburger Weg 6<br>55116 Mainz<br>vertreten durch Geschäftsführer Francesco Ricioppo</div>
               </div>
               <div style="margin-bottom:22px">
+                <!-- V12.159: Vollmachts-Umfang einheitlich mit der EuC-Rahmenvereinbarung (4 Punkte) + expliziter Ausschluss eines eigenständigen Vertragsabschlusses -->
                 <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Gegenstand der Vollmacht</div>
-                <p style="margin:0 0 10px">Die Vollmachtgeberin bevollmächtigt die Liftaro GmbH, sie in Angelegenheiten des bestehenden Wartungsvertrags der Aufzugsanlage am Standort <strong id="eoc_vollmacht_standort">–</strong> gegenüber Dritten zu vertreten. Die Vollmacht umfasst insbesondere:</p>
-                <ul style="margin:0 0 12px;padding-left:22px">
-                  <li>die Kommunikation mit dem bestehenden Wartungsanbieter (Korrespondenz, Mängelmeldungen, Auftragsbestätigungen, Rechnungsprüfung),</li>
-                  <li>die Korrespondenz mit dem TÜV bzw. der zuständigen Zugelassenen Überwachungsstelle (ZÜS) — insbesondere Terminabstimmungen, Mängelberichte und Rückfragen,</li>
-                  <li>das Einholen von Vergleichsangeboten geprüfter Drittanbieter,</li>
-                  <li>die Nachverhandlung von Reparatur- und Modernisierungsangeboten,</li>
-                  <li>die Einsichtnahme in vertragsbezogene Unterlagen sowie Wartungs- und Prüfprotokolle.</li>
-                </ul>
+                <p style="margin:0 0 10px">Die Vollmachtgeberin bevollmächtigt die Liftaro GmbH, sie im Bereich Aufzüge und Fahrtreppen — insbesondere im Zusammenhang mit dem bestehenden Wartungsvertrag der Aufzugsanlage am Standort <strong id="eoc_vollmacht_standort">–</strong> — gegenüber Dritten zu vertreten. Die Vollmacht umfasst:</p>
+                <ol style="margin:0 0 12px;padding-left:22px">
+                  <li>alle von der Vollmachtgeberin im Bereich Aufzüge und Fahrtreppen abgeschlossenen Verträge beim jeweiligen Vertragspartner einzusehen bzw. Kopien hiervon anzufordern;</li>
+                  <li>alle von der Vollmachtgeberin im Bereich Aufzüge und Fahrtreppen abgeschlossenen Verträge gegenüber dem jeweiligen Vertragspartner für die Vollmachtgeberin zu kündigen;</li>
+                  <li>für die Vollmachtgeberin Vertragsverhandlungen über
+                    <ol type="a" style="margin:4px 0 0;padding-left:22px">
+                      <li>Anpassungen von bestehenden Verträgen im Bereich Aufzüge und Fahrtreppen sowie</li>
+                      <li>über neu abzuschließende Verträge im Bereich Aufzüge und Fahrtreppen zu führen;</li>
+                    </ol>
+                  </li>
+                  <li>für die Vollmachtgeberin Reparatur- und Serviceangebote im Bereich Aufzüge und Fahrtreppen einzuholen und entsprechende Vertragsverhandlungen zu führen.</li>
+                </ol>
+                <p style="margin:6px 0 0;font-weight:600">Der endgültige Vertragsabschluss erfolgt jedoch jeweils durch die Vollmachtgeberin selbst. Diese Vollmacht ist jederzeit ohne Angabe von Gründen widerruflich.</p>
               </div>
               <div style="margin-bottom:22px">
                 <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Rechtliche Grundlage</div>
@@ -5878,7 +5884,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.158';
+const APP_VERSION = 'V12.159';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
