@@ -5884,7 +5884,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.163';
+const APP_VERSION = 'V12.164';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -17158,10 +17158,7 @@ async function buildLightVertragPDF() {
   bul('Es gilt das Recht der Bundesrepublik Deutschland. Gerichtsstand ist, soweit zulässig, der Sitz der Liftaro GmbH.');
   bul('Diese Vereinbarung ist Bestandteil der EuC-Rahmenvereinbarung zwischen den Parteien und kann nicht separat gekündigt werden.');
 
-  // Disclaimer am Ende
-  spacer(16);
-  draw('Hinweis: Dieser Vertragsentwurf wurde durch eine Fachkanzlei nicht abschließend geprüft. Eine anwaltliche Prüfung wird vor Abschluss empfohlen.', { color: MUTED, size: 8.5, after: 0 });
-
+  // V12.164: Disclaimer „Vertragsentwurf nicht durch Fachkanzlei geprüft" entfernt — Vertrag ist final.
   // Firmen-Footer auch auf der Datenschutz-Seite
   drawCompanyFooter();
 
