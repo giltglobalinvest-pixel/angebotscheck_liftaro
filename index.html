@@ -5878,7 +5878,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.154';
+const APP_VERSION = 'V12.155';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -18154,10 +18154,13 @@ function openLightVertragEditor(data) {
     document.getElementById('lightVertragEditorTitle').textContent = 'Neue EuC-Vereinbarung';
     document.getElementById('lv_btnDelete').style.display = 'none';
     document.getElementById('lv_uploadSection').style.display = 'none';
-    document.getElementById('lv_wegList').innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Erst Vereinbarung speichern, dann WEGs anlegen.</p>';
-    document.getElementById('lv_wegSum').textContent = '(0 WEGs · 0 Aufzüge · 0 €/Jahr)';
-    document.getElementById('lv_addAufzuege').disabled = true;
-    document.getElementById('lv_addAufzuege').style.opacity = '.5';
+    // V12.155: stale lv_wegList/lv_wegSum durch lv_aufzugList/lv_aufzugSum ersetzt (V12.141 hat sie umbenannt).
+    const _aufzList = document.getElementById('lv_aufzugList');
+    if (_aufzList) _aufzList.innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:14px;border:1.5px dashed var(--border);border-radius:8px;margin:0">Erst Vereinbarung speichern, dann Anlagen intern erfassen.</p>';
+    const _aufzSum = document.getElementById('lv_aufzugSum');
+    if (_aufzSum) _aufzSum.textContent = '(0 Aufzüge · 0 €/Jahr)';
+    const _addBtn = document.getElementById('lv_addAufzuege');
+    if (_addBtn) { _addBtn.disabled = true; _addBtn.style.opacity = '.5'; }
   }
   document.getElementById('lightVertragEditorModal').style.display = 'flex';
 }
