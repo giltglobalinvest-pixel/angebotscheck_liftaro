@@ -5884,7 +5884,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.159';
+const APP_VERSION = 'V12.160';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16820,9 +16820,16 @@ async function buildLightVertragPDF() {
   const erfPctStr = (Number.isInteger(erfPct) ? String(erfPct) : erfPct.toLocaleString('de-DE')) + ' %';
   const jahreWort = ['ein','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn'][erfJahre - 1] || String(erfJahre);
   draw('(1) Kostenfreiheit für die Verwaltung und die WEG: Liftaro berechnet für die in § 2 beschriebenen Leistungen weder eine Pauschale noch eine Grund- oder Bereitstellungsgebühr. Es gibt keine Mindestabnahme und keine Aufnahmegebühr je Aufzugsanlage.', { font: helvBold });
-  draw('(2) Erfolgsbeteiligung: Liftaro erhält ausschließlich ' + erfPctStr + ' der nachweisbaren Netto-Jahres-Einsparung pro WEG, die sich durch eine von Liftaro vermittelte oder verhandelte Optimierung der Wartungs- und/oder Notrufverträge ergibt.');
-  draw('(3) Berechnungsgrundlage: Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in die Betreuung (Status quo, ermittelt aus den von Liftaro gemäß § 1 Abs. 3 angeforderten Bestandsverträgen) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet. Einmalige Boni oder Sondervorteile bei Vertragswechsel bleiben unberücksichtigt.');
-  draw('(4) Abrechnung der Erfolgsbeteiligung: pro WEG, jährlich nachträglich nach Ablauf des jeweiligen Vertragsjahres mit dem optimierten Dienstleister. Die Erfolgsbeteiligung wird für maximal ' + jahreWort + ' (' + erfJahre + ') volle Vertragsjahre ab dem ersten optimierten Vertragsjahr berechnet; danach verbleibt die volle Einsparung dauerhaft bei der WEG.');
+  // V12.160: § 4 (2)-(4) neu — Erfolgsbeteiligung erfasst auch Reparatur/Modernisierung,
+  // Wartungs-/Notruf-Anteil wird im Voraus + jährlich solange Betreuung läuft abgerechnet,
+  // Reparatur/Modernisierungs-Anteil einmalig nach erfolgter Leistung. Keine 3-Jahres-Befristung mehr.
+  draw('(2) Erfolgsbeteiligung: Liftaro erhält ausschließlich ' + erfPctStr + ' der nachweisbaren Netto-Einsparung pro WEG, die sich durch eine von Liftaro vermittelte oder verhandelte Optimierung von (a) Wartungs- und/oder Notrufverträgen sowie (b) Reparatur- und Modernisierungsaufträgen ergibt.');
+  draw('(3) Berechnungsgrundlage:');
+  draw('a) Wartung/Notruf — Differenz zwischen den dokumentierten jährlichen Netto-Wartungs- und Notrufkosten der WEG zum Zeitpunkt der Aufnahme in die Betreuung (Status quo, ermittelt aus den von Liftaro gemäß § 1 Abs. 3 angeforderten Bestandsverträgen) und den neuen jährlichen Netto-Kosten nach Vertragsoptimierung — jeweils auf 12 Monate hochgerechnet. Einmalige Boni oder Sondervorteile bei Vertragswechsel bleiben unberücksichtigt.', { indent: 14, after: 3 });
+  draw('b) Reparatur/Modernisierung — Differenz zwischen dem dokumentierten Ausgangs- oder Vergleichsangebot des bisherigen Anbieters und dem letztlich von der WEG beauftragten, von Liftaro vermittelten oder nachverhandelten Netto-Auftragswert.', { indent: 14, after: 4 });
+  draw('(4) Abrechnung der Erfolgsbeteiligung:');
+  draw('a) Wartung/Notruf — pro WEG, jährlich im Voraus zu Beginn jedes Vertragsjahres mit dem optimierten Dienstleister. Die Erfolgsbeteiligung wird jährlich abgerechnet, solange Liftaro die EuC-Betreuung für die jeweilige Aufzugsanlage erbringt. Mit Beendigung der Betreuung entfällt die Erfolgsbeteiligung; die volle Einsparung verbleibt fortan dauerhaft bei der WEG.', { indent: 14, after: 3 });
+  draw('b) Reparatur/Modernisierung — einmalig nach erfolgter Leistung: Liftaro stellt die Erfolgsbeteiligung der WEG in Rechnung, sobald die Maßnahme durchgeführt und vom Dienstleister gegenüber der WEG abgerechnet wurde.', { indent: 14, after: 4 });
   draw('(5) Rechnungsbeanstandungen: Identifiziert Liftaro im Rahmen der Rechnungsprüfung (§ 2.2) berechtigt beanstandungsfähige Positionen, die zu einer einmaligen Erstattung oder Gutschrift durch den Dienstleister führen, erhält Liftaro ' + erfPctStr + ' des nachweislich erstatteten Netto-Betrags — abgerechnet nach Eingang der Gutschrift bei der WEG.');
   draw('(6) Rechnungsstellung erfolgt einzeln pro WEG an die jeweilige WEG-Adresse, die die Verwaltung Liftaro mitteilt. Zahlungsziel: 14 Tage nach Rechnungsdatum, ohne Abzug. Alle genannten Prozent- und Eurobeträge verstehen sich netto zzgl. der gesetzlichen Umsatzsteuer.');
   draw('(7) Tritt im konkreten Fall keine Einsparung ein, entstehen für die Verwaltung und die WEG keinerlei Kosten. Liftaro trägt das wirtschaftliche Risiko der eigenen Tätigkeit.', { font: helvBold });
