@@ -5878,7 +5878,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.156';
+const APP_VERSION = 'V12.157';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16638,6 +16638,25 @@ async function buildLightVertragPDF() {
   const today = formatDateDE(new Date());
   const vollAdresse = [d.strasse, [d.plz, d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
 
+  // V12.157: Liftaro-Logo aus dem Form-Header laden (gleiches PNG wie in der UI)
+  let liftaroLogo = null;
+  try {
+    const img = document.querySelector('.fh-logo img');
+    if (img && img.src) {
+      let bytes;
+      if (img.src.startsWith('data:image/png;base64,')) {
+        const b64 = img.src.substring('data:image/png;base64,'.length);
+        const bin = atob(b64);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } else {
+        const r = await fetch(img.src);
+        bytes = new Uint8Array(await r.arrayBuffer());
+      }
+      liftaroLogo = await doc.embedPng(bytes);
+    }
+  } catch(e) { console.warn('[EuC PDF] Logo embed failed:', e); }
+
   const PAGE_W = 595.28, PAGE_H = 841.89;
   const MARGIN_X = 56, MARGIN_TOP = 60, MARGIN_BOT = 60;
   const COLOR = rgb(0.05, 0.05, 0.05);
@@ -16647,6 +16666,40 @@ async function buildLightVertragPDF() {
   let y = PAGE_H - MARGIN_TOP;
   const newPage = () => { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN_TOP; };
   const ensure = (h) => { if (y - h < MARGIN_BOT) newPage(); };
+
+  // V12.157: Logo oben rechts auf der aktuellen Seite (genutzt auf S.1 + Anlage A)
+  function drawLogo(opts) {
+    if (!liftaroLogo) return;
+    const o = opts || {};
+    const maxW = o.maxW || 110;
+    const ratio = liftaroLogo.width / liftaroLogo.height;
+    const w = maxW;
+    const h = maxW / ratio;
+    const x = (o.x != null) ? o.x : (PAGE_W - MARGIN_X - w);
+    const yTop = (o.yTop != null) ? o.yTop : (PAGE_H - 24);
+    page.drawImage(liftaroLogo, { x, y: yTop - h, width: w, height: h });
+    return { w, h, x, yBottom: yTop - h };
+  }
+
+  // V12.157: Firmen-Footer für die Vollmacht-Seite (Liftaro Stammdaten zentriert)
+  function drawCompanyFooter() {
+    const footY = 36;
+    page.drawLine({
+      start: { x: MARGIN_X, y: footY + 26 },
+      end:   { x: PAGE_W - MARGIN_X, y: footY + 26 },
+      thickness: 0.4, color: rgb(0.82, 0.85, 0.90),
+    });
+    const line1 = 'Liftaro GmbH  ·  Gustavburger Weg 6  ·  55116 Mainz';
+    const line2 = 'Tel.: 0158 8863 4515  ·  E-Mail: check@liftaro.de  ·  Web: check.liftaro.de';
+    const drawCenter = (txt, yy, bold) => {
+      const f = bold ? helvBold : helv;
+      const s = 8.5;
+      const w = f.widthOfTextAtSize(_safeWinAnsi(txt), s);
+      page.drawText(_safeWinAnsi(txt), { x: (PAGE_W - w) / 2, y: yy, size: s, font: f, color: MUTED });
+    };
+    drawCenter(line1, footY + 14, true);
+    drawCenter(line2, footY + 3,  false);
+  }
 
   function wrap(text, font, size, maxW) {
     const words = String(text).split(/\s+/);
@@ -16679,11 +16732,14 @@ async function buildLightVertragPDF() {
   const bul = t => draw(t, { bullet: '•', indent: 14, after: 2 });
   const spacer = h => { y -= h; };
 
-  // ── Header
+  // ── Header (V12.157: Logo oben rechts, Stammdaten links)
+  drawLogo({ maxW: 120, yTop: PAGE_H - 22 });
   page.drawText(_safeWinAnsi('Liftaro GmbH · Gustavburger Weg 6, 55116 Mainz'),
     { x: MARGIN_X, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
   page.drawText(_safeWinAnsi('EuC-ID: ' + (d.id || '–') + '  ·  Stand: ' + today),
-    { x: PAGE_W - MARGIN_X - 200, y: PAGE_H - 36, size: 9, font: helv, color: MUTED });
+    { x: MARGIN_X, y: PAGE_H - 48, size: 9, font: helv, color: MUTED });
+  // etwas mehr Abstand zum Titel, damit das Logo nicht reinläuft
+  y = PAGE_H - MARGIN_TOP - 12;
 
   // ── Titel
   title('Rahmenvereinbarung "Equipment under Control"');
@@ -16879,7 +16935,11 @@ async function buildLightVertragPDF() {
   } // V12.154: close if(false) wrapper für deaktivierten Anlage-A-Block
 
   // ── ANLAGE A: Abfrage- und Verhandlungsvollmacht (V12.156 — neu, allgemein gehalten)
+  // V12.157: Logo oben rechts + Stammdaten-Footer unten (analog Vorlage)
   newPage();
+  drawLogo({ maxW: 130, yTop: PAGE_H - 22 });
+  // Etwas Platz schaffen, damit der Titel nicht ins Logo läuft
+  y = PAGE_H - MARGIN_TOP - 16;
   title('Anlage A: Abfrage- und Verhandlungsvollmacht');
   spacer(6);
   draw('Hiermit erteilt', { after: 8 });
@@ -16961,6 +17021,9 @@ async function buildLightVertragPDF() {
   // Disclaimer
   spacer(20);
   draw('Hinweis: Dieser Vertragsentwurf wurde durch eine Fachkanzlei nicht abschließend geprüft. Eine anwaltliche Prüfung wird vor Abschluss empfohlen.', { color: MUTED, size: 8.5, after: 0 });
+
+  // V12.157: Firmen-Footer auf der Vollmacht-Seite (analog Vorlage)
+  drawCompanyFooter();
 
   const bytes = await doc.save();
   const blob = new Blob([bytes], { type: 'application/pdf' });
