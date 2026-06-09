@@ -5927,7 +5927,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.168';
+const APP_VERSION = 'V12.169';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23164,15 +23164,23 @@ function renderEmailInboxList() {
     const fwdMark = r.is_forwarded
       ? '<span title="Weitergeleitet" style="display:inline-flex;align-items:center;font-size:10px;color:#9A3412;font-weight:700;margin-right:4px">↪</span>'
       : '';
-    // V12.137: outgoing — eigener Style + "📤 An: …" statt Absender
-    const outStyle = isOut ? ' style="border-left:3px solid #16a34a;background:#f0fdf4"' : '';
-    // V12.168: Absender = bevorzugt zugeordnete HV aus KI-Vorgängen, Fallback: from_name/from_email
+    // V12.169: outgoing grün, HV-zugeordnet auch grün (klar visuell hervorheben),
+    // KI-Vorschlag bleibt neutral, Fallback Original-Absender unmarkiert.
     const hv = _eiDisplayHV(r);
+    const outStyle = isOut
+      ? ' style="border-left:3px solid #16a34a;background:#f0fdf4"'
+      : (hv.source === 'assigned' ? ' style="border-left:3px solid #15803d;background:#f0fdf4"' : '');
     const fromLabel = isOut
       ? '<span style="color:#16a34a;font-weight:700;margin-right:5px">📤</span>An: ' + _esc(r.to_email || '(?)')
-      : (fwdMark + _esc(hv.primary)
+      : (fwdMark
+          + (hv.source === 'assigned' ? '<span title="HV zugeordnet" style="color:#15803d;font-weight:700;margin-right:6px">🏢</span>' : '')
+          + `<strong>${_esc(hv.primary)}</strong>`
           + (hv.secondary ? `<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:6px">· ${_esc(hv.secondary)}</span>` : '')
-          + (hv.source === 'ki' ? '<span title="Automatisch durch KI zugeordnet" style="margin-left:6px;font-size:9.5px;color:#2d5f96;font-weight:700;background:#dbeafe;border-radius:6px;padding:1px 5px;letter-spacing:.05em">KI</span>' : ''));
+          + (hv.source === 'assigned'
+              ? '<span title="Manuell bestätigte HV-Zuordnung" style="margin-left:6px;font-size:9.5px;color:#15803d;font-weight:700;background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:1px 6px;letter-spacing:.05em">✓ HV</span>'
+              : (hv.source === 'ki'
+                  ? '<span title="Automatisch durch KI vorgeschlagen — noch nicht bestätigt" style="margin-left:6px;font-size:9.5px;color:#2d5f96;font-weight:700;background:#dbeafe;border-radius:6px;padding:1px 5px;letter-spacing:.05em">KI</span>'
+                  : '')));
     const statusPill = isOut
       ? '<span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">gesendet</span>'
       : ('<span class="ei-status-pill ei-status-' + status + '">' + _esc(status) + '</span>');
@@ -23224,25 +23232,34 @@ async function clearExternalCheckId(recId) {
   await saveExternalCheckId(recId);
 }
 
-// V12.168: Best-Effort HV-Anzeige aus den KI-Vorgängen
+// V12.168/169: Best-Effort HV-Anzeige aus den KI-Vorgängen.
+// Priorität:
+//  1) Bestätigte Zuordnung — assigned_org_name (vom User per HV-Picker bestätigt)
+//  2) KI-Vermutung — kunde_firma / kunde_name aus den extrahierten Vorgängen
+//  3) Original-Absender (from_name / from_email)
 function _eiDisplayHV(r) {
-  // Aus vorgaenge_json die erste „echte" Kunden-Info ziehen — KI hat das HV extrahiert
-  let v = null;
+  let assigned = null, kiHit = null;
   try {
     const arr = JSON.parse(r.vorgaenge_json || '[]');
-    if (Array.isArray(arr) && arr.length) {
-      // Bevorzugt den Vorgang mit der besten Identifikation
-      v = arr.find(x => x && (x.kunde_firma || x.kunde_name)) || arr[0];
+    if (Array.isArray(arr)) {
+      assigned = arr.find(x => x && x.assigned_org_id && x.assigned_org_name);
+      if (!assigned) kiHit = arr.find(x => x && (x.kunde_firma || x.kunde_name)) || arr[0];
     }
   } catch (_) {}
-  if (v) {
-    const primary = (v.kunde_firma || v.kunde_name || v.objekt_adresse || '').trim();
+  if (assigned) {
+    return {
+      primary:   String(assigned.assigned_org_name || '').trim(),
+      secondary: String(assigned.assigned_org_email || assigned.kunde_email || '').trim(),
+      source:    'assigned',
+      orgId:     String(assigned.assigned_org_id || ''),
+    };
+  }
+  if (kiHit) {
+    const primary = (kiHit.kunde_firma || kiHit.kunde_name || kiHit.objekt_adresse || '').trim();
     if (primary) {
-      const secondary = (v.kunde_email || '').trim();
-      return { primary, secondary, source: 'ki' };
+      return { primary, secondary: String(kiHit.kunde_email || '').trim(), source: 'ki' };
     }
   }
-  // Fallback: Original-Absender
   const fromName  = String(r.from_name  || '').trim();
   const fromEmail = String(r.from_email || '').trim();
   return {
@@ -24142,7 +24159,25 @@ async function clearVorgangAssignment(recId, vIdx) {
 }
 
 // HV-Such-Dialog mit Live-Search + initialer Trefferliste
+// V12.169: stellt sicher, dass _pipedriveOrgsCache befüllt ist — wird vom HV-Suche-Dialog genutzt
+async function _ensurePipedriveOrgsCache() {
+  if (Array.isArray(window._pipedriveOrgsCache) && window._pipedriveOrgsCache.length) return;
+  const proxyUrl = APP_KEYS.vorabcheckProxyUrl || '';
+  if (!proxyUrl) return;
+  try {
+    const r = await fetch(proxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'list_property_managers', start: 0, limit: 500 }),
+    });
+    const d = await r.json();
+    if (d.ok) window._pipedriveOrgsCache = d.results || [];
+  } catch (_) {}
+}
+
 function _eiHvSearchDialog(initialQuery, initialHits) {
+  // Im Hintergrund den Org-Cache befüllen, damit die lokale Substring-Suche
+  // (Namensteile / Email-Domain) sofort Treffer liefert.
+  _ensurePipedriveOrgsCache();
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px';
@@ -24203,12 +24238,57 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
     renderHits(initialHits, initialQuery);
     inputEl.value = initialQuery;
 
-    // Live-Search
+    // V12.169: Live-Search — lokal (Substring auf Name/Address + Email-Domain
+    // aus PersonCache) sofort, parallel dazu Backend-Suche ab 3 Zeichen.
+    function _localHvHits(q) {
+      const orgs = window._pipedriveOrgsCache || [];
+      if (!orgs.length || !q) return [];
+      const needle = q.toLowerCase();
+      const personCache = window._pipedrivePersonCache || {};
+      const scored = [];
+      for (const o of orgs) {
+        const oid = String(o.org_id);
+        const name = String(o.name || '').toLowerCase();
+        const addr = String(o.address || '').toLowerCase();
+        const p = personCache[oid] || {};
+        const pemail = String(p.email || '').toLowerCase();
+        const pname  = String(p.name  || '').toLowerCase();
+        let score = 0;
+        if (name === needle) score = 100;
+        else if (name.startsWith(needle)) score = 90;
+        else if (name.includes(needle)) score = 70;
+        else if (pname.includes(needle)) score = 55;
+        else if (pemail.includes(needle)) score = 50;
+        else if (addr.includes(needle)) score = 30;
+        if (score) scored.push({ score, hit: {
+          org_id:   o.org_id,
+          name:     o.name,
+          city:     o.address || '',
+          email:    p.email || '',
+          kundennr: '',
+        } });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, 30).map(x => x.hit);
+    }
+    function _mergeHits(local, remote) {
+      const seen = new Set(local.map(h => String(h.org_id)));
+      const out = local.slice();
+      for (const h of remote) {
+        if (!seen.has(String(h.org_id))) { out.push(h); seen.add(String(h.org_id)); }
+      }
+      return out;
+    }
     let debounceTimer;
     inputEl.oninput = () => {
       clearTimeout(debounceTimer);
       const q = inputEl.value.trim();
-      if (q.length < 3) { renderHits([], q); return; }
+      // Lokale Suche sofort (auch bei 2 Zeichen — Namensteile)
+      const localQ = q.length >= 2 ? q : '';
+      const local = localQ ? _localHvHits(localQ) : [];
+      renderHits(local, q);
+      if (q.length < 3) return;
+      // Backend-Suche mit Debounce
       debounceTimer = setTimeout(async () => {
         loadEl.style.display = 'block';
         try {
@@ -24217,9 +24297,10 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
             body: JSON.stringify({ action: 'find_property_manager', query: q }),
           });
           const d = await resp.json();
-          renderHits(d.ok && Array.isArray(d.results) ? d.results : [], q);
+          const remote = (d.ok && Array.isArray(d.results)) ? d.results : [];
+          renderHits(_mergeHits(local, remote), q);
         } catch (e) {
-          renderHits([], q);
+          // Bei Fehler: lokale Treffer bleiben angezeigt
         } finally {
           loadEl.style.display = 'none';
         }
