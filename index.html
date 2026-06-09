@@ -4022,36 +4022,29 @@ const pdfWorkerReady = Promise.resolve();</script>
 <!-- ════════════════════════════════════════════════════════════════════
      Email-Inbox-Modal — V10.8 Redesign (dr-* System aus Lager-App)
      ════════════════════════════════════════════════════════════════════ -->
-<!-- V12.177: Email-Inbox jetzt als Vollbild-Seite mit linker Menü-Sidebar (statt Modal) -->
-<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:var(--dr-bg-soft);z-index:5060;flex-direction:column">
-  <div style="background:var(--dr-bg-soft);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
-    <!-- Header (oben, volle Breite) -->
-    <div style="background:var(--dr-surface);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--dr-border);box-shadow:var(--dr-elev-1)">
-      <div style="display:flex;align-items:center;gap:12px">
-        <button onclick="closeEmailInboxModal()" title="Zurück" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:10px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600" onmouseover="this.style.borderColor='var(--dr-blue)';this.style.color='var(--dr-blue)'" onmouseout="this.style.borderColor='var(--dr-border-strong)';this.style.color='var(--dr-ink)'">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          Zurück
+<!-- V12.178: Email-Inbox im Liftaro-Stil — dunkelblaue Sidebar mit Logo, cleaner Header, Tabellen-Liste -->
+<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:#f8fafc;z-index:5060;flex-direction:column">
+  <div style="width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc">
+    <!-- Header (volle Breite, sehr clean) -->
+    <div style="background:#fff;padding:20px 32px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:20px;flex-wrap:wrap;border-bottom:3px solid #e2e8f0">
+      <div style="display:flex;align-items:center;gap:18px">
+        <button onclick="closeEmailInboxModal()" title="Zurück / Menü" style="background:transparent;border:none;color:#0f172a;cursor:pointer;padding:6px;display:inline-flex;align-items:center" onmouseover="this.style.color='#2456E5'" onmouseout="this.style.color='#0f172a'">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <div style="width:38px;height:38px;border-radius:11px;background:var(--dr-blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--dr-elev-blue);flex-shrink:0">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        </div>
-        <div>
-          <div style="font-size:17px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;display:flex;align-items:center;gap:10px">
-            Posteingang
-            <span id="emailInboxHeaderCount" style="background:var(--dr-blue-soft);color:var(--dr-blue-deep);border-radius:var(--dr-r-pill);padding:2px 9px;font-family:var(--dr-f-mono);font-size:11px;font-weight:700">0</span>
-          </div>
-          <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:1px">KI-klassifizierte eingehende Anfragen</div>
+        <h1 style="font-size:30px;font-weight:800;color:#0f172a;letter-spacing:-.02em;margin:0;font-family:'DM Sans',sans-serif">Posteingang
+          <span id="emailInboxHeaderCount" style="display:inline-block;background:#fef3c7;color:#92400e;border-radius:999px;padding:3px 10px;font-family:var(--dr-f-mono);font-size:12px;font-weight:700;margin-left:8px;vertical-align:middle">0</span>
+        </h1>
+      </div>
+      <div style="flex:1;max-width:480px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1;position:relative">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="emailInboxSearch" placeholder="Suchen …" oninput="setEiSearch(this.value)" style="background:#f1f5f9;border:1px solid transparent;color:#0f172a;border-radius:999px;padding:11px 40px 11px 44px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;width:100%;transition:all .15s" onfocus="this.style.borderColor='#2456E5';this.style.background='#fff';this.style.boxShadow='0 0 0 3px rgba(36,86,229,.12)'" onblur="this.style.borderColor='transparent';this.style.background='#f1f5f9';this.style.boxShadow='none'">
+          <button id="emailInboxSearchClear" type="button" onclick="setEiSearch('', true)" title="Suche löschen" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:3px 6px;font-size:14px;line-height:1">✕</button>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="position:relative">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="search" id="emailInboxSearch" placeholder="Suchen …" oninput="setEiSearch(this.value)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 30px 7px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:300px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
-          <button id="emailInboxSearchClear" type="button" onclick="setEiSearch('', true)" title="Suche löschen" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--dr-ink-mute);cursor:pointer;padding:3px 6px;font-size:14px;line-height:1">✕</button>
-        </div>
-        <button id="emailInboxReloadBtn" class="dr-pill" onclick="loadEmailInbox(true)">
-          <svg id="emailInboxReloadIcon" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .3s ease"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-          <span id="emailInboxReloadLabel">Neu laden</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button id="emailInboxReloadBtn" onclick="loadEmailInbox(true)" title="Neu laden" style="width:42px;height:42px;background:#f1f5f9;border:none;color:#475569;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+          <svg id="emailInboxReloadIcon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .3s ease"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
         </button>
       </div>
     </div>
@@ -4080,42 +4073,63 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
 
-    <!-- V12.177: 3-Spalten-Layout — Status-Sidebar | Liste | Detail -->
-    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:230px 360px 1fr;min-height:0;overflow:hidden;background:var(--dr-bg-soft)">
-      <!-- V12.177: Status-Menü (Sidebar) -->
-      <div id="emailInboxSidebar" style="background:var(--dr-surface);border-right:1px solid var(--dr-border);overflow-y:auto;padding:18px 14px;display:flex;flex-direction:column;gap:18px">
-        <div>
-          <div style="font-size:10px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;padding:0 6px 6px">Status</div>
-          <div style="display:flex;flex-direction:column;gap:2px">
+    <!-- V12.178: 2-Spalten-Body — dunkelblaue Sidebar (Brand) | Inhalts-Pane -->
+    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:220px 1fr;min-height:0;overflow:hidden;background:#f8fafc">
+      <!-- V12.178: Brand-Sidebar (Liftaro-Navy) -->
+      <div id="emailInboxSidebar" style="background:#1a3a5c;color:#fff;overflow-y:auto;padding:0;display:flex;flex-direction:column">
+        <!-- Logo + Tagline -->
+        <div style="padding:22px 18px 26px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <div style="font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1;color:#fff">liftaro<span style="color:#7dc242">.</span></div>
+          <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:5px;letter-spacing:.02em">Wir schaffen Transparenz.</div>
+        </div>
+        <!-- Status-Menü -->
+        <div style="padding:14px 10px;flex:1">
+          <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em;padding:6px 10px 8px">Status</div>
+          <div style="display:flex;flex-direction:column;gap:1px">
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
             <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
-            <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#2d5f96"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
-            <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
-            <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#9F1B1F"></span><span class="ei-side-lbl">Verworfen</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
-            <div style="height:1px;background:var(--dr-divider);margin:8px 6px"></div>
-            <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#0f172a"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
+            <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
+            <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#22c55e"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
+            <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">Verworfen</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
+            <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
+            <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#fff"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
           </div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;padding:0 6px 6px">Werkzeuge</div>
+          <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em;padding:18px 10px 8px">Werkzeuge</div>
           <button class="ei-side-item" onclick="openEiDuplicatesModal()" title="Identische Emails finden und archivieren">
-            <span style="display:inline-flex;align-items:center;justify-content:center;width:8px;height:8px;margin-right:9px">🧹</span>
+            <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">🧹</span>
             <span class="ei-side-lbl">Duplikate prüfen</span>
           </button>
         </div>
       </div>
-      <!-- Liste -->
-      <div id="emailInboxList" style="border-right:1px solid var(--dr-border);overflow-y:auto;background:var(--dr-surface)">
-        <div style="padding:40px;text-align:center;color:var(--dr-ink-mute);font-size:13px">Lade Emails …</div>
-      </div>
-      <!-- Detail rechts -->
-      <div id="emailInboxDetail" style="overflow-y:auto;padding:0;background:var(--dr-bg-soft)">
-        <div style="padding:80px 24px;text-align:center;color:var(--dr-ink-subtle);font-size:13px">
-          <div style="width:64px;height:64px;border-radius:18px;background:var(--dr-surface);border:1px solid var(--dr-border);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:var(--dr-elev-1)">
-            <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--dr-ink-subtle)"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <!-- Inhalts-Pane: Sub-Header + 2-Spalten (Liste | Detail) -->
+      <div id="emailInboxContentPane" style="display:flex;flex-direction:column;min-width:0;overflow:hidden">
+        <!-- Sub-Header über der Tabelle -->
+        <div id="emailInboxSubHeader" style="background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <div style="font-size:13px;color:#475569;display:flex;align-items:center;gap:8px">
+            <span style="color:#94a3b8">Sortieren nach:</span>
+            <strong style="color:#0f172a">Neueste zuerst</strong>
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#475569"><polyline points="18 15 12 9 6 15"/></svg>
           </div>
-          <div style="font-size:14px;font-weight:600;color:var(--dr-ink);margin-bottom:4px">Keine Email ausgewählt</div>
-          <div>Wähle eine Email aus der Liste links</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="emailInboxStatusChip" style="background:#fef3c7;color:#92400e;border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px">Status: Neu</span>
+          </div>
+        </div>
+        <!-- 2-Spalten — Liste (Tabellen-Stil) | Detail -->
+        <div id="emailInboxInnerBody" style="flex:1;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);min-height:0;overflow:hidden">
+          <!-- Liste (Tabellen-Stil) -->
+          <div id="emailInboxList" style="border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">
+            <div style="padding:60px 24px;text-align:center;color:#94a3b8;font-size:13.5px">Lade Emails …</div>
+          </div>
+          <!-- Detail rechts -->
+          <div id="emailInboxDetail" style="overflow-y:auto;padding:0;background:#f8fafc">
+            <div style="padding:80px 24px;text-align:center;color:#94a3b8;font-size:13.5px">
+              <div style="width:64px;height:64px;border-radius:18px;background:#fff;border:1px solid #e2e8f0;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+                <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:#94a3b8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </div>
+              <div style="font-size:14px;font-weight:600;color:#0f172a;margin-bottom:4px">Keine Email ausgewählt</div>
+              <div>Wähle einen Eintrag aus der Liste</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -4530,36 +4544,73 @@ const pdfWorkerReady = Promise.resolve();</script>
 .ei-vc-card { background:var(--dr-surface); border:1px solid var(--dr-border); border-radius:var(--dr-r-md); padding:16px; margin-bottom:12px; box-shadow:var(--dr-elev-1); }
 .ei-vc-typ-pill { display:inline-block; padding:3px 10px; border-radius:var(--dr-r-pill); font-family:var(--dr-f-mono); font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.06em; margin-right:8px; }
 .ei-mobile-back { display:none; }
-/* V12.177: Status-Menü-Sidebar */
+/* V12.178: Status-Menü-Sidebar — Liftaro-Stil (dunkelblau) */
 .ei-side-item {
   display:flex; align-items:center; gap:0; width:100%;
-  padding:8px 10px; border:1px solid transparent; background:transparent;
+  padding:9px 12px; border:none; background:transparent;
   border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif;
-  font-size:13px; color:var(--dr-ink); text-align:left;
+  font-size:13.5px; color:rgba(255,255,255,.78); text-align:left;
   transition: all .12s ease;
 }
-.ei-side-item:hover { background:var(--dr-surface-alt); border-color:var(--dr-border); }
+.ei-side-item:hover { background:rgba(255,255,255,.06); color:#fff; }
 .ei-side-item.active {
-  background:var(--dr-blue-soft); border-color:var(--dr-blue-light);
-  color:var(--dr-blue-deep); font-weight:700;
-  box-shadow: inset 3px 0 0 var(--dr-blue);
+  background:rgba(255,255,255,.12); color:#fff; font-weight:700;
 }
-.ei-side-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:9px; flex-shrink:0; }
+.ei-side-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:11px; flex-shrink:0; }
 .ei-side-lbl { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ei-side-cnt {
-  background:var(--dr-surface-alt); color:var(--dr-ink-mute);
-  font-family:var(--dr-f-mono); font-size:10.5px; font-weight:700;
-  padding:1px 7px; border-radius:9px; min-width:24px; text-align:center; letter-spacing:.04em;
+  background:rgba(255,255,255,.1); color:rgba(255,255,255,.6);
+  font-family:'DM Sans',sans-serif; font-size:11px; font-weight:700;
+  padding:1px 8px; border-radius:9px; min-width:24px; text-align:center; letter-spacing:.02em;
 }
-.ei-side-item.active .ei-side-cnt { background:var(--dr-blue); color:#fff; }
-@media (max-width: 1024px) {
-  #emailInboxBody { grid-template-columns: 200px 320px 1fr !important; }
+.ei-side-item.active .ei-side-cnt { background:#7dc242; color:#1a3a5c; }
+/* V12.178: Listen-Item im Tabellen-Stil */
+.ei-row {
+  background:#fff; border:none; border-bottom:1px solid #e2e8f0;
+  padding:16px 24px; cursor:pointer; transition:background .12s;
+  display:grid; grid-template-columns: 50px 100px 1fr 1.5fr auto;
+  gap:18px; align-items:center;
+}
+.ei-row:hover { background:#f8fafc; }
+.ei-row.selected { background:#eff6ff; box-shadow: inset 3px 0 0 #2456E5; }
+.ei-row-id { font-family:var(--dr-f-mono); font-size:12px; font-weight:600; color:#64748b; }
+.ei-row-date { font-family:var(--dr-f-mono); font-size:11.5px; color:#64748b; line-height:1.4; }
+.ei-row-from { display:flex; flex-direction:column; min-width:0; gap:2px; }
+.ei-row-from .name { font-size:14px; font-weight:700; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ei-row-from .mail { font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ei-row-subj { display:flex; flex-direction:column; min-width:0; gap:2px; }
+.ei-row-subj .subj { font-size:14px; font-weight:600; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ei-row-subj .prev { font-size:12.5px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ei-row-actions { display:flex; flex-direction:column; gap:4px; min-width:170px; align-items:flex-start; }
+.ei-status-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; font-family:'DM Sans',sans-serif; }
+.ei-status-chip .dot { width:7px; height:7px; border-radius:50%; }
+.ei-status-chip.neu             { background:#fef3c7; color:#92400e; }
+.ei-status-chip.neu .dot        { background:#f59e0b; }
+.ei-status-chip.gesichtet       { background:#e2e8f0; color:#475569; }
+.ei-status-chip.gesichtet .dot  { background:#94a3b8; }
+.ei-status-chip.in_bearbeitung  { background:#dbeafe; color:#1e40af; }
+.ei-status-chip.in_bearbeitung .dot { background:#60a5fa; }
+.ei-status-chip.geantwortet     { background:#dcfce7; color:#166534; }
+.ei-status-chip.geantwortet .dot { background:#22c55e; }
+.ei-status-chip.verworfen       { background:#fee2e2; color:#991b1b; }
+.ei-status-chip.verworfen .dot  { background:#ef4444; }
+.ei-quick-action {
+  background:transparent; border:none; color:#475569;
+  font-size:12px; padding:3px 0; cursor:pointer; font-family:'DM Sans',sans-serif;
+  display:inline-flex; align-items:center; gap:6px; text-align:left;
+}
+.ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
+.ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
+@media (max-width: 1280px) {
+  #emailInboxInnerBody { grid-template-columns: 1fr !important; }
+  #emailInboxDetail { display:none; }
+  #emailInboxList.detail-open { display:none; }
+  #emailInboxDetail.list-mode { display:none; }
+  #emailInboxDetail:not(.list-mode) { display:block; position:fixed; inset:0; z-index:5070; background:#f8fafc; }
 }
 @media (max-width: 900px) {
   #emailInboxBody { grid-template-columns: 1fr !important; }
   #emailInboxSidebar { display:none; }
-  #emailInboxList.detail-open { display:none; }
-  #emailInboxDetail.list-mode { display:none; }
   .ei-mobile-back { display:inline-flex !important; }
 }
 </style>
@@ -5989,7 +6040,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.177';
+const APP_VERSION = 'V12.178';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23181,10 +23232,26 @@ async function loadEmailInbox(silent) {
 
 function setEiFilter(status, skipRender) {
   _eiFilter = status;
-  // V12.177: alte Pills (Fallback) und neue Sidebar-Items markieren
+  // V12.177/178: Pills + Sidebar-Items markieren, Sub-Header-Chip aktualisieren
   document.querySelectorAll('.ei-filt-pill, .ei-side-item').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-status') === status);
   });
+  const chipEl = document.getElementById('emailInboxStatusChip');
+  if (chipEl) {
+    const label = (status === 'in_bearbeitung') ? 'In Bearbeitung'
+      : (status === 'alle') ? 'Alle' : status.charAt(0).toUpperCase() + status.slice(1);
+    const palette = {
+      neu:           { bg:'#fef3c7', fg:'#92400e' },
+      gesichtet:     { bg:'#e2e8f0', fg:'#475569' },
+      in_bearbeitung:{ bg:'#dbeafe', fg:'#1e40af' },
+      geantwortet:   { bg:'#dcfce7', fg:'#166534' },
+      verworfen:     { bg:'#fee2e2', fg:'#991b1b' },
+      alle:          { bg:'#f1f5f9', fg:'#0f172a' },
+    }[status] || { bg:'#f1f5f9', fg:'#0f172a' };
+    chipEl.style.background = palette.bg;
+    chipEl.style.color = palette.fg;
+    chipEl.textContent = 'Status: ' + label;
+  }
   if (!skipRender) renderEmailInboxList();
 }
 
@@ -23430,69 +23497,54 @@ function renderEmailInboxList() {
       '</div>';
     return;
   }
-  listEl.innerHTML = filt.map(r => {
+  // V12.178: Tabellen-Header + Liste im Liftaro-Stil
+  const formatDateDe = (s) => {
+    if (!s) return '';
+    const d = new Date(s); if (isNaN(d.getTime())) return String(s).slice(0,16).replace('T',' ');
+    const pad = (n) => String(n).padStart(2,'0');
+    return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  };
+  const tableHead = `<div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:12px 24px;display:grid;grid-template-columns:50px 100px 1fr 1.5fr 170px;gap:18px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;z-index:5">
+    <div>ID</div><div>Datum</div><div>Von</div><div>Betreff</div><div>Schnellaktionen</div>
+  </div>`;
+  listEl.innerHTML = tableHead + filt.map((r, idx) => {
     const sel = (r._id === _eiSelectedId) ? ' selected' : '';
-    const cls = String(r.ki_classification || 'unklar').toLowerCase();
-    const conf = String(r.ki_confidence || 'low').toLowerCase();
     const status = r.status || 'neu';
-    // V12.137: outgoing-Records zeigen sent_at statt received_at + grünen Marker
     const isOut = (r.direction === 'outgoing');
-    const date = String((isOut ? (r.sent_at || r.status_at) : r.received_at) || '').slice(0, 16).replace('T', ' ');
-    const vcnt = r.ki_vorgaenge_count || 0;
-    const fwdMark = r.is_forwarded
-      ? '<span title="Weitergeleitet" style="display:inline-flex;align-items:center;font-size:10px;color:#9A3412;font-weight:700;margin-right:4px">↪</span>'
-      : '';
-    // V12.169: outgoing grün, HV-zugeordnet auch grün (klar visuell hervorheben),
-    // KI-Vorschlag bleibt neutral, Fallback Original-Absender unmarkiert.
+    const dateStr = formatDateDe(isOut ? (r.sent_at || r.status_at) : r.received_at);
     const hv = _eiDisplayHV(r);
-    const outStyle = isOut
-      ? ' style="border-left:3px solid #16a34a;background:#f0fdf4"'
-      : (hv.source === 'assigned' ? ' style="border-left:3px solid #15803d;background:#f0fdf4"'
-         : (hv.source === 'ai'    ? ' style="border-left:3px solid #7c3aed;background:#faf5ff"' : ''));
-    const fromLabel = isOut
-      ? '<span style="color:#16a34a;font-weight:700;margin-right:5px">📤</span>An: ' + _esc(r.to_email || '(?)')
-      : (fwdMark
-          + (hv.source === 'assigned' ? '<span title="HV zugeordnet" style="color:#15803d;font-weight:700;margin-right:6px">🏢</span>'
-             : (hv.source === 'ai'    ? '<span title="Aus Forward-Inhalt extrahiert (KI)" style="color:#7c3aed;font-weight:700;margin-right:6px">🤖</span>' : ''))
-          + `<strong>${_esc(hv.primary)}</strong>`
-          + (hv.secondary ? `<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:6px">· ${_esc(hv.secondary)}</span>` : '')
-          + (hv.source === 'assigned'
-              ? '<span title="Manuell bestätigte HV-Zuordnung" style="margin-left:6px;font-size:9.5px;color:#15803d;font-weight:700;background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:1px 6px;letter-spacing:.05em">✓ HV</span>'
-              : (hv.source === 'ai'
-                  ? '<span title="KI-Schnell-Analyse aus Body" style="margin-left:6px;font-size:9.5px;color:#6b21a8;font-weight:700;background:#ede9fe;border:1px solid #d8b4fe;border-radius:6px;padding:1px 6px;letter-spacing:.05em">🤖 KI</span>'
-                  : (hv.source === 'ki'
-                      ? '<span title="Automatisch durch KI vorgeschlagen — noch nicht bestätigt" style="margin-left:6px;font-size:9.5px;color:#2d5f96;font-weight:700;background:#dbeafe;border-radius:6px;padding:1px 5px;letter-spacing:.05em">KI</span>'
-                      : ''))));
-    const statusPill = isOut
-      ? '<span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">gesendet</span>'
-      : ('<span class="ei-status-pill ei-status-' + status + '">' + _esc(status) + '</span>');
-    // V12.168: Externe Check-ID Badge in der Meta-Zeile
-    const ext = String(r.external_check_id || '').trim();
-    const extPill = ext
-      ? `<span title="Externe Check-ID" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono)">#${_esc(ext)}</span>`
-      : '';
-    // V12.174: Aufzug-Pille — Fabriknummer + Standort, wenn zugeordnet
-    const afn = String(r.aufzug_fabriknummer || '').trim();
-    const ast = String(r.aufzug_standort     || '').trim();
-    const splitCnt = parseInt(r.aufzug_split_count || '0', 10);
-    const aufzugPill = (afn || ast)
-      ? `<span title="${_esc(ast || 'Aufzug')}${afn ? ' · Fabrik-Nr. ' + _esc(afn) : ''}" style="background:#cffafe;color:#155e75;border:1px solid #67e8f9;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono)">🛗 ${_esc(afn || ast)}</span>`
-        + (splitCnt > 1 ? `<span title="Diese Email ist Teil einer Aufteilung in ${splitCnt} Anlagen" style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.04em">1/${splitCnt}</span>` : '')
-      : '';
-    return (
-      `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')"${outStyle}>` +
-        `<div class="ei-row-from">${fromLabel}</div>` +
-        `<div class="ei-row-subj">${_esc(r.subject || '(kein Betreff)')}</div>` +
-        `<div class="ei-row-meta">` +
-          (isOut ? '' : `<span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>`) +
-          (vcnt > 0 && !isOut ? `<span style="font-size:10.5px;color:var(--muted);font-weight:600">${vcnt} Vorgang${vcnt>1?'änge':''}</span>` : '') +
-          aufzugPill +
-          extPill +
-          statusPill +
-          `<span class="ei-row-date">${_esc(date)}</span>` +
-        `</div>` +
-      `</div>`
-    );
+    const idStr = '#' + String(r._id || '').slice(-4);
+    // Subject + Body-Preview
+    const subject = isOut
+      ? 'An: ' + (r.to_email || '(?)')
+      : (r.subject || '(kein Betreff)');
+    const preview = String(r.body_preview || r.body_text || r.body || '').replace(/\s+/g,' ').trim().slice(0, 140);
+    // Von-Spalte: Name + Email getrennt
+    const fromName = hv.primary || '(unbekannt)';
+    const fromMail = hv.secondary || (isOut ? r.to_email : r.from_email) || '';
+    // Status-Chip
+    const statusKey = isOut ? 'geantwortet' : status;
+    const statusLabel = isOut ? 'Gesendet' : status.charAt(0).toUpperCase() + status.slice(1).replace('_',' ');
+    const statusChip = `<span class="ei-status-chip ${statusKey}"><span class="dot"></span>${statusLabel}</span>`;
+    // Schnellaktionen
+    const quickActions = isOut ? '' : `
+      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','gesichtet')" title="Als gesichtet markieren"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Als gesichtet markieren</button>
+      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','in_bearbeitung')" title="In Bearbeitung"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>In Bearbeitung</button>
+      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','verworfen')" title="Verwerfen"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Verwerfen</button>
+    `;
+    return `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">
+      <div class="ei-row-id">${_esc(idStr)}</div>
+      <div class="ei-row-date">${_esc(dateStr)}</div>
+      <div class="ei-row-from">
+        <span class="name">${_esc(fromName)}</span>
+        ${fromMail ? `<span class="mail">${_esc(fromMail)}</span>` : ''}
+      </div>
+      <div class="ei-row-subj">
+        <span class="subj">${_esc(subject)}</span>
+        ${preview ? `<span class="prev">${_esc(preview)}</span>` : ''}
+      </div>
+      <div class="ei-row-actions">${statusChip}${quickActions}</div>
+    </div>`;
   }).join('');
 }
 
