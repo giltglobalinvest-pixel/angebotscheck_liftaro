@@ -6040,7 +6040,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.182';
+const APP_VERSION = 'V12.183';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23971,7 +23971,14 @@ async function runAiAufzugAnalysis(recId) {
 
 REGELN:
 - Eine Aufzugsanlage = ein Listen-Eintrag. NIE mehrere Anlagen in einem Eintrag zusammenfassen.
-- Fabriknummern erkennst du an Phrasen wie „Fabrik-Nr.", „Anlage 12345", „Anlagen-Nr.", „Werknummer", manchmal auch als reine 6-10-stellige Zahl direkt im Subject ("Anlage 11065783").
+- Fabriknummer-Synonyme — ALLE folgenden Begriffe sind Fabriknummern:
+  • "Fabriknummer", "Fabrik-Nr.", "Fabr.-Nr.", "Fab.-Nr."
+  • "Anlagennummer", "Anlagen-Nr.", "Anlage-Nr.", "Anlage 12345"
+  • "Herstellernummer", "Hersteller-Nr.", "Werknummer", "Werk-Nr."
+  • "Equipment-Nr.", "Equipment-ID", "Equipment-Nummer"
+  • "Aufzug-Nr.", "Aufzugsnummer"
+  • Reine 6-10-stellige Zahl direkt im Subject (z. B. "Anlage 11065783")
+- Wenn z. B. "Anlagennummer: 10341443" UND "Herstellernummer: 10341443" beide vorkommen und identisch sind → ist eine Anlage mit Fabriknummer 10341443. Bei Unterschied gilt: Anlagennummer hat Vorrang.
 - Adresse in DREI getrennte Felder zerlegen: strasse + plz + ort. Wenn nur Straße im Text → strasse füllen, plz/ort leer lassen.
 - Wenn die Email gar keine konkrete Anlage erwähnt: leeres Array {"aufzuege":[]}.
 - ERFINDE NICHTS. Lieber Feld leer als raten — besonders bei Fabriknummern.`,
@@ -24076,7 +24083,13 @@ async function _eiAufzugFromAttachments(pdfs, subject) {
 
 REGELN:
 - Eine Aufzugsanlage = ein Listen-Eintrag.
-- Fabriknummern erkennst du an Phrasen wie "Fabrik-Nr.", "Anlagen-Nr.", "Werknummer", auf TÜV-/ZÜS-Berichten, Wartungsverträgen, Rechnungen.
+- Fabriknummer-Synonyme — ALLE folgenden Begriffe sind Fabriknummern (besonders auf TÜV-/ZÜS-Berichten, Wartungsverträgen, Rechnungen):
+  • "Fabriknummer", "Fabrik-Nr.", "Fabr.-Nr.", "Fab.-Nr."
+  • "Anlagennummer", "Anlagen-Nr.", "Anlage-Nr.", "Anlage 12345"
+  • "Herstellernummer", "Hersteller-Nr.", "Werknummer", "Werk-Nr."
+  • "Equipment-Nr.", "Equipment-ID", "Equipment-Nummer"
+  • "Aufzug-Nr.", "Aufzugsnummer"
+- Wenn z. B. "Anlagennummer: 10341443" UND "Herstellernummer: 10341443" beide vorkommen und identisch sind → ist eine Anlage mit Fabriknummer 10341443. Bei Unterschied gilt: Anlagennummer hat Vorrang.
 - Adresse in DREI getrennte Felder zerlegen: strasse + plz + ort.
 - ERFINDE NICHTS. Lieber leer als raten. Wenn das PDF keine Aufzug-Anlage enthält, gib {"aufzuege":[]} zurück.`,
         messages: [{ role: 'user', content: userContent }],
