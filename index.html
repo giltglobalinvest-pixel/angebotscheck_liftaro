@@ -3732,15 +3732,7 @@ const pdfWorkerReady = Promise.resolve();</script>
           <input type="text" id="pmcr_website" placeholder="Webseite (https://…)" style="padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;outline:none;font-family:inherit">
         </div>
       </div>
-      <div style="border-top:1px solid #e5e7eb;padding-top:14px">
-        <div style="font-size:11px;font-weight:700;color:var(--dr-ink-mute,#64748b);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Ansprechpartner <span style="font-weight:400;text-transform:none;color:#94a3b8">(optional)</span></div>
-        <div style="display:grid;grid-template-columns:1fr;gap:8px">
-          <input type="text" id="pmcr_p_name" placeholder="Name (z. B. Max Mustermann)" style="padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;outline:none;font-family:inherit">
-          <input type="text" id="pmcr_p_email" placeholder="E-Mail" style="padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;outline:none;font-family:inherit">
-          <input type="text" id="pmcr_p_tel" placeholder="Direktwahl" style="padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;outline:none;font-family:inherit">
-        </div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:7px;line-height:1.5">Ein Ansprechpartner wird in Pipedrive als Person mit der HV verknüpft.</div>
-      </div>
+      <div style="font-size:11px;color:#94a3b8;line-height:1.5">Ansprechpartner werden direkt in Pipedrive angelegt.</div>
       <div id="pmcr_status" style="font-size:12px;color:#a8312f;min-height:14px"></div>
     </div>
     <div style="padding:12px 22px;border-top:1px solid #e5e7eb;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px">
@@ -5929,7 +5921,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.165';
+const APP_VERSION = 'V12.166';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -15285,7 +15277,6 @@ async function renderKundenList() {
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
         <button onclick="openLightVertragForOrg(${oid})" title="Neue EuC-Vereinbarung mit dieser HV anlegen" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">🛡 EuC</button>
         <button onclick="openVertragForOrg(${oid})" title="Neuen Rahmenvertrag mit dieser HV anlegen" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">📑 Rahmen</button>
-        <button onclick="openPmContactCreate(${oid}, '${(o.name||'').replace(/'/g,'&apos;')}')" title="Ansprechpartner zur HV hinzufügen" style="background:#fff;border:1px solid #d1d5db;color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">+ Kontakt</button>
       </div>
     </div>`;
   }).join('') || '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Kein Treffer für die Suche.</div>';
@@ -15326,10 +15317,9 @@ async function _lazyLoadPmContacts(orgs) {
   }));
 }
 
-// V12.165: HV-Anlege-Modal
+// V12.165: HV-Anlege-Modal — nur Organisation, Personen werden in Pipedrive gepflegt
 function openPmCreateModal() {
-  _resetPmCreateModalToDefault();
-  const ids = ['pmcr_firma','pmcr_strasse','pmcr_plz','pmcr_ort','pmcr_email','pmcr_tel','pmcr_website','pmcr_p_name','pmcr_p_email','pmcr_p_tel'];
+  const ids = ['pmcr_firma','pmcr_strasse','pmcr_plz','pmcr_ort','pmcr_email','pmcr_tel','pmcr_website'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const st = document.getElementById('pmcr_status'); if (st) st.textContent = '';
   const m = document.getElementById('pmCreateModal');
@@ -15346,7 +15336,6 @@ async function submitPmCreate() {
   const btn = document.getElementById('pmcr_submit');
   if (btn) { btn.disabled = true; btn.textContent = 'Lege an …'; }
   try {
-    // 1) HV / Organisation anlegen
     const plz = g('pmcr_plz'), ort = g('pmcr_ort');
     const cityLine = [plz, ort].filter(Boolean).join(' ');
     const r = await fetch(proxyUrl, {
@@ -15363,27 +15352,7 @@ async function submitPmCreate() {
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'Anlegen fehlgeschlagen');
-    const orgId = d.org_id;
-    // 2) Optionaler Ansprechpartner — neuer Backend-Endpunkt
-    const pName = g('pmcr_p_name');
-    let personOk = true, personErr = '';
-    if (pName) {
-      try {
-        const rp = await fetch(proxyUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'create_person_in_org',
-            org_id: orgId,
-            name: pName,
-            email: g('pmcr_p_email'),
-            tel: g('pmcr_p_tel'),
-          }),
-        });
-        const dp = await rp.json();
-        if (!dp.ok) { personOk = false; personErr = dp.error || 'unbekannter Fehler'; }
-      } catch (e) { personOk = false; personErr = e.message; }
-    }
-    // 3) HV-Cache neu laden
+    // HV-Cache neu laden + Filter auf neue HV
     try {
       const rl = await fetch(proxyUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -15392,18 +15361,13 @@ async function submitPmCreate() {
       const dl = await rl.json();
       if (dl.ok) {
         window._pipedriveOrgsCache = dl.results || [];
-        // Filter auf neue HV vorbelegen
         const sEl = document.getElementById('kundenSearch');
         if (sEl) sEl.value = firma;
         renderKundenList();
       }
     } catch (_) {}
     document.getElementById('pmCreateModal').style.display = 'none';
-    if (personOk) {
-      showToast('Hausverwaltung „' + firma + '" angelegt', 'success');
-    } else {
-      showToast('HV angelegt, Ansprechpartner schlug fehl: ' + personErr + ' (Backend evtl. nicht aktualisiert)', 'warning');
-    }
+    showToast('Hausverwaltung „' + firma + '" angelegt', 'success');
   } catch (e) {
     _pmCrStatus('Fehler: ' + e.message, true);
   } finally {
@@ -15416,74 +15380,6 @@ function _pmCrStatus(msg, isErr) {
   if (!st) return;
   st.textContent = msg || '';
   st.style.color = isErr ? '#a8312f' : '#0a7a3a';
-}
-
-// V12.165: Ansprechpartner zu existierender HV hinzufügen
-function openPmContactCreate(orgId, orgName) {
-  // Wir nutzen das gleiche Modal — leere HV-Felder, sperre Firmenname als Hinweis
-  openPmCreateModal();
-  const head = document.querySelector('#pmCreateModal .pm-create-head');
-  // Header-Titel anpassen (suchen über Selector im Modal-Header)
-  const titleEl = document.querySelector('#pmCreateModal > div > div:first-child > span');
-  if (titleEl) titleEl.textContent = 'Ansprechpartner zu „' + orgName + '" hinzufügen';
-  const btn = document.getElementById('pmcr_submit');
-  if (btn) btn.textContent = 'Ansprechpartner speichern';
-  // Modus-Marker für submit
-  window._pmCreateContactOnly = { orgId, orgName };
-  // HV-Felder ausblenden — wir wollen nur die Person-Felder zeigen
-  const hvBlock = document.querySelector('#pmCreateModal #pmcr_firma')?.closest('div')?.parentElement;
-  if (hvBlock) hvBlock.style.display = 'none';
-  // Fokus auf Person-Name
-  setTimeout(() => { const n = document.getElementById('pmcr_p_name'); if (n) n.focus(); }, 50);
-  // Submit-Handler überschreiben für diesen Modus
-  if (btn) btn.onclick = submitPmContactOnly;
-}
-
-async function submitPmContactOnly() {
-  const ctx = window._pmCreateContactOnly;
-  if (!ctx) return;
-  const g = id => (document.getElementById(id)?.value || '').trim();
-  const name = g('pmcr_p_name');
-  if (!name) { _pmCrStatus('Name ist Pflicht.', true); return; }
-  const proxyUrl = APP_KEYS.vorabcheckProxyUrl || '';
-  if (!proxyUrl) { _pmCrStatus('Pipedrive-Proxy nicht konfiguriert.', true); return; }
-  const btn = document.getElementById('pmcr_submit');
-  if (btn) { btn.disabled = true; btn.textContent = 'Speichere …'; }
-  try {
-    const r = await fetch(proxyUrl, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create_person_in_org',
-        org_id: ctx.orgId,
-        name,
-        email: g('pmcr_p_email'),
-        tel: g('pmcr_p_tel'),
-      }),
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || 'Anlegen fehlgeschlagen — Backend evtl. nicht aktualisiert');
-    // Person-Cache für diese HV invalidieren, damit beim nächsten Render der neue Name auftaucht
-    if (window._pipedrivePersonCache) delete window._pipedrivePersonCache[String(ctx.orgId)];
-    // Modal schließen + neu rendern
-    _resetPmCreateModalToDefault();
-    document.getElementById('pmCreateModal').style.display = 'none';
-    renderKundenList();
-    showToast('Ansprechpartner „' + name + '" hinzugefügt', 'success');
-  } catch (e) {
-    _pmCrStatus('Fehler: ' + e.message, true);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Ansprechpartner speichern'; }
-  }
-}
-
-function _resetPmCreateModalToDefault() {
-  window._pmCreateContactOnly = null;
-  const titleEl = document.querySelector('#pmCreateModal > div > div:first-child > span');
-  if (titleEl) titleEl.textContent = 'Neue Hausverwaltung anlegen';
-  const btn = document.getElementById('pmcr_submit');
-  if (btn) { btn.textContent = 'HV anlegen'; btn.onclick = submitPmCreate; }
-  const hvBlock = document.querySelector('#pmCreateModal #pmcr_firma')?.closest('div')?.parentElement;
-  if (hvBlock) hvBlock.style.display = '';
 }
 
 // HV aus Pipedrive holen + Light-Vertrag-Editor öffnen mit vorbefüllten Daten
