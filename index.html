@@ -5953,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.170';
+const APP_VERSION = 'V12.171';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23369,6 +23369,105 @@ function renderEmailInboxList() {
   }).join('');
 }
 
+// V12.171: KI-Schnell-Button — Step 1: analysieren + anzeigen
+// Schickt den Body (inkl. Forward-Inhalt) an Claude und parst die echten
+// Absender-/HV-Daten heraus. Step 2 wird sein, das Ergebnis automatisch
+// in einen Vorgang / eine HV-Zuordnung zu schreiben.
+async function runAiQuickAnalysis(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  if (!APP_KEYS.anthropicKey) {
+    showToast('Anthropic-Key fehlt — bitte im Setup eintragen.', 'error');
+    return;
+  }
+  const btn = document.getElementById('ei_ai_quick_btn');
+  const out = document.getElementById('ei_ai_quick_result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Analysiere …'; btn.style.opacity = '0.7'; }
+  if (out) out.innerHTML = '<div style="color:#7c3aed;font-size:12px;padding:8px 0">⏳ Claude liest die Email …</div>';
+  try {
+    // Body inkl. Forward — alle Felder, die wir haben, in eine Zeichenkette
+    const rawBody = String(r.body_text || r.body || '');
+    const stripped = rawBody.length > 200 ? rawBody : _stripHtml(r.body_html || rawBody);
+    const body = (stripped || '').slice(0, 8000);
+    const subj = String(r.subject || '');
+    const from = String(r.from_name || '') + ' <' + String(r.from_email || '') + '>';
+    const fwd  = String(r.forwarded_via || '');
+    const userMsg = `Betreff: ${subj}
+Header-Absender: ${from}${fwd ? '\nWeitergeleitet via: ' + fwd : ''}
+
+Email-Body (Original + ggf. Forward-Inhalt):
+---
+${body}
+---
+
+Wenn die Email weitergeleitet wurde, finde den URSPRÜNGLICHEN Absender (steht typischerweise im Forward-Header: "Von:", "From:", "Gesendet von:" o.ä.). Wenn es keine Weiterleitung ist, nimm den Header-Absender.`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 600,
+        system: `Du analysierst Emails und identifizierst den echten Absender + die Hausverwaltung dahinter. Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):
+{
+  "is_forwarded": true|false,
+  "real_from_name":  "Name der Person/Firma, die die Mail tatsächlich geschrieben hat",
+  "real_from_email": "deren Email-Adresse",
+  "hv_firma":  "Name der Hausverwaltung (falls erkennbar), sonst leer",
+  "hv_email":  "primäre HV-Email-Adresse (falls erkennbar), sonst leer",
+  "hv_tel":    "Telefon (falls in Signatur), sonst leer",
+  "anliegen":  "Kurzbeschreibung des Anliegens, max. 120 Zeichen",
+  "kategorie": "wartung" | "reparatur" | "rechnung" | "korrespondenz" | "spam" | "unklar"
+}
+
+Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur was im Text steht. Bei Forward: nimm die Daten aus dem inneren Original, nicht aus dem Forward-Wrapper.`,
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!resp.ok) throw new Error('Claude HTTP ' + resp.status);
+    const data = await resp.json();
+    const raw  = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed = null;
+    try { parsed = JSON.parse(cleaned); }
+    catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
+    if (!parsed) throw new Error('Antwort konnte nicht geparst werden');
+    // Cache (kein Persist nach Airtable in Step 1)
+    window._eiAiQuickCache = window._eiAiQuickCache || {};
+    window._eiAiQuickCache[recId] = { ts: Date.now(), data: parsed };
+    if (out) out.innerHTML = _renderAiQuickResult({ data: parsed });
+    if (btn) { btn.textContent = 'Erneut analysieren'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<div style="color:#a8312f;font-size:12px;padding:8px 0">Fehler: ' + _esc(e.message) + '</div>';
+    if (btn) { btn.textContent = 'Erneut versuchen'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+}
+
+function _renderAiQuickResult(entry) {
+  if (!entry || !entry.data) return '';
+  const d = entry.data;
+  const row = (label, val) => val
+    ? `<div style="display:flex;gap:8px;padding:3px 0"><span style="font-family:var(--dr-f-mono);font-size:10.5px;color:#7c3aed;text-transform:uppercase;letter-spacing:.06em;font-weight:700;min-width:130px">${label}</span><span style="font-size:12.5px;color:#0f172a">${_esc(val)}</span></div>`
+    : '';
+  return `<div style="background:#fff;border:1px solid #e9d5ff;border-radius:8px;padding:10px 12px">
+    ${d.is_forwarded ? '<div style="font-size:10.5px;color:#92400e;font-weight:700;margin-bottom:6px;letter-spacing:.04em">↪ FORWARD — UR-ABSENDER AUS BODY EXTRAHIERT</div>' : ''}
+    ${row('Echter Absender:', [d.real_from_name, d.real_from_email && '<' + d.real_from_email + '>'].filter(Boolean).join(' '))}
+    ${row('Hausverwaltung:',  d.hv_firma)}
+    ${row('HV-Email:',        d.hv_email)}
+    ${row('HV-Telefon:',      d.hv_tel)}
+    ${row('Anliegen:',        d.anliegen)}
+    ${row('Kategorie:',       d.kategorie)}
+    <div style="font-size:11px;color:#94a3b8;margin-top:8px;padding-top:8px;border-top:1px dashed #e9d5ff">Step 1 — nur Anzeige. Manuelle HV-Zuordnung über „Hausverwaltung suchen" im Vorgang.</div>
+  </div>`;
+}
+
 // V12.168: Externe Check-ID an Airtable speichern
 async function saveExternalCheckId(recId) {
   const inp = document.getElementById('ei_ext_check_id_input');
@@ -23537,6 +23636,23 @@ function renderEmailInboxDetail() {
       <span style="font-size:14px">↪</span>
       <span>Weitergeleitet via <strong>${_esc(forwardedVia)}</strong>${r.raw_subject ? ` · Original-Betreff: <em>${_esc(r.raw_subject)}</em>` : ''}. Antworten gehen direkt an den UR-Absender.</span>
     </div>` : ''}
+  </div>`;
+
+  // V12.171: KI-Schnell-Button — analysiert den Body (auch Forward-Inhalt) und schlägt
+  // echten Absender, HV und Vorgang vor. Step 1: nur Anzeige, kein Auto-Speichern.
+  const aiCached = window._eiAiQuickCache && window._eiAiQuickCache[r._id];
+  html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:${aiCached ? '10px' : '6px'};flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px">🤖 KI-Schnell-Analyse</div>
+        <div style="font-size:11.5px;color:#7c3aed">Erkennt den ECHTEN Absender und die HV aus dem Body — besonders bei Forwards.</div>
+      </div>
+      <button id="ei_ai_quick_btn" onclick="runAiQuickAnalysis('${r._id}')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(124,58,237,.35)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
+        ${aiCached ? 'Erneut analysieren' : 'Absender erkennen'}
+      </button>
+    </div>
+    <div id="ei_ai_quick_result">${aiCached ? _renderAiQuickResult(aiCached) : ''}</div>
   </div>`;
 
   // V12.168: Externer Verweis (Check-ID aus anderem System) — speicherbar
