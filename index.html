@@ -4077,7 +4077,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div style="background:var(--dr-navy,#1a3a5c);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff">
           <div>
             <div style="font-size:15px;font-weight:700">🧹 Duplikate finden und archivieren</div>
-            <div style="font-size:11.5px;color:rgba(255,255,255,.75);margin-top:2px">Pro Duplikat-Gruppe bleibt die älteste Mail erhalten. Die anderen werden auf „verworfen" gesetzt.</div>
+            <div style="font-size:11.5px;color:rgba(255,255,255,.75);margin-top:2px">Inhaltsbasiert: normalisierter Body wird verglichen (Forward-Header und Quoted-Lines ignoriert). Älteste bleibt, Rest wird auf „verworfen" gesetzt.</div>
           </div>
           <button onclick="document.getElementById('eiDuplicatesModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px">✕</button>
         </div>
@@ -5953,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.172';
+const APP_VERSION = 'V12.173';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23162,25 +23162,61 @@ function _eiFiltered() {
   });
 }
 
-// V12.170: Duplikat-Erkennung
-//   Schlüssel pro Email:
-//     1) message_id (zuverlässigster Marker)
-//     2) Fallback: from_email|subject|first-200-chars-body|attachment_filenames
-//   Pro Gruppe wird die ÄLTESTE behalten, die anderen vorgeschlagen zum Archivieren.
+// V12.170/173: Duplikat-Erkennung — INHALTSBASIERT.
+// Normalisiert den Body so, dass auch Forwards/Reply-Ketten der gleichen
+// Original-Mail als Duplikate erkannt werden:
+//   • Forward-/Reply-Trennzeilen ("--- Weitergeleitete Nachricht ---" etc.) raus
+//   • Forward-Header (Von:, Gesendet:, An:, Betreff: …) raus
+//   • Quoted Lines (>…) raus
+//   • Signaturen ab "-- " raus
+//   • HTML-Tags + Mehrfach-Whitespace zusammengeführt
+// Schlüssel-Hierarchie pro Email:
+//   1) message_id  (strikt identisch, derselbe Mail-Empfang)
+//   2) normBody    (inhaltlich identisch — auch bei Forward)
+//   3) Fallback bei extrem kurzem Body: from|subject|body
+function _normalizeForDedupe(r) {
+  let text = String(r.body_text || '');
+  if (!text || text.length < 50) {
+    const html = String(r.body_html || r.body || '');
+    if (html) text = (typeof _stripHtml === 'function') ? _stripHtml(html) : html;
+  }
+  if (!text) text = String(r.body || '');
+  return String(text)
+    // Trennzeilen für Forwards / Reply
+    .replace(/^.*?(weitergeleitete\s+nachricht|forwarded\s+message|original\s+message|original\s+nachricht|begin\s+forwarded\s+message).*?$/gim, '')
+    // Mail-Header (Von:, From:, Gesendet:, Sent:, An:, To:, Cc:, Bcc:, Betreff:, Subject:, Date:, Datum:)
+    .replace(/^\s*(von|from|gesendet|sent|an|to|cc|bcc|betreff|subject|date|datum|reply-to|antwort\s+an)\s*:.*$/gim, '')
+    // Quoted lines / Outlook-Style
+    .replace(/^\s*>+.*$/gm, '')
+    // Signatur ab "-- " (eigene Zeile)
+    .replace(/^--\s*$[\s\S]*$/m, '')
+    // HTML-Tags
+    .replace(/<[^>]+>/g, ' ')
+    // Diverse Whitespace-Varianten
+    .replace(/[  -​  　]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function _findEmailDuplicates() {
   const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (r.status || 'neu') !== 'verworfen');
   const buckets = new Map();
   for (const r of all) {
     const mid = String(r.message_id || '').trim();
+    const normBody = _normalizeForDedupe(r);
+    const att = String(r.attachment_filenames || '').toLowerCase().trim();
     let key;
     if (mid) {
       key = 'mid:' + mid.toLowerCase();
+    } else if (normBody.length >= 60) {
+      // Inhaltsbasiert: normalisierter Body (max. 2000 Zeichen) + Attachments
+      key = 'body:' + normBody.slice(0, 2000) + '|att:' + att;
     } else {
+      // Bei sehr kurzem Body: Header-Felder hinzunehmen
       const fe = String(r.from_email || '').toLowerCase().trim();
-      const su = String(r.subject || '').toLowerCase().trim();
-      const bo = String(r.body_text || r.body_preview || r.body || '').replace(/\s+/g, ' ').trim().slice(0, 200).toLowerCase();
-      const at = String(r.attachment_filenames || '').toLowerCase();
-      key = 'sig:' + fe + '|' + su + '|' + bo + '|' + at;
+      const su = String(r.subject    || '').toLowerCase().trim();
+      key = 'sig:' + fe + '|' + su + '|' + normBody + '|' + att;
     }
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(r);
@@ -23188,7 +23224,7 @@ function _findEmailDuplicates() {
   const groups = [];
   for (const [key, list] of buckets) {
     if (list.length < 2) continue;
-    // Sortiere asc nach received_at — älteste zuerst (= Champion)
+    // Älteste zuerst → Champion = älteste; die jüngeren werden zum Archivieren vorgeschlagen
     list.sort((a, b) => String(a.received_at || '').localeCompare(String(b.received_at || '')));
     groups.push({ key, champion: list[0], dupes: list.slice(1) });
   }
@@ -23202,7 +23238,7 @@ function openEiDuplicatesModal() {
   const btn  = document.getElementById('eiDupesArchiveBtn');
   if (!body) return;
   if (!groups.length) {
-    body.innerHTML = '<div style="text-align:center;padding:40px;color:#475569;font-size:13.5px;line-height:1.6">✓ Keine doppelten Emails gefunden.<br><span style="font-size:12px;color:#94a3b8">Vergleich: Message-ID; sonst Absender + Betreff + Body-Anfang + Anhänge.</span></div>';
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:#475569;font-size:13.5px;line-height:1.6">✓ Keine doppelten Emails gefunden.<br><span style="font-size:12px;color:#94a3b8">Geprüft wird inhaltlich: Body-Normalisierung (Forward-Header + Quoted-Lines raus), Message-ID, Anhänge.</span></div>';
     if (sum) sum.textContent = '0 Gruppen';
     if (btn) { btn.disabled = true; btn.style.opacity = '0.55'; btn.style.cursor = 'not-allowed'; btn.textContent = 'Markierte archivieren'; }
     document.getElementById('eiDuplicatesModal').style.display = 'flex';
