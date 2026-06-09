@@ -5927,7 +5927,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.167';
+const APP_VERSION = 'V12.168';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7019,6 +7019,8 @@ async function setupTables() {
       { name: 'bcc_email',            type: 'singleLineText' },
       { name: 'body',                 type: 'multilineText' },
       { name: 'attachment_filenames', type: 'singleLineText' },
+      // V12.168: externe Check-ID (für Sync mit externem System)
+      { name: 'external_check_id',    type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
@@ -23118,6 +23120,8 @@ function _eiFiltered() {
       r.body, r.body_text, r.body_preview,
       r.ki_classification, r.ki_summary,
       r.attachment_filenames, r.message_id,
+      r.external_check_id,            // V12.168: Check-ID mitsuchen
+      r.vorgaenge_json,                // KI-Vorgänge (Kunde, Objekt, Anliegen)
     ].filter(Boolean).join(' \n ').toLowerCase();
     return terms.every(t => hay.includes(t));
   });
@@ -23162,12 +23166,21 @@ function renderEmailInboxList() {
       : '';
     // V12.137: outgoing — eigener Style + "📤 An: …" statt Absender
     const outStyle = isOut ? ' style="border-left:3px solid #16a34a;background:#f0fdf4"' : '';
+    // V12.168: Absender = bevorzugt zugeordnete HV aus KI-Vorgängen, Fallback: from_name/from_email
+    const hv = _eiDisplayHV(r);
     const fromLabel = isOut
       ? '<span style="color:#16a34a;font-weight:700;margin-right:5px">📤</span>An: ' + _esc(r.to_email || '(?)')
-      : (fwdMark + _esc(r.from_name || r.from_email || '(unbekannt)'));
+      : (fwdMark + _esc(hv.primary)
+          + (hv.secondary ? `<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:6px">· ${_esc(hv.secondary)}</span>` : '')
+          + (hv.source === 'ki' ? '<span title="Automatisch durch KI zugeordnet" style="margin-left:6px;font-size:9.5px;color:#2d5f96;font-weight:700;background:#dbeafe;border-radius:6px;padding:1px 5px;letter-spacing:.05em">KI</span>' : ''));
     const statusPill = isOut
       ? '<span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">gesendet</span>'
       : ('<span class="ei-status-pill ei-status-' + status + '">' + _esc(status) + '</span>');
+    // V12.168: Externe Check-ID Badge in der Meta-Zeile
+    const ext = String(r.external_check_id || '').trim();
+    const extPill = ext
+      ? `<span title="Externe Check-ID" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono)">#${_esc(ext)}</span>`
+      : '';
     return (
       `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')"${outStyle}>` +
         `<div class="ei-row-from">${fromLabel}</div>` +
@@ -23175,12 +23188,68 @@ function renderEmailInboxList() {
         `<div class="ei-row-meta">` +
           (isOut ? '' : `<span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>`) +
           (vcnt > 0 && !isOut ? `<span style="font-size:10.5px;color:var(--muted);font-weight:600">${vcnt} Vorgang${vcnt>1?'änge':''}</span>` : '') +
+          extPill +
           statusPill +
           `<span class="ei-row-date">${_esc(date)}</span>` +
         `</div>` +
       `</div>`
     );
   }).join('');
+}
+
+// V12.168: Externe Check-ID an Airtable speichern
+async function saveExternalCheckId(recId) {
+  const inp = document.getElementById('ei_ext_check_id_input');
+  const st  = document.getElementById('ei_ext_check_id_status');
+  const btn = document.getElementById('ei_ext_check_id_save');
+  if (!inp) return;
+  const val = String(inp.value || '').trim();
+  if (btn) { btn.disabled = true; btn.textContent = 'Speichere …'; }
+  try {
+    await atUpdate('Emails', recId, { external_check_id: val });
+    // lokalen Cache aktualisieren, damit die Liste das Badge sofort zeigt
+    const row = (_eiAllRecords || []).find(x => x._id === recId);
+    if (row) row.external_check_id = val;
+    if (st) { st.style.color = '#15803d'; st.textContent = val ? '✓ Check-ID gespeichert' : '✓ Check-ID geleert'; }
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  } catch (e) {
+    if (st) { st.style.color = '#a8312f'; st.textContent = 'Fehler: ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
+  }
+}
+async function clearExternalCheckId(recId) {
+  const inp = document.getElementById('ei_ext_check_id_input');
+  if (inp) inp.value = '';
+  await saveExternalCheckId(recId);
+}
+
+// V12.168: Best-Effort HV-Anzeige aus den KI-Vorgängen
+function _eiDisplayHV(r) {
+  // Aus vorgaenge_json die erste „echte" Kunden-Info ziehen — KI hat das HV extrahiert
+  let v = null;
+  try {
+    const arr = JSON.parse(r.vorgaenge_json || '[]');
+    if (Array.isArray(arr) && arr.length) {
+      // Bevorzugt den Vorgang mit der besten Identifikation
+      v = arr.find(x => x && (x.kunde_firma || x.kunde_name)) || arr[0];
+    }
+  } catch (_) {}
+  if (v) {
+    const primary = (v.kunde_firma || v.kunde_name || v.objekt_adresse || '').trim();
+    if (primary) {
+      const secondary = (v.kunde_email || '').trim();
+      return { primary, secondary, source: 'ki' };
+    }
+  }
+  // Fallback: Original-Absender
+  const fromName  = String(r.from_name  || '').trim();
+  const fromEmail = String(r.from_email || '').trim();
+  return {
+    primary:   fromName || fromEmail || '(unbekannt)',
+    secondary: fromName && fromEmail ? fromEmail : '',
+    source:    'header',
+  };
 }
 
 function selectEmailRow(recId) {
@@ -23287,6 +23356,21 @@ function renderEmailInboxDetail() {
       <span style="font-size:14px">↪</span>
       <span>Weitergeleitet via <strong>${_esc(forwardedVia)}</strong>${r.raw_subject ? ` · Original-Betreff: <em>${_esc(r.raw_subject)}</em>` : ''}. Antworten gehen direkt an den UR-Absender.</span>
     </div>` : ''}
+  </div>`;
+
+  // V12.168: Externer Verweis (Check-ID aus anderem System) — speicherbar
+  const extId = String(r.external_check_id || '').trim();
+  html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #f59e0b;background:#fffbeb">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">🔗 Externer Verweis</span>
+      <span style="font-size:11px;color:#a16207;font-weight:500">Check-ID aus externem System — manuell eintragen für späteren Sync</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="ei_ext_check_id_input" value="${_esc(extId)}" placeholder="z. B. CK-2026-4711" style="flex:1;padding:8px 12px;border:1px solid #fcd34d;border-radius:7px;font-size:13px;font-family:var(--dr-f-mono);background:#fff;outline:none" onkeydown="if(event.key==='Enter')saveExternalCheckId('${r._id}')">
+      <button id="ei_ext_check_id_save" onclick="saveExternalCheckId('${r._id}')" style="background:#d97706;color:#fff;border:none;border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Speichern</button>
+      ${extId ? `<button onclick="clearExternalCheckId('${r._id}')" title="Entfernen" style="background:#fff;border:1px solid #fcd34d;color:#92400e;border-radius:7px;padding:8px 12px;font-size:13px;cursor:pointer">✕</button>` : ''}
+    </div>
+    <div id="ei_ext_check_id_status" style="font-size:11.5px;margin-top:6px;min-height:14px;color:#a16207"></div>
   </div>`;
 
   // KI-Summary
