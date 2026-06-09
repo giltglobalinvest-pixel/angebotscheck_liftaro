@@ -4022,54 +4022,42 @@ const pdfWorkerReady = Promise.resolve();</script>
 <!-- ════════════════════════════════════════════════════════════════════
      Email-Inbox-Modal — V10.8 Redesign (dr-* System aus Lager-App)
      ════════════════════════════════════════════════════════════════════ -->
-<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.55);z-index:5060;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
-  <div style="background:var(--dr-bg-soft);border-radius:var(--dr-r-tile);width:min(1200px,96vw);height:min(820px,92vh);display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(15,24,48,.35);overflow:hidden;border:1px solid var(--dr-border)">
-    <!-- Header -->
-    <div style="background:var(--dr-surface);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--dr-border)">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div style="width:42px;height:42px;border-radius:13px;background:var(--dr-blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--dr-elev-blue);flex-shrink:0">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+<!-- V12.177: Email-Inbox jetzt als Vollbild-Seite mit linker Menü-Sidebar (statt Modal) -->
+<div id="emailInboxModal" style="display:none;position:fixed;inset:0;background:var(--dr-bg-soft);z-index:5060;flex-direction:column">
+  <div style="background:var(--dr-bg-soft);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
+    <!-- Header (oben, volle Breite) -->
+    <div style="background:var(--dr-surface);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--dr-border);box-shadow:var(--dr-elev-1)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onclick="closeEmailInboxModal()" title="Zurück" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:10px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600" onmouseover="this.style.borderColor='var(--dr-blue)';this.style.color='var(--dr-blue)'" onmouseout="this.style.borderColor='var(--dr-border-strong)';this.style.color='var(--dr-ink)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Zurück
+        </button>
+        <div style="width:38px;height:38px;border-radius:11px;background:var(--dr-blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--dr-elev-blue);flex-shrink:0">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         </div>
         <div>
-          <div style="font-size:18px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;display:flex;align-items:center;gap:10px">
-            Email-Inbox
+          <div style="font-size:17px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;display:flex;align-items:center;gap:10px">
+            Posteingang
             <span id="emailInboxHeaderCount" style="background:var(--dr-blue-soft);color:var(--dr-blue-deep);border-radius:var(--dr-r-pill);padding:2px 9px;font-family:var(--dr-f-mono);font-size:11px;font-weight:700">0</span>
           </div>
-          <div style="font-size:12px;color:var(--dr-ink-mute);margin-top:2px">KI-klassifizierte eingehende Anfragen — pro Vorgang einen Check erstellen</div>
+          <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:1px">KI-klassifizierte eingehende Anfragen</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="position:relative">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="emailInboxSearch" placeholder="Suchen …" oninput="setEiSearch(this.value)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 30px 7px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:300px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
+          <button id="emailInboxSearchClear" type="button" onclick="setEiSearch('', true)" title="Suche löschen" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--dr-ink-mute);cursor:pointer;padding:3px 6px;font-size:14px;line-height:1">✕</button>
+        </div>
         <button id="emailInboxReloadBtn" class="dr-pill" onclick="loadEmailInbox(true)">
           <svg id="emailInboxReloadIcon" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .3s ease"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
           <span id="emailInboxReloadLabel">Neu laden</span>
         </button>
-        <button onclick="closeEmailInboxModal()" style="background:var(--dr-surface);border:1px solid var(--dr-border-strong);color:var(--dr-ink-mute);border-radius:10px;width:34px;height:34px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--dr-red-soft)';this.style.color='#9F1B1F';this.style.borderColor='#9F1B1F33'" onmouseout="this.style.background='var(--dr-surface)';this.style.color='var(--dr-ink-mute)';this.style.borderColor='var(--dr-border-strong)'">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
       </div>
     </div>
 
-    <!-- Filter-Pills (Status-Filter) + V12.167: Volltext-Suche -->
-    <div id="emailInboxFilters" style="padding:12px 24px;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0">
-      <span class="dr-filterbar-label">Status:</span>
-      <button class="dr-pill ei-filt-pill" data-status="neu"            onclick="setEiFilter('neu')">neu</button>
-      <button class="dr-pill ei-filt-pill" data-status="gesichtet"      onclick="setEiFilter('gesichtet')">gesichtet</button>
-      <button class="dr-pill ei-filt-pill" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')">in Bearbeitung</button>
-      <button class="dr-pill ei-filt-pill" data-status="geantwortet"    onclick="setEiFilter('geantwortet')">geantwortet</button>
-      <button class="dr-pill ei-filt-pill" data-status="verworfen"      onclick="setEiFilter('verworfen')">verworfen</button>
-      <button class="dr-pill ei-filt-pill" data-status="alle"           onclick="setEiFilter('alle')">alle</button>
-      <div style="flex:1;min-width:8px"></div>
-      <!-- V12.170: Duplikate finden + archivieren -->
-      <button type="button" onclick="openEiDuplicatesModal()" title="Identische Emails finden und archivieren (Status → verworfen)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:600" onmouseover="this.style.borderColor='var(--dr-blue)';this.style.color='var(--dr-blue)'" onmouseout="this.style.borderColor='var(--dr-border-strong)';this.style.color='var(--dr-ink)'">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        Duplikate
-      </button>
-      <div style="position:relative">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="emailInboxSearch" placeholder="Email durchsuchen (Absender, Betreff, Inhalt …)" oninput="setEiSearch(this.value)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 30px 7px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:280px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
-        <button id="emailInboxSearchClear" type="button" onclick="setEiSearch('', true)" title="Suche löschen" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--dr-ink-mute);cursor:pointer;padding:3px 6px;font-size:14px;line-height:1">✕</button>
-      </div>
-    </div>
+    <!-- V12.177: Status-Menü als linke Sidebar (statt horizontaler Pills) -->
+    <div id="emailInboxFilters" style="display:none"></div>
 
     <!-- V12.170: Duplikate-Modal -->
     <div id="eiDuplicatesModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6200;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px">
@@ -4092,9 +4080,31 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
 
-    <!-- 2-Spalten-Layout: Liste links, Detail rechts -->
-    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0;overflow:hidden;background:var(--dr-bg-soft)">
-      <!-- Liste links -->
+    <!-- V12.177: 3-Spalten-Layout — Status-Sidebar | Liste | Detail -->
+    <div id="emailInboxBody" style="flex:1;display:grid;grid-template-columns:230px 360px 1fr;min-height:0;overflow:hidden;background:var(--dr-bg-soft)">
+      <!-- V12.177: Status-Menü (Sidebar) -->
+      <div id="emailInboxSidebar" style="background:var(--dr-surface);border-right:1px solid var(--dr-border);overflow-y:auto;padding:18px 14px;display:flex;flex-direction:column;gap:18px">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;padding:0 6px 6px">Status</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
+            <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
+            <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#2d5f96"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
+            <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
+            <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#9F1B1F"></span><span class="ei-side-lbl">Verworfen</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
+            <div style="height:1px;background:var(--dr-divider);margin:8px 6px"></div>
+            <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#0f172a"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;padding:0 6px 6px">Werkzeuge</div>
+          <button class="ei-side-item" onclick="openEiDuplicatesModal()" title="Identische Emails finden und archivieren">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:8px;height:8px;margin-right:9px">🧹</span>
+            <span class="ei-side-lbl">Duplikate prüfen</span>
+          </button>
+        </div>
+      </div>
+      <!-- Liste -->
       <div id="emailInboxList" style="border-right:1px solid var(--dr-border);overflow-y:auto;background:var(--dr-surface)">
         <div style="padding:40px;text-align:center;color:var(--dr-ink-mute);font-size:13px">Lade Emails …</div>
       </div>
@@ -4520,8 +4530,34 @@ const pdfWorkerReady = Promise.resolve();</script>
 .ei-vc-card { background:var(--dr-surface); border:1px solid var(--dr-border); border-radius:var(--dr-r-md); padding:16px; margin-bottom:12px; box-shadow:var(--dr-elev-1); }
 .ei-vc-typ-pill { display:inline-block; padding:3px 10px; border-radius:var(--dr-r-pill); font-family:var(--dr-f-mono); font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.06em; margin-right:8px; }
 .ei-mobile-back { display:none; }
-@media (max-width: 768px) {
+/* V12.177: Status-Menü-Sidebar */
+.ei-side-item {
+  display:flex; align-items:center; gap:0; width:100%;
+  padding:8px 10px; border:1px solid transparent; background:transparent;
+  border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif;
+  font-size:13px; color:var(--dr-ink); text-align:left;
+  transition: all .12s ease;
+}
+.ei-side-item:hover { background:var(--dr-surface-alt); border-color:var(--dr-border); }
+.ei-side-item.active {
+  background:var(--dr-blue-soft); border-color:var(--dr-blue-light);
+  color:var(--dr-blue-deep); font-weight:700;
+  box-shadow: inset 3px 0 0 var(--dr-blue);
+}
+.ei-side-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:9px; flex-shrink:0; }
+.ei-side-lbl { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ei-side-cnt {
+  background:var(--dr-surface-alt); color:var(--dr-ink-mute);
+  font-family:var(--dr-f-mono); font-size:10.5px; font-weight:700;
+  padding:1px 7px; border-radius:9px; min-width:24px; text-align:center; letter-spacing:.04em;
+}
+.ei-side-item.active .ei-side-cnt { background:var(--dr-blue); color:#fff; }
+@media (max-width: 1024px) {
+  #emailInboxBody { grid-template-columns: 200px 320px 1fr !important; }
+}
+@media (max-width: 900px) {
   #emailInboxBody { grid-template-columns: 1fr !important; }
+  #emailInboxSidebar { display:none; }
   #emailInboxList.detail-open { display:none; }
   #emailInboxDetail.list-mode { display:none; }
   .ei-mobile-back { display:inline-flex !important; }
@@ -5953,7 +5989,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.176';
+const APP_VERSION = 'V12.177';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23145,10 +23181,30 @@ async function loadEmailInbox(silent) {
 
 function setEiFilter(status, skipRender) {
   _eiFilter = status;
-  document.querySelectorAll('.ei-filt-pill').forEach(b => {
+  // V12.177: alte Pills (Fallback) und neue Sidebar-Items markieren
+  document.querySelectorAll('.ei-filt-pill, .ei-side-item').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-status') === status);
   });
   if (!skipRender) renderEmailInboxList();
+}
+
+// V12.177: Sidebar-Counts pro Status auf Basis aller geladenen Emails
+function _eiUpdateSidebarCounts() {
+  const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
+  let cAlle = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, geantwortet:0, verworfen:0 };
+  for (const r of all) {
+    if (!r) continue;
+    cAlle++;
+    const s = (r.status || 'neu');
+    if (s in byStatus) byStatus[s]++;
+  }
+  set('eiSideCnt_neu',            byStatus.neu);
+  set('eiSideCnt_gesichtet',      byStatus.gesichtet);
+  set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
+  set('eiSideCnt_geantwortet',    byStatus.geantwortet);
+  set('eiSideCnt_verworfen',      byStatus.verworfen);
+  set('eiSideCnt_alle',           cAlle);
 }
 
 function _eiFiltered() {
@@ -23361,6 +23417,8 @@ function renderEmailInboxList() {
   const listEl = document.getElementById('emailInboxList');
   const filt = _eiFiltered();
   document.getElementById('emailInboxHeaderCount').textContent = filt.length;
+  // V12.177: Sidebar-Counts aktualisieren
+  if (typeof _eiUpdateSidebarCounts === 'function') _eiUpdateSidebarCounts();
 
   if (filt.length === 0) {
     const q = String(window._eiSearchQ || '').trim();
