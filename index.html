@@ -5953,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.171';
+const APP_VERSION = 'V12.172';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7047,6 +7047,15 @@ async function setupTables() {
       { name: 'attachment_filenames', type: 'singleLineText' },
       // V12.168: externe Check-ID (für Sync mit externem System)
       { name: 'external_check_id',    type: 'singleLineText' },
+      // V12.172: KI-Schnell-Analyse — Ergebnisse, die den echten Absender / die HV überschreiben
+      { name: 'real_from_name',       type: 'singleLineText' },
+      { name: 'real_from_email',      type: 'singleLineText' },
+      { name: 'real_hv_firma',        type: 'singleLineText' },
+      { name: 'real_hv_email',        type: 'singleLineText' },
+      { name: 'real_hv_tel',          type: 'singleLineText' },
+      { name: 'real_anliegen',        type: 'singleLineText' },
+      { name: 'real_kategorie',       type: 'singleLineText' },
+      { name: 'ai_quick_at',          type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
@@ -23333,18 +23342,22 @@ function renderEmailInboxList() {
     const hv = _eiDisplayHV(r);
     const outStyle = isOut
       ? ' style="border-left:3px solid #16a34a;background:#f0fdf4"'
-      : (hv.source === 'assigned' ? ' style="border-left:3px solid #15803d;background:#f0fdf4"' : '');
+      : (hv.source === 'assigned' ? ' style="border-left:3px solid #15803d;background:#f0fdf4"'
+         : (hv.source === 'ai'    ? ' style="border-left:3px solid #7c3aed;background:#faf5ff"' : ''));
     const fromLabel = isOut
       ? '<span style="color:#16a34a;font-weight:700;margin-right:5px">📤</span>An: ' + _esc(r.to_email || '(?)')
       : (fwdMark
-          + (hv.source === 'assigned' ? '<span title="HV zugeordnet" style="color:#15803d;font-weight:700;margin-right:6px">🏢</span>' : '')
+          + (hv.source === 'assigned' ? '<span title="HV zugeordnet" style="color:#15803d;font-weight:700;margin-right:6px">🏢</span>'
+             : (hv.source === 'ai'    ? '<span title="Aus Forward-Inhalt extrahiert (KI)" style="color:#7c3aed;font-weight:700;margin-right:6px">🤖</span>' : ''))
           + `<strong>${_esc(hv.primary)}</strong>`
           + (hv.secondary ? `<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:6px">· ${_esc(hv.secondary)}</span>` : '')
           + (hv.source === 'assigned'
               ? '<span title="Manuell bestätigte HV-Zuordnung" style="margin-left:6px;font-size:9.5px;color:#15803d;font-weight:700;background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:1px 6px;letter-spacing:.05em">✓ HV</span>'
-              : (hv.source === 'ki'
-                  ? '<span title="Automatisch durch KI vorgeschlagen — noch nicht bestätigt" style="margin-left:6px;font-size:9.5px;color:#2d5f96;font-weight:700;background:#dbeafe;border-radius:6px;padding:1px 5px;letter-spacing:.05em">KI</span>'
-                  : '')));
+              : (hv.source === 'ai'
+                  ? '<span title="KI-Schnell-Analyse aus Body" style="margin-left:6px;font-size:9.5px;color:#6b21a8;font-weight:700;background:#ede9fe;border:1px solid #d8b4fe;border-radius:6px;padding:1px 6px;letter-spacing:.05em">🤖 KI</span>'
+                  : (hv.source === 'ki'
+                      ? '<span title="Automatisch durch KI vorgeschlagen — noch nicht bestätigt" style="margin-left:6px;font-size:9.5px;color:#2d5f96;font-weight:700;background:#dbeafe;border-radius:6px;padding:1px 5px;letter-spacing:.05em">KI</span>'
+                      : ''))));
     const statusPill = isOut
       ? '<span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">gesendet</span>'
       : ('<span class="ei-status-pill ei-status-' + status + '">' + _esc(status) + '</span>');
@@ -23437,7 +23450,42 @@ Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur was im 
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
     if (!parsed) throw new Error('Antwort konnte nicht geparst werden');
-    // Cache (kein Persist nach Airtable in Step 1)
+    // V12.172: Direkt in Airtable persistieren — Liste zeigt den echten Absender
+    const realFromName  = String(parsed.real_from_name  || '').trim();
+    const realFromEmail = String(parsed.real_from_email || '').trim();
+    const realHvFirma   = String(parsed.hv_firma        || '').trim();
+    const realHvEmail   = String(parsed.hv_email        || '').trim();
+    const realHvTel     = String(parsed.hv_tel          || '').trim();
+    const realAnliegen  = String(parsed.anliegen        || '').trim();
+    const realKategorie = String(parsed.kategorie       || '').trim();
+    const aiAt          = new Date().toISOString();
+    try {
+      await atUpdate('Emails', recId, {
+        real_from_name:  realFromName,
+        real_from_email: realFromEmail,
+        real_hv_firma:   realHvFirma,
+        real_hv_email:   realHvEmail,
+        real_hv_tel:     realHvTel,
+        real_anliegen:   realAnliegen,
+        real_kategorie:  realKategorie,
+        ai_quick_at:     aiAt,
+      });
+      // Lokalen Cache aktualisieren — Liste-Render greift sofort
+      r.real_from_name  = realFromName;
+      r.real_from_email = realFromEmail;
+      r.real_hv_firma   = realHvFirma;
+      r.real_hv_email   = realHvEmail;
+      r.real_hv_tel     = realHvTel;
+      r.real_anliegen   = realAnliegen;
+      r.real_kategorie  = realKategorie;
+      r.ai_quick_at     = aiAt;
+      showToast('✓ KI-Analyse gespeichert — Absender aktualisiert', 'success', 2200);
+      if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    } catch (saveErr) {
+      console.warn('[V12.172] Speichern fehlgeschlagen:', saveErr);
+      showToast('KI-Analyse erkannt — Speichern fehlgeschlagen: ' + saveErr.message, 'warning', 4000);
+    }
+    // In-Memory-Cache + Render der Detail-Card
     window._eiAiQuickCache = window._eiAiQuickCache || {};
     window._eiAiQuickCache[recId] = { ts: Date.now(), data: parsed };
     if (out) out.innerHTML = _renderAiQuickResult({ data: parsed });
@@ -23464,7 +23512,7 @@ function _renderAiQuickResult(entry) {
     ${row('HV-Telefon:',      d.hv_tel)}
     ${row('Anliegen:',        d.anliegen)}
     ${row('Kategorie:',       d.kategorie)}
-    <div style="font-size:11px;color:#94a3b8;margin-top:8px;padding-top:8px;border-top:1px dashed #e9d5ff">Step 1 — nur Anzeige. Manuelle HV-Zuordnung über „Hausverwaltung suchen" im Vorgang.</div>
+    <div style="font-size:11px;color:#15803d;margin-top:8px;padding-top:8px;border-top:1px dashed #e9d5ff">✓ Gespeichert · Listen-Eintrag zeigt jetzt den echten Absender · HV-Zuordnung kannst du weiterhin im Vorgang über „Hausverwaltung suchen" bestätigen.</div>
   </div>`;
 }
 
@@ -23495,11 +23543,12 @@ async function clearExternalCheckId(recId) {
   await saveExternalCheckId(recId);
 }
 
-// V12.168/169: Best-Effort HV-Anzeige aus den KI-Vorgängen.
+// V12.168/169/172: Best-Effort HV-Anzeige.
 // Priorität:
 //  1) Bestätigte Zuordnung — assigned_org_name (vom User per HV-Picker bestätigt)
-//  2) KI-Vermutung — kunde_firma / kunde_name aus den extrahierten Vorgängen
-//  3) Original-Absender (from_name / from_email)
+//  2) Gespeicherte KI-Schnell-Analyse — real_hv_firma / real_from_name (V12.172)
+//  3) KI-Vermutung aus Vorgängen — kunde_firma / kunde_name
+//  4) Original-Absender (from_name / from_email)
 function _eiDisplayHV(r) {
   let assigned = null, kiHit = null;
   try {
@@ -23515,6 +23564,18 @@ function _eiDisplayHV(r) {
       secondary: String(assigned.assigned_org_email || assigned.kunde_email || '').trim(),
       source:    'assigned',
       orgId:     String(assigned.assigned_org_id || ''),
+    };
+  }
+  // V12.172: KI-Schnell-Analyse-Ergebnisse (gespeichert in Airtable)
+  const realHv    = String(r.real_hv_firma  || '').trim();
+  const realHvMail= String(r.real_hv_email  || '').trim();
+  const realFn    = String(r.real_from_name || '').trim();
+  const realFm    = String(r.real_from_email|| '').trim();
+  if (realHv || realFn) {
+    return {
+      primary:   realHv || realFn || '(unbekannt)',
+      secondary: realHvMail || realFm || '',
+      source:    'ai',
     };
   }
   if (kiHit) {
