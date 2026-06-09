@@ -5953,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.173';
+const APP_VERSION = 'V12.174';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7056,6 +7056,15 @@ async function setupTables() {
       { name: 'real_anliegen',        type: 'singleLineText' },
       { name: 'real_kategorie',       type: 'singleLineText' },
       { name: 'ai_quick_at',          type: 'singleLineText' },
+      // V12.174: Aufzug-Zuordnung pro Email (eine Email = ein Aufzug; Multi-Splits)
+      { name: 'aufzug_id',            type: 'singleLineText' },
+      { name: 'aufzug_record_id',     type: 'singleLineText' },
+      { name: 'aufzug_fabriknummer',  type: 'singleLineText' },
+      { name: 'aufzug_standort',      type: 'singleLineText' },
+      { name: 'aufzug_hersteller',    type: 'singleLineText' },
+      { name: 'aufzug_split_from',    type: 'singleLineText' }, // Original-Email-ID bei Split-Kopien
+      { name: 'aufzug_split_count',   type: 'singleLineText' }, // Anzahl Kopien in der Gruppe
+      { name: 'ai_aufzug_at',         type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
@@ -23157,6 +23166,8 @@ function _eiFiltered() {
       r.attachment_filenames, r.message_id,
       r.external_check_id,            // V12.168: Check-ID mitsuchen
       r.vorgaenge_json,                // KI-Vorgänge (Kunde, Objekt, Anliegen)
+      r.aufzug_fabriknummer, r.aufzug_standort, r.aufzug_hersteller, // V12.174: Aufzug-Felder
+      r.real_from_name, r.real_from_email, r.real_hv_firma, r.real_hv_email, r.real_anliegen,
     ].filter(Boolean).join(' \n ').toLowerCase();
     return terms.every(t => hay.includes(t));
   });
@@ -23402,6 +23413,14 @@ function renderEmailInboxList() {
     const extPill = ext
       ? `<span title="Externe Check-ID" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono)">#${_esc(ext)}</span>`
       : '';
+    // V12.174: Aufzug-Pille — Fabriknummer + Standort, wenn zugeordnet
+    const afn = String(r.aufzug_fabriknummer || '').trim();
+    const ast = String(r.aufzug_standort     || '').trim();
+    const splitCnt = parseInt(r.aufzug_split_count || '0', 10);
+    const aufzugPill = (afn || ast)
+      ? `<span title="${_esc(ast || 'Aufzug')}${afn ? ' · Fabrik-Nr. ' + _esc(afn) : ''}" style="background:#cffafe;color:#155e75;border:1px solid #67e8f9;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;letter-spacing:.04em;font-family:var(--dr-f-mono)">🛗 ${_esc(afn || ast)}</span>`
+        + (splitCnt > 1 ? `<span title="Diese Email ist Teil einer Aufteilung in ${splitCnt} Anlagen" style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.04em">1/${splitCnt}</span>` : '')
+      : '';
     return (
       `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')"${outStyle}>` +
         `<div class="ei-row-from">${fromLabel}</div>` +
@@ -23409,6 +23428,7 @@ function renderEmailInboxList() {
         `<div class="ei-row-meta">` +
           (isOut ? '' : `<span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>`) +
           (vcnt > 0 && !isOut ? `<span style="font-size:10.5px;color:var(--muted);font-weight:600">${vcnt} Vorgang${vcnt>1?'änge':''}</span>` : '') +
+          aufzugPill +
           extPill +
           statusPill +
           `<span class="ei-row-date">${_esc(date)}</span>` +
@@ -23532,6 +23552,243 @@ Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur was im 
   } finally {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
+}
+
+// V12.174: KI-Aufzug-Schnellbutton
+//   1) Claude extrahiert Fabriknummern + Standorte aus dem Body
+//   2) Frontend prüft pro Treffer: existiert der Aufzug in Airtable?
+//   3) Bei Match → übernehmen; bei Miss → upsertAufzug mit HV-Org-ID
+//   4) Bei mehreren Aufzügen wird die Email gesplittet — pro Aufzug eine eigene
+//      Kopie. Original behält den ersten Aufzug.
+async function runAiAufzugAnalysis(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error'); return; }
+  const btn = document.getElementById('ei_ai_aufzug_btn');
+  const out = document.getElementById('ei_ai_aufzug_result');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.textContent = 'Analysiere …'; }
+  if (out) out.innerHTML = '<div style="color:#0891b2;font-size:12px;padding:8px 0">⏳ Claude sucht nach Fabriknummern …</div>';
+  try {
+    const rawBody = String(r.body_text || r.body || '');
+    const stripped = rawBody.length > 200 ? rawBody : (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || rawBody) : rawBody);
+    const body = (stripped || '').slice(0, 9000);
+    const subj = String(r.subject || '');
+    const userMsg = `Betreff: ${subj}\n\nEmail-Body:\n---\n${body}\n---\n\nExtrahiere ALLE Aufzugsanlagen, die explizit oder implizit erwähnt werden. Eine Anlage = eine Fabriknummer. Wenn keine Fabriknummer im Text steht, gib stattdessen Standort + Hersteller zurück — die Anlage gilt dann als „ohne Fabriknummer".`;
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 900,
+        system: `Du extrahierst Aufzugsanlagen-Daten aus Emails. Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):
+{
+  "aufzuege": [
+    {
+      "fabriknummer": "z. B. 10864997 oder ABC-12345 — leer wenn keine im Text",
+      "standort":     "Anschrift / Hausnummer / Stadtteil — möglichst eindeutig",
+      "hersteller":   "OTIS, Schindler, ThyssenKrupp, Kone, Schmitt+Sohn ... — leer wenn unklar",
+      "anliegen":     "Worum geht es bei DIESER Anlage? Kurzbeschreibung, max. 100 Zeichen"
+    }
+  ]
+}
+
+REGELN:
+- Eine Aufzugsanlage = ein Listen-Eintrag. NIE mehrere Anlagen in einem Eintrag zusammenfassen.
+- Fabriknummern erkennst du an Phrasen wie „Fabrik-Nr.", „Anlage 12345", „Anlagen-Nr.", „Werknummer", manchmal auch als reine 6-10-stellige Zahl direkt im Subject ("Anlage 11065783").
+- Standort: PRIORITÄT auf vollständige Adresse (Straße + Hausnr. + ggf. Stadt). Wenn nur Straße im Text → trotzdem mitnehmen.
+- Wenn die Email gar keine konkrete Anlage erwähnt: leeres Array {"aufzuege":[]}.
+- ERFINDE KEINE Fabriknummern. Lieber leer als raten.`,
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!resp.ok) throw new Error('Claude HTTP ' + resp.status);
+    const data = await resp.json();
+    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed = null;
+    try { parsed = JSON.parse(cleaned); }
+    catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
+    const aufzuege = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.standort)) : [];
+    if (!aufzuege.length) {
+      if (out) out.innerHTML = '<div style="color:#92400e;font-size:12px;padding:8px 0">Keine Aufzugsanlage erkannt — Email enthält keine Fabriknummer / Standort.</div>';
+      return;
+    }
+    // Pro erkanntem Aufzug: in Airtable suchen
+    showToast('Prüfe Aufzüge in Airtable …', 'info', 1500);
+    const enriched = await Promise.all(aufzuege.map(async (a) => {
+      const fn = String(a.fabriknummer || '').trim();
+      if (!fn) return { ai: a, match: null };
+      const matches = await findAufzuegeByFabriknummerAll(fn);
+      return { ai: a, match: matches[0] || null };
+    }));
+    window._eiAiAufzugCache = window._eiAiAufzugCache || {};
+    window._eiAiAufzugCache[recId] = enriched;
+    if (out) out.innerHTML = _renderAufzugAnalysis(recId, enriched);
+  } catch (e) {
+    if (out) out.innerHTML = '<div style="color:#a8312f;font-size:12px;padding:8px 0">Fehler: ' + _esc(e.message) + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Aufzug erkennen ↻'; }
+  }
+}
+
+function _renderAufzugAnalysis(recId, list) {
+  const isMulti = list.length > 1;
+  const rows = list.map((entry, i) => {
+    const ai = entry.ai || {};
+    const m  = entry.match;
+    const fn = (m && m.fabriknummer) || ai.fabriknummer || '';
+    const std= (m && m.standort)     || ai.standort     || '';
+    const hr = (m && m.hersteller)   || ai.hersteller   || '';
+    const tag = m
+      ? `<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700">✓ in DB</span>`
+      : `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700">neu — KI legt an</span>`;
+    return `<div style="background:#fff;border:1px solid #cffafe;border-radius:8px;padding:9px 12px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="background:#0891b2;color:#fff;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700">#${i + 1}</span>
+        <span style="font-family:var(--dr-f-mono);font-size:12px;font-weight:700;color:#0f172a">Fn ${_esc(fn || '— (ohne)')}</span>
+        ${tag}
+      </div>
+      <div style="font-size:12px;color:#475569;margin-top:3px"><strong>Standort:</strong> ${_esc(std || '—')}${hr ? ' · ' + _esc(hr) : ''}</div>
+      ${ai.anliegen ? `<div style="font-size:11.5px;color:#64748b;margin-top:2px"><em>${_esc(ai.anliegen)}</em></div>` : ''}
+    </div>`;
+  }).join('');
+  const splitHint = isMulti
+    ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#9a3412;line-height:1.5">
+        <strong>⚠ ${list.length} Aufzüge erkannt:</strong> Die Email wird in <strong>${list.length} separate Emails</strong> aufgeteilt — je eine pro Fabriknummer. Original behält Aufzug #1, die anderen sind neue Kopien.
+      </div>`
+    : '';
+  return `<div style="background:#ecfeff;border:1px solid #67e8f9;border-radius:8px;padding:12px;margin-top:8px">
+    ${splitHint}
+    ${rows}
+    <button onclick="applyAufzugAnalysis('${recId}')" style="margin-top:6px;background:#0891b2;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+      ${isMulti ? `🛗 ${list.length} Aufzüge übernehmen + Email splitten` : '🛗 Aufzug übernehmen'}
+    </button>
+  </div>`;
+}
+
+// Cache zum Übernehmen (zwischen Analyse und Klick auf "Übernehmen")
+window._eiAiAufzugCache = window._eiAiAufzugCache || {};
+
+async function applyAufzugAnalysis(recId) {
+  const cached = window._eiAiAufzugCache[recId];
+  if (!cached) { showToast('Bitte zuerst „Aufzug erkennen" klicken.', 'warning'); return; }
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  // HV-Org-ID ermitteln (für upsertAufzug bei neuen Anlagen)
+  let hvOrgId = '', hvName = '';
+  try {
+    const arr = JSON.parse(r.vorgaenge_json || '[]');
+    if (Array.isArray(arr)) {
+      const a = arr.find(x => x && x.assigned_org_id);
+      if (a) { hvOrgId = String(a.assigned_org_id || ''); hvName = String(a.assigned_org_name || ''); }
+    }
+  } catch (_) {}
+  if (!hvName) hvName = String(r.real_hv_firma || '');
+  showToast('Lege Aufzüge an / verknüpfe …', 'info', 2000);
+  // Pro erkanntem Aufzug: Match holen oder anlegen, dann Email-Daten setzen
+  const finals = [];
+  for (const entry of cached) {
+    const ai = entry.ai || {};
+    let m = entry.match;
+    if (!m) {
+      // Neu anlegen
+      try {
+        const created = await upsertAufzug({
+          fabriknummer:        String(ai.fabriknummer || '').trim(),
+          standort:            String(ai.standort     || '').trim(),
+          hersteller:          String(ai.hersteller   || '').trim(),
+          hv_pipedrive_org_id: hvOrgId,
+          hv_name:             hvName,
+          notiz:               'KI-Schnell-Anlage aus Email "' + (r.subject || '').slice(0, 80) + '"',
+        });
+        m = {
+          id:           created.id,
+          _recordId:    created.recordId,
+          fabriknummer: String(ai.fabriknummer || '').trim(),
+          standort:     String(ai.standort     || '').trim(),
+          hersteller:   String(ai.hersteller   || '').trim(),
+        };
+      } catch (e) {
+        console.warn('[V12.174] upsertAufzug failed:', e.message);
+        showToast('Aufzug-Anlage fehlgeschlagen: ' + e.message, 'error', 4000);
+        continue;
+      }
+    }
+    finals.push({ ai, match: m });
+  }
+  if (!finals.length) { showToast('Kein Aufzug konnte verarbeitet werden.', 'error'); return; }
+  const aiAt = new Date().toISOString();
+  // Erster Aufzug → Original-Email aktualisieren
+  const first = finals[0];
+  const baseFields = {
+    aufzug_id:           String(first.match.id || ''),
+    aufzug_record_id:    String(first.match._recordId || ''),
+    aufzug_fabriknummer: String(first.match.fabriknummer || first.ai.fabriknummer || ''),
+    aufzug_standort:     String(first.match.standort || first.ai.standort || ''),
+    aufzug_hersteller:   String(first.match.hersteller || first.ai.hersteller || ''),
+    ai_aufzug_at:        aiAt,
+    aufzug_split_count:  finals.length > 1 ? String(finals.length) : '',
+  };
+  try {
+    await atUpdate('Emails', recId, baseFields);
+    Object.assign(r, baseFields);
+  } catch (e) { showToast('Speichern fehlgeschlagen: ' + e.message, 'error'); return; }
+
+  // Weitere Aufzüge → Email-Kopien erzeugen
+  const newRecs = [];
+  for (let i = 1; i < finals.length; i++) {
+    const f = finals[i];
+    try {
+      const copyFields = _eiCloneEmailFields(r);
+      copyFields.aufzug_id           = String(f.match.id || '');
+      copyFields.aufzug_record_id    = String(f.match._recordId || '');
+      copyFields.aufzug_fabriknummer = String(f.match.fabriknummer || f.ai.fabriknummer || '');
+      copyFields.aufzug_standort     = String(f.match.standort || f.ai.standort || '');
+      copyFields.aufzug_hersteller   = String(f.match.hersteller || f.ai.hersteller || '');
+      copyFields.ai_aufzug_at        = aiAt;
+      copyFields.aufzug_split_from   = String(recId);
+      copyFields.aufzug_split_count  = String(finals.length);
+      const created = await atWrite('Emails', copyFields);
+      // atWrite gibt manchmal nichts zurück — wir laden den Posteingang am Ende neu
+      newRecs.push(created || null);
+    } catch (e) {
+      console.warn('[V12.174] Email-Kopie fehlgeschlagen:', e.message);
+    }
+  }
+  // Posteingang neu laden, damit Kopien auftauchen
+  if (typeof loadEmailInbox === 'function') {
+    try { await loadEmailInbox(true); } catch (_) {}
+  }
+  if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  delete window._eiAiAufzugCache[recId];
+  showToast(finals.length === 1
+    ? `✓ Aufzug ${first.match.fabriknummer || '—'} zugeordnet`
+    : `✓ ${finals.length} Aufzüge zugeordnet · ${finals.length - 1} Email-Kopie${finals.length - 1 === 1 ? '' : 'n'} erstellt`,
+    'success', 3500);
+}
+
+// Helper: kopiert die für eine sinnvolle Email-Kopie nötigen Felder
+function _eiCloneEmailFields(r) {
+  const KEEP = ['subject','from_email','from_name','to_email','received_at','body','body_text','body_html','body_preview',
+    'message_id','ki_classification','ki_confidence','ki_summary','ki_cost_eur',
+    'attachment_count','attachment_filenames','status','direction','is_forwarded','forwarded_via','raw_subject',
+    'vorgaenge_json','ki_vorgaenge_count','linked_check_ids','linked_checks_count',
+    'real_from_name','real_from_email','real_hv_firma','real_hv_email','real_hv_tel','real_anliegen','real_kategorie','ai_quick_at',
+  ];
+  const out = {};
+  for (const k of KEEP) {
+    const v = r[k];
+    if (v !== undefined && v !== null && v !== '') out[k] = (typeof v === 'string') ? v : String(v);
+  }
+  // Wichtig: status standardmäßig auf 'neu' damit die Kopie sichtbar wird
+  if (!out.status) out.status = 'neu';
+  return out;
 }
 
 function _renderAiQuickResult(entry) {
@@ -23744,12 +24001,20 @@ function renderEmailInboxDetail() {
         <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px">🤖 KI-Schnell-Analyse</div>
         <div style="font-size:11.5px;color:#7c3aed">Erkennt den ECHTEN Absender und die HV aus dem Body — besonders bei Forwards.</div>
       </div>
-      <button id="ei_ai_quick_btn" onclick="runAiQuickAnalysis('${r._id}')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(124,58,237,.35)">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
-        ${aiCached ? 'Erneut analysieren' : 'Absender erkennen'}
-      </button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button id="ei_ai_quick_btn" onclick="runAiQuickAnalysis('${r._id}')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(124,58,237,.35)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
+          ${aiCached ? 'Absender ↻' : 'Absender erkennen'}
+        </button>
+        <!-- V12.174: Aufzug-Schnellbutton -->
+        <button id="ei_ai_aufzug_btn" onclick="runAiAufzugAnalysis('${r._id}')" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(8,145,178,.35)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01"/></svg>
+          Aufzug erkennen
+        </button>
+      </div>
     </div>
     <div id="ei_ai_quick_result">${aiCached ? _renderAiQuickResult(aiCached) : ''}</div>
+    <div id="ei_ai_aufzug_result"></div>
   </div>`;
 
   // V12.168: Externer Verweis (Check-ID aus anderem System) — speicherbar
