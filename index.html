@@ -5953,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.175';
+const APP_VERSION = 'V12.176';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23590,7 +23590,9 @@ async function runAiAufzugAnalysis(recId) {
   "aufzuege": [
     {
       "fabriknummer": "z. B. 10864997 oder ABC-12345 — leer wenn keine im Text",
-      "standort":     "Anschrift / Hausnummer / Stadtteil — möglichst eindeutig",
+      "strasse":      "Straße + Hausnummer (z. B. „Crusiusstr. 1")",
+      "plz":          "5-stellige Postleitzahl (oder leer)",
+      "ort":          "Ortsname (oder leer)",
       "hersteller":   "OTIS, Schindler, ThyssenKrupp, Kone, Schmitt+Sohn ... — leer wenn unklar",
       "anliegen":     "Worum geht es bei DIESER Anlage? Kurzbeschreibung, max. 100 Zeichen"
     }
@@ -23600,9 +23602,9 @@ async function runAiAufzugAnalysis(recId) {
 REGELN:
 - Eine Aufzugsanlage = ein Listen-Eintrag. NIE mehrere Anlagen in einem Eintrag zusammenfassen.
 - Fabriknummern erkennst du an Phrasen wie „Fabrik-Nr.", „Anlage 12345", „Anlagen-Nr.", „Werknummer", manchmal auch als reine 6-10-stellige Zahl direkt im Subject ("Anlage 11065783").
-- Standort: PRIORITÄT auf vollständige Adresse (Straße + Hausnr. + ggf. Stadt). Wenn nur Straße im Text → trotzdem mitnehmen.
+- Adresse in DREI getrennte Felder zerlegen: strasse + plz + ort. Wenn nur Straße im Text → strasse füllen, plz/ort leer lassen.
 - Wenn die Email gar keine konkrete Anlage erwähnt: leeres Array {"aufzuege":[]}.
-- ERFINDE KEINE Fabriknummern. Lieber leer als raten.`,
+- ERFINDE NICHTS. Lieber Feld leer als raten — besonders bei Fabriknummern.`,
         messages: [{ role: 'user', content: userMsg }],
       }),
     });
@@ -23613,7 +23615,7 @@ REGELN:
     let parsed = null;
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
-    let aufzuege = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.standort)) : [];
+    let aufzuege = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.strasse || a.plz || a.ort || a.standort)) : [];
     // V12.175: Fallback — wenn Body keine Anlage liefert, PDF-Anhänge prüfen
     if (!aufzuege.length) {
       const atts = Array.isArray(r.attachments) ? r.attachments : [];
@@ -23691,14 +23693,21 @@ async function _eiAufzugFromAttachments(pdfs, subject) {
         system: `Du extrahierst Aufzugsanlagen-Daten aus PDF-Dokumenten. Antworte AUSSCHLIESSLICH mit gültigem JSON:
 {
   "aufzuege": [
-    { "fabriknummer": "...", "standort": "...", "hersteller": "...", "anliegen": "..." }
+    {
+      "fabriknummer": "...",
+      "strasse":      "Straße + Hausnummer",
+      "plz":          "5-stellig",
+      "ort":          "...",
+      "hersteller":   "...",
+      "anliegen":     "..."
+    }
   ]
 }
 
 REGELN:
 - Eine Aufzugsanlage = ein Listen-Eintrag.
 - Fabriknummern erkennst du an Phrasen wie "Fabrik-Nr.", "Anlagen-Nr.", "Werknummer", auf TÜV-/ZÜS-Berichten, Wartungsverträgen, Rechnungen.
-- Standort: möglichst vollständige Adresse.
+- Adresse in DREI getrennte Felder zerlegen: strasse + plz + ort.
 - ERFINDE NICHTS. Lieber leer als raten. Wenn das PDF keine Aufzug-Anlage enthält, gib {"aufzuege":[]} zurück.`,
         messages: [{ role: 'user', content: userContent }],
       }),
@@ -23710,7 +23719,7 @@ REGELN:
     let parsed = null;
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
-    const found = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.standort)) : [];
+    const found = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.strasse || a.plz || a.ort || a.standort)) : [];
     // Markiere alle als "aus Anhang"
     return found.map(a => Object.assign({ source: 'attachment' }, a));
   } catch (e) {
@@ -23721,41 +23730,98 @@ REGELN:
 
 function _renderAufzugAnalysis(recId, list) {
   const isMulti = list.length > 1;
+  // Legacy: standort-String → Heuristik strasse/plz/ort
+  const splitLegacy = (std) => {
+    const s = String(std || '').trim();
+    if (!s) return { strasse: '', plz: '', ort: '' };
+    const m = s.match(/^(.*?)[,·]\s*(\d{5})\s+(.+)$/);
+    if (m) return { strasse: m[1].trim(), plz: m[2], ort: m[3].trim() };
+    return { strasse: s, plz: '', ort: '' };
+  };
   const rows = list.map((entry, i) => {
     const ai = entry.ai || {};
     const m  = entry.match;
-    const fn = (m && m.fabriknummer) || ai.fabriknummer || '';
-    const std= (m && m.standort)     || ai.standort     || '';
-    const hr = (m && m.hersteller)   || ai.hersteller   || '';
-    const tag = m
+    const legacy = (!ai.strasse && !ai.plz && !ai.ort && (ai.standort || (m && m.standort))) ? splitLegacy(ai.standort || (m && m.standort)) : {};
+    const fn = ((m && m.fabriknummer) || ai.fabriknummer || '').toString().trim();
+    const st = ((m && m.strasse)      || ai.strasse      || legacy.strasse || '').toString().trim();
+    const pz = ((m && m.plz)          || ai.plz          || legacy.plz     || '').toString().trim();
+    const or = ((m && m.ort)          || ai.ort          || legacy.ort     || '').toString().trim();
+    const hr = ((m && m.hersteller)   || ai.hersteller   || '').toString().trim();
+    const isInDb = !!m;
+    const tag = isInDb
       ? `<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700">✓ in DB</span>`
       : `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700">neu — KI legt an</span>`;
     const srcTag = ai.source === 'attachment'
       ? `<span title="Aus PDF-Anhang extrahiert" style="background:#ede9fe;color:#6b21a8;border:1px solid #d8b4fe;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700">📎 aus Anhang</span>`
       : '';
-    return `<div style="background:#fff;border:1px solid #cffafe;border-radius:8px;padding:9px 12px;margin-bottom:6px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    const fnMissing = !fn;
+    // Bei "neu": editable Inputs — User kann fehlende Werte (besonders Fabriknummer) ergänzen
+    const editable = !isInDb;
+    const fieldRow = (label, key, value, required) => editable
+      ? `<div style="display:flex;align-items:baseline;gap:8px;margin-top:4px">
+           <span style="font-size:10.5px;font-weight:700;color:#155e75;text-transform:uppercase;letter-spacing:.06em;min-width:110px">${label}${required ? ' *' : ''}</span>
+           <input type="text" data-edit-idx="${i}" data-edit-field="${key}" value="${_esc(value)}" oninput="_eiAufzugEdit(${i},'${key}',this.value)" placeholder="${required ? 'Pflicht' : ''}" style="flex:1;padding:5px 9px;border:1px solid ${required && !value ? '#fb923c' : '#cbd5e1'};border-radius:5px;font-size:12px;font-family:${key === 'fabriknummer' ? 'var(--dr-f-mono)' : 'inherit'};background:${required && !value ? '#fff7ed' : '#fff'}">
+         </div>`
+      : `<div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
+           <span style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;min-width:110px">${label}</span>
+           <span style="font-size:12px;color:#0f172a">${_esc(value || '—')}</span>
+         </div>`;
+    return `<div data-aufzug-card-idx="${i}" style="background:#fff;border:1px solid #cffafe;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
         <span style="background:#0891b2;color:#fff;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700">#${i + 1}</span>
-        <span style="font-family:var(--dr-f-mono);font-size:12px;font-weight:700;color:#0f172a">Fn ${_esc(fn || '— (ohne)')}</span>
         ${tag}
         ${srcTag}
+        ${fnMissing ? '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700">⚠ Fabriknummer fehlt</span>' : ''}
       </div>
-      <div style="font-size:12px;color:#475569;margin-top:3px"><strong>Standort:</strong> ${_esc(std || '—')}${hr ? ' · ' + _esc(hr) : ''}</div>
-      ${ai.anliegen ? `<div style="font-size:11.5px;color:#64748b;margin-top:2px"><em>${_esc(ai.anliegen)}</em></div>` : ''}
+      ${fieldRow('Fabriknummer', 'fabriknummer', fn, true)}
+      ${fieldRow('Straße + Nr.', 'strasse',      st)}
+      <div style="display:flex;gap:8px">
+        <div style="flex:0 0 145px">${fieldRow('PLZ', 'plz', pz)}</div>
+        <div style="flex:1">${fieldRow('Ort', 'ort', or)}</div>
+      </div>
+      ${fieldRow('Hersteller', 'hersteller', hr)}
+      ${ai.anliegen ? `<div style="margin-top:6px;font-size:11.5px;color:#64748b"><em>${_esc(ai.anliegen)}</em></div>` : ''}
     </div>`;
   }).join('');
+  const allHaveFn = list.every(e => String((e.ai && e.ai.fabriknummer) || (e.match && e.match.fabriknummer) || '').trim());
   const splitHint = isMulti
     ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#9a3412;line-height:1.5">
         <strong>⚠ ${list.length} Aufzüge erkannt:</strong> Die Email wird in <strong>${list.length} separate Emails</strong> aufgeteilt — je eine pro Fabriknummer. Original behält Aufzug #1, die anderen sind neue Kopien.
       </div>`
     : '';
+  const missingHint = !allHaveFn
+    ? `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:8px 12px;margin:6px 0 8px;font-size:11.5px;color:#991b1b;line-height:1.5">
+        <strong>⚠ Fabriknummer ist Pflicht.</strong> Trage die fehlende Nummer manuell ein — sonst kann der Aufzug nicht eindeutig zugeordnet werden.
+      </div>`
+    : '';
   return `<div style="background:#ecfeff;border:1px solid #67e8f9;border-radius:8px;padding:12px;margin-top:8px">
     ${splitHint}
     ${rows}
-    <button onclick="applyAufzugAnalysis('${recId}')" style="margin-top:6px;background:#0891b2;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+    ${missingHint}
+    <button id="ei_aufzug_apply_btn" onclick="applyAufzugAnalysis('${recId}')" ${allHaveFn ? '' : 'disabled'} style="margin-top:4px;background:${allHaveFn ? '#0891b2' : '#cbd5e1'};color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:${allHaveFn ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif">
       ${isMulti ? `🛗 ${list.length} Aufzüge übernehmen + Email splitten` : '🛗 Aufzug übernehmen'}
     </button>
   </div>`;
+}
+
+// V12.176: Inline-Edit in der Karte — User korrigiert oder ergänzt Felder vor dem Speichern
+function _eiAufzugEdit(idx, field, value) {
+  const cache = window._eiAiAufzugCache || {};
+  for (const recId of Object.keys(cache)) {
+    const list = cache[recId];
+    if (Array.isArray(list) && list[idx] && list[idx].ai) {
+      list[idx].ai[field] = String(value || '').trim();
+      // Apply-Button updaten je nach Fabriknummer
+      const allHaveFn = list.every(e => String((e.ai && e.ai.fabriknummer) || (e.match && e.match.fabriknummer) || '').trim());
+      const btn = document.getElementById('ei_aufzug_apply_btn');
+      if (btn) {
+        btn.disabled = !allHaveFn;
+        btn.style.background = allHaveFn ? '#0891b2' : '#cbd5e1';
+        btn.style.cursor = allHaveFn ? 'pointer' : 'not-allowed';
+      }
+      return;
+    }
+  }
 }
 
 // Cache zum Übernehmen (zwischen Analyse und Klick auf "Übernehmen")
@@ -23776,19 +23842,36 @@ async function applyAufzugAnalysis(recId) {
     }
   } catch (_) {}
   if (!hvName) hvName = String(r.real_hv_firma || '');
+  // V12.176: Fabriknummer ist Pflicht — wenn ein Eintrag keine hat, hier abbrechen
+  const missingFn = cached.filter(e => !String((e.ai && e.ai.fabriknummer) || (e.match && e.match.fabriknummer) || '').trim());
+  if (missingFn.length) {
+    showToast(missingFn.length + ' Aufzug' + (missingFn.length === 1 ? '' : 'e') + ' ohne Fabriknummer — bitte ergänzen', 'warning', 4500);
+    return;
+  }
   showToast('Lege Aufzüge an / verknüpfe …', 'info', 2000);
   // Pro erkanntem Aufzug: Match holen oder anlegen, dann Email-Daten setzen
   const finals = [];
   for (const entry of cached) {
     const ai = entry.ai || {};
     let m = entry.match;
+    // V12.176: Standort aus Einzelfeldern bauen, Fallback auf legacy standort
+    const fnNew  = String(ai.fabriknummer || '').trim();
+    const stNew  = String(ai.strasse || '').trim();
+    const pzNew  = String(ai.plz     || '').trim();
+    const orNew  = String(ai.ort     || '').trim();
+    const composedStandort = [stNew, [pzNew, orNew].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+                          || String(ai.standort || '').trim();
     if (!m) {
-      // Neu anlegen
+      // Neu anlegen — Fabriknummer Pflicht
+      if (!fnNew) {
+        showToast('Aufzug-Anlage übersprungen: Fabriknummer fehlt', 'warning', 3000);
+        continue;
+      }
       try {
         const created = await upsertAufzug({
-          fabriknummer:        String(ai.fabriknummer || '').trim(),
-          standort:            String(ai.standort     || '').trim(),
-          hersteller:          String(ai.hersteller   || '').trim(),
+          fabriknummer:        fnNew,
+          standort:            composedStandort,
+          hersteller:          String(ai.hersteller || '').trim(),
           hv_pipedrive_org_id: hvOrgId,
           hv_name:             hvName,
           notiz:               'KI-Schnell-Anlage aus Email "' + (r.subject || '').slice(0, 80) + '"',
@@ -23796,9 +23879,9 @@ async function applyAufzugAnalysis(recId) {
         m = {
           id:           created.id,
           _recordId:    created.recordId,
-          fabriknummer: String(ai.fabriknummer || '').trim(),
-          standort:     String(ai.standort     || '').trim(),
-          hersteller:   String(ai.hersteller   || '').trim(),
+          fabriknummer: fnNew,
+          standort:     composedStandort,
+          hersteller:   String(ai.hersteller || '').trim(),
         };
       } catch (e) {
         console.warn('[V12.174] upsertAufzug failed:', e.message);
