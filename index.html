@@ -4059,10 +4059,36 @@ const pdfWorkerReady = Promise.resolve();</script>
       <button class="dr-pill ei-filt-pill" data-status="verworfen"      onclick="setEiFilter('verworfen')">verworfen</button>
       <button class="dr-pill ei-filt-pill" data-status="alle"           onclick="setEiFilter('alle')">alle</button>
       <div style="flex:1;min-width:8px"></div>
+      <!-- V12.170: Duplikate finden + archivieren -->
+      <button type="button" onclick="openEiDuplicatesModal()" title="Identische Emails finden und archivieren (Status → verworfen)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 12px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:600" onmouseover="this.style.borderColor='var(--dr-blue)';this.style.color='var(--dr-blue)'" onmouseout="this.style.borderColor='var(--dr-border-strong)';this.style.color='var(--dr-ink)'">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Duplikate
+      </button>
       <div style="position:relative">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="search" id="emailInboxSearch" placeholder="Email durchsuchen (Absender, Betreff, Inhalt …)" oninput="setEiSearch(this.value)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 30px 7px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:280px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
         <button id="emailInboxSearchClear" type="button" onclick="setEiSearch('', true)" title="Suche löschen" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--dr-ink-mute);cursor:pointer;padding:3px 6px;font-size:14px;line-height:1">✕</button>
+      </div>
+    </div>
+
+    <!-- V12.170: Duplikate-Modal -->
+    <div id="eiDuplicatesModal" style="display:none;position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6200;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px">
+      <div style="background:#fff;border-radius:14px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.4);overflow:hidden;font-family:'DM Sans',sans-serif">
+        <div style="background:var(--dr-navy,#1a3a5c);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;color:#fff">
+          <div>
+            <div style="font-size:15px;font-weight:700">🧹 Duplikate finden und archivieren</div>
+            <div style="font-size:11.5px;color:rgba(255,255,255,.75);margin-top:2px">Pro Duplikat-Gruppe bleibt die älteste Mail erhalten. Die anderen werden auf „verworfen" gesetzt.</div>
+          </div>
+          <button onclick="document.getElementById('eiDuplicatesModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px">✕</button>
+        </div>
+        <div id="eiDupesBody" style="flex:1;overflow-y:auto;padding:18px 22px;background:#f8fafc"></div>
+        <div style="padding:12px 22px;border-top:1px solid #e5e7eb;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span id="eiDupesSummary" style="font-size:12px;color:#64748b"></span>
+          <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('eiDuplicatesModal').style.display='none'" style="background:#fff;border:1px solid #d1d5db;color:#374151;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
+            <button id="eiDupesArchiveBtn" onclick="archiveSelectedDuplicates()" style="background:#d97706;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Markierte archivieren</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -5927,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.169';
+const APP_VERSION = 'V12.170';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23125,6 +23151,144 @@ function _eiFiltered() {
     ].filter(Boolean).join(' \n ').toLowerCase();
     return terms.every(t => hay.includes(t));
   });
+}
+
+// V12.170: Duplikat-Erkennung
+//   Schlüssel pro Email:
+//     1) message_id (zuverlässigster Marker)
+//     2) Fallback: from_email|subject|first-200-chars-body|attachment_filenames
+//   Pro Gruppe wird die ÄLTESTE behalten, die anderen vorgeschlagen zum Archivieren.
+function _findEmailDuplicates() {
+  const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (r.status || 'neu') !== 'verworfen');
+  const buckets = new Map();
+  for (const r of all) {
+    const mid = String(r.message_id || '').trim();
+    let key;
+    if (mid) {
+      key = 'mid:' + mid.toLowerCase();
+    } else {
+      const fe = String(r.from_email || '').toLowerCase().trim();
+      const su = String(r.subject || '').toLowerCase().trim();
+      const bo = String(r.body_text || r.body_preview || r.body || '').replace(/\s+/g, ' ').trim().slice(0, 200).toLowerCase();
+      const at = String(r.attachment_filenames || '').toLowerCase();
+      key = 'sig:' + fe + '|' + su + '|' + bo + '|' + at;
+    }
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(r);
+  }
+  const groups = [];
+  for (const [key, list] of buckets) {
+    if (list.length < 2) continue;
+    // Sortiere asc nach received_at — älteste zuerst (= Champion)
+    list.sort((a, b) => String(a.received_at || '').localeCompare(String(b.received_at || '')));
+    groups.push({ key, champion: list[0], dupes: list.slice(1) });
+  }
+  return groups;
+}
+
+function openEiDuplicatesModal() {
+  const groups = _findEmailDuplicates();
+  const body = document.getElementById('eiDupesBody');
+  const sum  = document.getElementById('eiDupesSummary');
+  const btn  = document.getElementById('eiDupesArchiveBtn');
+  if (!body) return;
+  if (!groups.length) {
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:#475569;font-size:13.5px;line-height:1.6">✓ Keine doppelten Emails gefunden.<br><span style="font-size:12px;color:#94a3b8">Vergleich: Message-ID; sonst Absender + Betreff + Body-Anfang + Anhänge.</span></div>';
+    if (sum) sum.textContent = '0 Gruppen';
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.55'; btn.style.cursor = 'not-allowed'; btn.textContent = 'Markierte archivieren'; }
+    document.getElementById('eiDuplicatesModal').style.display = 'flex';
+    return;
+  }
+  // Default: alle Duplikate angehakt (alle außer Champion archivieren)
+  window._eiDupSelection = new Set();
+  groups.forEach(g => g.dupes.forEach(d => window._eiDupSelection.add(d._id)));
+  window._eiDupGroups = groups;
+  _renderDupesBody();
+  document.getElementById('eiDuplicatesModal').style.display = 'flex';
+}
+
+function _renderDupesBody() {
+  const groups = window._eiDupGroups || [];
+  const body = document.getElementById('eiDupesBody');
+  const sum  = document.getElementById('eiDupesSummary');
+  const btn  = document.getElementById('eiDupesArchiveBtn');
+  if (!body) return;
+  let totalDupes = 0;
+  body.innerHTML = groups.map((g, gi) => {
+    totalDupes += g.dupes.length;
+    const subj = g.champion.subject || '(kein Betreff)';
+    const champLine = _renderDupeRow(g.champion, true);
+    const dupeLines = g.dupes.map(d => _renderDupeRow(d, false)).join('');
+    return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Gruppe ${gi + 1}</span>
+        <span style="background:#fee2e2;color:#991b1b;border-radius:9px;padding:1px 8px;font-size:11px;font-weight:700">${g.dupes.length} Duplikat${g.dupes.length === 1 ? '' : 'e'}</span>
+        <span style="font-size:13px;color:#0f172a;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(subj)}</span>
+      </div>
+      ${champLine}${dupeLines}
+    </div>`;
+  }).join('');
+  if (sum) sum.textContent = `${groups.length} Gruppe${groups.length === 1 ? '' : 'n'} · ${totalDupes} Duplikat${totalDupes === 1 ? '' : 'e'} insgesamt`;
+  const selCount = (window._eiDupSelection || new Set()).size;
+  if (btn) {
+    btn.disabled = selCount === 0;
+    btn.style.opacity = selCount === 0 ? '0.55' : '1';
+    btn.style.cursor  = selCount === 0 ? 'not-allowed' : 'pointer';
+    btn.textContent = selCount === 0 ? 'Markierte archivieren' : `${selCount} markierte archivieren`;
+  }
+}
+
+function _renderDupeRow(r, isChampion) {
+  const date = String(r.received_at || '').slice(0, 16).replace('T', ' ');
+  const hv = _eiDisplayHV(r);
+  const from = hv.primary + (hv.secondary ? ' · ' + hv.secondary : '');
+  const status = r.status || 'neu';
+  const selected = (window._eiDupSelection || new Set()).has(r._id);
+  if (isChampion) {
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;margin-bottom:6px">
+      <span style="background:#16a34a;color:#fff;border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">✓ BEHALTEN</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(from)}</div>
+        <div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">${_esc(date)} · ${_esc(status)}</div>
+      </div>
+    </div>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:${selected ? '#fff7ed' : '#fafafa'};border:1px solid ${selected ? '#fdba74' : '#e5e7eb'};border-radius:8px;margin-bottom:6px;cursor:pointer" onclick="toggleDupeSelection('${r._id}')">
+    <input type="checkbox" ${selected ? 'checked' : ''} onclick="event.stopPropagation();toggleDupeSelection('${r._id}')" style="width:16px;height:16px;cursor:pointer;accent-color:#d97706">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12.5px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(from)}</div>
+      <div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">${_esc(date)} · ${_esc(status)}</div>
+    </div>
+    <span style="font-size:10.5px;color:#9a3412;font-weight:700;background:#fed7aa;border-radius:5px;padding:2px 7px">archivieren</span>
+  </div>`;
+}
+
+function toggleDupeSelection(recId) {
+  const sel = window._eiDupSelection || new Set();
+  if (sel.has(recId)) sel.delete(recId); else sel.add(recId);
+  window._eiDupSelection = sel;
+  _renderDupesBody();
+}
+
+async function archiveSelectedDuplicates() {
+  const sel = Array.from(window._eiDupSelection || new Set());
+  if (!sel.length) return;
+  const btn = document.getElementById('eiDupesArchiveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = `Archiviere 0/${sel.length} …`; }
+  let done = 0, failed = 0;
+  for (const id of sel) {
+    try {
+      await atUpdate('Emails', id, { status: 'verworfen', status_at: new Date().toISOString(), bearbeiter_name: _eiCurrentUserName() });
+      const row = _eiAllRecords.find(x => x._id === id);
+      if (row) { row.status = 'verworfen'; row.status_at = new Date().toISOString(); }
+      done++;
+    } catch (_) { failed++; }
+    if (btn) btn.textContent = `Archiviere ${done + failed}/${sel.length} …`;
+  }
+  document.getElementById('eiDuplicatesModal').style.display = 'none';
+  if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  if (typeof _refreshEmailInboxBadge === 'function') _refreshEmailInboxBadge();
+  showToast(`${done} Email${done === 1 ? '' : 's'} archiviert` + (failed ? ` · ${failed} fehlgeschlagen` : ''), failed ? 'warning' : 'success');
 }
 
 // V12.167: Suchfeld-Setter
