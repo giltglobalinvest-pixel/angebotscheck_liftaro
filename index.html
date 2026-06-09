@@ -6040,7 +6040,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.180';
+const APP_VERSION = 'V12.181';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7152,8 +7152,11 @@ async function setupTables() {
       { name: 'aufzug_split_from',    type: 'singleLineText' }, // Original-Email-ID bei Split-Kopien
       { name: 'aufzug_split_count',   type: 'singleLineText' }, // Anzahl Kopien in der Gruppe
       { name: 'ai_aufzug_at',         type: 'singleLineText' },
-      // V12.180: KI-strukturierter Betreff im Format "Check-Typ Nr.: X | Kurzbeschreibung"
+      // V12.180/181: KI-strukturierter Betreff. Bestandteile getrennt gespeichert,
+      // ai_subject wird daraus + ID/external_check_id zusammengebaut.
       { name: 'ai_subject',           type: 'singleLineText' },
+      { name: 'ai_subject_typ',       type: 'singleLineText' }, // V12.181: 'Vertragscheck' | 'Reparaturcheck' | 'Rechnungscheck' | 'Korrespondenz'
+      { name: 'ai_subject_anliegen',  type: 'singleLineText' }, // V12.181: kurze Beschreibung
       { name: 'ai_subject_at',        type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
@@ -23759,7 +23762,26 @@ Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur was im 
   }
 }
 
-// V12.180: KI-Schnellbutton "Betreff strukturieren" — generiert "Check-Typ Nr.: X | Kurz"
+// V12.181: ID-Teil für den Betreff bauen — externer Verweis hat Vorrang vor interner Slug-ID
+function _eiCheckIdForSubject(r) {
+  const ext = String(r.external_check_id || '').trim();
+  if (ext) return ext;
+  // Interne ID: die letzten 4 Zeichen wie in der Liste ("#oiN3")
+  return '#' + String(r._id || '').slice(-4);
+}
+
+// V12.181: Betreff zusammensetzen aus Typ + ID + Anliegen
+function _eiBuildAiSubject(typ, anliegen, r) {
+  const t = String(typ || '').trim();
+  const a = String(anliegen || '').trim();
+  if (!t) return '';
+  const id = _eiCheckIdForSubject(r);
+  const head = t + (id ? ' ' + id : '');
+  return a ? (head + ' | ' + a) : head;
+}
+
+// V12.180/181: KI-Schnellbutton "Betreff strukturieren". KI liefert nur Typ + Anliegen,
+// die ID wird vom Frontend vorgehängt (external_check_id || interne ID).
 async function runAiSubjectStructuring(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
@@ -23767,14 +23789,13 @@ async function runAiSubjectStructuring(recId) {
   const btn = document.getElementById('ei_ai_subject_btn');
   const out = document.getElementById('ei_ai_subject_result');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.textContent = 'Analysiere …'; }
-  if (out) out.innerHTML = '<div style="color:#b45309;font-size:12px;padding:8px 0">⏳ Claude formt den Betreff um …</div>';
+  if (out) out.innerHTML = '<div style="color:#b45309;font-size:12px;padding:8px 0">⏳ Claude erkennt Check-Typ + Anliegen …</div>';
   try {
     const rawBody = String(r.body_text || r.body || '');
     const stripped = rawBody.length > 200 ? rawBody : (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || rawBody) : rawBody);
     const body = (stripped || '').slice(0, 6000);
     const subj = String(r.subject || '');
-    const ext  = String(r.external_check_id || '').trim();
-    const userMsg = `Original-Betreff: ${subj}\nExterne Check-ID (falls bekannt): ${ext || '—'}\n\nEmail-Body:\n---\n${body}\n---\n\nFasse das in genau EINEN strukturierten Betreff der Form "Check-Typ Nr.: <Nummer> | <Worum es geht>" um. Wenn keine konkrete Nummer im Text ist, verwende die externe Check-ID; sonst lasse "<Nummer>" ganz weg und gib nur "Check-Typ | <Worum es geht>" zurück.`;
+    const userMsg = `Original-Betreff: ${subj}\n\nEmail-Body:\n---\n${body}\n---\n\nWähle den Check-Typ und formuliere eine knappe Anliegen-Beschreibung.`;
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -23785,13 +23806,12 @@ async function runAiSubjectStructuring(recId) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 200,
-        system: `Du formulierst Email-Betreffs neu in der Form "<Check-Typ> Nr.: <Nummer> | <Kurze Beschreibung>".
-- Check-Typ: WAEHLE EINES — "Vertragscheck" (Wartung/Servicevertrag), "Reparaturcheck" (Reparatur/Modernisierung/Notevakuierung), "Rechnungscheck" (Rechnungspruefung), "Korrespondenz" (sonstiges, keiner der Checks).
-- Nummer: nimm Ticketnummer / Angebotsnummer / Anfragenummer aus dem Text; sonst die externe Check-ID; sonst lass "Nr.: <Nummer> " ganz weg.
-- Beschreibung: max. 60 Zeichen, prägnant, ohne Ausrufezeichen.
-- Antworte AUSSCHLIESSLICH mit gültigem JSON: {"ai_subject":"<Vollständiger neuer Betreff>","check_typ":"...","check_nr":"..."}.
-- ERFINDE NICHTS — wenn unklar, leeres Feld.`,
+        max_tokens: 180,
+        system: `Du klassifizierst Aufzugs-Emails und beschreibst das Anliegen knapp.
+Antworte AUSSCHLIESSLICH mit gültigem JSON: {"check_typ":"...","anliegen":"..."}.
+- check_typ: GENAU EINES — "Vertragscheck" (Wartung/Servicevertrag), "Reparaturcheck" (Reparatur/Modernisierung/Notevakuierung), "Rechnungscheck" (Rechnungsprüfung), "Korrespondenz" (sonstiges, keine konkrete Pruefaufgabe).
+- anliegen: max. 60 Zeichen, prägnant, ohne Ausrufezeichen, KEINE Nummern aus dem Text reinschreiben (die ID kommt extern dran).
+- ERFINDE NICHTS — wenn unklar, "Korrespondenz" als Typ.`,
         messages: [{ role: 'user', content: userMsg }],
       }),
     });
@@ -23802,18 +23822,28 @@ async function runAiSubjectStructuring(recId) {
     let parsed = null;
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
-    if (!parsed || !parsed.ai_subject) throw new Error('KI-Antwort ohne ai_subject');
-    const aiSubject = String(parsed.ai_subject || '').trim();
+    if (!parsed || !parsed.check_typ) throw new Error('KI-Antwort ohne check_typ');
+    const typ = String(parsed.check_typ || '').trim();
+    const anliegen = String(parsed.anliegen || '').trim();
+    const aiSubject = _eiBuildAiSubject(typ, anliegen, r);
     const aiAt = new Date().toISOString();
     try {
-      await atUpdate('Emails', recId, { ai_subject: aiSubject, ai_subject_at: aiAt });
-      r.ai_subject = aiSubject; r.ai_subject_at = aiAt;
+      await atUpdate('Emails', recId, {
+        ai_subject: aiSubject,
+        ai_subject_typ: typ,
+        ai_subject_anliegen: anliegen,
+        ai_subject_at: aiAt,
+      });
+      r.ai_subject = aiSubject;
+      r.ai_subject_typ = typ;
+      r.ai_subject_anliegen = anliegen;
+      r.ai_subject_at = aiAt;
       showToast('✓ Strukturierter Betreff gespeichert', 'success', 2200);
       if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
     } catch (saveErr) {
       showToast('KI-Betreff erstellt — Speichern fehlgeschlagen: ' + saveErr.message, 'warning', 4000);
     }
-    if (out) out.innerHTML = _renderAiSubjectResult({ data: parsed });
+    if (out) out.innerHTML = _renderAiSubjectResult(r);
     if (btn) btn.textContent = 'Betreff ↻';
   } catch (e) {
     if (out) out.innerHTML = '<div style="color:#a8312f;font-size:12px;padding:8px 0">Fehler: ' + _esc(e.message) + '</div>';
@@ -23823,16 +23853,69 @@ async function runAiSubjectStructuring(recId) {
   }
 }
 
-function _renderAiSubjectResult(entry) {
-  if (!entry || !entry.data) return '';
-  const d = entry.data;
-  const aiS = String(d.ai_subject || '').trim();
-  if (!aiS) return '';
-  return `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-top:8px">
-    <div style="font-size:10.5px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">📝 Strukturierter Betreff (gespeichert)</div>
-    <div style="font-size:13.5px;color:#0f172a;font-weight:600;line-height:1.4">${_esc(aiS)}</div>
-    ${d.check_typ ? `<div style="font-size:11px;color:#92400e;margin-top:4px"><span style="font-weight:700">Check-Typ:</span> ${_esc(d.check_typ)}${d.check_nr ? ' · <span style="font-weight:700">Nr.:</span> ' + _esc(d.check_nr) : ''}</div>` : ''}
+// V12.181: Render strukturierter Betreff + Bearbeitungs-Form
+// Wird sowohl nach Klick auf "Betreff strukturieren" als auch beim initialen Render der Email aufgerufen.
+function _renderAiSubjectResult(r) {
+  if (!r) return '';
+  const typ      = String(r.ai_subject_typ || '').trim();
+  const anliegen = String(r.ai_subject_anliegen || '').trim();
+  const aiS      = _eiBuildAiSubject(typ || 'Korrespondenz', anliegen, r);
+  const idDisp   = _eiCheckIdForSubject(r);
+  return `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-top:8px">
+    <div style="font-size:10.5px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📝 Strukturierter Betreff${typ ? '' : ' — noch leer'}</div>
+    <div style="background:#fff;border:1px solid #fcd34d;border-radius:7px;padding:8px 12px;margin-bottom:10px">
+      <div id="ei_ai_subject_preview" style="font-size:13.5px;color:#0f172a;font-weight:700;line-height:1.4">${_esc(aiS)}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;margin-bottom:8px;align-items:center">
+      <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Check-Typ</label>
+      <select id="ei_ai_subject_typ" oninput="_eiAiSubjectLivePreview('${r._id}')" style="padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:13px;background:#fff;font-family:'DM Sans',sans-serif">
+        ${['Vertragscheck','Reparaturcheck','Rechnungscheck','Korrespondenz'].map(t => `<option value="${t}"${t === (typ || 'Korrespondenz') ? ' selected' : ''}>${t}</option>`).join('')}
+      </select>
+      <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">ID</label>
+      <div style="font-family:var(--dr-f-mono);font-size:13px;color:#475569">${_esc(idDisp)} <span style="font-weight:400;color:#94a3b8;font-size:11px">${r.external_check_id ? '(extern)' : '(intern)'}</span></div>
+      <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Anliegen</label>
+      <input id="ei_ai_subject_anliegen" type="text" value="${_esc(anliegen)}" maxlength="80" placeholder="Kurzbeschreibung (max. 60 Zeichen)" oninput="_eiAiSubjectLivePreview('${r._id}')" style="padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:13px;background:#fff;font-family:'DM Sans',sans-serif">
+    </div>
+    <div style="display:flex;gap:6px;justify-content:flex-end">
+      <button onclick="_eiAiSubjectSave('${r._id}')" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Speichern</button>
+    </div>
   </div>`;
+}
+
+// V12.181: Live-Preview im strukturierten Betreff während des Tippens
+function _eiAiSubjectLivePreview(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const t = document.getElementById('ei_ai_subject_typ')?.value || '';
+  const a = document.getElementById('ei_ai_subject_anliegen')?.value || '';
+  const prev = document.getElementById('ei_ai_subject_preview');
+  if (prev) prev.textContent = _eiBuildAiSubject(t, a, r);
+}
+
+// V12.181: Manuell bearbeiteten Betreff speichern
+async function _eiAiSubjectSave(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const typ      = String(document.getElementById('ei_ai_subject_typ')?.value || '').trim();
+  const anliegen = String(document.getElementById('ei_ai_subject_anliegen')?.value || '').trim();
+  const aiSubject = _eiBuildAiSubject(typ, anliegen, r);
+  const aiAt = new Date().toISOString();
+  try {
+    await atUpdate('Emails', recId, {
+      ai_subject: aiSubject,
+      ai_subject_typ: typ,
+      ai_subject_anliegen: anliegen,
+      ai_subject_at: aiAt,
+    });
+    r.ai_subject = aiSubject;
+    r.ai_subject_typ = typ;
+    r.ai_subject_anliegen = anliegen;
+    r.ai_subject_at = aiAt;
+    showToast('✓ Betreff gespeichert', 'success', 1800);
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
 }
 
 // V12.174: KI-Aufzug-Schnellbutton
@@ -24272,9 +24355,20 @@ async function saveExternalCheckId(recId) {
     await atUpdate('Emails', recId, { external_check_id: val });
     // lokalen Cache aktualisieren, damit die Liste das Badge sofort zeigt
     const row = (_eiAllRecords || []).find(x => x._id === recId);
-    if (row) row.external_check_id = val;
+    if (row) {
+      row.external_check_id = val;
+      // V12.181: ai_subject neu bauen, wenn schon ein Typ existiert — neue ID schlägt durch
+      if (row.ai_subject_typ) {
+        const newSubject = _eiBuildAiSubject(row.ai_subject_typ, row.ai_subject_anliegen, row);
+        try {
+          await atUpdate('Emails', recId, { ai_subject: newSubject });
+          row.ai_subject = newSubject;
+        } catch (_) {}
+      }
+    }
     if (st) { st.style.color = '#15803d'; st.textContent = val ? '✓ Check-ID gespeichert' : '✓ Check-ID geleert'; }
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   } catch (e) {
     if (st) { st.style.color = '#a8312f'; st.textContent = 'Fehler: ' + e.message; }
   } finally {
@@ -24474,7 +24568,7 @@ function renderEmailInboxDetail() {
     </div>
     <div id="ei_ai_quick_result">${aiCached ? _renderAiQuickResult(aiCached) : ''}</div>
     <div id="ei_ai_aufzug_result"></div>
-    <div id="ei_ai_subject_result">${r.ai_subject ? _renderAiSubjectResult({ data: { ai_subject: r.ai_subject } }) : ''}</div>
+    <div id="ei_ai_subject_result">${(r.ai_subject || r.ai_subject_typ) ? _renderAiSubjectResult(r) : ''}</div>
   </div>`;
 
   // V12.168: Externer Verweis (Check-ID aus anderem System) — speicherbar
