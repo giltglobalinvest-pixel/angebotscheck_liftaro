@@ -5953,7 +5953,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.174';
+const APP_VERSION = 'V12.175';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23613,10 +23613,20 @@ REGELN:
     let parsed = null;
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
-    const aufzuege = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.standort)) : [];
+    let aufzuege = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.standort)) : [];
+    // V12.175: Fallback — wenn Body keine Anlage liefert, PDF-Anhänge prüfen
     if (!aufzuege.length) {
-      if (out) out.innerHTML = '<div style="color:#92400e;font-size:12px;padding:8px 0">Keine Aufzugsanlage erkannt — Email enthält keine Fabriknummer / Standort.</div>';
-      return;
+      const atts = Array.isArray(r.attachments) ? r.attachments : [];
+      const pdfs = atts.filter(a => /\.pdf$/i.test(a.filename || a.name || '') || /pdf/i.test(a.contentType || a.content_type || ''));
+      if (pdfs.length) {
+        if (out) out.innerHTML = '<div style="color:#0891b2;font-size:12px;padding:8px 0">📎 Body leer — scanne ' + pdfs.length + ' PDF-Anhang' + (pdfs.length === 1 ? '' : 'e') + ' …</div>';
+        const fromAttachments = await _eiAufzugFromAttachments(pdfs, subj);
+        if (fromAttachments.length) aufzuege = fromAttachments;
+      }
+      if (!aufzuege.length) {
+        if (out) out.innerHTML = '<div style="color:#92400e;font-size:12px;padding:8px 0">Keine Aufzugsanlage erkannt — weder im Email-Body noch in den Anhängen.</div>';
+        return;
+      }
     }
     // Pro erkanntem Aufzug: in Airtable suchen
     showToast('Prüfe Aufzüge in Airtable …', 'info', 1500);
@@ -23636,6 +23646,79 @@ REGELN:
   }
 }
 
+// V12.175: PDF-Anhänge an Claude schicken und Aufzug-Liste extrahieren.
+// Nutzt Claude's PDF-Document-Input. Max 3 PDFs gleichzeitig, max ~5 MB pro Stück.
+async function _eiAufzugFromAttachments(pdfs, subject) {
+  const documents = [];
+  const dropped  = [];
+  for (const att of pdfs.slice(0, 3)) {
+    try {
+      const resp = await fetch(att.url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const buf = await resp.arrayBuffer();
+      if (buf.byteLength > 5 * 1024 * 1024) { dropped.push((att.filename || att.name) + ' (zu groß)'); continue; }
+      // ArrayBuffer → Base64 chunkweise (große Buffer crashen mit fromCharCode.apply)
+      let bin = ''; const view = new Uint8Array(buf);
+      for (let i = 0; i < view.length; i += 0x8000) {
+        bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000));
+      }
+      const b64 = btoa(bin);
+      documents.push({
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: b64 },
+      });
+    } catch (e) {
+      dropped.push((att.filename || att.name) + ' (' + e.message + ')');
+    }
+  }
+  if (!documents.length) return [];
+  try {
+    const userContent = [
+      ...documents,
+      { type: 'text', text: 'Email-Betreff: ' + (subject || '') + '\n\nExtrahiere aus den oben angehängten PDFs ALLE Aufzugsanlagen (Fabriknummer + Standort + Hersteller). Eine Anlage pro Listen-Eintrag.' },
+    ];
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 900,
+        system: `Du extrahierst Aufzugsanlagen-Daten aus PDF-Dokumenten. Antworte AUSSCHLIESSLICH mit gültigem JSON:
+{
+  "aufzuege": [
+    { "fabriknummer": "...", "standort": "...", "hersteller": "...", "anliegen": "..." }
+  ]
+}
+
+REGELN:
+- Eine Aufzugsanlage = ein Listen-Eintrag.
+- Fabriknummern erkennst du an Phrasen wie "Fabrik-Nr.", "Anlagen-Nr.", "Werknummer", auf TÜV-/ZÜS-Berichten, Wartungsverträgen, Rechnungen.
+- Standort: möglichst vollständige Adresse.
+- ERFINDE NICHTS. Lieber leer als raten. Wenn das PDF keine Aufzug-Anlage enthält, gib {"aufzuege":[]} zurück.`,
+        messages: [{ role: 'user', content: userContent }],
+      }),
+    });
+    if (!resp.ok) throw new Error('Claude HTTP ' + resp.status);
+    const data = await resp.json();
+    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed = null;
+    try { parsed = JSON.parse(cleaned); }
+    catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
+    const found = (parsed && Array.isArray(parsed.aufzuege)) ? parsed.aufzuege.filter(a => a && (a.fabriknummer || a.standort)) : [];
+    // Markiere alle als "aus Anhang"
+    return found.map(a => Object.assign({ source: 'attachment' }, a));
+  } catch (e) {
+    console.warn('[V12.175] Anhang-Analyse failed:', e.message);
+    return [];
+  }
+}
+
 function _renderAufzugAnalysis(recId, list) {
   const isMulti = list.length > 1;
   const rows = list.map((entry, i) => {
@@ -23647,11 +23730,15 @@ function _renderAufzugAnalysis(recId, list) {
     const tag = m
       ? `<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700">✓ in DB</span>`
       : `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700">neu — KI legt an</span>`;
+    const srcTag = ai.source === 'attachment'
+      ? `<span title="Aus PDF-Anhang extrahiert" style="background:#ede9fe;color:#6b21a8;border:1px solid #d8b4fe;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700">📎 aus Anhang</span>`
+      : '';
     return `<div style="background:#fff;border:1px solid #cffafe;border-radius:8px;padding:9px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="background:#0891b2;color:#fff;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700">#${i + 1}</span>
         <span style="font-family:var(--dr-f-mono);font-size:12px;font-weight:700;color:#0f172a">Fn ${_esc(fn || '— (ohne)')}</span>
         ${tag}
+        ${srcTag}
       </div>
       <div style="font-size:12px;color:#475569;margin-top:3px"><strong>Standort:</strong> ${_esc(std || '—')}${hr ? ' · ' + _esc(hr) : ''}</div>
       ${ai.anliegen ? `<div style="font-size:11.5px;color:#64748b;margin-top:2px"><em>${_esc(ai.anliegen)}</em></div>` : ''}
