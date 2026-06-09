@@ -6040,7 +6040,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.181';
+const APP_VERSION = 'V12.182';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23519,7 +23519,9 @@ function renderEmailInboxList() {
     const isOut = (r.direction === 'outgoing');
     const dateStr = formatDateDe(isOut ? (r.sent_at || r.status_at) : r.received_at);
     const hv = _eiDisplayHV(r);
-    const idStr = '#' + String(r._id || '').slice(-4);
+    // V12.182: ID-Spalte zeigt externe Check-ID wenn gesetzt, sonst internen Slug
+    const extId = String(r.external_check_id || '').trim();
+    const idStr = extId || ('#' + String(r._id || '').slice(-4));
     // V12.180: ai_subject bevorzugen (KI-strukturierter Betreff), Fallback auf Original
     const subject = isOut
       ? 'An: ' + (r.to_email || '(?)')
@@ -23554,8 +23556,12 @@ function renderEmailInboxList() {
       : '';
     // V12.180: Absender-Mini-Zeile über dem Betreff (statt eigener Spalte)
     const senderLine = `<span class="sender">${_esc(fromName)}${fromMail ? `<span class="sep">·</span><span class="mail">${_esc(fromMail)}</span>` : ''}</span>`;
+    // V12.182: ID-Optik — externe Check-ID kräftiger als Slug
+    const idCell = extId
+      ? `<div class="ei-row-id" title="Externe Check-ID" style="color:#92400e;font-weight:700">${_esc(idStr)}</div>`
+      : `<div class="ei-row-id">${_esc(idStr)}</div>`;
     return `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">
-      <div class="ei-row-id">${_esc(idStr)}</div>
+      ${idCell}
       <div class="ei-row-date">${_esc(dateStr)}</div>
       <div class="ei-row-subj">
         ${senderLine}
@@ -24350,6 +24356,23 @@ async function saveExternalCheckId(recId) {
   const btn = document.getElementById('ei_ext_check_id_save');
   if (!inp) return;
   const val = String(inp.value || '').trim();
+  // V12.182: Kollisionsprüfung — eine externe Check-ID darf nur EINEM Email-Record gehören
+  if (val) {
+    const norm = val.toLowerCase();
+    const conflict = (_eiAllRecords || []).find(x => x && x._id !== recId
+      && String(x.external_check_id || '').trim().toLowerCase() === norm);
+    if (conflict) {
+      const conflictId = '#' + String(conflict._id || '').slice(-4);
+      const conflictSubj = String(conflict.ai_subject || conflict.subject || '').slice(0, 50);
+      if (st) {
+        st.style.color = '#a8312f';
+        st.innerHTML = '⚠ Check-ID „' + _esc(val) + '" ist bereits bei Email <strong>' + _esc(conflictId) + '</strong> vergeben'
+          + (conflictSubj ? ' (' + _esc(conflictSubj) + (conflictSubj.length === 50 ? '…' : '') + ')' : '')
+          + '. Eine Check-ID darf nur einmalig vergeben werden.';
+      }
+      return;
+    }
+  }
   if (btn) { btn.disabled = true; btn.textContent = 'Speichere …'; }
   try {
     await atUpdate('Emails', recId, { external_check_id: val });
