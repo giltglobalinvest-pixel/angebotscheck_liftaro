@@ -4049,7 +4049,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
 
-    <!-- Filter-Pills (Status-Filter) -->
+    <!-- Filter-Pills (Status-Filter) + V12.167: Volltext-Suche -->
     <div id="emailInboxFilters" style="padding:12px 24px;background:var(--dr-surface);border-bottom:1px solid var(--dr-border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0">
       <span class="dr-filterbar-label">Status:</span>
       <button class="dr-pill ei-filt-pill" data-status="neu"            onclick="setEiFilter('neu')">neu</button>
@@ -4058,6 +4058,12 @@ const pdfWorkerReady = Promise.resolve();</script>
       <button class="dr-pill ei-filt-pill" data-status="geantwortet"    onclick="setEiFilter('geantwortet')">geantwortet</button>
       <button class="dr-pill ei-filt-pill" data-status="verworfen"      onclick="setEiFilter('verworfen')">verworfen</button>
       <button class="dr-pill ei-filt-pill" data-status="alle"           onclick="setEiFilter('alle')">alle</button>
+      <div style="flex:1;min-width:8px"></div>
+      <div style="position:relative">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="emailInboxSearch" placeholder="Email durchsuchen (Absender, Betreff, Inhalt …)" oninput="setEiSearch(this.value)" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:7px 30px 7px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:280px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
+        <button id="emailInboxSearchClear" type="button" onclick="setEiSearch('', true)" title="Suche löschen" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--dr-ink-mute);cursor:pointer;padding:3px 6px;font-size:14px;line-height:1">✕</button>
+      </div>
     </div>
 
     <!-- 2-Spalten-Layout: Liste links, Detail rechts -->
@@ -5921,7 +5927,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.166';
+const APP_VERSION = 'V12.167';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23100,8 +23106,31 @@ function setEiFilter(status, skipRender) {
 }
 
 function _eiFiltered() {
-  if (_eiFilter === 'alle') return _eiAllRecords;
-  return _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+  // V12.167: zuerst Status, dann Volltextsuche
+  let base = (_eiFilter === 'alle') ? _eiAllRecords : _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+  const q = String(window._eiSearchQ || '').toLowerCase().trim();
+  if (!q) return base;
+  // Mehrere Wörter → alle müssen vorkommen (UND-Suche, in beliebigem Feld)
+  const terms = q.split(/\s+/).filter(Boolean);
+  return base.filter(r => {
+    const hay = [
+      r.subject, r.from_name, r.from_email, r.to_email, r.bcc_email,
+      r.body, r.body_text, r.body_preview,
+      r.ki_classification, r.ki_summary,
+      r.attachment_filenames, r.message_id,
+    ].filter(Boolean).join(' \n ').toLowerCase();
+    return terms.every(t => hay.includes(t));
+  });
+}
+
+// V12.167: Suchfeld-Setter
+function setEiSearch(q, fromClear) {
+  window._eiSearchQ = String(q || '');
+  const inp = document.getElementById('emailInboxSearch');
+  if (fromClear && inp) inp.value = '';
+  const clr = document.getElementById('emailInboxSearchClear');
+  if (clr) clr.style.display = window._eiSearchQ ? 'inline-flex' : 'none';
+  if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
 }
 
 function renderEmailInboxList() {
@@ -23110,9 +23139,13 @@ function renderEmailInboxList() {
   document.getElementById('emailInboxHeaderCount').textContent = filt.length;
 
   if (filt.length === 0) {
+    const q = String(window._eiSearchQ || '').trim();
     listEl.innerHTML =
       '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">' +
-      `Keine Emails mit Status „${_eiFilter}".</div>`;
+      (q
+        ? `Kein Treffer für „${_esc(q)}" im Status „${_eiFilter}".`
+        : `Keine Emails mit Status „${_eiFilter}".`) +
+      '</div>';
     return;
   }
   listEl.innerHTML = filt.map(r => {
