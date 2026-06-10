@@ -4086,6 +4086,9 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div style="padding:14px 10px;flex:1">
           <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em;padding:6px 10px 8px">Status</div>
           <div style="display:flex;flex-direction:column;gap:1px">
+            <!-- V12.197: Schnellfilter für ungesichtete Antworten — oben & prominent -->
+            <button class="ei-side-item" data-status="neue_antwort"   onclick="setEiFilter('neue_antwort')"  ><span class="ei-side-dot" style="background:#ef4444;animation:eiNeuPulse 1.4s ease-in-out infinite"></span><span class="ei-side-lbl">↶ Neue Antworten</span><span class="ei-side-cnt" id="eiSideCnt_neue_antwort">0</span></button>
+            <div style="height:1px;background:rgba(255,255,255,.1);margin:6px 10px"></div>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
             <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
@@ -4651,6 +4654,12 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-row.fresh { background: #eff6ff !important; }
 .ei-row.fresh .ei-row-id { color: #2456E5; }
+/* V12.197: ungesichtete Antwort = rote Akzentleiste links + rosa-getönte Zeile */
+.ei-row.unseen-reply {
+  background: #fef2f2 !important;
+  box-shadow: inset 4px 0 0 #dc2626;
+}
+.ei-row.unseen-reply .ei-row-id { color: #b91c1c; font-weight: 700; }
 .ei-fresh-tag {
   display:inline-flex; align-items:center; gap:4px;
   background:#2456E5; color:#fff; border-radius:6px;
@@ -6109,7 +6118,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.196';
+const APP_VERSION = 'V12.197';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7229,6 +7238,8 @@ async function setupTables() {
       { name: 'ai_subject_at',        type: 'singleLineText' },
       // V12.184: Interne Notizen / Kommentare als JSON-Array
       { name: 'comments_json',        type: 'multilineText' },
+      // V12.197: Zeitstempel, bis wann der User Thread-Antworten gesichtet hat
+      { name: 'last_reply_seen_at',   type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
@@ -23319,6 +23330,7 @@ function setEiFilter(status, skipRender) {
   const chipEl = document.getElementById('emailInboxStatusChip');
   if (chipEl) {
     const label = (status === 'in_bearbeitung') ? 'In Bearbeitung'
+      : (status === 'neue_antwort') ? '↶ Neue Antworten'
       : (status === 'alle') ? 'Alle' : status.charAt(0).toUpperCase() + status.slice(1);
     const palette = {
       neu:           { bg:'#fef3c7', fg:'#92400e' },
@@ -23327,6 +23339,7 @@ function setEiFilter(status, skipRender) {
       geantwortet:   { bg:'#dcfce7', fg:'#166534' },
       verworfen:     { bg:'#fee2e2', fg:'#991b1b' },
       alle:          { bg:'#f1f5f9', fg:'#0f172a' },
+      neue_antwort:  { bg:'#fee2e2', fg:'#991b1b' },
     }[status] || { bg:'#f1f5f9', fg:'#0f172a' };
     chipEl.style.background = palette.bg;
     chipEl.style.color = palette.fg;
@@ -23378,6 +23391,9 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_geantwortet',    byStatus.geantwortet);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
   set('eiSideCnt_alle',           cAlle);
+  // V12.197: Counter "ungesichtete Antworten"
+  const unseenCnt = all.filter(r => _eiHasUnseenReplies(r)).length;
+  set('eiSideCnt_neue_antwort', unseenCnt);
 }
 
 // V12.191/192: Threading — finde den Thread-Parent einer eingehenden Antwort
@@ -23432,6 +23448,35 @@ function _eiThreadParentOf(r) {
   return cur;
 }
 
+// V12.197: Prüft, ob es ungesichtete Thread-Antworten gibt — neueste Antwort jünger als last_reply_seen_at
+function _eiHasUnseenReplies(r) {
+  if (!r) return false;
+  const children = _eiThreadChildrenOf(r);
+  if (!children.length) return false;
+  const seenAt = String(r.last_reply_seen_at || '').trim();
+  // Wenn nie markiert: ALLE Antworten gelten als ungesichtet
+  if (!seenAt) return true;
+  // Sonst: irgendeine Antwort jünger als seenAt
+  return children.some(c => String(c.received_at || '').trim() > seenAt);
+}
+
+// V12.197: Antworten als gesichtet markieren — speichert Zeitstempel auf Parent-Mail
+async function markRepliesSeen(recId, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const now = new Date().toISOString();
+  try {
+    await atUpdate('Emails', recId, { last_reply_seen_at: now });
+    r.last_reply_seen_at = now;
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    showToast('✓ Antwort als gesichtet markiert', 'success', 1500);
+  } catch (e) {
+    showToast('Konnte nicht gespeichert werden: ' + e.message, 'error', 3000);
+  }
+}
+
 // V12.191: Alle eingehenden Antworten, die zu diesem Parent gehören
 function _eiThreadChildrenOf(r) {
   if (!r) return [];
@@ -23452,8 +23497,16 @@ function _eiFiltered() {
     if (_eiThreadParentOf(x)) threadedIds.add(x._id);
   }
   const dropThreaded = (arr) => arr.filter(r => !threadedIds.has(r._id));
-  // V12.167: zuerst Status, dann Volltextsuche
-  let base = (_eiFilter === 'alle') ? _eiAllRecords : _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+  // V12.167/197: zuerst Status, dann Volltextsuche
+  let base;
+  if (_eiFilter === 'alle') {
+    base = _eiAllRecords;
+  } else if (_eiFilter === 'neue_antwort') {
+    // Nur Parents mit ungesichteten Thread-Antworten
+    base = (_eiAllRecords || []).filter(r => _eiHasUnseenReplies(r));
+  } else {
+    base = _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+  }
   base = dropThreaded(base);
   const q = String(window._eiSearchQ || '').toLowerCase().trim();
   if (!q) return base;
@@ -23730,13 +23783,22 @@ function renderEmailInboxList() {
     const notesPill = notesCount > 0
       ? `<span title="${notesCount} interne Notiz${notesCount === 1 ? '' : 'en'}" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">💬 ${notesCount}</span>`
       : '';
-    // V12.191: Thread-Antworten am Parent zählen + Pille zeigen
+    // V12.191/197: Thread-Antworten am Parent zählen + AUFFÄLLIGE Pille bei ungesichtet
     const threadChildren = _eiThreadChildrenOf(r);
     const threadCnt = threadChildren.length;
+    const hasUnseen = _eiHasUnseenReplies(r);
     const hasFreshChild = threadChildren.some(c => window._eiFreshIds && window._eiFreshIds.has(c._id));
-    const threadPill = threadCnt > 0
-      ? `<span title="${threadCnt} eingehende Antwort${threadCnt === 1 ? '' : 'en'} im Thread" style="background:${hasFreshChild ? '#dbeafe' : '#f1f5f9'};color:${hasFreshChild ? '#1e40af' : '#475569'};border:1px solid ${hasFreshChild ? '#93c5fd' : '#cbd5e1'};border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px${hasFreshChild ? ';animation:eiNeuPulse 1.4s ease-in-out infinite' : ''}">↶ ${threadCnt} Antwort${threadCnt === 1 ? '' : 'en'}</span>`
-      : '';
+    let threadPill = '';
+    if (threadCnt > 0) {
+      if (hasUnseen) {
+        // ROT + pulsierend + animiert — sticht sofort raus
+        threadPill = `<span title="${threadCnt} ungesichtete Antwort${threadCnt === 1 ? '' : 'en'} vom Kunden" style="background:#dc2626;color:#fff;border:1px solid #b91c1c;border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:5px;letter-spacing:.02em;box-shadow:0 1px 3px rgba(220,38,38,.4);animation:eiNeuPulse 1.2s ease-in-out infinite">↶ ${threadCnt} NEUE Antwort${threadCnt === 1 ? '' : 'en'}</span>`
+          + `<button onclick="markRepliesSeen('${r._id}',event)" title="Antwort als gesichtet markieren" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:3px" onmouseover="this.style.borderColor='#16a34a';this.style.color='#16a34a'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">✓ gesichtet</button>`;
+      } else {
+        // Grau — bereits gesichtet
+        threadPill = `<span title="${threadCnt} Antwort${threadCnt === 1 ? '' : 'en'} im Thread (alle gesichtet)" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">↶ ${threadCnt} Antwort${threadCnt === 1 ? '' : 'en'}</span>`;
+      }
+    }
     const pillRow = (hvPill || azPill || notesPill || threadPill)
       ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${threadPill}${notesPill}</div>`
       : '';
@@ -23749,7 +23811,8 @@ function renderEmailInboxList() {
     // V12.190: NEU-Marker für frisch eingegangene Mails seit letztem User-Sichten
     const isFresh = !!(window._eiFreshIds && window._eiFreshIds.has(r._id));
     const freshTag = isFresh ? '<span class="ei-fresh-tag">NEU</span>' : '';
-    const rowCls = 'ei-row' + sel + (isFresh ? ' fresh' : '');
+    // V12.197: rote Akzentleiste links wenn ungesichtete Antworten vorliegen — sticht visuell raus
+    const rowCls = 'ei-row' + sel + (isFresh ? ' fresh' : '') + (hasUnseen ? ' unseen-reply' : '');
     return `<div class="${rowCls}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">
       ${idCell}
       <div class="ei-row-date">${_esc(dateStr)}</div>
