@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.216';
+const APP_VERSION = 'V12.217';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7308,6 +7308,8 @@ async function setupTables() {
       { name: 'manual_thread_at',        type: 'singleLineText' },
       // V12.204: manuell setzbarer Email-Typ — überschreibt KI-Klassifikation
       { name: 'email_typ',               type: 'singleLineText' },
+      // V12.217: Liftaro-Email-ID — fortlaufender Nummernkreis "L-1", "L-2", … ersetzt die alte 4-Char-Slug-ID
+      { name: 'email_id',                type: 'singleLineText' },
       // V12.211: Wartungsnehmer denormalisiert aus dem zugeordneten Aufzug — für Anzeige & Chat
       { name: 'wartungsnehmer_id',             type: 'singleLineText' },
       { name: 'wartungsnehmer_firma',          type: 'singleLineText' },
@@ -23768,6 +23770,8 @@ async function loadEmailInbox(silent) {
     const elapsed = Date.now() - tStart;
     if (elapsed < 400 && reloadBtn) await new Promise(r => setTimeout(r, 400 - elapsed));
     if (silent) showToast(`✓ ${_eiAllRecords.length} Email${_eiAllRecords.length===1?'':'s'} aktualisiert`, 'success', 1800);
+    // V12.217: Fehlende Liftaro-IDs (L-1, L-2, …) im Hintergrund vergeben — sortiert nach received_at
+    _eiAssignMissingLiftaroIds().catch(e => console.warn('[V12.217] assignMissingLiftaroIds:', e.message));
   } catch (e) {
     listEl.innerHTML =
       '<div style="padding:40px 24px;text-align:center;color:var(--dr-ink-mute);font-size:13px;line-height:1.6">' +
@@ -24611,9 +24615,10 @@ function renderEmailInboxList() {
     const isOut = (r.direction === 'outgoing');
     const dateStr = formatDateDe(isOut ? (r.sent_at || r.status_at) : r.received_at);
     const hv = _eiDisplayHV(r);
-    // V12.182: ID-Spalte zeigt externe Check-ID wenn gesetzt, sonst internen Slug
+    // V12.182/217: ID-Spalte — externe Check-ID > Liftaro-Counter (L-234) > Slug-Fallback
     const extId = String(r.external_check_id || '').trim();
-    const idStr = extId || ('#' + String(r._id || '').slice(-4));
+    const lId   = String(r.email_id || '').trim();
+    const idStr = extId || lId || ('#' + String(r._id || '').slice(-4));
     // V12.180: ai_subject bevorzugen (KI-strukturierter Betreff), Fallback auf Original
     const subject = isOut
       ? 'An: ' + (r.to_email || '(?)')
@@ -25729,12 +25734,54 @@ function openEmailTypEditor(recId, anchorEl) {
   }, 50);
 }
 
-// V12.181: ID-Teil für den Betreff bauen — externer Verweis hat Vorrang vor interner Slug-ID
+// V12.181/217: ID-Teil für den Betreff bauen.
+// Priorität: external_check_id (manuell) > email_id (Liftaro-Counter "L-234") > Slug-Fallback "#xxxx"
 function _eiCheckIdForSubject(r) {
   const ext = String(r.external_check_id || '').trim();
   if (ext) return ext;
-  // Interne ID: die letzten 4 Zeichen wie in der Liste ("#oiN3")
+  const lid = String(r.email_id || '').trim();
+  if (lid) return lid;
   return '#' + String(r._id || '').slice(-4);
+}
+
+// V12.217: Liftaro-Email-IDs fortlaufend vergeben — Format "L-<n>".
+// Wird nach jedem loadEmailInbox aufgerufen und vergibt fehlende IDs sequenziell nach received_at.
+function _eiMaxLiftaroIdNumber() {
+  let max = 0;
+  for (const r of (_eiAllRecords || [])) {
+    if (!r) continue;
+    const m = String(r.email_id || '').match(/^L-(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  return max;
+}
+async function _eiAssignMissingLiftaroIds() {
+  const records = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  // outgoing-Records kriegen KEINE eigene L-ID (sie gehören zu einem Parent)
+  const missing = records.filter(r => r && r.direction !== 'outgoing' && !String(r.email_id || '').trim());
+  if (!missing.length) return;
+  // Sortiert nach received_at aufsteigend → ältere Emails bekommen niedrigere Nummern
+  missing.sort((a, b) => String(a.received_at || '').localeCompare(String(b.received_at || '')));
+  let next = _eiMaxLiftaroIdNumber() + 1;
+  let assigned = 0;
+  for (const r of missing) {
+    const id = 'L-' + next;
+    try {
+      await atUpdate('Emails', r._id, { email_id: id });
+      r.email_id = id;
+      next++;
+      assigned++;
+    } catch (e) {
+      console.warn('[V12.217] L-ID-Vergabe fehlgeschlagen für', r._id, e.message);
+      break; // bei Fehler abbrechen, beim nächsten Polling weitermachen
+    }
+  }
+  if (assigned > 0) {
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  }
 }
 
 // V12.181/209: Betreff zusammensetzen
@@ -25877,7 +25924,7 @@ function _renderAiSubjectResult(r) {
         ${opts.map(t => `<option value="${_esc(t)}"${t === (typ || 'Korrespondenz') ? ' selected' : ''}>${_esc(t)}</option>`).join('')}
       </select>
       <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">ID</label>
-      <div style="font-family:var(--dr-f-mono);font-size:13px;color:#475569">${_esc(idDisp)} <span style="font-weight:400;color:#94a3b8;font-size:11px">${r.external_check_id ? '(extern)' : '(intern)'}</span></div>
+      <div style="font-family:var(--dr-f-mono);font-size:13px;color:#475569">${_esc(idDisp)} <span style="font-weight:400;color:#94a3b8;font-size:11px">${r.external_check_id ? '(extern)' : (r.email_id ? '(Liftaro)' : '(intern)')}</span></div>
       ${hasAufzug ? `
         <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Fabriknummer</label>
         <div style="font-family:var(--dr-f-mono);font-size:13px;color:#0f172a;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:6px 10px">${_esc(fn || '—')}</div>
