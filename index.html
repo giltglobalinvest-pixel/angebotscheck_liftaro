@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.201';
+const APP_VERSION = 'V12.202';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25441,15 +25441,18 @@ Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur was im 
       r.real_kategorie  = realKategorie;
       r.ai_quick_at     = aiAt;
       showToast('✓ KI-Analyse gespeichert — Absender aktualisiert', 'success', 2200);
-      if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
     } catch (saveErr) {
       console.warn('[V12.172] Speichern fehlgeschlagen:', saveErr);
       showToast('KI-Analyse erkannt — Speichern fehlgeschlagen: ' + saveErr.message, 'warning', 4000);
     }
-    // In-Memory-Cache + Render der Detail-Card
+    // V12.202: Cache + Re-Render in der richtigen Reihenfolge —
+    //   1) Cache VOR Re-Render setzen, damit die KI-Card sofort das Ergebnis zeigt
+    //   2) Detail-View komplett neu rendern, damit die Verwaltung-Kachel oben aktualisiert wird
+    //   3) Listen-Render hinterher
     window._eiAiQuickCache = window._eiAiQuickCache || {};
     window._eiAiQuickCache[recId] = { ts: Date.now(), data: parsed };
-    if (out) out.innerHTML = _renderAiQuickResult({ data: parsed });
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
     if (btn) { btn.textContent = 'Erneut analysieren'; }
   } catch (e) {
     if (out) out.innerHTML = '<div style="color:#a8312f;font-size:12px;padding:8px 0">Fehler: ' + _esc(e.message) + '</div>';
