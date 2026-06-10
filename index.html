@@ -4608,6 +4608,11 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
+/* V12.187: <details> Aufklapp-Pfeil-Animation */
+#emailExtraDetails[open] #emailExtraDetailsCaret { transform: rotate(90deg); }
+#emailExtraDetails summary::-webkit-details-marker { display:none; }
+#emailExtraDetails summary::marker { content: ''; }
+#emailExtraDetails[open] summary span:last-child { display:none; }
 /* V12.185/186: Email-Liste eingeklappt → Detail-Pane voll, schlägt Mobile-Verhalten */
 #emailInboxInnerBody { transition: grid-template-columns .2s ease; }
 #emailInboxInnerBody.list-collapsed { grid-template-columns: 1fr !important; }
@@ -6055,7 +6060,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.186';
+const APP_VERSION = 'V12.187';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23676,6 +23681,90 @@ function _renderEmailComments(r) {
   </div>`;
 }
 
+// V12.187: Verlauf-Block — Notizen + ausgehende Antworten chronologisch (Ticketsystem)
+function _renderEmailTimeline(r) {
+  const comments = _parseEmailComments(r).map(c => ({
+    type: 'note',
+    when: c.created_at || '',
+    payload: c,
+  }));
+  // Outgoing-Antworten finden: gleiche message_id im in_reply_to oder Subject-Heuristik
+  const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  const replies = all.filter(x => x && x.direction === 'outgoing'
+    && String(x.in_reply_to || '').trim()
+    && String(r.message_id || '').trim()
+    && String(x.in_reply_to).includes(String(r.message_id))
+  ).map(x => ({
+    type: 'reply',
+    when: x.sent_at || x.status_at || '',
+    payload: x,
+  }));
+  const items = [...comments, ...replies].sort((a, b) => String(a.when).localeCompare(String(b.when)));
+  const cntTotal = items.length;
+  const cntNotes = comments.length;
+  const cntReplies = replies.length;
+  const fmtWhen = (s) => {
+    if (!s) return '';
+    const d = new Date(s); if (isNaN(d.getTime())) return String(s).slice(0,16).replace('T',' ');
+    const p = (n) => String(n).padStart(2,'0');
+    return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes());
+  };
+  const renderItem = (it) => {
+    if (it.type === 'note') {
+      const c = it.payload;
+      const author = String(c.author || 'unbekannt').trim();
+      const initials = author.split(/\s+/).map(s => s.charAt(0)).join('').slice(0,2).toUpperCase() || '?';
+      return `<div style="display:flex;gap:12px;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-left:3px solid #64748b;border-radius:8px;margin-bottom:8px">
+        <div style="width:32px;height:32px;border-radius:50%;background:#1a3a5c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${_esc(initials)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:#0f172a">${_esc(author)}</span>
+            <span style="background:#f1f5f9;color:#475569;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">📝 interne Notiz</span>
+            <span style="font-size:11px;color:#94a3b8;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
+            <button onclick="event.stopPropagation();deleteEmailComment('${r._id}','${_esc(String(c.id || ''))}')" title="Löschen" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:14px;padding:0 4px;line-height:1" onmouseover="this.style.color='#a8312f'" onmouseout="this.style.color='#cbd5e1'">✕</button>
+          </div>
+          <div style="font-size:13px;color:#1e293b;line-height:1.55;white-space:pre-wrap;word-wrap:break-word">${_esc(String(c.text || ''))}</div>
+        </div>
+      </div>`;
+    }
+    // Reply (outgoing)
+    const x = it.payload;
+    const bearbeiter = String(x.bearbeiter_name || 'Liftaro').trim();
+    const initials = bearbeiter.split(/\s+/).map(s => s.charAt(0)).join('').slice(0,2).toUpperCase() || 'L';
+    const bodyTrim = String(x.body || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    return `<div style="display:flex;gap:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-left:3px solid #16a34a;border-radius:8px;margin-bottom:8px">
+      <div style="width:32px;height:32px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">📤</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <span style="font-size:12.5px;font-weight:700;color:#166534">${_esc(bearbeiter)}</span>
+          <span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">📤 Antwort an Kunde</span>
+          <span style="font-size:11px;color:#15803d;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
+        </div>
+        <div style="font-size:11.5px;color:#15803d;margin-bottom:6px"><strong>An:</strong> ${_esc(x.to_email || '(?)')} · <strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
+        <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0">${_esc(bodyTrim)}${String(x.body || '').length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
+      </div>
+    </div>`;
+  };
+  const itemsHtml = items.length
+    ? items.map(renderItem).join('')
+    : '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12.5px;background:#fff;border:1px dashed #cbd5e1;border-radius:8px;margin-bottom:8px">Noch kein Verlauf. Notiz unten anlegen oder per „Antworten" eine Mail senden.</div>';
+  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #1a3a5c;background:#fff">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:14px;font-weight:700;color:#0f172a">💬 Verlauf</span>
+        ${cntTotal > 0 ? `<span style="background:#1a3a5c;color:#fff;border-radius:9px;padding:1px 9px;font-size:11px;font-weight:700">${cntTotal}</span>` : ''}
+        ${cntNotes > 0 || cntReplies > 0 ? `<span style="font-size:11.5px;color:#64748b">${cntNotes ? cntNotes + ' Notiz' + (cntNotes === 1 ? '' : 'en') : ''}${cntNotes && cntReplies ? ' · ' : ''}${cntReplies ? cntReplies + ' Antwort' + (cntReplies === 1 ? '' : 'en') : ''}</span>` : ''}
+      </div>
+      <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
+    </div>
+    ${itemsHtml}
+    <div style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
+      <textarea id="ei_comment_input" placeholder="Anweisung oder Notiz für die Bearbeitung — Strg/Cmd+Enter sendet" rows="2" style="flex:1;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;resize:vertical;line-height:1.5;outline:none" onfocus="this.style.borderColor='#1a3a5c';this.style.boxShadow='0 0 0 3px rgba(26,58,92,.08)'" onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none'" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addEmailComment('${r._id}')}"></textarea>
+      <button onclick="addEmailComment('${r._id}')" style="background:#1a3a5c;color:#fff;border:none;border-radius:7px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;align-self:stretch">Notiz hinzufügen</button>
+    </div>
+  </div>`;
+}
+
 async function addEmailComment(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
@@ -24721,7 +24810,49 @@ function renderEmailInboxDetail() {
     </div>` : ''}
   </div>`;
 
+  // V12.187: Body direkt nach Header sichtbar machen
+  const bodyText = (r.body_text && r.body_text.trim()) || _stripHtml(r.body_html || '') || '(leer)';
+  const hasHtml = !!(r.body_html && r.body_html.trim());
+  html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+    <div class="dr-section-head" style="margin-bottom:10px">
+      <div class="dr-section-title">Email-Inhalt${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
+      ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Original-HTML anzeigen</button>` : ''}
+    </div>
+    <div id="eiBodyText_${r._id}" style="font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
+    ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:none;width:100%;max-height:520px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;margin-top:8px"></div>` : ''}
+  </div>`;
+
+  // V12.187: Anhänge prominent direkt unter dem Body
+  if (Array.isArray(r.attachments) && r.attachments.length) {
+    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+      <div class="dr-section-head" style="margin-bottom:10px">
+        <div class="dr-section-title">📎 Anhänge<span class="dr-section-title__count">${r.attachments.length}</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">`;
+    r.attachments.forEach(a => {
+      const fname = a.filename || a.name || 'Anhang';
+      const url = a.url || '';
+      const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
+      html += `<a href="${_esc(url)}" target="_blank" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:var(--dr-ink);text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface-alt)';this.style.borderColor='var(--dr-border)'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--dr-blue);flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
+        ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
+      </a>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // V12.187: Alles Weitere in einen einklappbaren Container
+  html += `<details id="emailExtraDetails" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:12.5px;font-weight:700;color:#475569;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;outline:none">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .15s ease" id="emailExtraDetailsCaret"><polyline points="9 18 15 12 9 6"/></svg>
+      <span>Zuordnungen, KI-Analyse, Vorgänge &amp; Aktionen</span>
+      <span style="color:#94a3b8;font-weight:400;margin-left:auto;font-size:11.5px">aufklappen</span>
+    </summary>
+    <div style="padding:0 14px 14px">
+
   // V12.179: Zuordnung-Sektion — Verwaltung & Aufzug als zwei eigene Kacheln
+  `;
   html += _renderEmailAssignmentCards(r);
 
   // V12.171: KI-Schnell-Button — analysiert den Body (auch Forward-Inhalt) und schlägt
@@ -24933,39 +25064,7 @@ function renderEmailInboxDetail() {
     </div>`;
   }
 
-  // Email-Body — body_text bevorzugt, body_html als Fallback (HTML strippen)
-  const bodyText = (r.body_text && r.body_text.trim()) || _stripHtml(r.body_html || '') || '(leer)';
-  const hasHtml = !!(r.body_html && r.body_html.trim());
-  // HTML im sicheren Container vorhalten (NICHT iframe — der wirft sandbox-Warnings)
-  // Wir rendern das HTML lazy in einen Shadow-DOM-ähnlichen Container erst beim Klick
-  html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
-    <div class="dr-section-head" style="margin-bottom:10px">
-      <div class="dr-section-title">Original-Body${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
-      ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Original-HTML anzeigen</button>` : ''}
-    </div>
-    <div id="eiBodyText_${r._id}" style="font-size:12.5px;line-height:1.7;color:var(--dr-ink-soft);white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--dr-surface-alt);padding:12px 14px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
-    ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:none;width:100%;max-height:340px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;margin-top:8px"></div>` : ''}
-  </div>`;
-
-  // Anhänge
-  if (Array.isArray(r.attachments) && r.attachments.length) {
-    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
-      <div class="dr-section-head" style="margin-bottom:10px">
-        <div class="dr-section-title">Anhänge<span class="dr-section-title__count">${r.attachments.length}</span></div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">`;
-    r.attachments.forEach(a => {
-      const fname = a.filename || a.name || 'Anhang';
-      const url = a.url || '';
-      const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
-      html += `<a href="${_esc(url)}" target="_blank" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:var(--dr-ink);text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface-alt)';this.style.borderColor='var(--dr-border)'">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--dr-blue);flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
-        ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
-      </a>`;
-    });
-    html += `</div></div>`;
-  }
+  // V12.187: Body + Anhänge wurden bereits oben nach dem Header gerendert (Lesefluss)
 
   // Status- & Aktions-Buttons
   const canReply = (r.from_email && (r.linked_check_ids || r.reply_draft || vorgaenge.length === 0));
@@ -24987,8 +25086,11 @@ function renderEmailInboxDetail() {
     </div>
   </div>`;
 
-  // V12.185: Interne Notizen ans Ende verschoben (nach den Aktions-Buttons)
-  html += _renderEmailComments(r);
+  // V12.187: Toggle-Container schließen (Zuordnungen, KI, Vorgänge, Aktionen — eingeklappt)
+  html += `</div></details>`;
+
+  // V12.187: Verlauf — Notizen + ausgehende Antworten chronologisch (Ticketsystem-Stil)
+  html += _renderEmailTimeline(r);
 
   html += `</div>`;
   detEl.innerHTML = html;
