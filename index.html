@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.217';
+const APP_VERSION = 'V12.218';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -24619,10 +24619,14 @@ function renderEmailInboxList() {
     const extId = String(r.external_check_id || '').trim();
     const lId   = String(r.email_id || '').trim();
     const idStr = extId || lId || ('#' + String(r._id || '').slice(-4));
-    // V12.180: ai_subject bevorzugen (KI-strukturierter Betreff), Fallback auf Original
+    // V12.180/218: Strukturierten Betreff IMMER on-the-fly aus typ+anliegen+r bauen, wenn
+    // ai_subject_typ vorhanden ist. So spiegelt der Titel immer die aktuelle L-ID, Fabriknummer,
+    // Standort etc. — auch wenn der gespeicherte ai_subject veraltet ist (z. B. alte Slug-ID).
+    const _liveTyp = String(r.ai_subject_typ || '').trim();
+    const _liveSubj = _liveTyp ? _eiBuildAiSubject(_liveTyp, String(r.ai_subject_anliegen || ''), r) : '';
     const subject = isOut
       ? 'An: ' + (r.to_email || '(?)')
-      : (r.ai_subject || r.subject || '(kein Betreff)');
+      : (_liveSubj || r.ai_subject || r.subject || '(kein Betreff)');
     const preview = String(r.body_preview || r.body_text || r.body || '').replace(/\s+/g,' ').trim().slice(0, 140);
     // Absender — Name (HV) + Email
     const fromName = hv.primary || '(unbekannt)';
@@ -25769,13 +25773,23 @@ async function _eiAssignMissingLiftaroIds() {
   let assigned = 0;
   for (const r of missing) {
     const id = 'L-' + next;
+    // V12.218: Falls bereits ein strukturierter Betreff existiert (typ vorhanden), gleich mit der neuen
+    // L-ID regenerieren — sonst hängt die alte #xxxx-Slug-ID weiter im ai_subject.
+    const updates = { email_id: id };
+    r.email_id = id; // temporär setzen, damit _eiBuildAiSubject die L-ID nimmt
+    const typ = String(r.ai_subject_typ || '').trim();
+    if (typ) {
+      const newSubj = _eiBuildAiSubject(typ, String(r.ai_subject_anliegen || ''), r);
+      if (newSubj && newSubj !== r.ai_subject) updates.ai_subject = newSubj;
+    }
     try {
-      await atUpdate('Emails', r._id, { email_id: id });
-      r.email_id = id;
+      await atUpdate('Emails', r._id, updates);
+      if (updates.ai_subject) r.ai_subject = updates.ai_subject;
       next++;
       assigned++;
     } catch (e) {
       console.warn('[V12.217] L-ID-Vergabe fehlgeschlagen für', r._id, e.message);
+      r.email_id = ''; // rollback der temporären Zuweisung
       break; // bei Fehler abbrechen, beim nächsten Polling weitermachen
     }
   }
