@@ -6118,7 +6118,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.198';
+const APP_VERSION = 'V12.199';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7240,6 +7240,9 @@ async function setupTables() {
       { name: 'comments_json',        type: 'multilineText' },
       // V12.197: Zeitstempel, bis wann der User Thread-Antworten gesichtet hat
       { name: 'last_reply_seen_at',   type: 'singleLineText' },
+      // V12.199: Manuelle Thread-Verknüpfung — diese Email ist Child der angegebenen Parent-Email
+      { name: 'manual_thread_parent_id', type: 'singleLineText' },
+      { name: 'manual_thread_at',        type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
@@ -23413,6 +23416,21 @@ function _eiNormSubject(s) {
 function _eiThreadParentOf(r) {
   if (!r || r.direction === 'outgoing') return null;
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  // V12.199: Manueller Override hat höchste Priorität
+  const mpId = String(r.manual_thread_parent_id || '').trim();
+  if (mpId) {
+    const manualParent = all.find(x => x && x._id === mpId);
+    if (manualParent) {
+      // Bis zur Wurzel hoch (max 10 Schritte gegen Loops)
+      let cur = manualParent;
+      for (let i = 0; i < 10; i++) {
+        const next = _eiThreadParentOf(cur);
+        if (!next || next._id === cur._id) break;
+        cur = next;
+      }
+      return cur;
+    }
+  }
   const irt = String(r.in_reply_to || '').trim();
   // Schritt 1: direktes Threading per Header
   let cur = irt
@@ -23446,6 +23464,151 @@ function _eiThreadParentOf(r) {
     cur = next;
   }
   return cur;
+}
+
+// V12.199: Email manuell mit einer anderen verbinden — secondary wird Child von primary
+async function linkEmailsManually(primaryId, secondaryId) {
+  if (primaryId === secondaryId) { showToast('Email kann sich nicht mit sich selbst verknüpfen', 'error', 2500); return; }
+  const sec = (_eiAllRecords || []).find(x => x._id === secondaryId);
+  const pri = (_eiAllRecords || []).find(x => x._id === primaryId);
+  if (!sec || !pri) { showToast('Email nicht gefunden', 'error', 2500); return; }
+  const now = new Date().toISOString();
+  try {
+    await atUpdate('Emails', secondaryId, { manual_thread_parent_id: primaryId, manual_thread_at: now });
+    sec.manual_thread_parent_id = primaryId;
+    sec.manual_thread_at = now;
+    showToast('✓ Emails verknüpft', 'success', 2200);
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    showToast('Verknüpfen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+
+// V12.199: Manuelle Verknüpfung lösen
+async function unlinkEmailManually(secondaryId, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  if (!confirm('Verknüpfung dieser Email lösen? Sie taucht dann wieder als eigene Zeile in der Liste auf.')) return;
+  const sec = (_eiAllRecords || []).find(x => x._id === secondaryId);
+  if (!sec) return;
+  try {
+    await atUpdate('Emails', secondaryId, { manual_thread_parent_id: '', manual_thread_at: '' });
+    sec.manual_thread_parent_id = '';
+    sec.manual_thread_at = '';
+    showToast('Verknüpfung gelöst', 'success', 1800);
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error', 3000);
+  }
+}
+
+// V12.199: Modal zur Auswahl einer anderen Email, mit der verknüpft wird
+function openLinkEmailModal(currentRecId) {
+  const cur = (_eiAllRecords || []).find(x => x._id === currentRecId);
+  if (!cur) return;
+  const ov = document.createElement('div');
+  ov.id = 'eiLinkModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6100;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(720px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#1a3a5c;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700">🔗 Email verknüpfen</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:2px">Diese Email mit einer anderen verbinden — du entscheidest, welche primär bleibt.</div>
+      </div>
+      <button id="eiLinkClose" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+      <div style="font-size:11.5px;color:#475569;margin-bottom:6px">Aktuelle Email:</div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:7px;padding:9px 12px;font-size:13px;color:#0f172a"><strong>${_esc(cur.ai_subject || cur.subject || '(kein Betreff)')}</strong> <span style="color:#94a3b8">·</span> ${_esc(cur.from_name || cur.from_email || '')}</div>
+    </div>
+    <div style="padding:14px 22px 8px;background:#fff;border-bottom:1px solid #e2e8f0">
+      <input id="eiLinkSearch" type="search" placeholder="Email suchen — Betreff, Absender, Anliegen …" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box" oninput="_eiLinkRenderResults('${currentRecId}',this.value)">
+    </div>
+    <div id="eiLinkResults" style="flex:1;overflow-y:auto;padding:12px 22px;background:#f8fafc"></div>
+    <div style="padding:12px 22px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:#64748b">
+      <span>Klick auf eine Email zum Auswählen der Verknüpfungs-Richtung</span>
+      <button onclick="document.getElementById('eiLinkModal').remove()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:7px 16px;font-size:12.5px;cursor:pointer;font-family:'DM Sans',sans-serif">Schließen</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('eiLinkClose').onclick = () => ov.remove();
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  _eiLinkRenderResults(currentRecId, '');
+  setTimeout(() => { const s = document.getElementById('eiLinkSearch'); if (s) s.focus(); }, 80);
+}
+
+function _eiLinkRenderResults(currentId, q) {
+  const cont = document.getElementById('eiLinkResults');
+  if (!cont) return;
+  const norm = String(q || '').toLowerCase().trim();
+  // Filter: nicht die aktuelle, nicht outgoing, optional Suche
+  const candidates = (_eiAllRecords || []).filter(x => x && x._id !== currentId && x.direction !== 'outgoing');
+  let list = candidates;
+  if (norm) {
+    const terms = norm.split(/\s+/).filter(Boolean);
+    list = candidates.filter(x => {
+      const hay = [
+        x.subject, x.ai_subject, x.from_name, x.from_email, x.body_preview, x.body_text,
+      ].filter(Boolean).join(' \n ').toLowerCase();
+      return terms.every(t => hay.includes(t));
+    });
+  }
+  list.sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+  list = list.slice(0, 50);
+  if (!list.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Keine passende Email gefunden.</div>';
+    return;
+  }
+  cont.innerHTML = list.map(x => {
+    const subj = (x.ai_subject || x.subject || '(kein Betreff)').slice(0, 100);
+    const sender = (x.from_name || x.from_email || '?').slice(0, 60);
+    const date = String(x.received_at || '').slice(0, 16).replace('T', ' ');
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;transition:all .12s" onclick="_eiLinkAsk('${currentId}','${x._id}')" onmouseover="this.style.borderColor='#1a3a5c';this.style.boxShadow='0 1px 4px rgba(26,58,92,.15)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <div style="font-size:11.5px;color:#64748b;font-weight:600">${_esc(sender)}</div>
+        <div style="font-family:var(--dr-f-mono);font-size:11px;color:#94a3b8">${_esc(date)}</div>
+      </div>
+      <div style="font-size:13.5px;font-weight:600;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(subj)}</div>
+    </div>`;
+  }).join('');
+}
+
+// V12.199: Frage nach der Primary nachdem User Email gewählt hat
+function _eiLinkAsk(currentId, otherId) {
+  const cur   = (_eiAllRecords || []).find(x => x._id === currentId);
+  const other = (_eiAllRecords || []).find(x => x._id === otherId);
+  if (!cur || !other) return;
+  const curSubj   = (cur.ai_subject   || cur.subject   || '(kein Betreff)').slice(0, 80);
+  const otherSubj = (other.ai_subject || other.subject || '(kein Betreff)').slice(0, 80);
+  const cont = document.getElementById('eiLinkResults');
+  if (!cont) return;
+  cont.innerHTML = `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;max-width:600px;margin:20px auto">
+    <div style="font-size:13.5px;font-weight:700;color:#0f172a;margin-bottom:14px">Welche Email soll PRIMÄR sein?</div>
+    <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;line-height:1.5">Die primäre behält ihren Titel und bleibt in der Liste. Die andere wird chronologisch im Verlauf der primären eingefügt.</div>
+    <button onclick="_eiLinkConfirm('${currentId}','${otherId}')" style="display:block;width:100%;background:#fff;border:2px solid #16a34a;color:#0f172a;border-radius:10px;padding:14px 18px;cursor:pointer;margin-bottom:10px;text-align:left;font-family:'DM Sans',sans-serif" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.05em">Diese Email (aktuell geöffnet) bleibt primär</div>
+      <div style="font-size:13.5px;font-weight:700;color:#0f172a;margin-top:4px">${_esc(curSubj)}</div>
+      <div style="font-size:11.5px;color:#64748b;margin-top:2px">${_esc(cur.from_name || cur.from_email || '')}</div>
+    </button>
+    <button onclick="_eiLinkConfirm('${otherId}','${currentId}')" style="display:block;width:100%;background:#fff;border:2px solid #cbd5e1;color:#0f172a;border-radius:10px;padding:14px 18px;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif" onmouseover="this.style.borderColor='#1a3a5c';this.style.background='#f8fafc'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#fff'">
+      <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Andere Email wird primär</div>
+      <div style="font-size:13.5px;font-weight:700;color:#0f172a;margin-top:4px">${_esc(otherSubj)}</div>
+      <div style="font-size:11.5px;color:#64748b;margin-top:2px">${_esc(other.from_name || other.from_email || '')}</div>
+    </button>
+    <button onclick="_eiLinkRenderResults('${currentId}','')" style="background:transparent;border:none;color:#94a3b8;font-size:12px;cursor:pointer;margin-top:10px;padding:5px 10px;font-family:'DM Sans',sans-serif">← Zurück zur Auswahl</button>
+  </div>`;
+}
+
+async function _eiLinkConfirm(primaryId, secondaryId) {
+  await linkEmailsManually(primaryId, secondaryId);
+  const m = document.getElementById('eiLinkModal');
+  if (m) m.remove();
+  // Wenn der Detail-View die secondary geöffnet hatte, zur primary wechseln
+  if (_eiSelectedId === secondaryId) {
+    _eiSelectedId = primaryId;
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  }
 }
 
 // V12.197: Prüft, ob es ungesichtete Thread-Antworten gibt — neueste Antwort jünger als last_reply_seen_at
@@ -23964,6 +24127,8 @@ function _renderEmailTimeline(r) {
     const attCount = x.attachment_count || (Array.isArray(x.attachments) ? x.attachments.length : 0);
     const fromAddr = String(x.from_email || '').trim();
     const replyFromLabel = '↶ Antwort von ' + (fromAddr || fromName || '?');
+    // V12.199: manuell verknüpft? Eigener Marker + Trennen-Button
+    const isManualLink = !!String(x.manual_thread_parent_id || '').trim();
     return `<div style="display:flex;gap:12px;padding:12px 14px;background:#fef3c7;border:1px solid #fde68a;border-left:3px solid #d97706;border-radius:8px;margin-bottom:8px">
       <div style="width:32px;height:32px;border-radius:50%;background:#d97706;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${_esc(initials)}</div>
       <div style="flex:1;min-width:0">
@@ -23971,6 +24136,7 @@ function _renderEmailTimeline(r) {
           <span style="font-size:12.5px;font-weight:700;color:#92400e">${_esc(fromName)}</span>
           <span style="background:#fde68a;color:#92400e;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(replyFromLabel)}">${_esc(replyFromLabel)}</span>
           ${attCount ? `<span style="font-size:10.5px;color:#92400e;font-weight:600">📎 ${attCount}</span>` : ''}
+          ${isManualLink ? `<span title="Manuell verknüpft" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700">🔗 manuell</span><button onclick="unlinkEmailManually('${x._id}',event)" title="Verknüpfung lösen" style="background:transparent;border:1px solid transparent;color:#94a3b8;border-radius:5px;padding:1px 5px;font-size:10.5px;cursor:pointer;font-family:'DM Sans',sans-serif" onmouseover="this.style.borderColor='#a8312f';this.style.color='#a8312f'" onmouseout="this.style.borderColor='transparent';this.style.color='#94a3b8'">✕ trennen</button>` : ''}
           <span style="font-size:11px;color:#a16207;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
         </div>
         <div style="font-size:11.5px;color:#a16207;margin-bottom:6px"><strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
@@ -23993,7 +24159,10 @@ function _renderEmailTimeline(r) {
           cntIncoming ? cntIncoming + ' Antwort'    + (cntIncoming === 1 ? '' : 'en') + ' eingegangen' : '',
         ].filter(Boolean).join(' · ')}</span>` : ''}
       </div>
-      <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+        <button onclick="openLinkEmailModal('${r._id}')" title="Diese Email mit einer anderen verknüpfen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">🔗 Verknüpfen</button>
+        <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
+      </div>
     </div>
     ${itemsHtml}
     ${_renderEmailComposer(r)}
