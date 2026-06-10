@@ -4099,6 +4099,10 @@ const pdfWorkerReady = Promise.resolve();</script>
             <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">🧹</span>
             <span class="ei-side-lbl">Duplikate prüfen</span>
           </button>
+          <button class="ei-side-item" onclick="openSignatureEditor()" title="Signatur für Antworten und Weiterleitungen einstellen">
+            <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">✍</span>
+            <span class="ei-side-lbl">Signatur einstellen</span>
+          </button>
         </div>
       </div>
       <!-- Inhalts-Pane: Sub-Header + 2-Spalten (Liste | Detail) -->
@@ -6077,7 +6081,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.194';
+const APP_VERSION = 'V12.195';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
