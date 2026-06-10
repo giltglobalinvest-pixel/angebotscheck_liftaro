@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.207';
+const APP_VERSION = 'V12.208';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25891,6 +25891,10 @@ REGELN:
     }));
     window._eiAiAufzugCache = window._eiAiAufzugCache || {};
     window._eiAiAufzugCache[recId] = enriched;
+    // V12.208: pdfDropped auch dann sichtbar machen, wenn Anlagen gefunden wurden —
+    // z. B. wenn die Fabriknummer in einem übersprungenen Anhang gewesen wäre.
+    window._eiAiAufzugDropped = window._eiAiAufzugDropped || {};
+    window._eiAiAufzugDropped[recId] = pdfDropped;
     if (out) out.innerHTML = _renderAufzugAnalysis(recId, enriched);
   } catch (e) {
     if (out) out.innerHTML = '<div style="color:#a8312f;font-size:12px;padding:8px 0">Fehler: ' + _esc(e.message) + '</div>';
@@ -25899,10 +25903,12 @@ REGELN:
   }
 }
 
-// V12.207: PDF-Anhänge laden und als Claude-Document-Inputs vorbereiten.
-// Max 3 PDFs gleichzeitig, max ~5 MB pro Stück (Anthropic PDF-Limit).
-// Wird zusammen mit dem Body in einem einzigen KI-Call genutzt — keine separate Analyse mehr.
+// V12.208: PDF-Anhänge laden und als Claude-Document-Inputs vorbereiten.
+// Max 3 PDFs gleichzeitig. Limit pro PDF: 25 MB raw (~33 MB base64) — Anthropic's
+// PDF-Limit ist 32 MB pro Request bei max. 100 Seiten. Vorher waren 5 MB zu eng (V12.207),
+// wodurch typische Verträge (8-10 MB Scan-PDF) stillschweigend übersprungen wurden.
 async function _eiLoadPdfDocuments(pdfs) {
+  const MAX_PDF_BYTES = 25 * 1024 * 1024;
   const documents = [];
   const dropped   = [];
   for (const att of pdfs.slice(0, 3)) {
@@ -25911,7 +25917,10 @@ async function _eiLoadPdfDocuments(pdfs) {
       const resp = await fetch(att.url);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const buf = await resp.arrayBuffer();
-      if (buf.byteLength > 5 * 1024 * 1024) { dropped.push(name + ' (zu groß)'); continue; }
+      if (buf.byteLength > MAX_PDF_BYTES) {
+        dropped.push(name + ' (' + Math.round(buf.byteLength / 1024 / 1024) + ' MB — Limit 25 MB)');
+        continue;
+      }
       // ArrayBuffer → Base64 chunkweise (große Buffer crashen mit fromCharCode.apply)
       let bin = ''; const view = new Uint8Array(buf);
       for (let i = 0; i < view.length; i += 0x8000) {
@@ -25921,6 +25930,8 @@ async function _eiLoadPdfDocuments(pdfs) {
       documents.push({
         type: 'document',
         source: { type: 'base64', media_type: 'application/pdf', data: b64 },
+        // V12.208: Hinweis an Claude, dass der Anhang die Fabriknummer enthalten kann
+        title: name,
       });
     } catch (e) {
       dropped.push(name + ' (' + e.message + ')');
@@ -25932,6 +25943,14 @@ async function _eiLoadPdfDocuments(pdfs) {
 
 function _renderAufzugAnalysis(recId, list) {
   const isMulti = list.length > 1;
+  // V12.208: Warnung über übersprungene PDF-Anhänge (zu groß, > 3, Download-Fehler).
+  // Wird über der Ergebnisliste angezeigt — auch wenn Anlagen gefunden wurden, denn die
+  // Fabriknummer könnte gerade in dem übersprungenen Anhang gestanden haben.
+  const dropped = (window._eiAiAufzugDropped && window._eiAiAufzugDropped[recId]) || [];
+  const dropWarn = dropped.length ? `<div style="margin-bottom:10px;padding:8px 12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;color:#9a3412;font-size:11.5px;line-height:1.5">
+    <strong>⚠ Anhang nicht analysiert:</strong> ${dropped.map(_esc).join(' · ')}
+    <div style="color:#7c2d12;font-size:11px;margin-top:2px">Wenn die Fabriknummer in einem dieser Anhänge steht, manuell eintragen.</div>
+  </div>` : '';
   // Legacy: standort-String → Heuristik strasse/plz/ort
   const splitLegacy = (std) => {
     const s = String(std || '').trim();
@@ -25997,6 +26016,7 @@ function _renderAufzugAnalysis(recId, list) {
       </div>`
     : '';
   return `<div style="background:#ecfeff;border:1px solid #67e8f9;border-radius:8px;padding:12px;margin-top:8px">
+    ${dropWarn}
     ${splitHint}
     ${rows}
     ${missingHint}
