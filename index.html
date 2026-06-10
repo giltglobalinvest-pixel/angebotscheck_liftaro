@@ -6077,7 +6077,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.190';
+const APP_VERSION = 'V12.191';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23348,9 +23348,54 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_alle',           cAlle);
 }
 
+// V12.191: Threading — finde den Thread-Parent einer eingehenden Antwort
+// Eine Mail gehört in einen bestehenden Thread, wenn:
+//   • sie nicht outgoing ist
+//   • ihr in_reply_to die message_id eines anderen Records enthält
+// Der Parent ist der TOP-Level-Eintrag (also keiner, der selbst Antwort auf etwas ist).
+function _eiThreadParentOf(r) {
+  if (!r || r.direction === 'outgoing') return null;
+  const irt = String(r.in_reply_to || '').trim();
+  if (!irt) return null;
+  const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  // Erst direkten Parent finden
+  let cur = all.find(x => x && x._id !== r._id
+    && String(x.message_id || '').trim()
+    && irt.includes(String(x.message_id).trim())
+  );
+  if (!cur) return null;
+  // Bis zum Top-Level hochwandern (max 10 Schritte gegen Loops)
+  for (let i = 0; i < 10; i++) {
+    const next = _eiThreadParentOf(cur);
+    if (!next || next._id === cur._id) break;
+    cur = next;
+  }
+  return cur;
+}
+
+// V12.191: Alle eingehenden Antworten, die zu diesem Parent gehören
+function _eiThreadChildrenOf(r) {
+  if (!r) return [];
+  const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  const out = [];
+  for (const x of all) {
+    if (!x || x._id === r._id || x.direction === 'outgoing') continue;
+    const parent = _eiThreadParentOf(x);
+    if (parent && parent._id === r._id) out.push(x);
+  }
+  return out;
+}
+
 function _eiFiltered() {
+  // V12.191: Thread-Antworten ausblenden — sie erscheinen im Verlauf der Parent-Mail
+  const threadedIds = new Set();
+  for (const x of (_eiAllRecords || [])) {
+    if (_eiThreadParentOf(x)) threadedIds.add(x._id);
+  }
+  const dropThreaded = (arr) => arr.filter(r => !threadedIds.has(r._id));
   // V12.167: zuerst Status, dann Volltextsuche
   let base = (_eiFilter === 'alle') ? _eiAllRecords : _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+  base = dropThreaded(base);
   const q = String(window._eiSearchQ || '').toLowerCase().trim();
   if (!q) return base;
   // Mehrere Wörter → alle müssen vorkommen (UND-Suche, in beliebigem Feld)
@@ -23626,8 +23671,15 @@ function renderEmailInboxList() {
     const notesPill = notesCount > 0
       ? `<span title="${notesCount} interne Notiz${notesCount === 1 ? '' : 'en'}" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">💬 ${notesCount}</span>`
       : '';
-    const pillRow = (hvPill || azPill || notesPill)
-      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${notesPill}</div>`
+    // V12.191: Thread-Antworten am Parent zählen + Pille zeigen
+    const threadChildren = _eiThreadChildrenOf(r);
+    const threadCnt = threadChildren.length;
+    const hasFreshChild = threadChildren.some(c => window._eiFreshIds && window._eiFreshIds.has(c._id));
+    const threadPill = threadCnt > 0
+      ? `<span title="${threadCnt} eingehende Antwort${threadCnt === 1 ? '' : 'en'} im Thread" style="background:${hasFreshChild ? '#dbeafe' : '#f1f5f9'};color:${hasFreshChild ? '#1e40af' : '#475569'};border:1px solid ${hasFreshChild ? '#93c5fd' : '#cbd5e1'};border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px${hasFreshChild ? ';animation:eiNeuPulse 1.4s ease-in-out infinite' : ''}">↶ ${threadCnt} Antwort${threadCnt === 1 ? '' : 'en'}</span>`
+      : '';
+    const pillRow = (hvPill || azPill || notesPill || threadPill)
+      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${threadPill}${notesPill}</div>`
       : '';
     // V12.180: Absender-Mini-Zeile über dem Betreff (statt eigener Spalte)
     const senderLine = `<span class="sender">${_esc(fromName)}${fromMail ? `<span class="sep">·</span><span class="mail">${_esc(fromMail)}</span>` : ''}</span>`;
@@ -23722,10 +23774,17 @@ function _renderEmailTimeline(r) {
     when: x.sent_at || x.status_at || '',
     payload: x,
   }));
-  const items = [...comments, ...replies].sort((a, b) => String(a.when).localeCompare(String(b.when)));
+  // V12.191: Eingehende Antworten im Thread — alle Children dieses Parents
+  const incomingReplies = _eiThreadChildrenOf(r).map(x => ({
+    type: 'incoming',
+    when: x.received_at || x.status_at || '',
+    payload: x,
+  }));
+  const items = [...comments, ...replies, ...incomingReplies].sort((a, b) => String(a.when).localeCompare(String(b.when)));
   const cntTotal = items.length;
   const cntNotes = comments.length;
   const cntReplies = replies.length;
+  const cntIncoming = incomingReplies.length;
   const fmtWhen = (s) => {
     if (!s) return '';
     const d = new Date(s); if (isNaN(d.getTime())) return String(s).slice(0,16).replace('T',' ');
@@ -23750,21 +23809,43 @@ function _renderEmailTimeline(r) {
         </div>
       </div>`;
     }
-    // Reply (outgoing)
+    if (it.type === 'reply') {
+      // Reply (outgoing) — von uns gesendet
+      const x = it.payload;
+      const bearbeiter = String(x.bearbeiter_name || 'Liftaro').trim();
+      const bodyTrim = String(x.body || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      return `<div style="display:flex;gap:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-left:3px solid #16a34a;border-radius:8px;margin-bottom:8px">
+        <div style="width:32px;height:32px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">📤</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:#166534">${_esc(bearbeiter)}</span>
+            <span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">📤 Antwort an Kunde</span>
+            <span style="font-size:11px;color:#15803d;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
+          </div>
+          <div style="font-size:11.5px;color:#15803d;margin-bottom:6px"><strong>An:</strong> ${_esc(x.to_email || '(?)')} · <strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
+          <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0">${_esc(bodyTrim)}${String(x.body || '').length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
+        </div>
+      </div>`;
+    }
+    // V12.191: Eingehende Antwort (kundenseitig) — wir bekommen sie hereingeschickt
     const x = it.payload;
-    const bearbeiter = String(x.bearbeiter_name || 'Liftaro').trim();
-    const initials = bearbeiter.split(/\s+/).map(s => s.charAt(0)).join('').slice(0,2).toUpperCase() || 'L';
-    const bodyTrim = String(x.body || '').replace(/\s+/g, ' ').trim().slice(0, 600);
-    return `<div style="display:flex;gap:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-left:3px solid #16a34a;border-radius:8px;margin-bottom:8px">
-      <div style="width:32px;height:32px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">📤</div>
+    const fromName = String(x.from_name || x.from_email || 'Kunde').trim();
+    const initials = fromName.split(/\s+/).map(s => s.charAt(0)).join('').slice(0, 2).toUpperCase() || 'K';
+    const bodyRaw = (x.body_text && x.body_text.trim()) || (typeof _stripHtml === 'function' ? _stripHtml(x.body_html || '') : '') || x.body || '';
+    const bodyTrim = String(bodyRaw).replace(/\s+/g, ' ').trim().slice(0, 600);
+    const attCount = x.attachment_count || (Array.isArray(x.attachments) ? x.attachments.length : 0);
+    return `<div style="display:flex;gap:12px;padding:12px 14px;background:#fef3c7;border:1px solid #fde68a;border-left:3px solid #d97706;border-radius:8px;margin-bottom:8px">
+      <div style="width:32px;height:32px;border-radius:50%;background:#d97706;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${_esc(initials)}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-          <span style="font-size:12.5px;font-weight:700;color:#166534">${_esc(bearbeiter)}</span>
-          <span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">📤 Antwort an Kunde</span>
-          <span style="font-size:11px;color:#15803d;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
+          <span style="font-size:12.5px;font-weight:700;color:#92400e">${_esc(fromName)}</span>
+          <span style="background:#fde68a;color:#92400e;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">↶ Antwort vom Kunden</span>
+          ${attCount ? `<span style="font-size:10.5px;color:#92400e;font-weight:600">📎 ${attCount}</span>` : ''}
+          <span style="font-size:11px;color:#a16207;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
         </div>
-        <div style="font-size:11.5px;color:#15803d;margin-bottom:6px"><strong>An:</strong> ${_esc(x.to_email || '(?)')} · <strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
-        <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0">${_esc(bodyTrim)}${String(x.body || '').length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
+        <div style="font-size:11.5px;color:#a16207;margin-bottom:6px"><strong>Von:</strong> ${_esc(x.from_email || '(?)')} · <strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
+        <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #fde68a">${_esc(bodyTrim)}${String(bodyRaw).length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
+        <div style="margin-top:6px;font-size:10.5px;color:#a16207">→ <a href="javascript:void(0)" onclick="selectEmailRow('${x._id}');event.stopPropagation()" style="color:#92400e;font-weight:600;text-decoration:underline">Einzelansicht öffnen</a></div>
       </div>
     </div>`;
   };
@@ -23776,7 +23857,11 @@ function _renderEmailTimeline(r) {
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:14px;font-weight:700;color:#0f172a">💬 Verlauf</span>
         ${cntTotal > 0 ? `<span style="background:#1a3a5c;color:#fff;border-radius:9px;padding:1px 9px;font-size:11px;font-weight:700">${cntTotal}</span>` : ''}
-        ${cntNotes > 0 || cntReplies > 0 ? `<span style="font-size:11.5px;color:#64748b">${cntNotes ? cntNotes + ' Notiz' + (cntNotes === 1 ? '' : 'en') : ''}${cntNotes && cntReplies ? ' · ' : ''}${cntReplies ? cntReplies + ' Antwort' + (cntReplies === 1 ? '' : 'en') : ''}</span>` : ''}
+        ${cntTotal > 0 ? `<span style="font-size:11.5px;color:#64748b">${[
+          cntNotes    ? cntNotes    + ' Notiz'      + (cntNotes    === 1 ? '' : 'en') : '',
+          cntReplies  ? cntReplies  + ' gesendet'   + (cntReplies  === 1 ? '' : '')   : '',
+          cntIncoming ? cntIncoming + ' Antwort'    + (cntIncoming === 1 ? '' : 'en') + ' vom Kunden' : '',
+        ].filter(Boolean).join(' · ')}</span>` : ''}
       </div>
       <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
     </div>
@@ -27420,7 +27505,12 @@ function _eiStartAutoPolling() {
         && r.direction !== 'outgoing'
       );
       if (newOnes.length) {
-        newOnes.forEach(r => window._eiFreshIds.add(r._id));
+        newOnes.forEach(r => {
+          window._eiFreshIds.add(r._id);
+          // V12.191: Wenn die neue Mail eine Thread-Antwort ist, auch den Parent als "fresh" markieren
+          const parent = _eiThreadParentOf(r);
+          if (parent) window._eiFreshIds.add(parent._id);
+        });
         _eiOnNewEmails(newOnes);
       }
     } catch (_) { /* silent — nächster Tick versucht's erneut */ }
