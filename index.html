@@ -4608,6 +4608,23 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
+/* V12.190: Badge-Pulse + NEU-Marker für frisch eingegangene Emails */
+@keyframes eiBadgePulse {
+  0%,100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(168,49,47,.6); }
+  50%     { transform: scale(1.25); box-shadow: 0 0 0 10px rgba(168,49,47,0); }
+}
+@keyframes eiNeuPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(36,86,229,.55); }
+  50%     { box-shadow: 0 0 0 7px rgba(36,86,229,0); }
+}
+.ei-row.fresh { background: #eff6ff !important; }
+.ei-row.fresh .ei-row-id { color: #2456E5; }
+.ei-fresh-tag {
+  display:inline-flex; align-items:center; gap:4px;
+  background:#2456E5; color:#fff; border-radius:6px;
+  padding:2px 8px; font-size:10px; font-weight:800; letter-spacing:.05em;
+  margin-right:6px; animation: eiNeuPulse 1.4s ease-in-out infinite;
+}
 /* V12.187: <details> Aufklapp-Pfeil-Animation */
 #emailExtraDetails[open] #emailExtraDetailsCaret { transform: rotate(90deg); }
 #emailExtraDetails summary::-webkit-details-marker { display:none; }
@@ -6060,7 +6077,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.189';
+const APP_VERSION = 'V12.190';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23210,7 +23227,9 @@ function backToInboxList() {
   if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
 }
 
+// V12.190: Wenn der Posteingang geschlossen wird, alte NEU-Marker löschen — User hat sie zur Kenntnis genommen
 function closeEmailInboxModal() {
+  if (window._eiFreshIds) window._eiFreshIds.clear();
   document.getElementById('emailInboxModal').style.display = 'none';
 }
 
@@ -23616,12 +23635,16 @@ function renderEmailInboxList() {
     const idCell = extId
       ? `<div class="ei-row-id" title="Externe Check-ID" style="color:#92400e;font-weight:700">${_esc(idStr)}</div>`
       : `<div class="ei-row-id">${_esc(idStr)}</div>`;
-    return `<div class="ei-row${sel}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">
+    // V12.190: NEU-Marker für frisch eingegangene Mails seit letztem User-Sichten
+    const isFresh = !!(window._eiFreshIds && window._eiFreshIds.has(r._id));
+    const freshTag = isFresh ? '<span class="ei-fresh-tag">NEU</span>' : '';
+    const rowCls = 'ei-row' + sel + (isFresh ? ' fresh' : '');
+    return `<div class="${rowCls}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">
       ${idCell}
       <div class="ei-row-date">${_esc(dateStr)}</div>
       <div class="ei-row-subj">
         ${senderLine}
-        <span class="subj">${_esc(subject)}</span>
+        <span class="subj">${freshTag}${_esc(subject)}</span>
         ${preview ? `<span class="prev">${_esc(preview)}</span>` : ''}
         ${pillRow}
       </div>
@@ -25006,6 +25029,8 @@ function selectEmailRow(recId) {
   _eiSelectedId = recId;
   // V12.189: Composer-Mode beim Email-Wechsel auf "reply" zurücksetzen
   window._eiComposerMode = 'reply';
+  // V12.190: NEU-Marker entfernen — User hat diese Mail gesehen
+  if (window._eiFreshIds && window._eiFreshIds.has(recId)) window._eiFreshIds.delete(recId);
   renderEmailInboxList();
   renderEmailInboxDetail();
   // V12.8 mobile: Beim Klick auf Email → Liste ausblenden, Detail full-screen zeigen
@@ -27367,6 +27392,88 @@ function _refreshEmailInboxBadge() {
       badge.style.display = 'none';
     }
   });
+  // V12.190: Auto-Polling beim ersten Refresh starten
+  if (typeof _eiStartAutoPolling === 'function') _eiStartAutoPolling();
+}
+
+// V12.190: Auto-Polling für eingehende Emails — alle 45 Sekunden silent reload + Vergleich
+let _eiPollTimer = null;
+window._eiFreshIds = window._eiFreshIds || new Set(); // Mails, die seit letztem User-Sichten dazugekommen sind
+let _eiNotifAskedOnce = false;
+
+function _eiStartAutoPolling() {
+  if (_eiPollTimer) return;
+  // Beim Start einmal Browser-Notification-Permission anfragen (nicht aggressiv)
+  if (!_eiNotifAskedOnce && 'Notification' in window && Notification.permission === 'default') {
+    _eiNotifAskedOnce = true;
+    try { setTimeout(() => Notification.requestPermission().catch(() => {}), 4000); } catch (_) {}
+  }
+  _eiPollTimer = setInterval(async () => {
+    try {
+      // Vor dem Reload: bekannte IDs merken
+      const beforeIds = new Set((_eiAllRecords || []).map(r => r._id));
+      await loadEmailInbox(true); // silent
+      // Neue eingegangene Mails (nicht outgoing, Status neu)
+      const newOnes = (_eiAllRecords || []).filter(r =>
+        r && !beforeIds.has(r._id)
+        && (r.status || 'neu') === 'neu'
+        && r.direction !== 'outgoing'
+      );
+      if (newOnes.length) {
+        newOnes.forEach(r => window._eiFreshIds.add(r._id));
+        _eiOnNewEmails(newOnes);
+      }
+    } catch (_) { /* silent — nächster Tick versucht's erneut */ }
+  }, 45000);
+}
+
+// V12.190: Visuelle + akustische + System-Reaktion auf neue Emails
+function _eiOnNewEmails(newOnes) {
+  const cnt = newOnes.length;
+  const sample = newOnes[0];
+  const sender = (sample.from_name || sample.from_email || '(unbekannt)').slice(0, 60);
+  const subj   = (sample.subject || '(kein Betreff)').slice(0, 80);
+  // Toast — auch klickbar, springt zum Posteingang
+  try {
+    showToast('📧 ' + cnt + ' neue Email' + (cnt === 1 ? '' : 's') + ' · ' + sender, 'info', 5500);
+  } catch (_) {}
+  // Badge-Animation
+  const badge = document.getElementById('emailInboxBadge');
+  if (badge) {
+    badge.style.animation = 'none';
+    void badge.offsetWidth;
+    badge.style.animation = 'eiBadgePulse 0.55s ease-in-out 4';
+  }
+  // Liste neu rendern (NEU-Marker)
+  if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  // Audio-Ping (nur wenn AudioContext erlaubt)
+  try { _eiPlayPing(); } catch (_) {}
+  // Browser-Notification (wenn Permission)
+  try {
+    if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+      const n = new Notification('Liftaro · ' + cnt + ' neue Email' + (cnt === 1 ? '' : 's'), {
+        body: sender + '\n' + subj,
+        tag:  'eiNewMail',
+      });
+      n.onclick = () => { window.focus(); if (typeof openEmailInboxModal === 'function') openEmailInboxModal(); n.close(); };
+    }
+  } catch (_) {}
+}
+
+function _eiPlayPing() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  const ctx = new Ctx();
+  const osc = ctx.createOscillator();
+  const g   = ctx.createGain();
+  osc.connect(g); g.connect(ctx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+  g.gain.setValueAtTime(0.08, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.32);
 }
 
 // ════════════════════════════════════════════════════════════════
