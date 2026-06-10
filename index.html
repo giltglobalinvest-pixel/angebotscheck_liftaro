@@ -4612,6 +4612,34 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
+/* V12.196: Composer-Sending-Animation — Spinner + Progress-Bar */
+@keyframes eiSpinnerRotate { to { transform: rotate(360deg); } }
+@keyframes eiProgressSlide {
+  0%   { left: -30%; width: 30%; }
+  50%  { left: 35%;  width: 50%; }
+  100% { left: 100%; width: 30%; }
+}
+.ei-comp-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: eiSpinnerRotate 0.7s linear infinite;
+}
+.ei-comp-progress {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: rgba(36,86,229,.08); overflow: hidden;
+  z-index: 5;
+}
+.ei-comp-progress::after {
+  content: ''; display: block; position: absolute;
+  top: 0; bottom: 0; left: -30%; width: 30%;
+  background: linear-gradient(90deg, transparent, #2456E5, transparent);
+  animation: eiProgressSlide 1.2s ease-in-out infinite;
+}
+.ei-comp-sending textarea { opacity: 0.55; pointer-events: none; }
+.ei-comp-sending input    { opacity: 0.55; pointer-events: none; }
+.ei-comp-sending .ei-comp-tab { pointer-events: none; opacity: 0.6; }
 /* V12.190: Badge-Pulse + NEU-Marker für frisch eingegangene Emails */
 @keyframes eiBadgePulse {
   0%,100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(168,49,47,.6); }
@@ -6081,7 +6109,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.195';
+const APP_VERSION = 'V12.196';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -24096,43 +24124,94 @@ function setComposerMode(mode, recId) {
   if (inp) inp.focus();
 }
 
-// V12.189: Submit aus Composer — dispatcht je nach Mode
+// V12.196: Composer in „Sende"-Zustand schalten — Spinner im Button + Progress-Bar + Inputs disabled
+function _eiSetSendingState(sending, label) {
+  // Finde den umschließenden Composer-Container (das border-Box mit der Textarea)
+  const inp = document.getElementById('ei_composer_input');
+  if (!inp) return;
+  const composer = inp.closest('div[style*="border:1px solid #cbd5e1"]') || inp.parentElement?.parentElement;
+  const sendBtn = document.getElementById('ei_composer_send');
+  if (sending) {
+    if (composer) {
+      composer.classList.add('ei-comp-sending');
+      // Progress-Bar oben einfügen (falls noch nicht da)
+      if (!composer.querySelector('.ei-comp-progress')) {
+        const pb = document.createElement('div');
+        pb.className = 'ei-comp-progress';
+        composer.style.position = 'relative';
+        composer.insertBefore(pb, composer.firstChild);
+      }
+    }
+    if (sendBtn) {
+      sendBtn.dataset.origHtml = sendBtn.innerHTML;
+      sendBtn.innerHTML = '<div class="ei-comp-spinner"></div>';
+      sendBtn.disabled = true;
+      sendBtn.style.cursor = 'wait';
+      sendBtn.title = label || 'Sende …';
+    }
+  } else {
+    if (composer) {
+      composer.classList.remove('ei-comp-sending');
+      const pb = composer.querySelector('.ei-comp-progress');
+      if (pb) pb.remove();
+    }
+    if (sendBtn) {
+      if (sendBtn.dataset.origHtml) {
+        sendBtn.innerHTML = sendBtn.dataset.origHtml;
+        delete sendBtn.dataset.origHtml;
+      }
+      sendBtn.disabled = false;
+      sendBtn.style.cursor = 'pointer';
+      sendBtn.title = 'Senden (Strg/Cmd+Enter)';
+    }
+  }
+}
+
+// V12.189/196: Submit aus Composer — dispatcht je nach Mode, mit Sending-State
 async function composerSubmit(recId) {
   const mode = window._eiComposerMode || 'reply';
   const inp  = document.getElementById('ei_composer_input');
   const text = inp ? String(inp.value || '').trim() : '';
-  if (mode === 'note') {
-    if (!text) { showToast('Notiz ist leer', 'warning', 1500); return; }
-    // addEmailComment liest aus #ei_comment_input — wir bedienen es kompatibel
-    const tmpId = 'ei_comment_input';
-    // Falls Composer-Input nicht gleich ist: temporär in das alte Feld kopieren
-    let tmpEl = document.getElementById(tmpId);
-    let created = false;
-    if (!tmpEl) {
-      tmpEl = document.createElement('textarea');
-      tmpEl.id = tmpId;
-      tmpEl.style.display = 'none';
-      document.body.appendChild(tmpEl);
-      created = true;
-    }
-    tmpEl.value = text;
-    await addEmailComment(recId);
-    if (inp) inp.value = '';
-    if (created && tmpEl.parentNode) tmpEl.parentNode.removeChild(tmpEl);
-    return;
-  }
+  // Eingabe-Validierung VOR dem Sending-State
+  if (mode === 'note' && !text) { showToast('Notiz ist leer', 'warning', 1500); return; }
+  if (mode === 'reply' && !text) { showToast('Antwort ist leer', 'warning', 1500); return; }
+  let to = '';
   if (mode === 'forward') {
     const toEl = document.getElementById('ei_composer_to');
-    const to = toEl ? String(toEl.value || '').trim() : '';
+    to = toEl ? String(toEl.value || '').trim() : '';
     if (!to || !/^\S+@\S+\.\S+$/.test(to)) { showToast('Bitte gültige Empfänger-Adresse eintragen', 'warning', 2200); return; }
-    await forwardEmailTo(recId, to, text);
-    if (inp) inp.value = '';
-    return;
   }
-  // Reply
-  if (!text) { showToast('Antwort ist leer', 'warning', 1500); return; }
-  await quickReplyToEmail(recId, text);
-  if (inp) inp.value = '';
+  // Sending-State an
+  const labels = { reply: 'Antwort wird gesendet …', note: 'Notiz wird gespeichert …', forward: 'Weiterleitung wird gesendet …' };
+  _eiSetSendingState(true, labels[mode]);
+  try {
+    if (mode === 'note') {
+      // addEmailComment liest aus #ei_comment_input — wir bedienen es kompatibel
+      const tmpId = 'ei_comment_input';
+      let tmpEl = document.getElementById(tmpId);
+      let created = false;
+      if (!tmpEl) {
+        tmpEl = document.createElement('textarea');
+        tmpEl.id = tmpId;
+        tmpEl.style.display = 'none';
+        document.body.appendChild(tmpEl);
+        created = true;
+      }
+      tmpEl.value = text;
+      await addEmailComment(recId);
+      if (inp) inp.value = '';
+      if (created && tmpEl.parentNode) tmpEl.parentNode.removeChild(tmpEl);
+    } else if (mode === 'forward') {
+      await forwardEmailTo(recId, to, text);
+      if (inp) inp.value = '';
+    } else {
+      // Reply
+      await quickReplyToEmail(recId, text);
+      if (inp) inp.value = '';
+    }
+  } finally {
+    _eiSetSendingState(false);
+  }
 }
 
 // V12.189: Schnelle Antwort direkt aus dem Composer (kein extra Modal)
