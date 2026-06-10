@@ -4608,16 +4608,20 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
-/* V12.185: Email-Liste eingeklappt → Detail-Pane voll */
+/* V12.185/186: Email-Liste eingeklappt → Detail-Pane voll, schlägt Mobile-Verhalten */
 #emailInboxInnerBody { transition: grid-template-columns .2s ease; }
-#emailInboxInnerBody.list-collapsed { grid-template-columns: 0 1fr !important; }
+#emailInboxInnerBody.list-collapsed { grid-template-columns: 1fr !important; }
 #emailInboxInnerBody.list-collapsed #emailInboxList { display:none !important; }
+#emailInboxInnerBody.list-collapsed #emailInboxDetail {
+  display:block !important; position:relative !important; inset:auto !important;
+  z-index:auto !important; background:#f8fafc !important;
+}
 @media (max-width: 1280px) {
-  #emailInboxInnerBody { grid-template-columns: 1fr !important; }
-  #emailInboxDetail { display:none; }
-  #emailInboxList.detail-open { display:none; }
-  #emailInboxDetail.list-mode { display:none; }
-  #emailInboxDetail:not(.list-mode) { display:block; position:fixed; inset:0; z-index:5070; background:#f8fafc; }
+  #emailInboxInnerBody:not(.list-collapsed) { grid-template-columns: 1fr !important; }
+  #emailInboxInnerBody:not(.list-collapsed) #emailInboxDetail { display:none; }
+  #emailInboxInnerBody:not(.list-collapsed) #emailInboxList.detail-open { display:none; }
+  #emailInboxInnerBody:not(.list-collapsed) #emailInboxDetail.list-mode { display:none; }
+  #emailInboxInnerBody:not(.list-collapsed) #emailInboxDetail:not(.list-mode) { display:block; position:fixed; inset:0; z-index:5070; background:#f8fafc; }
 }
 @media (max-width: 900px) {
   #emailInboxBody { grid-template-columns: 1fr !important; }
@@ -6051,7 +6055,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.185';
+const APP_VERSION = 'V12.186';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
