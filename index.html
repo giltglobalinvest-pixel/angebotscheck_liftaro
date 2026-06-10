@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.204';
+const APP_VERSION = 'V12.205';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25509,8 +25509,23 @@ async function setEmailTyp(recId, typ) {
   if (!r) return;
   const newTyp = String(typ || '').trim();
   try {
-    await atUpdate('Emails', recId, { email_typ: newTyp });
+    const payload = { email_typ: newTyp };
+    // V12.205: Wenn bereits ein strukturierter Betreff existiert (Anliegen vorhanden),
+    // den Titel direkt mit dem neuen Typ regenerieren — keine erneute KI-Anfrage nötig.
+    const anliegen = String(r.ai_subject_anliegen || '').trim();
+    if (newTyp && anliegen) {
+      const newSubj = _eiBuildAiSubject(newTyp, anliegen, r);
+      payload.ai_subject = newSubj;
+      payload.ai_subject_typ = newTyp;
+      payload.ai_subject_at = new Date().toISOString();
+    }
+    await atUpdate('Emails', recId, payload);
     r.email_typ = newTyp;
+    if (payload.ai_subject) {
+      r.ai_subject = payload.ai_subject;
+      r.ai_subject_typ = payload.ai_subject_typ;
+      r.ai_subject_at = payload.ai_subject_at;
+    }
     // Wenn ein Custom-Typ eingetragen wurde, in localStorage merken
     if (newTyp && !EI_TYP_DEFAULTS.includes(newTyp)) {
       const custom = _eiGetCustomTypes();
@@ -25518,7 +25533,10 @@ async function setEmailTyp(recId, typ) {
     }
     if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    showToast(newTyp ? '✓ Typ auf „' + newTyp + '" gesetzt' : 'Typ entfernt', 'success', 1600);
+    const msg = newTyp
+      ? (payload.ai_subject ? '✓ Typ „' + newTyp + '" gesetzt — Betreff aktualisiert' : '✓ Typ auf „' + newTyp + '" gesetzt')
+      : 'Typ entfernt';
+    showToast(msg, 'success', 2000);
   } catch (e) {
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 3000);
   }
@@ -25635,22 +25653,26 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON: {"check_typ":"...","anliegen":"..."
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
     if (!parsed || !parsed.check_typ) throw new Error('KI-Antwort ohne check_typ');
-    const typ = String(parsed.check_typ || '').trim();
+    const aiTyp    = String(parsed.check_typ || '').trim();
     const anliegen = String(parsed.anliegen || '').trim();
-    const aiSubject = _eiBuildAiSubject(typ, anliegen, r);
+    // V12.205: Manueller email_typ HAT VORRANG vor KI-Vorschlag bei der Titel-Generierung
+    const manualTyp = String(r.email_typ || '').trim();
+    const effectiveTyp = manualTyp || aiTyp;
+    const aiSubject = _eiBuildAiSubject(effectiveTyp, anliegen, r);
     const aiAt = new Date().toISOString();
     try {
-      // V12.204: email_typ nur dann mit-setzen, wenn der User noch keinen manuellen Typ vergeben hat
+      // V12.205: ai_subject_typ spiegelt den effektiven Typ (= manueller Override falls vorhanden)
       const payload = {
         ai_subject: aiSubject,
-        ai_subject_typ: typ,
+        ai_subject_typ: effectiveTyp,
         ai_subject_anliegen: anliegen,
         ai_subject_at: aiAt,
       };
-      if (!String(r.email_typ || '').trim() && typ) payload.email_typ = typ;
+      // Wenn der User noch keinen manuellen Typ vergeben hat, übernimm den KI-Vorschlag in email_typ
+      if (!manualTyp && aiTyp) payload.email_typ = aiTyp;
       await atUpdate('Emails', recId, payload);
       r.ai_subject = aiSubject;
-      r.ai_subject_typ = typ;
+      r.ai_subject_typ = effectiveTyp;
       r.ai_subject_anliegen = anliegen;
       r.ai_subject_at = aiAt;
       if (payload.email_typ) r.email_typ = payload.email_typ;
@@ -25674,10 +25696,21 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON: {"check_typ":"...","anliegen":"..."
 // Wird sowohl nach Klick auf "Betreff strukturieren" als auch beim initialen Render der Email aufgerufen.
 function _renderAiSubjectResult(r) {
   if (!r) return '';
-  const typ      = String(r.ai_subject_typ || '').trim();
+  // V12.205: Manueller email_typ überschreibt den KI-Typ in der Anzeige & Vorselektion
+  const manualTyp = String(r.email_typ || '').trim();
+  const aiSubjTyp = String(r.ai_subject_typ || '').trim();
+  const typ      = manualTyp || aiSubjTyp;
   const anliegen = String(r.ai_subject_anliegen || '').trim();
   const aiS      = _eiBuildAiSubject(typ || 'Korrespondenz', anliegen, r);
   const idDisp   = _eiCheckIdForSubject(r);
+  // Optionen: Default-Typen + ggf. Custom-Typen (inkl. dem aktuell gesetzten, falls außerhalb der Defaults)
+  const opts = (function() {
+    const base = ['Vertragscheck','Reparaturcheck','Modernisierungscheck','Rechnungscheck','Korrespondenz'];
+    const all = [...base, ...(_eiGetCustomTypes ? _eiGetCustomTypes() : [])];
+    if (typ && !all.includes(typ)) all.push(typ);
+    const seen = new Set();
+    return all.filter(t => { if (seen.has(t)) return false; seen.add(t); return true; });
+  })();
   return `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-top:8px">
     <div style="font-size:10.5px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📝 Strukturierter Betreff${typ ? '' : ' — noch leer'}</div>
     <div style="background:#fff;border:1px solid #fcd34d;border-radius:7px;padding:8px 12px;margin-bottom:10px">
@@ -25686,7 +25719,7 @@ function _renderAiSubjectResult(r) {
     <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;margin-bottom:8px;align-items:center">
       <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Check-Typ</label>
       <select id="ei_ai_subject_typ" oninput="_eiAiSubjectLivePreview('${r._id}')" style="padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:13px;background:#fff;font-family:'DM Sans',sans-serif">
-        ${['Vertragscheck','Reparaturcheck','Modernisierungscheck','Rechnungscheck','Korrespondenz'].map(t => `<option value="${t}"${t === (typ || 'Korrespondenz') ? ' selected' : ''}>${t}</option>`).join('')}
+        ${opts.map(t => `<option value="${_esc(t)}"${t === (typ || 'Korrespondenz') ? ' selected' : ''}>${_esc(t)}</option>`).join('')}
       </select>
       <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">ID</label>
       <div style="font-family:var(--dr-f-mono);font-size:13px;color:#475569">${_esc(idDisp)} <span style="font-weight:400;color:#94a3b8;font-size:11px">${r.external_check_id ? '(extern)' : '(intern)'}</span></div>
@@ -25718,18 +25751,28 @@ async function _eiAiSubjectSave(recId) {
   const aiSubject = _eiBuildAiSubject(typ, anliegen, r);
   const aiAt = new Date().toISOString();
   try {
-    await atUpdate('Emails', recId, {
+    // V12.205: Auswahl im Strukturierten-Editor ist die Quelle der Wahrheit — auch email_typ wird mitgezogen
+    const payload = {
       ai_subject: aiSubject,
       ai_subject_typ: typ,
       ai_subject_anliegen: anliegen,
       ai_subject_at: aiAt,
-    });
+    };
+    if (typ) payload.email_typ = typ;
+    await atUpdate('Emails', recId, payload);
     r.ai_subject = aiSubject;
     r.ai_subject_typ = typ;
     r.ai_subject_anliegen = anliegen;
     r.ai_subject_at = aiAt;
+    if (typ) r.email_typ = typ;
+    // Custom-Typ in localStorage merken
+    if (typ && !EI_TYP_DEFAULTS.includes(typ)) {
+      const custom = _eiGetCustomTypes();
+      if (!custom.includes(typ)) { custom.push(typ); _eiSetCustomTypes(custom); }
+    }
     showToast('✓ Betreff gespeichert', 'success', 1800);
-    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   } catch (e) {
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 4000);
   }
