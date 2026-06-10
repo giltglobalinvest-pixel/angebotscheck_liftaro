@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.210';
+const APP_VERSION = 'V12.211';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7301,8 +7301,33 @@ async function setupTables() {
       { name: 'manual_thread_at',        type: 'singleLineText' },
       // V12.204: manuell setzbarer Email-Typ — überschreibt KI-Klassifikation
       { name: 'email_typ',               type: 'singleLineText' },
+      // V12.211: Wartungsnehmer denormalisiert aus dem zugeordneten Aufzug — für Anzeige & Chat
+      { name: 'wartungsnehmer_id',             type: 'singleLineText' },
+      { name: 'wartungsnehmer_firma',          type: 'singleLineText' },
+      { name: 'wartungsnehmer_ansprechperson', type: 'singleLineText' },
+      { name: 'wartungsnehmer_email',          type: 'singleLineText' },
+      { name: 'wartungsnehmer_telefon',        type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
+  // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
+  try {
+    ensureTable('WartungsnehmerChat', [
+      { name: 'id',                  type: 'singleLineText' },
+      { name: 'email_id',            type: 'singleLineText' }, // Original-Email-Record-ID
+      { name: 'aufzug_id',           type: 'singleLineText' },
+      { name: 'wartungsnehmer_id',   type: 'singleLineText' },
+      { name: 'direction',           type: 'singleLineText' }, // 'out' (an WN) | 'in' (von WN)
+      { name: 'from_email',          type: 'singleLineText' },
+      { name: 'from_name',           type: 'singleLineText' },
+      { name: 'to_email',            type: 'singleLineText' },
+      { name: 'subject',             type: 'singleLineText' },
+      { name: 'body',                type: 'multilineText'  },
+      { name: 'created_at',          type: 'singleLineText' },
+      { name: 'message_id',          type: 'singleLineText' },
+      { name: 'in_reply_to',         type: 'singleLineText' },
+      { name: 'bearbeiter_name',     type: 'singleLineText' },
+    ]);
+  } catch(e) { console.warn('[V12.211] ensureTable(WartungsnehmerChat) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
   // Wenn die Tabelle existiert aber einzelne Felder fehlen → 422 beim Speichern.
   // ensureFields ergänzt fehlende, ohne existierende anzufassen.
@@ -26122,6 +26147,220 @@ function _eiAufzugEdit(idx, field, value) {
 // Cache zum Übernehmen (zwischen Analyse und Klick auf "Übernehmen")
 window._eiAiAufzugCache = window._eiAiAufzugCache || {};
 
+// ============================================================================
+// V12.211: Wartungsnehmer-Anzeige + Chat-Bereich
+// ============================================================================
+
+// Lädt WN-Daten für eine Email — primär aus den denormalisierten Feldern auf dem
+// Email-Record, fallback Aufzug → Wartungsnehmer-Tabelle. Cached pro Email-ID.
+window._eiWnCache = window._eiWnCache || {};
+async function _eiHydrateWartungsnehmer(r) {
+  if (!r) return null;
+  // Schon denormalisiert am Record? → fertig
+  const wnId = String(r.wartungsnehmer_id || '').trim();
+  if (wnId || r.wartungsnehmer_firma || r.wartungsnehmer_email) {
+    return {
+      id:             wnId,
+      firma:          String(r.wartungsnehmer_firma || '').trim(),
+      ansprechperson: String(r.wartungsnehmer_ansprechperson || '').trim(),
+      email:          String(r.wartungsnehmer_email || '').trim(),
+      telefon:        String(r.wartungsnehmer_telefon || '').trim(),
+    };
+  }
+  // Sonst: über aufzug_id → Aufzug-Record → wartungsnehmer_id → Wartungsnehmer-Record
+  const azId = String(r.aufzug_id || '').trim();
+  if (!azId) return null;
+  if (window._eiWnCache[r._id]) return window._eiWnCache[r._id];
+  try {
+    const azRecs = await atRead('Aufzuege', "{id}='" + azId.replace(/'/g, "\\'") + "'");
+    const az = (azRecs && azRecs[0]) || null;
+    if (!az) return null;
+    const wnIdFromAz = String(az.wartungsnehmer_id || '').trim();
+    if (!wnIdFromAz) return null;
+    const wn = await findWartungsnehmerById(wnIdFromAz);
+    if (!wn) return null;
+    const out = {
+      id:             wn.id || wnIdFromAz,
+      firma:          String(wn.firma || '').trim(),
+      ansprechperson: String(wn.ansprechperson || '').trim(),
+      email:          String(wn.email || '').trim(),
+      telefon:        String(wn.telefon || '').trim(),
+    };
+    window._eiWnCache[r._id] = out;
+    // Im Hintergrund auf den Email-Record denormalisieren (best-effort, kein await blockiert)
+    atUpdate('Emails', r._id, {
+      wartungsnehmer_id:             out.id,
+      wartungsnehmer_firma:          out.firma,
+      wartungsnehmer_ansprechperson: out.ansprechperson,
+      wartungsnehmer_email:          out.email,
+      wartungsnehmer_telefon:        out.telefon,
+    }).then(() => {
+      r.wartungsnehmer_id             = out.id;
+      r.wartungsnehmer_firma          = out.firma;
+      r.wartungsnehmer_ansprechperson = out.ansprechperson;
+      r.wartungsnehmer_email          = out.email;
+      r.wartungsnehmer_telefon        = out.telefon;
+    }).catch(() => {});
+    return out;
+  } catch (e) {
+    console.warn('[V12.211] _eiHydrateWartungsnehmer failed:', e.message);
+    return null;
+  }
+}
+
+// Chat-Items zur Email laden — sortiert nach created_at aufsteigend
+window._eiWnChatCache = window._eiWnChatCache || {};
+async function loadWartungsnehmerChat(emailId) {
+  if (!emailId) return [];
+  try {
+    const recs = await atRead('WartungsnehmerChat', "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'");
+    const items = (recs || []).slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    window._eiWnChatCache[emailId] = items;
+    return items;
+  } catch (e) {
+    console.warn('[V12.211] loadWartungsnehmerChat failed:', e.message);
+    return window._eiWnChatCache[emailId] || [];
+  }
+}
+
+// Chat-Nachricht an Wartungsnehmer senden
+async function sendWartungsnehmerMessage(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const ta = document.getElementById('wnChatInput_' + emailId);
+  const body = (ta && ta.value || '').trim();
+  if (!body) { showToast('Nachricht ist leer', 'warning', 1800); return; }
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert', 'error', 4000); return;
+  }
+  const wn = await _eiHydrateWartungsnehmer(r);
+  const toAddr = String((wn && wn.email) || '').trim();
+  if (!toAddr) { showToast('Wartungsnehmer hat keine Email-Adresse', 'error', 3500); return; }
+  const sendBtn = document.getElementById('wnChatSendBtn_' + emailId);
+  if (sendBtn) {
+    sendBtn.disabled = true; sendBtn.style.opacity = '0.7'; sendBtn.style.cursor = 'wait';
+    sendBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Sende …';
+  }
+  const subjBase = String((r.ai_subject && r.ai_subject.trim()) || r.subject || 'Anfrage').trim();
+  const fabri = String(r.aufzug_fabriknummer || '').trim();
+  const standort = String(r.aufzug_standort || '').trim();
+  const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
+  const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
+  const finalBody = sig ? body + '\n\n' + sig : body;
+  // Vorherige Out-Nachricht aus diesem Chat → in_reply_to-Kette
+  const prev = (window._eiWnChatCache[emailId] || []).slice().reverse().find(x => String(x.message_id || '').trim());
+  const inReplyTo = prev ? prev.message_id : '';
+  try {
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
+      body: JSON.stringify({
+        to:        toAddr,
+        subject:   subject,
+        text:      finalBody,
+        replyTo:   'check@liftaro.de',
+        inReplyTo: inReplyTo || undefined,
+      }),
+    });
+    if (!resp.ok) {
+      let txt = ''; try { txt = await resp.text(); } catch (_) {}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+    }
+    const sentAt = new Date().toISOString();
+    const newId  = 'wnc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
+    // Eintrag in WartungsnehmerChat anlegen
+    try {
+      await atWrite('WartungsnehmerChat', {
+        id:                newId,
+        email_id:          emailId,
+        aufzug_id:         String(r.aufzug_id || ''),
+        wartungsnehmer_id: String((wn && wn.id) || ''),
+        direction:         'out',
+        from_email:        'check@liftaro.de',
+        from_name:         'Liftaro',
+        to_email:          toAddr,
+        subject:           subject,
+        body:              finalBody,
+        created_at:        sentAt,
+        in_reply_to:       inReplyTo || '',
+        bearbeiter_name:   (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      });
+    } catch (e) { console.warn('[V12.211] Chat-Eintrag fehlgeschlagen:', e.message); }
+    if (ta) ta.value = '';
+    showToast('✓ Nachricht an ' + (wn.ansprechperson || wn.firma || toAddr) + ' gesendet', 'success', 3200);
+    await loadWartungsnehmerChat(emailId);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    showToast('Senden fehlgeschlagen: ' + e.message, 'error', 5000);
+    if (sendBtn) {
+      sendBtn.disabled = false; sendBtn.style.opacity = '1'; sendBtn.style.cursor = 'pointer';
+      sendBtn.innerHTML = 'Senden';
+    }
+  }
+}
+
+// Render: Wartungsnehmer-Kachel + Chat-Bereich
+function _eiRenderWartungsnehmerSection(r, wn) {
+  if (!r) return '';
+  const hasWn = !!(wn && (wn.firma || wn.email || wn.ansprechperson));
+  const wnHead = hasWn ? `
+    <div style="background:#fff;border:1px solid #c4b5fd;border-left:3px solid #7c3aed;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${_esc((wn.ansprechperson || wn.firma || '?').trim().slice(0, 2).toUpperCase())}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10.5px;color:#6b21a8;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Wartungsnehmer · Ansprechpartner</div>
+          ${wn.ansprechperson ? `<div style="font-size:14px;color:#0f172a;font-weight:700;margin-top:2px">${_esc(wn.ansprechperson)}</div>` : ''}
+          ${wn.firma ? `<div style="font-size:12.5px;color:#475569;margin-top:1px">${_esc(wn.firma)}</div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;font-size:12px;color:#475569">
+            ${wn.email ? `<a href="mailto:${_esc(wn.email)}" style="color:#6b21a8;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px">✉ ${_esc(wn.email)}</a>` : ''}
+            ${wn.telefon ? `<a href="tel:${_esc(wn.telefon)}" style="color:#6b21a8;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px">📞 ${_esc(wn.telefon)}</a>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>` : `
+    <div style="background:#fef3c7;border:1px dashed #fbbf24;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#92400e">
+      ⚠ Kein Wartungsnehmer am Aufzug hinterlegt — Chat nicht verfügbar. Trage den Wartungsnehmer am Aufzug ein.
+    </div>`;
+
+  const items = window._eiWnChatCache[r._id] || [];
+  const bubbles = items.length
+    ? items.map(it => {
+        const isOut = String(it.direction || 'out') === 'out';
+        const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
+        const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || (wn && wn.ansprechperson) || 'Wartungsnehmer');
+        return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
+          <div style="max-width:75%">
+            <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)} · ${_esc(when)}</div>
+            <div style="background:${isOut ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(String(it.body || ''))}</div>
+          </div>
+        </div>`;
+      }).join('')
+    : `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0">Noch keine Nachrichten. Schreib dem Wartungsnehmer eine erste Nachricht ↓</div>`;
+
+  const canSend = hasWn && !!(wn.email) && !!(APP_KEYS && APP_KEYS.emailSenderUrl && APP_KEYS.emailSenderSecret);
+  const composer = hasWn ? `
+    <div style="margin-top:10px;background:#fff;border:1px solid #c4b5fd;border-radius:10px;padding:8px;display:flex;gap:8px;align-items:flex-end">
+      <textarea id="wnChatInput_${r._id}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(wn.ansprechperson || wn.firma || wn.email) + ' …' : 'Wartungsnehmer hat keine Email-Adresse'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
+      <button id="wnChatSendBtn_${r._id}" onclick="sendWartungsnehmerMessage('${r._id}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,#7c3aed,#5b21b6)' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Senden
+      </button>
+    </div>` : '';
+
+  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff;border-radius:0 8px 8px 0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.05em">💬 Chat mit Wartungsnehmer</div>
+        <div style="font-size:11.5px;color:#7c3aed">Eigener Thread — getrennt vom Hauptverlauf der Email.</div>
+      </div>
+      ${hasWn ? `<button onclick="loadWartungsnehmerChat('${r._id}').then(()=>renderEmailInboxDetail())" title="Chat aktualisieren" style="background:#fff;border:1px solid #c4b5fd;color:#6b21a8;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Aktualisieren</button>` : ''}
+    </div>
+    ${wnHead}
+    ${hasWn ? `<div style="background:#f5f3ff;border-radius:10px;padding:14px;min-height:80px">${bubbles}</div>` : ''}
+    ${composer}
+  </div>`;
+}
+
 async function applyAufzugAnalysis(recId) {
   const cached = window._eiAiAufzugCache[recId];
   if (!cached) { showToast('Bitte zuerst „Aufzug erkennen" klicken.', 'warning'); return; }
@@ -26199,6 +26438,20 @@ async function applyAufzugAnalysis(recId) {
     ai_aufzug_at:        aiAt,
     aufzug_split_count:  finals.length > 1 ? String(finals.length) : '',
   };
+  // V12.211: Wartungsnehmer am Aufzug direkt mit-denormalisieren (Lookup über Aufzug-Record)
+  try {
+    const wnIdFromAz = String(first.match.wartungsnehmer_id || '').trim();
+    if (wnIdFromAz) {
+      const wn = await findWartungsnehmerById(wnIdFromAz);
+      if (wn) {
+        baseFields.wartungsnehmer_id             = String(wn.id || wnIdFromAz);
+        baseFields.wartungsnehmer_firma          = String(wn.firma || '');
+        baseFields.wartungsnehmer_ansprechperson = String(wn.ansprechperson || '');
+        baseFields.wartungsnehmer_email          = String(wn.email || '');
+        baseFields.wartungsnehmer_telefon        = String(wn.telefon || '');
+      }
+    }
+  } catch (e) { console.warn('[V12.211] WN-Lookup fehlgeschlagen:', e.message); }
   // V12.209: Strukturierten Betreff direkt aktualisieren — Aufzug-Daten gehören jetzt in den Titel
   const _rCopy = Object.assign({}, r, baseFields);
   const _typ = String(r.email_typ || r.ai_subject_typ || '').trim();
@@ -26550,6 +26803,33 @@ function renderEmailInboxDetail() {
   }
 
   // V12.189: Forward-Toolbar wurde in den Composer im Verlauf integriert (Tabs Antworten/Notiz/Weiterleiten)
+
+  // V12.211: Wartungsnehmer-Sektion + Chat — immer sichtbar (außerhalb des Einklapp-Containers),
+  // wenn ein Aufzug zugeordnet ist. Lookup denormalisiert → Cache → Background-Hydration.
+  if (String(r.aufzug_id || '').trim()) {
+    let _wnImmediate = null;
+    if (r.wartungsnehmer_firma || r.wartungsnehmer_email || r.wartungsnehmer_ansprechperson) {
+      _wnImmediate = {
+        id:             String(r.wartungsnehmer_id || ''),
+        firma:          String(r.wartungsnehmer_firma || ''),
+        ansprechperson: String(r.wartungsnehmer_ansprechperson || ''),
+        email:          String(r.wartungsnehmer_email || ''),
+        telefon:        String(r.wartungsnehmer_telefon || ''),
+      };
+    } else if (window._eiWnCache && window._eiWnCache[r._id]) {
+      _wnImmediate = window._eiWnCache[r._id];
+    } else {
+      // Background-Hydration, danach Re-Render
+      _eiHydrateWartungsnehmer(r).then(wn => { if (wn) renderEmailInboxDetail(); }).catch(() => {});
+    }
+    // Chat-Items im Hintergrund laden, falls noch nicht da
+    if (!window._eiWnChatCache[r._id]) {
+      loadWartungsnehmerChat(r._id).then(items => {
+        if (items && items.length) renderEmailInboxDetail();
+      }).catch(() => {});
+    }
+    html += _eiRenderWartungsnehmerSection(r, _wnImmediate);
+  }
 
   // V12.187: Alles Weitere in einen einklappbaren Container
   // V12.206: Open-State pro Email merken, sodass KI-Re-Renders die Sektion nicht wieder zuklappen
