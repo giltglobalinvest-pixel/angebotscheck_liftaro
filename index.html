@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.212';
+const APP_VERSION = 'V12.213';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7969,7 +7969,8 @@ function isAdmin() {
 // V12.62 EuC-F: ID-Generator für Aufzug-Datensätze (Format AZ-1, AZ-2, ...)
 // V12.201: Wartungsnehmer-Stammdaten — CRUD-Helper
 async function loadWartungsnehmer(filter) {
-  try { return await atRead('Wartungsnehmer', filter); }
+  // V12.213: sort:false — Wartungsnehmer-Tabelle hat kein savedAt-Feld (Default-Sort würde 422 werfen)
+  try { return await atRead('Wartungsnehmer', filter, { sort: false }); }
   catch (e) { console.warn('loadWartungsnehmer failed:', e.message); return []; }
 }
 
@@ -7987,7 +7988,7 @@ async function findWartungsnehmerById(id) {
   const fid = String(id || '').trim();
   if (!fid) return null;
   try {
-    const recs = await atRead('Wartungsnehmer', "{id}='" + fid.replace(/'/g, "\\'") + "'");
+    const recs = await atRead('Wartungsnehmer', "{id}='" + fid.replace(/'/g, "\\'") + "'", { sort: false });
     if (!recs.length) return null;
     const r0 = recs[0];
     return { ...r0.fields, _recordId: r0.id };
@@ -8114,7 +8115,7 @@ async function openWartungsnehmerEditor(recordId) {
   let data = { _recordId: '', id: '', firma:'', ansprechperson:'', telefon:'', email:'', strasse:'', plz:'', ort:'', notiz:'' };
   if (recordId) {
     try {
-      const recs = await atRead('Wartungsnehmer', "RECORD_ID()='" + recordId + "'");
+      const recs = await atRead('Wartungsnehmer', "RECORD_ID()='" + recordId + "'", { sort: false });
       if (recs.length) data = { ...recs[0].fields, _recordId: recs[0].id };
     } catch (_) {}
   }
@@ -8123,7 +8124,8 @@ async function openWartungsnehmerEditor(recordId) {
   if (!m) {
     m = document.createElement('div');
     m.id = 'wartungsnehmerEditorModal';
-    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:5080;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    // V12.213: z-index muss über dem aufzugEditorModal (5100) und azWnPickerModal (5160) liegen
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:5180;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
     document.body.appendChild(m);
   }
   m.style.display = 'flex';
@@ -8221,7 +8223,8 @@ async function openAzWartungsnehmerPicker() {
   if (!m) {
     m = document.createElement('div');
     m.id = 'azWnPickerModal';
-    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:5090;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    // V12.213: z-index muss über dem aufzugEditorModal (5100) liegen — sonst liegt der Picker unsichtbar dahinter
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:5160;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
     document.body.appendChild(m);
   }
   m.style.display = 'flex';
@@ -26172,7 +26175,7 @@ async function _eiHydrateWartungsnehmer(r) {
   if (!azId) return null;
   if (window._eiWnCache[r._id]) return window._eiWnCache[r._id];
   try {
-    const azRecs = await atRead('Aufzuege', "{id}='" + azId.replace(/'/g, "\\'") + "'");
+    const azRecs = await atRead('Aufzuege', "{id}='" + azId.replace(/'/g, "\\'") + "'", { sort: false });
     const az = (azRecs && azRecs[0]) || null;
     if (!az) return null;
     const wnIdFromAz = String(az.wartungsnehmer_id || '').trim();
@@ -26213,7 +26216,7 @@ window._eiWnChatCache = window._eiWnChatCache || {};
 async function loadWartungsnehmerChat(emailId) {
   if (!emailId) return [];
   try {
-    const recs = await atRead('WartungsnehmerChat', "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'");
+    const recs = await atRead('WartungsnehmerChat', "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'", { sort: false });
     const items = (recs || []).slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
     window._eiWnChatCache[emailId] = items;
     return items;
