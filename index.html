@@ -6077,7 +6077,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.192';
+const APP_VERSION = 'V12.193';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23897,6 +23897,45 @@ function _renderEmailTimeline(r) {
   </div>`;
 }
 
+// V12.193: Signatur — pro Browser/User in localStorage, wird an Reply + Forward angehängt
+function _eiGetSignature() {
+  try { return String(localStorage.getItem('eiSignature') || '').trim(); } catch (_) { return ''; }
+}
+function _eiSetSignature(text) {
+  try { localStorage.setItem('eiSignature', String(text || '').trim()); } catch (_) {}
+}
+
+// V12.193: Inline-Editor für die Signatur (kleines Overlay)
+function openSignatureEditor() {
+  const current = _eiGetSignature();
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6100;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px)';
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;width:min(560px,96vw);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.35);font-family:'DM Sans',sans-serif">
+    <div style="background:#1a3a5c;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:15px;font-weight:700">✍ Signatur einstellen</span>
+      <button id="eiSigClose" style="background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px">
+      <div style="font-size:12.5px;color:#475569;margin-bottom:10px;line-height:1.5">Wird automatisch ans Ende deiner Antworten und Weiterleitungen angehängt. Lokal in deinem Browser gespeichert.</div>
+      <textarea id="eiSigInput" rows="8" placeholder="Mit freundlichen Grüßen&#10;Patrizio Fontanarosa&#10;Liftaro GmbH&#10;..." style="width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;line-height:1.5;outline:none;box-sizing:border-box">${_esc(current)}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button id="eiSigCancel" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Abbrechen</button>
+        <button id="eiSigSave"   style="background:#1a3a5c;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Speichern</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => { try { document.body.removeChild(ov); } catch (_) {} };
+  ov.querySelector('#eiSigClose').onclick  = close;
+  ov.querySelector('#eiSigCancel').onclick = close;
+  ov.querySelector('#eiSigSave').onclick = () => {
+    _eiSetSignature(document.getElementById('eiSigInput').value);
+    showToast('✓ Signatur gespeichert', 'success', 1500);
+    close();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  };
+}
+
 // V12.189: Composer — 3 Tabs (Antworten / Notiz / Weiterleiten), Avatar links, Senden-Icon rechts
 function _renderEmailComposer(r) {
   const me = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter';
@@ -23925,14 +23964,74 @@ function _renderEmailComposer(r) {
           <button type="button" onclick="document.getElementById('ei_composer_to').value='management@liftaro.de'" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">→ Management</button>
         </div>
       </div>
+      <!-- V12.193: Pre-Message-Label (nur bei Forward) -->
+      <div id="ei_composer_premsg_label" style="display:none;padding:8px 14px 0;font-size:10.5px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.05em">📝 Eigener Text — wird oben über dem Forward-Inhalt eingefügt</div>
       <div style="position:relative;padding:0">
         <textarea id="ei_composer_input" rows="4" placeholder="Geben Sie Ihre Antwort hier ein …" style="width:100%;border:none;padding:12px 56px 12px 14px;font-family:'DM Sans',sans-serif;font-size:13.5px;background:transparent;resize:vertical;line-height:1.55;outline:none;box-sizing:border-box;color:#0f172a" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();composerSubmit('${r._id}')}"></textarea>
         <button id="ei_composer_send" onclick="composerSubmit('${r._id}')" title="Senden (Strg/Cmd+Enter)" style="position:absolute;right:10px;bottom:10px;background:#2456E5;color:#fff;border:none;border-radius:8px;width:38px;height:38px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(36,86,229,.4)" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2456E5'">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
+      <!-- V12.193: Signatur-Anzeige (bei Reply + Forward sichtbar) -->
+      <div id="ei_composer_sig_row" style="display:none;padding:8px 14px;border-top:1px solid #f1f5f9;background:#f8fafc">${_renderSignaturePreview()}</div>
+      <!-- V12.193: Forward-Vorschau (nur bei Forward sichtbar) -->
+      <div id="ei_composer_fwd_preview" style="display:none;padding:0 14px 14px;background:#f8fafc;border-top:1px solid #f1f5f9">${_renderForwardPreview(r)}</div>
     </div>
   </div>`;
+}
+
+// V12.193: Kompakte Signatur-Anzeige + Anpass-Button
+function _renderSignaturePreview() {
+  const sig = _eiGetSignature();
+  if (sig) {
+    const short = sig.length > 240 ? sig.slice(0, 240) + ' …' : sig;
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:11.5px;color:#475569">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;margin-bottom:4px">✍ Signatur (wird automatisch angehängt)</div>
+        <div style="white-space:pre-wrap;color:#475569;font-style:italic;line-height:1.5;font-size:12px">${_esc(short)}</div>
+      </div>
+      <button onclick="openSignatureEditor()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">✍ Anpassen</button>
+    </div>`;
+  }
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:#a16207">
+    <span>✍ Keine Signatur eingestellt — wird leer angehängt</span>
+    <button onclick="openSignatureEditor()" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">✍ Signatur einstellen</button>
+  </div>`;
+}
+
+// V12.193: Vorschau des Forward-Inhalts — was tatsächlich rausgeht
+function _renderForwardPreview(r) {
+  const displaySubj = String((r.ai_subject && r.ai_subject.trim()) || r.subject || '');
+  const fromLine = r.from_name ? `${r.from_name} <${r.from_email || ''}>` : (r.from_email || '');
+  const dateLine = String(r.received_at || '').replace('T', ' ').slice(0, 19);
+  const toLine   = String(r.to_email || '');
+  const bodyText = (r.body_text && r.body_text.trim())
+    || (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || '') : '')
+    || r.body || '';
+  const bodyTrim = String(bodyText).slice(0, 1200);
+  const atts = Array.isArray(r.attachments) ? r.attachments : [];
+  const attList = atts.map(a => {
+    const fname = a.filename || a.name || 'Anhang';
+    const size  = a.size ? Math.round(a.size / 1024) + ' KB' : '';
+    return `<div style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:11.5px;color:#475569"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${_esc(fname)}${size ? ' · <span style="color:#94a3b8">' + _esc(size) + '</span>' : ''}</div>`;
+  }).join(' ');
+  return `<details open style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+    <summary style="cursor:pointer;padding:8px 12px;font-size:11.5px;color:#475569;font-weight:700;display:flex;align-items:center;gap:8px;list-style:none;background:#f8fafc">
+      <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      📧 Vorschau — was wird weitergeleitet
+      <span style="margin-left:auto;color:#94a3b8;font-weight:400">Original-Inhalt + Anhänge bleiben unverändert</span>
+    </summary>
+    <div style="padding:12px 14px">
+      <div style="font-family:var(--dr-f-mono);font-size:11.5px;color:#475569;line-height:1.7;background:#f8fafc;border-radius:6px;padding:8px 12px;border:1px solid #e2e8f0;margin-bottom:8px">
+        <div><strong style="color:#0f172a">Von:</strong> ${_esc(fromLine)}</div>
+        <div><strong style="color:#0f172a">Datum:</strong> ${_esc(dateLine)}</div>
+        <div><strong style="color:#0f172a">Betreff:</strong> Fwd: ${_esc(displaySubj)}</div>
+        <div><strong style="color:#0f172a">An (Original):</strong> ${_esc(toLine)}</div>
+      </div>
+      ${atts.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px"><span style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;align-self:center;margin-right:6px">📎 ${atts.length} Anhang${atts.length === 1 ? '' : '/Anhänge'}:</span> ${attList}</div>` : ''}
+      <div style="font-size:12.5px;line-height:1.55;color:#0f172a;white-space:pre-wrap;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;max-height:300px;overflow-y:auto">${_esc(bodyTrim)}${bodyText.length > 1200 ? '<div style="color:#64748b;margin-top:6px;font-size:11px">… weitere ' + (bodyText.length - 1200).toLocaleString('de-DE') + ' Zeichen werden mitgeschickt</div>' : ''}</div>
+    </div>
+  </details>`;
 }
 
 // V12.189: Composer-Mode wechseln — passt Tabs, Placeholder + Empfänger-Feld an
@@ -23967,15 +24066,27 @@ function setComposerMode(mode, recId) {
   const inp  = document.getElementById('ei_composer_input');
   const toRow = document.getElementById('ei_composer_to_row');
   const toEl  = document.getElementById('ei_composer_to');
+  const preLbl = document.getElementById('ei_composer_premsg_label');
+  const sigRow = document.getElementById('ei_composer_sig_row');
+  const fwdPrev = document.getElementById('ei_composer_fwd_preview');
   if (mode === 'reply') {
-    if (inp)   inp.placeholder = 'Geben Sie Ihre Antwort hier ein …';
-    if (toRow) toRow.style.display = 'none';
+    if (inp)    inp.placeholder = 'Geben Sie Ihre Antwort hier ein …';
+    if (toRow)  toRow.style.display = 'none';
+    if (preLbl) preLbl.style.display = 'none';
+    if (sigRow) sigRow.style.display = 'block';
+    if (fwdPrev)fwdPrev.style.display = 'none';
   } else if (mode === 'note') {
-    if (inp)   inp.placeholder = 'Interne Notiz — nur intern sichtbar …';
-    if (toRow) toRow.style.display = 'none';
+    if (inp)    inp.placeholder = 'Interne Notiz — nur intern sichtbar …';
+    if (toRow)  toRow.style.display = 'none';
+    if (preLbl) preLbl.style.display = 'none';
+    if (sigRow) sigRow.style.display = 'none';
+    if (fwdPrev)fwdPrev.style.display = 'none';
   } else {
-    if (inp)   inp.placeholder = 'Optionale Nachricht (kann leer bleiben) — Original wird unverändert weitergeleitet';
-    if (toRow) toRow.style.display = 'block';
+    if (inp)    inp.placeholder = 'Eigener Text (optional) — wird ÜBER dem Forward-Inhalt eingefügt';
+    if (toRow)  toRow.style.display = 'block';
+    if (preLbl) preLbl.style.display = 'block';
+    if (sigRow) sigRow.style.display = 'block';
+    if (fwdPrev)fwdPrev.style.display = 'block';
     if (toEl && !toEl.value) toEl.value = 'management@liftaro.de';
   }
   if (inp) inp.focus();
@@ -24035,6 +24146,9 @@ async function quickReplyToEmail(recId, bodyText) {
   // V12.192: ai_subject bevorzugt
   const origSubj = String((r.ai_subject && r.ai_subject.trim()) || r.subject || '');
   const replySubject = /^re:/i.test(origSubj) ? origSubj : 'Re: ' + origSubj;
+  // V12.193: Signatur ans Ende der Antwort anhängen
+  const sig = _eiGetSignature();
+  const finalBody = sig ? bodyText + '\n\n' + sig : bodyText;
   try {
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
@@ -24042,7 +24156,7 @@ async function quickReplyToEmail(recId, bodyText) {
       body: JSON.stringify({
         to:        toAddr,
         subject:   replySubject,
-        text:      bodyText,
+        text:      finalBody,
         replyTo:   'check@liftaro.de',
         inReplyTo: r.message_id || undefined,
       }),
@@ -24059,7 +24173,7 @@ async function quickReplyToEmail(recId, bodyText) {
         from_email:       'check@liftaro.de',
         to_email:         toAddr,
         subject:          replySubject,
-        body:             bodyText,
+        body:             finalBody,
         sent_at:          sentAt,
         in_reply_to:      r.message_id || '',
         linked_check_ids: r.linked_check_ids || '',
@@ -24136,7 +24250,12 @@ async function forwardEmailTo(recId, toEmail, preMessage) {
       + 'An:       ' + origTo + '\n\n';
     const fwdSubject = /^(fwd:|wg:)/i.test(origSubj) ? origSubj : 'Fwd: ' + origSubj;
     const pre = String(preMessage || '').trim();
-    const text = (pre ? pre + '\n\n' : '') + forwardHeader + origBody;
+    // V12.193: Signatur an die Pre-Message anhängen (vor dem Forward-Header)
+    const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
+    const preBlock = pre
+      ? (pre + (sig ? '\n\n' + sig : '') + '\n\n')
+      : (sig ? sig + '\n\n' : '');
+    const text = preBlock + forwardHeader + origBody;
 
     // 3. POST an Email-Sender (val.town)
     const payload = {
