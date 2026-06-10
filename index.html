@@ -6077,7 +6077,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.191';
+const APP_VERSION = 'V12.192';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23348,21 +23348,48 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_alle',           cAlle);
 }
 
-// V12.191: Threading — finde den Thread-Parent einer eingehenden Antwort
-// Eine Mail gehört in einen bestehenden Thread, wenn:
-//   • sie nicht outgoing ist
-//   • ihr in_reply_to die message_id eines anderen Records enthält
-// Der Parent ist der TOP-Level-Eintrag (also keiner, der selbst Antwort auf etwas ist).
+// V12.191/192: Threading — finde den Thread-Parent einer eingehenden Antwort
+// Schritt 1: direkter Match per in_reply_to ↔ message_id (RFC-Standard)
+// Schritt 2: Subject-Heuristik als Fallback (Re:/Fwd:/WG: + normalisiertes Subject identisch
+//             zu einer älteren Mail; bevorzugt gleicher Absender/Empfänger-Kontext)
+function _eiNormSubject(s) {
+  return String(s || '')
+    .replace(/^(re|aw|antw|antwort|fwd|fw|wg|weiterleitung)\s*:\s*/gi, '')
+    .replace(/^(re|aw|antw|antwort|fwd|fw|wg|weiterleitung)\s*:\s*/gi, '') // 2x für "Re: Fwd: …"
+    .replace(/^(re|aw|antw|antwort|fwd|fw|wg|weiterleitung)\s*:\s*/gi, '') // 3x für "Re: Re: Fwd: …"
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function _eiThreadParentOf(r) {
   if (!r || r.direction === 'outgoing') return null;
-  const irt = String(r.in_reply_to || '').trim();
-  if (!irt) return null;
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
-  // Erst direkten Parent finden
-  let cur = all.find(x => x && x._id !== r._id
-    && String(x.message_id || '').trim()
-    && irt.includes(String(x.message_id).trim())
-  );
+  const irt = String(r.in_reply_to || '').trim();
+  // Schritt 1: direktes Threading per Header
+  let cur = irt
+    ? all.find(x => x && x._id !== r._id
+        && String(x.message_id || '').trim()
+        && irt.includes(String(x.message_id).trim()))
+    : null;
+  // Schritt 2: Subject-Heuristik — nur wenn das Subject ein Reply/Forward-Prefix hat
+  //  und sich nach Normalisierung mit dem einer älteren Mail deckt
+  if (!cur) {
+    const rawSubj = String(r.subject || '');
+    const isReplyForward = /^(re|aw|antw|antwort|fwd|fw|wg|weiterleitung)\s*:/i.test(rawSubj);
+    const normSubj = _eiNormSubject(rawSubj);
+    if (isReplyForward && normSubj && normSubj.length >= 8) {
+      const rDate = String(r.received_at || '');
+      const candidates = all.filter(x => x && x._id !== r._id
+        && x.direction !== 'outgoing'
+        && _eiNormSubject(x.subject) === normSubj
+        && String(x.received_at || '') < rDate);
+      if (candidates.length) {
+        candidates.sort((a, b) => String(a.received_at).localeCompare(String(b.received_at)));
+        cur = candidates[0];
+      }
+    }
+  }
   if (!cur) return null;
   // Bis zum Top-Level hochwandern (max 10 Schritte gegen Loops)
   for (let i = 0; i < 10; i++) {
@@ -24005,7 +24032,8 @@ async function quickReplyToEmail(recId, bodyText) {
   const toAddr = String(r.from_email || '').trim();
   if (!toAddr) { showToast('Keine Absender-Adresse zum Antworten', 'error', 3000); return; }
   showToast('⏳ Antwort wird gesendet …', 'info', 2200);
-  const origSubj = String(r.subject || '');
+  // V12.192: ai_subject bevorzugt
+  const origSubj = String((r.ai_subject && r.ai_subject.trim()) || r.subject || '');
   const replySubject = /^re:/i.test(origSubj) ? origSubj : 'Re: ' + origSubj;
   try {
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
@@ -24095,7 +24123,8 @@ async function forwardEmailTo(recId, toEmail, preMessage) {
     // 2. Forward-Header + Body bauen (unverändert übernommen)
     const origFrom = r.from_name ? `${r.from_name} <${r.from_email || ''}>` : (r.from_email || '');
     const origDate = String(r.received_at || '').replace('T', ' ').slice(0, 19);
-    const origSubj = String(r.subject || '');
+    // V12.192: strukturierten Betreff (ai_subject) bevorzugt nehmen — Empfänger sieht den gleichen Titel wie im Posteingang
+    const origSubj = String((r.ai_subject && r.ai_subject.trim()) || r.subject || '');
     const origTo   = String(r.to_email || '');
     const origBody = (r.body_text && r.body_text.trim())
       || (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || '') : '')
