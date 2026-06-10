@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.205';
+const APP_VERSION = 'V12.206';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25364,6 +25364,8 @@ async function runAiQuickAnalysis(recId) {
     showToast('Anthropic-Key fehlt — bitte im Setup eintragen.', 'error');
     return;
   }
+  // V12.206: Extra-Sektion aufgeklappt halten — auch über Re-Renders nach KI-Lauf
+  (window._eiExtraDetailsOpen = window._eiExtraDetailsOpen || {})[recId] = true;
   const btn = document.getElementById('ei_ai_quick_btn');
   const out = document.getElementById('ei_ai_quick_result');
   if (btn) { btn.disabled = true; btn.textContent = 'Analysiere …'; btn.style.opacity = '0.7'; }
@@ -25616,6 +25618,8 @@ async function runAiSubjectStructuring(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error'); return; }
+  // V12.206: Extra-Sektion aufgeklappt halten — auch über Re-Renders nach KI-Lauf
+  (window._eiExtraDetailsOpen = window._eiExtraDetailsOpen || {})[recId] = true;
   const btn = document.getElementById('ei_ai_subject_btn');
   const out = document.getElementById('ei_ai_subject_result');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.textContent = 'Analysiere …'; }
@@ -25788,6 +25792,8 @@ async function runAiAufzugAnalysis(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error'); return; }
+  // V12.206: Extra-Sektion aufgeklappt halten — auch über Re-Renders nach KI-Lauf
+  (window._eiExtraDetailsOpen = window._eiExtraDetailsOpen || {})[recId] = true;
   const btn = document.getElementById('ei_ai_aufzug_btn');
   const out = document.getElementById('ei_ai_aufzug_result');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.textContent = 'Analysiere …'; }
@@ -26486,11 +26492,14 @@ function renderEmailInboxDetail() {
   // V12.189: Forward-Toolbar wurde in den Composer im Verlauf integriert (Tabs Antworten/Notiz/Weiterleiten)
 
   // V12.187: Alles Weitere in einen einklappbaren Container
-  html += `<details id="emailExtraDetails" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
+  // V12.206: Open-State pro Email merken, sodass KI-Re-Renders die Sektion nicht wieder zuklappen
+  window._eiExtraDetailsOpen = window._eiExtraDetailsOpen || {};
+  const _extraOpen = window._eiExtraDetailsOpen[r._id] === true;
+  html += `<details id="emailExtraDetails" ${_extraOpen ? 'open' : ''} ontoggle="window._eiExtraDetailsOpen=window._eiExtraDetailsOpen||{};window._eiExtraDetailsOpen['${r._id}']=this.open" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
     <summary style="cursor:pointer;padding:12px 16px;font-size:12.5px;font-weight:700;color:#475569;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;outline:none">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .15s ease" id="emailExtraDetailsCaret"><polyline points="9 18 15 12 9 6"/></svg>
       <span>Zuordnungen, KI-Analyse, Vorgänge &amp; Aktionen</span>
-      <span style="color:#94a3b8;font-weight:400;margin-left:auto;font-size:11.5px">aufklappen</span>
+      <span style="color:#94a3b8;font-weight:400;margin-left:auto;font-size:11.5px">${_extraOpen ? 'einklappen' : 'aufklappen'}</span>
     </summary>
     <div style="padding:0 14px 14px">
 
