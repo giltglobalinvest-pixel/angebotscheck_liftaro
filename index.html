@@ -6118,7 +6118,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.197';
+const APP_VERSION = 'V12.198';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23792,7 +23792,7 @@ function renderEmailInboxList() {
     if (threadCnt > 0) {
       if (hasUnseen) {
         // ROT + pulsierend + animiert — sticht sofort raus
-        threadPill = `<span title="${threadCnt} ungesichtete Antwort${threadCnt === 1 ? '' : 'en'} vom Kunden" style="background:#dc2626;color:#fff;border:1px solid #b91c1c;border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:5px;letter-spacing:.02em;box-shadow:0 1px 3px rgba(220,38,38,.4);animation:eiNeuPulse 1.2s ease-in-out infinite">↶ ${threadCnt} NEUE Antwort${threadCnt === 1 ? '' : 'en'}</span>`
+        threadPill = `<span title="${threadCnt} ungesichtete eingegangene Antwort${threadCnt === 1 ? '' : 'en'}" style="background:#dc2626;color:#fff;border:1px solid #b91c1c;border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:5px;letter-spacing:.02em;box-shadow:0 1px 3px rgba(220,38,38,.4);animation:eiNeuPulse 1.2s ease-in-out infinite">↶ ${threadCnt} NEUE Antwort${threadCnt === 1 ? '' : 'en'}</span>`
           + `<button onclick="markRepliesSeen('${r._id}',event)" title="Antwort als gesichtet markieren" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:3px" onmouseover="this.style.borderColor='#16a34a';this.style.color='#16a34a'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">✓ gesichtet</button>`;
       } else {
         // Grau — bereits gesichtet
@@ -23932,40 +23932,48 @@ function _renderEmailTimeline(r) {
       </div>`;
     }
     if (it.type === 'reply') {
-      // Reply (outgoing) — von uns gesendet
+      // Reply (outgoing) — von uns gesendet. Unterscheide Antwort an Original-Absender vs. Weiterleitung an Dritten.
       const x = it.payload;
       const bearbeiter = String(x.bearbeiter_name || 'Liftaro').trim();
       const bodyTrim = String(x.body || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      // V12.198: Label anhand der Empfänger-Adresse — Antwort an Original-Absender oder Weiterleitung
+      const toEmail = String(x.to_email || '').trim().toLowerCase();
+      const origFrom = String(r.from_email || '').trim().toLowerCase();
+      const subjLower = String(x.subject || '').toLowerCase();
+      const isForward = subjLower.startsWith('fwd:') || subjLower.startsWith('wg:') || (toEmail && origFrom && toEmail !== origFrom);
+      const labelText = isForward ? '📤 Weitergeleitet an ' + (x.to_email || '?') : '📤 Antwort an ' + (x.to_email || '?');
       return `<div style="display:flex;gap:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-left:3px solid #16a34a;border-radius:8px;margin-bottom:8px">
         <div style="width:32px;height:32px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">📤</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
             <span style="font-size:12.5px;font-weight:700;color:#166534">${_esc(bearbeiter)}</span>
-            <span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">📤 Antwort an Kunde</span>
+            <span style="background:#dcfce7;color:#166534;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(labelText)}">${_esc(labelText)}</span>
             <span style="font-size:11px;color:#15803d;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
           </div>
-          <div style="font-size:11.5px;color:#15803d;margin-bottom:6px"><strong>An:</strong> ${_esc(x.to_email || '(?)')} · <strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
+          <div style="font-size:11.5px;color:#15803d;margin-bottom:6px"><strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
           <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0">${_esc(bodyTrim)}${String(x.body || '').length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
         </div>
       </div>`;
     }
-    // V12.191: Eingehende Antwort (kundenseitig) — wir bekommen sie hereingeschickt
+    // V12.191/198: Eingehende Antwort — Label nutzt die echte Absender-Adresse, nicht "Kunde"
     const x = it.payload;
-    const fromName = String(x.from_name || x.from_email || 'Kunde').trim();
-    const initials = fromName.split(/\s+/).map(s => s.charAt(0)).join('').slice(0, 2).toUpperCase() || 'K';
+    const fromName = String(x.from_name || x.from_email || '(unbekannt)').trim();
+    const initials = fromName.split(/\s+/).map(s => s.charAt(0)).join('').slice(0, 2).toUpperCase() || '?';
     const bodyRaw = (x.body_text && x.body_text.trim()) || (typeof _stripHtml === 'function' ? _stripHtml(x.body_html || '') : '') || x.body || '';
     const bodyTrim = String(bodyRaw).replace(/\s+/g, ' ').trim().slice(0, 600);
     const attCount = x.attachment_count || (Array.isArray(x.attachments) ? x.attachments.length : 0);
+    const fromAddr = String(x.from_email || '').trim();
+    const replyFromLabel = '↶ Antwort von ' + (fromAddr || fromName || '?');
     return `<div style="display:flex;gap:12px;padding:12px 14px;background:#fef3c7;border:1px solid #fde68a;border-left:3px solid #d97706;border-radius:8px;margin-bottom:8px">
       <div style="width:32px;height:32px;border-radius:50%;background:#d97706;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${_esc(initials)}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
           <span style="font-size:12.5px;font-weight:700;color:#92400e">${_esc(fromName)}</span>
-          <span style="background:#fde68a;color:#92400e;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em">↶ Antwort vom Kunden</span>
+          <span style="background:#fde68a;color:#92400e;border-radius:9px;padding:1px 8px;font-size:10.5px;font-weight:700;letter-spacing:.04em;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(replyFromLabel)}">${_esc(replyFromLabel)}</span>
           ${attCount ? `<span style="font-size:10.5px;color:#92400e;font-weight:600">📎 ${attCount}</span>` : ''}
           <span style="font-size:11px;color:#a16207;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
         </div>
-        <div style="font-size:11.5px;color:#a16207;margin-bottom:6px"><strong>Von:</strong> ${_esc(x.from_email || '(?)')} · <strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
+        <div style="font-size:11.5px;color:#a16207;margin-bottom:6px"><strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
         <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #fde68a">${_esc(bodyTrim)}${String(bodyRaw).length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
         <div style="margin-top:6px;font-size:10.5px;color:#a16207">→ <a href="javascript:void(0)" onclick="selectEmailRow('${x._id}');event.stopPropagation()" style="color:#92400e;font-weight:600;text-decoration:underline">Einzelansicht öffnen</a></div>
       </div>
@@ -23982,7 +23990,7 @@ function _renderEmailTimeline(r) {
         ${cntTotal > 0 ? `<span style="font-size:11.5px;color:#64748b">${[
           cntNotes    ? cntNotes    + ' Notiz'      + (cntNotes    === 1 ? '' : 'en') : '',
           cntReplies  ? cntReplies  + ' gesendet'   + (cntReplies  === 1 ? '' : '')   : '',
-          cntIncoming ? cntIncoming + ' Antwort'    + (cntIncoming === 1 ? '' : 'en') + ' vom Kunden' : '',
+          cntIncoming ? cntIncoming + ' Antwort'    + (cntIncoming === 1 ? '' : 'en') + ' eingegangen' : '',
         ].filter(Boolean).join(' · ')}</span>` : ''}
       </div>
       <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
