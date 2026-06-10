@@ -6040,7 +6040,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.183';
+const APP_VERSION = 'V12.184';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7158,6 +7158,8 @@ async function setupTables() {
       { name: 'ai_subject_typ',       type: 'singleLineText' }, // V12.181: 'Vertragscheck' | 'Reparaturcheck' | 'Rechnungscheck' | 'Korrespondenz'
       { name: 'ai_subject_anliegen',  type: 'singleLineText' }, // V12.181: kurze Beschreibung
       { name: 'ai_subject_at',        type: 'singleLineText' },
+      // V12.184: Interne Notizen / Kommentare als JSON-Array
+      { name: 'comments_json',        type: 'multilineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
@@ -23297,6 +23299,7 @@ function _eiFiltered() {
       r.vorgaenge_json,                // KI-Vorgänge (Kunde, Objekt, Anliegen)
       r.aufzug_fabriknummer, r.aufzug_standort, r.aufzug_hersteller, // V12.174: Aufzug-Felder
       r.real_from_name, r.real_from_email, r.real_hv_firma, r.real_hv_email, r.real_anliegen,
+      r.comments_json,                 // V12.184: interne Notizen mitsuchen
     ].filter(Boolean).join(' \n ').toLowerCase();
     return terms.every(t => hay.includes(t));
   });
@@ -23551,8 +23554,14 @@ function renderEmailInboxList() {
     const azPill = (afn || ast)
       ? `<span title="${_esc(ast || 'Aufzug')}${afn ? ' · Fabrik-Nr. ' + _esc(afn) : ''}" style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px;font-family:var(--dr-f-mono)"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0;font-family:'DM Sans',sans-serif"><rect x="6" y="3" width="12" height="18" rx="2"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(afn ? 'Fn ' + afn : ast)}</span></span>`
       : '';
-    const pillRow = (hvPill || azPill)
-      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}</div>`
+    // V12.184: Notiz-Badge in der Listen-Karte zeigen
+    let notesCount = 0;
+    try { const arr = JSON.parse(r.comments_json || '[]'); if (Array.isArray(arr)) notesCount = arr.length; } catch (_) {}
+    const notesPill = notesCount > 0
+      ? `<span title="${notesCount} interne Notiz${notesCount === 1 ? '' : 'en'}" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">💬 ${notesCount}</span>`
+      : '';
+    const pillRow = (hvPill || azPill || notesPill)
+      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${notesPill}</div>`
       : '';
     // V12.180: Absender-Mini-Zeile über dem Betreff (statt eigener Spalte)
     const senderLine = `<span class="sender">${_esc(fromName)}${fromMail ? `<span class="sep">·</span><span class="mail">${_esc(fromMail)}</span>` : ''}</span>`;
@@ -23572,6 +23581,103 @@ function renderEmailInboxList() {
       <div class="ei-row-actions">${statusChip}${quickActions}</div>
     </div>`;
   }).join('');
+}
+
+// V12.184: Interne Notizen / Kommentare — Ticketsystem-Stil
+// Speichert ein JSON-Array in `comments_json`:
+//   [{ id, author, text, created_at }]
+function _parseEmailComments(r) {
+  try {
+    const arr = JSON.parse(r.comments_json || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+
+function _renderEmailComments(r) {
+  const comments = _parseEmailComments(r);
+  const cnt = comments.length;
+  const itemsHtml = comments.length
+    ? comments.map(c => {
+        const when = c.created_at ? new Date(c.created_at) : null;
+        const whenStr = when && !isNaN(when.getTime())
+          ? ('' + String(when.getDate()).padStart(2,'0') + '.' + String(when.getMonth()+1).padStart(2,'0') + '.' + when.getFullYear() + ' ' + String(when.getHours()).padStart(2,'0') + ':' + String(when.getMinutes()).padStart(2,'0'))
+          : '';
+        const author = String(c.author || 'unbekannt').trim();
+        const initials = author.split(/\s+/).map(s => s.charAt(0)).join('').slice(0, 2).toUpperCase() || '?';
+        const txt = String(c.text || '');
+        return `<div style="display:flex;gap:10px;padding:10px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px">
+          <div style="width:30px;height:30px;border-radius:50%;background:#1a3a5c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;font-family:'DM Sans',sans-serif">${_esc(initials)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+              <span style="font-size:12.5px;font-weight:700;color:#0f172a">${_esc(author)}</span>
+              <span style="font-size:11px;color:#94a3b8;font-family:var(--dr-f-mono)">${_esc(whenStr)}</span>
+              <button onclick="event.stopPropagation();deleteEmailComment('${r._id}','${_esc(String(c.id || ''))}')" title="Notiz löschen" style="margin-left:auto;background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:14px;padding:0 4px;line-height:1" onmouseover="this.style.color='#a8312f'" onmouseout="this.style.color='#cbd5e1'">✕</button>
+            </div>
+            <div style="font-size:13px;color:#1e293b;line-height:1.55;white-space:pre-wrap;word-wrap:break-word">${_esc(txt)}</div>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12.5px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;margin-bottom:8px">Noch keine internen Notizen. Schreib unten die erste — z. B. Anweisungen für die Bearbeitung.</div>';
+  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #475569;background:#f8fafc">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;font-weight:700;color:#0f172a;text-transform:uppercase;letter-spacing:.5px">💬 Interne Notizen</span>
+        ${cnt > 0 ? `<span style="background:#e2e8f0;color:#475569;border-radius:9px;padding:1px 8px;font-size:11px;font-weight:700">${cnt}</span>` : ''}
+      </div>
+      <span style="font-size:11px;color:#94a3b8">nur intern · nicht im Email-Versand</span>
+    </div>
+    ${itemsHtml}
+    <div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px">
+      <textarea id="ei_comment_input" placeholder="Anweisung oder Notiz für die Bearbeitung — Strg/Cmd+Enter sendet" rows="2" style="flex:1;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;resize:vertical;line-height:1.5;outline:none" onfocus="this.style.borderColor='#1a3a5c';this.style.boxShadow='0 0 0 3px rgba(26,58,92,.08)'" onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none'" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addEmailComment('${r._id}')}"></textarea>
+      <button onclick="addEmailComment('${r._id}')" style="background:#1a3a5c;color:#fff;border:none;border-radius:7px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;align-self:stretch">Notiz hinzufügen</button>
+    </div>
+  </div>`;
+}
+
+async function addEmailComment(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const inp = document.getElementById('ei_comment_input');
+  if (!inp) return;
+  const text = String(inp.value || '').trim();
+  if (!text) { showToast('Notiz ist leer.', 'warning', 1500); return; }
+  const author = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter';
+  const comments = _parseEmailComments(r);
+  const newComment = {
+    id:         Math.random().toString(36).slice(2, 10),
+    author:     author,
+    text:       text,
+    created_at: new Date().toISOString(),
+  };
+  comments.push(newComment);
+  const newJson = JSON.stringify(comments);
+  try {
+    await atUpdate('Emails', recId, { comments_json: newJson });
+    r.comments_json = newJson;
+    inp.value = '';
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    showToast('Notiz gespeichert', 'success', 1500);
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+
+async function deleteEmailComment(recId, commentId) {
+  if (!confirm('Diese Notiz wirklich löschen?')) return;
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const comments = _parseEmailComments(r).filter(c => String(c.id) !== String(commentId));
+  const newJson = JSON.stringify(comments);
+  try {
+    await atUpdate('Emails', recId, { comments_json: newJson });
+    r.comments_json = newJson;
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    showToast('Notiz gelöscht', 'success', 1500);
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
 }
 
 // V12.179: Zwei Kacheln nebeneinander — HV-Zuordnung links, Aufzug-Zuordnung rechts.
@@ -24621,6 +24727,9 @@ function renderEmailInboxDetail() {
     </div>
     <div id="ei_ext_check_id_status" style="font-size:11.5px;margin-top:6px;min-height:14px;color:#a16207"></div>
   </div>`;
+
+  // V12.184: Interne Notizen / Kommentare (ticketsystem-Stil)
+  html += _renderEmailComments(r);
 
   // KI-Summary
   if (r.ki_summary) {
