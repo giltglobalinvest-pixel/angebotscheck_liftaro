@@ -4125,6 +4125,11 @@ const pdfWorkerReady = Promise.resolve();</script>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
+            <!-- V12.200: Auswahl-Modus Toggle -->
+            <button id="eiPickModeToggle" onclick="togglePickMode()" title="Mehrere Emails per Klick markieren (alternativ ⌘+Klick / Strg+Klick)" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#7c3aed'" onmouseout="if(!window._eiPickMode){this.style.borderColor='#e2e8f0';this.style.color='#475569'}">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              <span>Auswählen</span>
+            </button>
             <span id="emailInboxStatusChip" style="background:#fef3c7;color:#92400e;border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px">Status: Neu</span>
           </div>
         </div>
@@ -4660,6 +4665,18 @@ const pdfWorkerReady = Promise.resolve();</script>
   box-shadow: inset 4px 0 0 #dc2626;
 }
 .ei-row.unseen-reply .ei-row-id { color: #b91c1c; font-weight: 700; }
+/* V12.200: Multi-Select fuer Bulk-Verknuepfung */
+.ei-row.picked { background: #ede9fe !important; box-shadow: inset 4px 0 0 #7c3aed; position: relative; }
+.ei-row.picked::after {
+  content: '✓'; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+  background: #7c3aed; color: #fff; width: 22px; height: 22px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; box-shadow: 0 1px 3px rgba(124, 58, 237, .4);
+}
+.ei-pick-mode .ei-row { cursor: copy; }
+.ei-pick-mode .ei-row:hover { background: #f5f3ff !important; }
+@keyframes eiBarSlideUp { from { transform: translate(-50%, 30px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+#eiPickBar { animation: eiBarSlideUp 0.22s ease-out; }
 .ei-fresh-tag {
   display:inline-flex; align-items:center; gap:4px;
   background:#2456E5; color:#fff; border-radius:6px;
@@ -6118,7 +6135,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.199';
+const APP_VERSION = 'V12.200';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23276,6 +23293,10 @@ function backToInboxList() {
 // V12.190: Wenn der Posteingang geschlossen wird, alte NEU-Marker löschen — User hat sie zur Kenntnis genommen
 function closeEmailInboxModal() {
   if (window._eiFreshIds) window._eiFreshIds.clear();
+  // V12.200: Pick-Mode + Selection beim Schließen aufräumen
+  if (window._eiPickMode) window._eiPickMode = false;
+  if (window._eiPickedSet) window._eiPickedSet.clear();
+  const bar = document.getElementById('eiPickBar'); if (bar) bar.remove();
   document.getElementById('emailInboxModal').style.display = 'none';
 }
 
@@ -23464,6 +23485,156 @@ function _eiThreadParentOf(r) {
     cur = next;
   }
   return cur;
+}
+
+// V12.200: Bulk-Selection für Verknüpfung — Cmd/Ctrl-Klick oder Auswahl-Modus
+window._eiPickedSet = window._eiPickedSet || new Set();
+window._eiPickMode = false;
+
+function onEmailRowClick(recId, ev) {
+  // Cmd/Ctrl-Klick ODER Pick-Mode → Toggle
+  if (ev && (ev.metaKey || ev.ctrlKey || window._eiPickMode)) {
+    if (ev.preventDefault) ev.preventDefault();
+    if (ev.stopPropagation) ev.stopPropagation();
+    toggleEmailPick(recId);
+    return;
+  }
+  selectEmailRow(recId);
+}
+
+function toggleEmailPick(recId) {
+  if (!window._eiPickedSet) window._eiPickedSet = new Set();
+  if (window._eiPickedSet.has(recId)) window._eiPickedSet.delete(recId);
+  else window._eiPickedSet.add(recId);
+  renderEmailInboxList();
+  _eiRenderPickBar();
+}
+
+function clearEmailPick() {
+  window._eiPickedSet = new Set();
+  renderEmailInboxList();
+  _eiRenderPickBar();
+}
+
+function togglePickMode() {
+  window._eiPickMode = !window._eiPickMode;
+  const body = document.getElementById('emailInboxBody');
+  if (body) body.classList.toggle('ei-pick-mode', window._eiPickMode);
+  const btn = document.getElementById('eiPickModeToggle');
+  if (btn) {
+    if (window._eiPickMode) {
+      btn.style.background = '#7c3aed';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#7c3aed';
+    } else {
+      btn.style.background = '#f1f5f9';
+      btn.style.color = '#475569';
+      btn.style.borderColor = '#e2e8f0';
+      clearEmailPick();
+    }
+  }
+  if (window._eiPickMode) {
+    showToast('Auswahl-Modus aktiv — klicke Emails an um sie zu markieren', 'info', 3500);
+  }
+}
+
+function _eiRenderPickBar() {
+  let bar = document.getElementById('eiPickBar');
+  const set = window._eiPickedSet || new Set();
+  const cnt = set.size;
+  if (cnt === 0) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'eiPickBar';
+    bar.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a3a5c;color:#fff;border-radius:14px;padding:10px 14px;box-shadow:0 16px 50px rgba(15,23,42,.35);z-index:5500;display:flex;align-items:center;gap:10px;font-family:"DM Sans",sans-serif;font-size:13.5px;font-weight:600';
+    document.body.appendChild(bar);
+  }
+  const canLink = cnt >= 2;
+  bar.innerHTML = `
+    <div style="background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:6px 12px;font-size:12.5px">
+      <strong style="font-size:14px">${cnt}</strong> Email${cnt === 1 ? '' : 's'} markiert
+    </div>
+    <button onclick="openMultiLinkModal()" ${canLink ? '' : 'disabled'} style="background:${canLink ? '#7dc242' : 'rgba(255,255,255,.12)'};color:${canLink ? '#1a3a5c' : 'rgba(255,255,255,.5)'};border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:${canLink ? 'pointer' : 'not-allowed'};font-family:inherit;display:inline-flex;align-items:center;gap:6px">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      Verknüpfen
+    </button>
+    <button onclick="clearEmailPick()" style="background:transparent;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:8px 14px;font-size:12.5px;cursor:pointer;font-family:inherit">Abbrechen</button>
+  `;
+}
+
+// V12.200: Multi-Link-Modal — User wählt die primäre Email
+function openMultiLinkModal() {
+  const ids = Array.from(window._eiPickedSet || new Set());
+  if (ids.length < 2) { showToast('Mindestens 2 Emails markieren', 'warning', 2200); return; }
+  const items = ids
+    .map(id => (_eiAllRecords || []).find(x => x._id === id))
+    .filter(Boolean);
+  if (items.length < 2) return;
+  // Sortiere nach Datum (älteste oben) — beim Anhängen Default
+  items.sort((a, b) => String(a.received_at || '').localeCompare(String(b.received_at || '')));
+  const ov = document.createElement('div');
+  ov.id = 'eiMultiLinkModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6200;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(720px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#1a3a5c;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700">🔗 ${items.length} Emails verknüpfen</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:2px">Wähle die PRIMÄRE Email — sie behält ihren Titel und bleibt in der Liste. Die anderen werden chronologisch in ihren Verlauf eingefügt.</div>
+      </div>
+      <button onclick="document.getElementById('eiMultiLinkModal').remove()" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div id="eiMultiLinkList" style="flex:1;overflow-y:auto;padding:14px 22px;background:#f8fafc;display:flex;flex-direction:column;gap:8px">
+      ${items.map(x => {
+        const subj = (x.ai_subject || x.subject || '(kein Betreff)').slice(0, 100);
+        const sender = (x.from_name || x.from_email || '?').slice(0, 60);
+        const date = String(x.received_at || '').slice(0, 16).replace('T', ' ');
+        return `<button onclick="_eiMultiLinkConfirm('${x._id}')" style="background:#fff;border:2px solid #cbd5e1;border-radius:10px;padding:12px 16px;text-align:left;cursor:pointer;font-family:inherit;display:flex;align-items:flex-start;gap:12px;transition:all .12s" onmouseover="this.style.borderColor='#16a34a';this.style.background='#f0fdf4'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#fff'">
+          <span style="background:#16a34a;color:#fff;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:2px">✓</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;color:#16a34a;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Als PRIMÄRE wählen</div>
+            <div style="font-size:13.5px;font-weight:700;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(subj)}</div>
+            <div style="font-size:11.5px;color:#64748b;margin-top:2px">${_esc(sender)} · <span style="font-family:var(--dr-f-mono)">${_esc(date)}</span></div>
+          </div>
+        </button>`;
+      }).join('')}
+    </div>
+    <div style="padding:12px 22px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="document.getElementById('eiMultiLinkModal').remove()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:12.5px;cursor:pointer;font-family:'DM Sans',sans-serif">Abbrechen</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+}
+
+async function _eiMultiLinkConfirm(primaryId) {
+  const ids = Array.from(window._eiPickedSet || new Set());
+  const secondaries = ids.filter(id => id !== primaryId);
+  if (!secondaries.length) { showToast('Mindestens eine Sekundär-Email nötig', 'warning', 2200); return; }
+  const m = document.getElementById('eiMultiLinkModal');
+  if (m) m.remove();
+  showToast('⏳ Verknüpfe ' + secondaries.length + ' Email' + (secondaries.length === 1 ? '' : 's') + ' …', 'info', 2200);
+  const now = new Date().toISOString();
+  let ok = 0, fail = 0;
+  for (const sid of secondaries) {
+    try {
+      await atUpdate('Emails', sid, { manual_thread_parent_id: primaryId, manual_thread_at: now });
+      const sec = (_eiAllRecords || []).find(x => x._id === sid);
+      if (sec) { sec.manual_thread_parent_id = primaryId; sec.manual_thread_at = now; }
+      ok++;
+    } catch (e) {
+      console.warn('[V12.200] Link failed for', sid, e.message);
+      fail++;
+    }
+  }
+  clearEmailPick();
+  // Wenn Pick-Mode aktiv war, beenden
+  if (window._eiPickMode) togglePickMode();
+  // Detail-View auf primary stellen
+  _eiSelectedId = primaryId;
+  if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  if (fail) showToast(`✓ ${ok} verknüpft · ${fail} fehlgeschlagen`, 'warning', 4000);
+  else      showToast(`✓ ${ok} Email${ok === 1 ? '' : 's'} verknüpft`, 'success', 2500);
 }
 
 // V12.199: Email manuell mit einer anderen verbinden — secondary wird Child von primary
@@ -23976,7 +24147,9 @@ function renderEmailInboxList() {
     const freshTag = isFresh ? '<span class="ei-fresh-tag">NEU</span>' : '';
     // V12.197: rote Akzentleiste links wenn ungesichtete Antworten vorliegen — sticht visuell raus
     const rowCls = 'ei-row' + sel + (isFresh ? ' fresh' : '') + (hasUnseen ? ' unseen-reply' : '');
-    return `<div class="${rowCls}" data-id="${r._id}" onclick="selectEmailRow('${r._id}')">
+    const isPicked = !!(window._eiPickedSet && window._eiPickedSet.has(r._id));
+    const pickedCls = isPicked ? ' picked' : '';
+    return `<div class="${rowCls}${pickedCls}" data-id="${r._id}" onclick="onEmailRowClick('${r._id}',event)">
       ${idCell}
       <div class="ei-row-date">${_esc(dateStr)}</div>
       <div class="ei-row-subj">
