@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.208';
+const APP_VERSION = 'V12.209';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25512,10 +25512,11 @@ async function setEmailTyp(recId, typ) {
   const newTyp = String(typ || '').trim();
   try {
     const payload = { email_typ: newTyp };
-    // V12.205: Wenn bereits ein strukturierter Betreff existiert (Anliegen vorhanden),
+    // V12.205/209: Wenn bereits Strukturdaten existieren (Anliegen ODER Aufzug),
     // den Titel direkt mit dem neuen Typ regenerieren — keine erneute KI-Anfrage nötig.
     const anliegen = String(r.ai_subject_anliegen || '').trim();
-    if (newTyp && anliegen) {
+    const hasAufzug = !!(String(r.aufzug_fabriknummer || '').trim() || String(r.aufzug_standort || '').trim());
+    if (newTyp && (anliegen || hasAufzug)) {
       const newSubj = _eiBuildAiSubject(newTyp, anliegen, r);
       payload.ai_subject = newSubj;
       payload.ai_subject_typ = newTyp;
@@ -25602,13 +25603,24 @@ function _eiCheckIdForSubject(r) {
   return '#' + String(r._id || '').slice(-4);
 }
 
-// V12.181: Betreff zusammensetzen aus Typ + ID + Anliegen
+// V12.181/209: Betreff zusammensetzen
+//   Mit zugeordnetem Aufzug: "Typ #ID | Fabriknummer: ... | Standort: ..."
+//   Ohne Aufzug:             "Typ #ID | Anliegen"
 function _eiBuildAiSubject(typ, anliegen, r) {
   const t = String(typ || '').trim();
-  const a = String(anliegen || '').trim();
   if (!t) return '';
-  const id = _eiCheckIdForSubject(r);
+  const id   = _eiCheckIdForSubject(r);
   const head = t + (id ? ' ' + id : '');
+  // V12.209: Priorität auf Aufzug-Daten (Fabriknummer + Standort), wenn vorhanden
+  const fn = String((r && r.aufzug_fabriknummer) || '').trim();
+  const st = String((r && r.aufzug_standort) || '').trim();
+  if (fn || st) {
+    const parts = [];
+    if (fn) parts.push('Fabriknummer: ' + fn);
+    if (st) parts.push('Standort: ' + st);
+    return head + ' | ' + parts.join(' | ');
+  }
+  const a = String(anliegen || '').trim();
   return a ? (head + ' | ' + a) : head;
 }
 
@@ -25715,6 +25727,11 @@ function _renderAiSubjectResult(r) {
     const seen = new Set();
     return all.filter(t => { if (seen.has(t)) return false; seen.add(t); return true; });
   })();
+  // V12.209: Bei zugeordnetem Aufzug Read-Only-Info anzeigen statt Anliegen-Input
+  const fn = String(r.aufzug_fabriknummer || '').trim();
+  const st = String(r.aufzug_standort || '').trim();
+  const hr = String(r.aufzug_hersteller || '').trim();
+  const hasAufzug = !!(fn || st);
   return `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-top:8px">
     <div style="font-size:10.5px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📝 Strukturierter Betreff${typ ? '' : ' — noch leer'}</div>
     <div style="background:#fff;border:1px solid #fcd34d;border-radius:7px;padding:8px 12px;margin-bottom:10px">
@@ -25727,9 +25744,20 @@ function _renderAiSubjectResult(r) {
       </select>
       <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">ID</label>
       <div style="font-family:var(--dr-f-mono);font-size:13px;color:#475569">${_esc(idDisp)} <span style="font-weight:400;color:#94a3b8;font-size:11px">${r.external_check_id ? '(extern)' : '(intern)'}</span></div>
-      <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Anliegen</label>
-      <input id="ei_ai_subject_anliegen" type="text" value="${_esc(anliegen)}" maxlength="80" placeholder="Kurzbeschreibung (max. 60 Zeichen)" oninput="_eiAiSubjectLivePreview('${r._id}')" style="padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:13px;background:#fff;font-family:'DM Sans',sans-serif">
+      ${hasAufzug ? `
+        <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Fabriknummer</label>
+        <div style="font-family:var(--dr-f-mono);font-size:13px;color:#0f172a;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:6px 10px">${_esc(fn || '—')}</div>
+        <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Standort</label>
+        <div style="font-size:13px;color:#0f172a;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:6px 10px">${_esc(st || '—')}</div>
+        ${hr ? `<label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Hersteller</label>
+        <div style="font-size:12.5px;color:#475569;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:6px 10px">${_esc(hr)}</div>` : ''}
+        <input type="hidden" id="ei_ai_subject_anliegen" value="${_esc(anliegen)}">
+      ` : `
+        <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em">Anliegen</label>
+        <input id="ei_ai_subject_anliegen" type="text" value="${_esc(anliegen)}" maxlength="80" placeholder="Kurzbeschreibung (max. 60 Zeichen)" oninput="_eiAiSubjectLivePreview('${r._id}')" style="padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;font-size:13px;background:#fff;font-family:'DM Sans',sans-serif">
+      `}
     </div>
+    ${hasAufzug ? '<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;display:flex;align-items:center;gap:6px"><span style="color:#0891b2">🛗</span>Fabriknummer und Standort kommen aus dem zugeordneten Aufzug — keine manuelle Eingabe nötig.</div>' : ''}
     <div style="display:flex;gap:6px;justify-content:flex-end">
       <button onclick="_eiAiSubjectSave('${r._id}')" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Speichern</button>
     </div>
@@ -26126,6 +26154,14 @@ async function applyAufzugAnalysis(recId) {
     ai_aufzug_at:        aiAt,
     aufzug_split_count:  finals.length > 1 ? String(finals.length) : '',
   };
+  // V12.209: Strukturierten Betreff direkt aktualisieren — Aufzug-Daten gehören jetzt in den Titel
+  const _rCopy = Object.assign({}, r, baseFields);
+  const _typ = String(r.email_typ || r.ai_subject_typ || '').trim();
+  if (_typ) {
+    baseFields.ai_subject     = _eiBuildAiSubject(_typ, String(r.ai_subject_anliegen || ''), _rCopy);
+    baseFields.ai_subject_typ = _typ;
+    baseFields.ai_subject_at  = aiAt;
+  }
   try {
     await atUpdate('Emails', recId, baseFields);
     Object.assign(r, baseFields);
