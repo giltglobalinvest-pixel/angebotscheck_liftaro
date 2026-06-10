@@ -4128,6 +4128,12 @@ const pdfWorkerReady = Promise.resolve();</script>
               <strong style="color:#0f172a">Neueste zuerst</strong>
               <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#475569"><polyline points="18 15 12 9 6 15"/></svg>
             </div>
+            <!-- V12.215: Email-Typ-Filter -->
+            <button id="eiTypFilterBtn" onclick="openEmailTypFilterMenu(this)" title="Nach Email-Typ filtern" style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:999px;padding:5px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#7c3aed'" onmouseout="if(!window._eiTypFilter){this.style.borderColor='#e2e8f0';this.style.color='#475569'}">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span id="eiTypFilterLbl">Typ: Alle</span>
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <!-- V12.200: Auswahl-Modus Toggle -->
@@ -6158,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.214';
+const APP_VERSION = 'V12.215';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23703,6 +23709,8 @@ let _eiSelectedId  = null;      // Airtable-Record-ID der gewählten Email
 function openEmailInboxModal() {
   document.getElementById('emailInboxModal').style.display = 'flex';
   setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
+  // V12.215: persistierten Typ-Filter im Button-Label anzeigen
+  if (typeof setEmailTypFilter === 'function') setEmailTypFilter(window._eiTypFilter || '');
   if (typeof _restoreEmailInboxListState === 'function') _restoreEmailInboxListState();
   loadEmailInbox();
   // V12.8 mobile: Start im Listen-Mode (Detail komplett ausgeblendet, kein leerer Platzhalter unten)
@@ -24262,6 +24270,79 @@ function _eiThreadChildrenOf(r) {
   return out;
 }
 
+// V12.215: Email-Typ-Filter ("" = alle Typen). Persistiert in localStorage.
+window._eiTypFilter = (function() {
+  try { return localStorage.getItem('eiTypFilter') || ''; } catch (_) { return ''; }
+})();
+
+function setEmailTypFilter(typ) {
+  window._eiTypFilter = String(typ || '').trim();
+  try { localStorage.setItem('eiTypFilter', window._eiTypFilter); } catch (_) {}
+  // Label im Filter-Button updaten
+  const lbl = document.getElementById('eiTypFilterLbl');
+  const btn = document.getElementById('eiTypFilterBtn');
+  if (lbl) lbl.textContent = window._eiTypFilter ? 'Typ: ' + window._eiTypFilter : 'Typ: Alle';
+  if (btn) {
+    if (window._eiTypFilter) {
+      const pal = _eiTypPalette(window._eiTypFilter);
+      btn.style.background = pal.bg;
+      btn.style.borderColor = pal.accent;
+      btn.style.color = pal.fg;
+    } else {
+      btn.style.background = '#f8fafc';
+      btn.style.borderColor = '#e2e8f0';
+      btn.style.color = '#475569';
+    }
+  }
+  if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+}
+
+function openEmailTypFilterMenu(anchorEl) {
+  document.querySelectorAll('.ei-typ-filter-popover').forEach(el => el.remove());
+  // Counter pro Typ aus den aktuell sichtbaren Records (ohne den Typ-Filter, sonst zählt nur der aktive)
+  const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+  const countOfTyp = (typ) => all.filter(r => _eiResolveEmailTyp(r) === typ).length;
+  const cntUngesetzt = all.filter(r => !_eiResolveEmailTyp(r)).length;
+  const cntAll = all.length;
+  const types = _eiGetAllTypes();
+  const pop = document.createElement('div');
+  pop.className = 'ei-typ-filter-popover';
+  pop.style.cssText = 'position:absolute;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px;min-width:240px;z-index:6300;font-family:"DM Sans",sans-serif';
+  const row = (val, label, count, palette) => {
+    const isCurr = window._eiTypFilter === val;
+    const dot = palette ? `<span style="width:8px;height:8px;border-radius:50%;background:${palette.accent}"></span>` : '<span style="width:8px;height:8px"></span>';
+    return `<button onclick="setEmailTypFilter('${_esc(val)}');document.querySelectorAll('.ei-typ-filter-popover').forEach(e=>e.remove());event.stopPropagation()" style="display:flex;align-items:center;gap:8px;width:100%;background:${isCurr ? (palette ? palette.bg : '#ede9fe') : '#fff'};border:1px solid ${isCurr ? (palette ? palette.accent : '#7c3aed') : 'transparent'};border-radius:7px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:13px;color:${palette ? palette.fg : '#0f172a'};text-align:left;font-weight:${isCurr ? '700' : '500'};margin-bottom:2px" onmouseover="this.style.background='${palette ? palette.bg : '#f1f5f9'}'" onmouseout="this.style.background='${isCurr ? (palette ? palette.bg : '#ede9fe') : '#fff'}'">
+      ${dot}
+      <span style="flex:1">${_esc(label)}</span>
+      <span style="font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums">${count}</span>
+      ${isCurr ? '<span style="font-size:11px;color:' + (palette ? palette.fg : '#7c3aed') + '">✓</span>' : ''}
+    </button>`;
+  };
+  pop.innerHTML = row('', 'Alle Typen', cntAll, null)
+    + '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>'
+    + types.map(t => row(t, t, countOfTyp(t), _eiTypPalette(t))).join('')
+    + (cntUngesetzt > 0 ? '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>' + row('__none__', 'Ohne Typ', cntUngesetzt, null) : '');
+  document.body.appendChild(pop);
+  const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+  if (rect) {
+    pop.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    pop.style.left = (rect.left   + window.scrollX) + 'px';
+    const popRect = pop.getBoundingClientRect();
+    if (popRect.right > window.innerWidth - 10) {
+      pop.style.left = (window.innerWidth - popRect.width - 14) + 'px';
+    }
+  }
+  setTimeout(() => {
+    const closeFn = (e) => {
+      if (!pop.contains(e.target) && e.target !== anchorEl) {
+        pop.remove();
+        document.removeEventListener('click', closeFn, true);
+      }
+    };
+    document.addEventListener('click', closeFn, true);
+  }, 50);
+}
+
 function _eiFiltered() {
   // V12.191: Thread-Antworten ausblenden — sie erscheinen im Verlauf der Parent-Mail
   const threadedIds = new Set();
@@ -24284,6 +24365,15 @@ function _eiFiltered() {
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (r.status || 'neu') === _eiFilter);
   }
   base = dropThreaded(base);
+  // V12.215: Email-Typ-Filter (gilt für alle Status-Filter außer "gesendet")
+  if (window._eiTypFilter && _eiFilter !== 'gesendet') {
+    const tf = window._eiTypFilter;
+    if (tf === '__none__') {
+      base = base.filter(r => !_eiResolveEmailTyp(r));
+    } else {
+      base = base.filter(r => _eiResolveEmailTyp(r) === tf);
+    }
+  }
   const q = String(window._eiSearchQ || '').toLowerCase().trim();
   if (!q) return base;
   // Mehrere Wörter → alle müssen vorkommen (UND-Suche, in beliebigem Feld)
