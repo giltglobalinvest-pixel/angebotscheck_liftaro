@@ -4105,10 +4105,17 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div id="emailInboxContentPane" style="display:flex;flex-direction:column;min-width:0;overflow:hidden">
         <!-- Sub-Header über der Tabelle -->
         <div id="emailInboxSubHeader" style="background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
-          <div style="font-size:13px;color:#475569;display:flex;align-items:center;gap:8px">
-            <span style="color:#94a3b8">Sortieren nach:</span>
-            <strong style="color:#0f172a">Neueste zuerst</strong>
-            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#475569"><polyline points="18 15 12 9 6 15"/></svg>
+          <div style="display:flex;align-items:center;gap:12px">
+            <!-- V12.185: Übersicht ein-/ausklappen -->
+            <button id="emailInboxListToggle" onclick="toggleEmailInboxList()" title="Übersicht einklappen — mehr Platz für Email-Inhalt" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:7px;padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.background='#e2e8f0';this.style.color='#0f172a'" onmouseout="this.style.background='#f1f5f9';this.style.color='#475569'">
+              <svg id="emailInboxListToggleIcon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .2s"><polyline points="15 18 9 12 15 6"/></svg>
+              <span id="emailInboxListToggleLabel">Übersicht einklappen</span>
+            </button>
+            <div style="font-size:13px;color:#475569;display:flex;align-items:center;gap:8px">
+              <span style="color:#94a3b8">Sortieren nach:</span>
+              <strong style="color:#0f172a">Neueste zuerst</strong>
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#475569"><polyline points="18 15 12 9 6 15"/></svg>
+            </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <span id="emailInboxStatusChip" style="background:#fef3c7;color:#92400e;border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px">Status: Neu</span>
@@ -4601,6 +4608,10 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
+/* V12.185: Email-Liste eingeklappt → Detail-Pane voll */
+#emailInboxInnerBody { transition: grid-template-columns .2s ease; }
+#emailInboxInnerBody.list-collapsed { grid-template-columns: 0 1fr !important; }
+#emailInboxInnerBody.list-collapsed #emailInboxList { display:none !important; }
 @media (max-width: 1280px) {
   #emailInboxInnerBody { grid-template-columns: 1fr !important; }
   #emailInboxDetail { display:none; }
@@ -6040,7 +6051,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.184';
+const APP_VERSION = 'V12.185';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23168,6 +23179,7 @@ let _eiSelectedId  = null;      // Airtable-Record-ID der gewählten Email
 function openEmailInboxModal() {
   document.getElementById('emailInboxModal').style.display = 'flex';
   setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
+  if (typeof _restoreEmailInboxListState === 'function') _restoreEmailInboxListState();
   loadEmailInbox();
   // V12.8 mobile: Start im Listen-Mode (Detail komplett ausgeblendet, kein leerer Platzhalter unten)
   if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
@@ -23261,6 +23273,32 @@ function setEiFilter(status, skipRender) {
     chipEl.textContent = 'Status: ' + label;
   }
   if (!skipRender) renderEmailInboxList();
+}
+
+// V12.185: Email-Liste ein-/ausklappen — mehr Platz für den Email-Inhalt
+function toggleEmailInboxList() {
+  const inner = document.getElementById('emailInboxInnerBody');
+  const icon  = document.getElementById('emailInboxListToggleIcon');
+  const label = document.getElementById('emailInboxListToggleLabel');
+  if (!inner) return;
+  const collapsed = inner.classList.toggle('list-collapsed');
+  if (icon)  icon.style.transform = collapsed ? 'rotate(180deg)' : '';
+  if (label) label.textContent = collapsed ? 'Übersicht zeigen' : 'Übersicht einklappen';
+  try { localStorage.setItem('eiListCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+}
+
+// V12.185: Beim Öffnen der Inbox den Collapse-Zustand wiederherstellen
+function _restoreEmailInboxListState() {
+  try {
+    if (localStorage.getItem('eiListCollapsed') === '1') {
+      const inner = document.getElementById('emailInboxInnerBody');
+      const icon  = document.getElementById('emailInboxListToggleIcon');
+      const label = document.getElementById('emailInboxListToggleLabel');
+      if (inner) inner.classList.add('list-collapsed');
+      if (icon)  icon.style.transform = 'rotate(180deg)';
+      if (label) label.textContent = 'Übersicht zeigen';
+    }
+  } catch (_) {}
 }
 
 // V12.177: Sidebar-Counts pro Status auf Basis aller geladenen Emails
@@ -24728,9 +24766,6 @@ function renderEmailInboxDetail() {
     <div id="ei_ext_check_id_status" style="font-size:11.5px;margin-top:6px;min-height:14px;color:#a16207"></div>
   </div>`;
 
-  // V12.184: Interne Notizen / Kommentare (ticketsystem-Stil)
-  html += _renderEmailComments(r);
-
   // KI-Summary
   if (r.ki_summary) {
     html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid var(--dr-blue)">
@@ -24947,6 +24982,9 @@ function renderEmailInboxDetail() {
     <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')">Verwerfen</button>
     </div>
   </div>`;
+
+  // V12.185: Interne Notizen ans Ende verschoben (nach den Aktions-Buttons)
+  html += _renderEmailComments(r);
 
   html += `</div>`;
   detEl.innerHTML = html;
