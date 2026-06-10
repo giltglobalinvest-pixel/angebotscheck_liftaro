@@ -6157,7 +6157,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.202';
+const APP_VERSION = 'V12.203';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26374,7 +26374,15 @@ function renderEmailInboxDetail() {
 
   // Vorgangs-Karten
   if (vorgaenge.length > 0) {
-    html += `<div class="dr-section-title" style="margin:20px 0 10px">Erkannte Vorgänge<span class="dr-section-title__count">${vorgaenge.length}</span></div>`;
+    html += `<div class="dr-section-title" style="margin:20px 0 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span>Erkannte Vorgänge</span><span class="dr-section-title__count">${vorgaenge.length}</span>
+      </div>
+      ${vorgaenge.length > 1
+        ? `<button onclick="splitAllVorgaenge('${r._id}')" title="Jeden Vorgang in eine eigene Email auftrennen" style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0">↗ Alle in eigene Emails auftrennen</button>`
+        : ''}
+    </div>
+    ${vorgaenge.length > 1 ? '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:11.5px;color:#92400e;line-height:1.5"><strong>⚠ Mehrere Vorgänge in einer Email</strong> — eine Email sollte pro Vorgang separat sein. Trenne sie auf, damit jeder Vorgang seinen eigenen Workflow hat.</div>' : ''}`;
     vorgaenge.forEach((v, i) => {
       const typVariant = { wartung:'green', reparatur:'amber', rechnung:'purple' }[v.typ] || 'navy';
       const typColor = { wartung:'var(--dr-green)', reparatur:'var(--dr-amber)', rechnung:'var(--dr-purple)' }[v.typ] || 'var(--dr-ink-mute)';
@@ -26482,6 +26490,7 @@ function renderEmailInboxDetail() {
         ${v.anliegen_kurz ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--dr-divider);font-size:12.5px;color:var(--dr-ink);line-height:1.55"><span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-right:6px">Anliegen:</span>${_esc(v.anliegen_kurz)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
           ${checkButtonHtml}
+          ${vorgaenge.length > 1 ? `<button class="dr-pill" onclick="splitVorgangIntoNewEmail('${r._id}', ${i})" title="Diesen Vorgang in eine eigene Email auftrennen" style="background:#7c3aed;color:#fff;border-color:#7c3aed;font-weight:600">↗ In eigene Email auftrennen</button>` : ''}
           <button class="dr-pill" onclick="dismissVorgang('${r._id}', ${i})">Verwerfen</button>
         </div>
       </div>`;
@@ -26693,6 +26702,104 @@ async function setEmailStatus(recId, newStatus) {
     showToast(`Email auf „${newStatus}" gesetzt.`, 'success');
   } catch (e) {
     showToast('Fehler beim Status-Update: ' + e.message, 'error');
+  }
+}
+
+// V12.203: Vorgang in eigene Email auftrennen — Original behält die anderen, Kopie hat nur den einen
+async function splitVorgangIntoNewEmail(recId, vIdx) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  if (!Array.isArray(vorgaenge) || vIdx < 0 || vIdx >= vorgaenge.length) return;
+  if (vorgaenge.length < 2) { showToast('Nur ein Vorgang — kein Auftrennen nötig', 'info', 2000); return; }
+  const splitOne = vorgaenge[vIdx];
+  const titel = splitOne?.titel || 'Vorgang';
+  if (!confirm('Diesen Vorgang in eine eigene Email auftrennen?\n„' + titel + '"\n\nDie Original-Email behält die übrigen ' + (vorgaenge.length - 1) + ' Vorgänge.')) return;
+  showToast('⏳ Trenne Vorgang …', 'info', 2200);
+  try {
+    // 1. Neue Email-Kopie nur mit DIESEM Vorgang
+    const copyFields = _eiCloneEmailFields(r);
+    copyFields.vorgaenge_json     = JSON.stringify([splitOne]);
+    copyFields.ki_vorgaenge_count = 1;
+    copyFields.aufzug_split_from  = recId;
+    // Falls die Aufzug-Felder gesetzt sind, übernehme sie NICHT in die Kopie
+    // (jeder Vorgang sollte seinen Aufzug separat zuordnen)
+    delete copyFields.aufzug_id;
+    delete copyFields.aufzug_record_id;
+    delete copyFields.aufzug_fabriknummer;
+    delete copyFields.aufzug_standort;
+    delete copyFields.aufzug_hersteller;
+    delete copyFields.aufzug_split_count;
+    // Externer Verweis sollte auch nur einmal vorkommen — nicht kopieren
+    delete copyFields.external_check_id;
+    // Notizen auch nicht kopieren — sind oft kontextspezifisch
+    delete copyFields.comments_json;
+    // Linked-Checks der Kopie nullen — der ist noch keinem Check zugeordnet
+    copyFields.linked_check_ids    = '';
+    copyFields.linked_checks_count = '0';
+    await atWrite('Emails', copyFields);
+    // 2. Original updaten: Vorgang entfernen
+    const remaining = vorgaenge.filter((_, idx) => idx !== vIdx);
+    const newJson = JSON.stringify(remaining);
+    await atUpdate('Emails', recId, { vorgaenge_json: newJson, ki_vorgaenge_count: remaining.length });
+    r.vorgaenge_json = newJson;
+    r.ki_vorgaenge_count = remaining.length;
+    // 3. Posteingang neu laden
+    if (typeof loadEmailInbox === 'function') { try { await loadEmailInbox(true); } catch (_) {} }
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    showToast('✓ Vorgang in eigene Email aufgetrennt', 'success', 3000);
+  } catch (e) {
+    showToast('Auftrennen fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+
+// V12.203: Alle Vorgänge in eigene Emails auftrennen — Original wird Container für Vorgang #1
+async function splitAllVorgaenge(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  let vorgaenge = [];
+  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  if (!Array.isArray(vorgaenge) || vorgaenge.length < 2) { showToast('Nur ein Vorgang — kein Auftrennen nötig', 'info', 2000); return; }
+  if (!confirm('Diese Email in ' + vorgaenge.length + ' separate Emails auftrennen?\n\nOriginal behält Vorgang #1, alle anderen werden neue Kopien.')) return;
+  showToast('⏳ Trenne ' + vorgaenge.length + ' Vorgänge …', 'info', 3000);
+  let ok = 0, fail = 0;
+  try {
+    // Behalte den ersten Vorgang im Original — alle weiteren als Kopien
+    for (let i = 1; i < vorgaenge.length; i++) {
+      try {
+        const copyFields = _eiCloneEmailFields(r);
+        copyFields.vorgaenge_json     = JSON.stringify([vorgaenge[i]]);
+        copyFields.ki_vorgaenge_count = 1;
+        copyFields.aufzug_split_from  = recId;
+        delete copyFields.aufzug_id;
+        delete copyFields.aufzug_record_id;
+        delete copyFields.aufzug_fabriknummer;
+        delete copyFields.aufzug_standort;
+        delete copyFields.aufzug_hersteller;
+        delete copyFields.aufzug_split_count;
+        delete copyFields.external_check_id;
+        delete copyFields.comments_json;
+        copyFields.linked_check_ids    = '';
+        copyFields.linked_checks_count = '0';
+        await atWrite('Emails', copyFields);
+        ok++;
+      } catch (e) { fail++; console.warn('[V12.203] split #' + i + ' failed:', e.message); }
+    }
+    // Original auf nur Vorgang #1 reduzieren
+    const newJson = JSON.stringify([vorgaenge[0]]);
+    await atUpdate('Emails', recId, { vorgaenge_json: newJson, ki_vorgaenge_count: 1 });
+    r.vorgaenge_json = newJson;
+    r.ki_vorgaenge_count = 1;
+    // Posteingang neu laden
+    if (typeof loadEmailInbox === 'function') { try { await loadEmailInbox(true); } catch (_) {} }
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (fail) showToast(`✓ ${ok} Vorgänge ausgegliedert · ${fail} fehlgeschlagen`, 'warning', 4500);
+    else      showToast(`✓ ${ok + 1} separate Emails erstellt — Original + ${ok} Kopien`, 'success', 3500);
+  } catch (e) {
+    showToast('Massen-Auftrennen fehlgeschlagen: ' + e.message, 'error', 5000);
   }
 }
 
