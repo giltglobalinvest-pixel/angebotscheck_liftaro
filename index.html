@@ -6060,7 +6060,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.187';
+const APP_VERSION = 'V12.188';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23765,6 +23765,116 @@ function _renderEmailTimeline(r) {
   </div>`;
 }
 
+// V12.188: Email weiterleiten — Body + Anhänge bleiben unverändert
+async function forwardEmailTo(recId, toEmail) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const cleanTo = String(toEmail || '').trim();
+  if (!cleanTo) { showToast('Empfänger-Adresse fehlt', 'error', 2500); return; }
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert — bitte App neu laden', 'error', 4500);
+    return;
+  }
+  showToast('⏳ Weiterleitung wird vorbereitet …', 'info', 2200);
+  try {
+    // 1. Anhänge holen + base64-encoden
+    const attachments = [];
+    const atts = Array.isArray(r.attachments) ? r.attachments : [];
+    for (const a of atts) {
+      if (!a || !a.url) continue;
+      try {
+        const resp = await fetch(a.url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const blob = await resp.blob();
+        const b64 = await _blobToBase64Raw(blob);
+        attachments.push({
+          filename:      a.filename || a.name || 'Anhang',
+          contentType:   a.contentType || a.type || blob.type || 'application/octet-stream',
+          contentBase64: b64,
+        });
+      } catch (e) {
+        console.warn('[V12.188] Anhang nicht geladen:', a.filename, e.message);
+      }
+    }
+
+    // 2. Forward-Header + Body bauen (unverändert übernommen)
+    const origFrom = r.from_name ? `${r.from_name} <${r.from_email || ''}>` : (r.from_email || '');
+    const origDate = String(r.received_at || '').replace('T', ' ').slice(0, 19);
+    const origSubj = String(r.subject || '');
+    const origTo   = String(r.to_email || '');
+    const origBody = (r.body_text && r.body_text.trim())
+      || (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || '') : '')
+      || r.body || '';
+    const forwardHeader = '--- Weitergeleitete Nachricht ---\n'
+      + 'Von:      ' + origFrom + '\n'
+      + 'Datum:    ' + origDate + '\n'
+      + 'Betreff:  ' + origSubj + '\n'
+      + 'An:       ' + origTo + '\n\n';
+    const fwdSubject = /^(fwd:|wg:)/i.test(origSubj) ? origSubj : 'Fwd: ' + origSubj;
+    const text = forwardHeader + origBody;
+
+    // 3. POST an Email-Sender (val.town)
+    const payload = {
+      to:        cleanTo,
+      subject:   fwdSubject,
+      text:      text,
+      replyTo:   'check@liftaro.de',
+      inReplyTo: r.message_id || undefined,
+    };
+    if (attachments.length) payload.attachments = attachments;
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      let txt = ''; try { txt = await resp.text(); } catch (_) {}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+    }
+
+    // 4. Outgoing-Record für den Verlauf
+    const sentAt = new Date().toISOString();
+    const sentFields = {
+      direction:        'outgoing',
+      from_email:       'check@liftaro.de',
+      to_email:         cleanTo,
+      subject:          fwdSubject,
+      body:             text,
+      sent_at:          sentAt,
+      in_reply_to:      r.message_id || '',
+      linked_check_ids: r.linked_check_ids || '',
+      bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+    };
+    if (attachments.length) sentFields.attachment_filenames = attachments.map(a => a.filename).join(', ');
+    try { await atWrite('Emails', sentFields); }
+    catch (e) { console.warn('[V12.188] Verlauf-Eintrag fehlgeschlagen:', e.message); }
+
+    showToast('✓ Weitergeleitet an ' + cleanTo, 'success', 3000);
+    // Posteingang neu laden, damit Verlauf-Eintrag sichtbar wird
+    if (typeof loadEmailInbox === 'function') { try { await loadEmailInbox(true); } catch (_) {} }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  } catch (e) {
+    showToast('Weiterleitung fehlgeschlagen: ' + e.message, 'error', 6000);
+  }
+}
+
+function forwardEmailToManagement(recId) {
+  if (!confirm('Email unverändert an management@liftaro.de weiterleiten?\nInhalt und Anhänge bleiben erhalten.')) return;
+  forwardEmailTo(recId, 'management@liftaro.de');
+}
+
+function forwardEmailPrompt(recId) {
+  const addr = prompt('An welche Email-Adresse weiterleiten?\nInhalt und Anhänge bleiben unverändert.', '');
+  if (!addr) return;
+  const cleaned = String(addr).trim();
+  if (!/^\S+@\S+\.\S+$/.test(cleaned)) {
+    showToast('Ungültige Email-Adresse', 'error', 3000);
+    return;
+  }
+  forwardEmailTo(recId, cleaned);
+}
+
 async function addEmailComment(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
@@ -24841,6 +24951,19 @@ function renderEmailInboxDetail() {
     });
     html += `</div></div>`;
   }
+
+  // V12.188: Weiterleiten-Toolbar (sichtbar zwischen Anhängen und einklappbarem Container)
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:12px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">
+    <span style="font-size:12px;color:#64748b;font-weight:600;margin-right:4px">Schnellaktionen:</span>
+    <button onclick="forwardEmailToManagement('${r._id}')" title="Email unverändert an management@liftaro.de weiterleiten" style="background:#1a3a5c;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      An Management
+    </button>
+    <button onclick="forwardEmailPrompt('${r._id}')" title="Email an freie Adresse weiterleiten — Inhalt und Anhänge bleiben unverändert" style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#0f172a'">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      Weiterleiten …
+    </button>
+  </div>`;
 
   // V12.187: Alles Weitere in einen einklappbaren Container
   html += `<details id="emailExtraDetails" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
