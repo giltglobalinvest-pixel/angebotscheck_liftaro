@@ -6060,7 +6060,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.188';
+const APP_VERSION = 'V12.189';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23758,15 +23758,202 @@ function _renderEmailTimeline(r) {
       <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
     </div>
     ${itemsHtml}
-    <div style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
-      <textarea id="ei_comment_input" placeholder="Anweisung oder Notiz für die Bearbeitung — Strg/Cmd+Enter sendet" rows="2" style="flex:1;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:13px;background:#fff;resize:vertical;line-height:1.5;outline:none" onfocus="this.style.borderColor='#1a3a5c';this.style.boxShadow='0 0 0 3px rgba(26,58,92,.08)'" onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none'" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();addEmailComment('${r._id}')}"></textarea>
-      <button onclick="addEmailComment('${r._id}')" style="background:#1a3a5c;color:#fff;border:none;border-radius:7px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;align-self:stretch">Notiz hinzufügen</button>
+    ${_renderEmailComposer(r)}
+  </div>`;
+}
+
+// V12.189: Composer — 3 Tabs (Antworten / Notiz / Weiterleiten), Avatar links, Senden-Icon rechts
+function _renderEmailComposer(r) {
+  const me = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter';
+  const initials = me.split(/\s+/).map(s => s.charAt(0)).join('').slice(0, 2).toUpperCase() || '?';
+  return `<div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+    <div style="width:36px;height:36px;border-radius:50%;background:#e0e7ff;color:#1a3a5c;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;font-family:'DM Sans',sans-serif">${_esc(initials)}</div>
+    <div style="flex:1;min-width:0;border:1px solid #cbd5e1;border-radius:10px;background:#fff;overflow:hidden">
+      <div style="display:flex;gap:4px;padding:8px 8px 0;border-bottom:1px solid #f1f5f9">
+        <button class="ei-comp-tab" data-cmode="reply"   onclick="setComposerMode('reply','${r._id}')"   style="background:#dbeafe;color:#1e40af;border:none;border-radius:7px 7px 0 0;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;border-bottom:2px solid #2456E5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Antworten
+        </button>
+        <button class="ei-comp-tab" data-cmode="note"    onclick="setComposerMode('note','${r._id}')"    style="background:transparent;color:#475569;border:none;border-radius:7px 7px 0 0;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;border-bottom:2px solid transparent">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+          Notiz
+        </button>
+        <button class="ei-comp-tab" data-cmode="forward" onclick="setComposerMode('forward','${r._id}')" style="background:transparent;color:#475569;border:none;border-radius:7px 7px 0 0;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;border-bottom:2px solid transparent">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+          Weiterleiten
+        </button>
+      </div>
+      <div id="ei_composer_to_row" style="display:none;padding:10px 12px 0;background:#fff">
+        <div style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:#64748b">
+          <span style="font-weight:700;color:#475569">An:</span>
+          <input id="ei_composer_to" type="email" placeholder="management@liftaro.de" style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none" onfocus="this.style.borderColor='#1a3a5c'" onblur="this.style.borderColor='#cbd5e1'">
+          <button type="button" onclick="document.getElementById('ei_composer_to').value='management@liftaro.de'" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">→ Management</button>
+        </div>
+      </div>
+      <div style="position:relative;padding:0">
+        <textarea id="ei_composer_input" rows="4" placeholder="Geben Sie Ihre Antwort hier ein …" style="width:100%;border:none;padding:12px 56px 12px 14px;font-family:'DM Sans',sans-serif;font-size:13.5px;background:transparent;resize:vertical;line-height:1.55;outline:none;box-sizing:border-box;color:#0f172a" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();composerSubmit('${r._id}')}"></textarea>
+        <button id="ei_composer_send" onclick="composerSubmit('${r._id}')" title="Senden (Strg/Cmd+Enter)" style="position:absolute;right:10px;bottom:10px;background:#2456E5;color:#fff;border:none;border-radius:8px;width:38px;height:38px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(36,86,229,.4)" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2456E5'">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
     </div>
   </div>`;
 }
 
-// V12.188: Email weiterleiten — Body + Anhänge bleiben unverändert
-async function forwardEmailTo(recId, toEmail) {
+// V12.189: Composer-Mode wechseln — passt Tabs, Placeholder + Empfänger-Feld an
+function setComposerMode(mode, recId) {
+  window._eiComposerMode = mode;
+  // Tabs
+  document.querySelectorAll('.ei-comp-tab').forEach(t => {
+    const active = t.getAttribute('data-cmode') === mode;
+    if (active) {
+      const pal = mode === 'reply' ? { bg:'#dbeafe', fg:'#1e40af', accent:'#2456E5' }
+                : mode === 'note'  ? { bg:'#e2e8f0', fg:'#0f172a', accent:'#475569' }
+                : { bg:'#fef3c7', fg:'#92400e', accent:'#d97706' };
+      t.style.background = pal.bg;
+      t.style.color = pal.fg;
+      t.style.borderBottom = '2px solid ' + pal.accent;
+    } else {
+      t.style.background = 'transparent';
+      t.style.color = '#475569';
+      t.style.borderBottom = '2px solid transparent';
+    }
+  });
+  // Send-Button Farbe
+  const sendBtn = document.getElementById('ei_composer_send');
+  if (sendBtn) {
+    const col = mode === 'reply' ? '#2456E5'
+              : mode === 'note'  ? '#1a3a5c'
+              : '#d97706';
+    sendBtn.style.background = col;
+    sendBtn.style.boxShadow = '0 1px 3px ' + col + '66';
+  }
+  // To-Feld + Placeholder
+  const inp  = document.getElementById('ei_composer_input');
+  const toRow = document.getElementById('ei_composer_to_row');
+  const toEl  = document.getElementById('ei_composer_to');
+  if (mode === 'reply') {
+    if (inp)   inp.placeholder = 'Geben Sie Ihre Antwort hier ein …';
+    if (toRow) toRow.style.display = 'none';
+  } else if (mode === 'note') {
+    if (inp)   inp.placeholder = 'Interne Notiz — nur intern sichtbar …';
+    if (toRow) toRow.style.display = 'none';
+  } else {
+    if (inp)   inp.placeholder = 'Optionale Nachricht (kann leer bleiben) — Original wird unverändert weitergeleitet';
+    if (toRow) toRow.style.display = 'block';
+    if (toEl && !toEl.value) toEl.value = 'management@liftaro.de';
+  }
+  if (inp) inp.focus();
+}
+
+// V12.189: Submit aus Composer — dispatcht je nach Mode
+async function composerSubmit(recId) {
+  const mode = window._eiComposerMode || 'reply';
+  const inp  = document.getElementById('ei_composer_input');
+  const text = inp ? String(inp.value || '').trim() : '';
+  if (mode === 'note') {
+    if (!text) { showToast('Notiz ist leer', 'warning', 1500); return; }
+    // addEmailComment liest aus #ei_comment_input — wir bedienen es kompatibel
+    const tmpId = 'ei_comment_input';
+    // Falls Composer-Input nicht gleich ist: temporär in das alte Feld kopieren
+    let tmpEl = document.getElementById(tmpId);
+    let created = false;
+    if (!tmpEl) {
+      tmpEl = document.createElement('textarea');
+      tmpEl.id = tmpId;
+      tmpEl.style.display = 'none';
+      document.body.appendChild(tmpEl);
+      created = true;
+    }
+    tmpEl.value = text;
+    await addEmailComment(recId);
+    if (inp) inp.value = '';
+    if (created && tmpEl.parentNode) tmpEl.parentNode.removeChild(tmpEl);
+    return;
+  }
+  if (mode === 'forward') {
+    const toEl = document.getElementById('ei_composer_to');
+    const to = toEl ? String(toEl.value || '').trim() : '';
+    if (!to || !/^\S+@\S+\.\S+$/.test(to)) { showToast('Bitte gültige Empfänger-Adresse eintragen', 'warning', 2200); return; }
+    await forwardEmailTo(recId, to, text);
+    if (inp) inp.value = '';
+    return;
+  }
+  // Reply
+  if (!text) { showToast('Antwort ist leer', 'warning', 1500); return; }
+  await quickReplyToEmail(recId, text);
+  if (inp) inp.value = '';
+}
+
+// V12.189: Schnelle Antwort direkt aus dem Composer (kein extra Modal)
+async function quickReplyToEmail(recId, bodyText) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert', 'error', 4500);
+    return;
+  }
+  // Reply-To = ursprünglicher Absender
+  const toAddr = String(r.from_email || '').trim();
+  if (!toAddr) { showToast('Keine Absender-Adresse zum Antworten', 'error', 3000); return; }
+  showToast('⏳ Antwort wird gesendet …', 'info', 2200);
+  const origSubj = String(r.subject || '');
+  const replySubject = /^re:/i.test(origSubj) ? origSubj : 'Re: ' + origSubj;
+  try {
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
+      body: JSON.stringify({
+        to:        toAddr,
+        subject:   replySubject,
+        text:      bodyText,
+        replyTo:   'check@liftaro.de',
+        inReplyTo: r.message_id || undefined,
+      }),
+    });
+    if (!resp.ok) {
+      let txt = ''; try { txt = await resp.text(); } catch (_) {}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+    }
+    // Outgoing-Record
+    const sentAt = new Date().toISOString();
+    try {
+      await atWrite('Emails', {
+        direction:        'outgoing',
+        from_email:       'check@liftaro.de',
+        to_email:         toAddr,
+        subject:          replySubject,
+        body:             bodyText,
+        sent_at:          sentAt,
+        in_reply_to:      r.message_id || '',
+        linked_check_ids: r.linked_check_ids || '',
+        bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      });
+    } catch (e) { console.warn('[V12.189] Verlauf-Eintrag fehlgeschlagen:', e.message); }
+    // Status auf "geantwortet" setzen
+    try {
+      await atUpdate('Emails', r._id, {
+        status:           'geantwortet',
+        status_at:        sentAt,
+        replied_at:       sentAt,
+        replied_subject:  replySubject,
+        replied_body:     bodyText.slice(0, 95000),
+        bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      });
+      r.status = 'geantwortet';
+      r.replied_at = sentAt;
+    } catch (_) {}
+    showToast('✓ Antwort gesendet an ' + toAddr, 'success', 3000);
+    if (typeof loadEmailInbox === 'function') { try { await loadEmailInbox(true); } catch (_) {} }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  } catch (e) {
+    showToast('Antwort fehlgeschlagen: ' + e.message, 'error', 6000);
+  }
+}
+
+// V12.188/189: Email weiterleiten — Body + Anhänge bleiben unverändert. Optionaler preMessage wird über den Forward-Header gestellt.
+async function forwardEmailTo(recId, toEmail, preMessage) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
   const cleanTo = String(toEmail || '').trim();
@@ -23811,7 +23998,8 @@ async function forwardEmailTo(recId, toEmail) {
       + 'Betreff:  ' + origSubj + '\n'
       + 'An:       ' + origTo + '\n\n';
     const fwdSubject = /^(fwd:|wg:)/i.test(origSubj) ? origSubj : 'Fwd: ' + origSubj;
-    const text = forwardHeader + origBody;
+    const pre = String(preMessage || '').trim();
+    const text = (pre ? pre + '\n\n' : '') + forwardHeader + origBody;
 
     // 3. POST an Email-Sender (val.town)
     const payload = {
@@ -24816,6 +25004,8 @@ function _eiDisplayHV(r) {
 
 function selectEmailRow(recId) {
   _eiSelectedId = recId;
+  // V12.189: Composer-Mode beim Email-Wechsel auf "reply" zurücksetzen
+  window._eiComposerMode = 'reply';
   renderEmailInboxList();
   renderEmailInboxDetail();
   // V12.8 mobile: Beim Klick auf Email → Liste ausblenden, Detail full-screen zeigen
@@ -24952,18 +25142,7 @@ function renderEmailInboxDetail() {
     html += `</div></div>`;
   }
 
-  // V12.188: Weiterleiten-Toolbar (sichtbar zwischen Anhängen und einklappbarem Container)
-  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:12px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">
-    <span style="font-size:12px;color:#64748b;font-weight:600;margin-right:4px">Schnellaktionen:</span>
-    <button onclick="forwardEmailToManagement('${r._id}')" title="Email unverändert an management@liftaro.de weiterleiten" style="background:#1a3a5c;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-      An Management
-    </button>
-    <button onclick="forwardEmailPrompt('${r._id}')" title="Email an freie Adresse weiterleiten — Inhalt und Anhänge bleiben unverändert" style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#0f172a'">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      Weiterleiten …
-    </button>
-  </div>`;
+  // V12.189: Forward-Toolbar wurde in den Composer im Verlauf integriert (Tabs Antworten/Notiz/Weiterleiten)
 
   // V12.187: Alles Weitere in einen einklappbaren Container
   html += `<details id="emailExtraDetails" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
