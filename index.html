@@ -4097,6 +4097,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
             <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#22c55e"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
+            <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">Verworfen</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
             <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#fff"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
@@ -6157,7 +6158,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.213';
+const APP_VERSION = 'V12.214';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -23836,9 +23837,11 @@ function _restoreEmailInboxListState() {
 function _eiUpdateSidebarCounts() {
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
   const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
-  let cAlle = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, geantwortet:0, verworfen:0 };
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, geantwortet:0, verworfen:0 };
   for (const r of all) {
     if (!r) continue;
+    // V12.214: outgoing-Records zählen nur für den "Gesendet"-Filter — nicht für die Status-Counter
+    if (r.direction === 'outgoing') { cSent++; continue; }
     cAlle++;
     const s = (r.status || 'neu');
     if (s in byStatus) byStatus[s]++;
@@ -23849,8 +23852,9 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_geantwortet',    byStatus.geantwortet);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
   set('eiSideCnt_alle',           cAlle);
+  set('eiSideCnt_gesendet',       cSent);
   // V12.197: Counter "ungesichtete Antworten"
-  const unseenCnt = all.filter(r => _eiHasUnseenReplies(r)).length;
+  const unseenCnt = all.filter(r => _eiHasUnseenReplies(r) && r.direction !== 'outgoing').length;
   set('eiSideCnt_neue_antwort', unseenCnt);
 }
 
@@ -24266,14 +24270,18 @@ function _eiFiltered() {
   }
   const dropThreaded = (arr) => arr.filter(r => !threadedIds.has(r._id));
   // V12.167/197: zuerst Status, dann Volltextsuche
+  // V12.214: outgoing-Records (selbst gesendete Forwards/Replies) gehören NICHT in den Hauptposteingang.
+  // Eigener Filter "gesendet" zeigt sie an; in allen anderen Filtern werden sie ausgeblendet.
   let base;
-  if (_eiFilter === 'alle') {
-    base = _eiAllRecords;
+  if (_eiFilter === 'gesendet') {
+    base = (_eiAllRecords || []).filter(r => r && r.direction === 'outgoing');
+  } else if (_eiFilter === 'alle') {
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
   } else if (_eiFilter === 'neue_antwort') {
     // Nur Parents mit ungesichteten Thread-Antworten
-    base = (_eiAllRecords || []).filter(r => _eiHasUnseenReplies(r));
+    base = (_eiAllRecords || []).filter(r => _eiHasUnseenReplies(r) && r.direction !== 'outgoing');
   } else {
-    base = _eiAllRecords.filter(r => (r.status || 'neu') === _eiFilter);
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (r.status || 'neu') === _eiFilter);
   }
   base = dropThreaded(base);
   const q = String(window._eiSearchQ || '').toLowerCase().trim();
