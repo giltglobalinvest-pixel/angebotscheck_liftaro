@@ -6077,7 +6077,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.193';
+const APP_VERSION = 'V12.194';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25305,7 +25305,7 @@ function renderEmailInboxDetail() {
         <div style="font-size:13px;color:var(--dr-ink);line-height:1.7;margin-bottom:12px">
           <div><strong>An:</strong> ${_esc(r.to_email || '(?)')}</div>
           ${bcc ? `<div><strong>BCC:</strong> ${_esc(bcc)}</div>` : ''}
-          <div><strong>Betreff:</strong> ${_esc(r.subject || '(kein Betreff)')}</div>
+          <div><strong>Betreff:</strong> ${_esc((r.ai_subject && r.ai_subject.trim()) || r.subject || '(kein Betreff)')}</div>
           <div><strong>Von:</strong> ${_esc(r.from_email || 'check@liftaro.de')}</div>
           ${r.bearbeiter_name ? `<div><strong>Bearbeiter:</strong> ${_esc(r.bearbeiter_name)}</div>` : ''}
           ${r.linked_check_ids ? `<div><strong>Verlinkte Checks:</strong> <code style="font-size:11.5px">${_esc(r.linked_check_ids)}</code></div>` : ''}
@@ -25348,7 +25348,7 @@ function renderEmailInboxDetail() {
   const forwardedVia = String(r.forwarded_via || '');
   html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <div style="font-size:16px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;line-height:1.3;flex:1;min-width:0">${_esc(r.subject || '(kein Betreff)')}</div>
+      <div style="font-size:16px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;line-height:1.3;flex:1;min-width:0">${_esc((r.ai_subject && r.ai_subject.trim()) || r.subject || '(kein Betreff)')}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         ${isForwarded ? `<span class="ei-status-pill" style="background:var(--dr-amber-soft);color:#9A3412" title="Diese Mail wurde manuell weitergeleitet — der hier angezeigte Absender ist der UR-Absender aus dem Forward-Header.">↪ Forward</span>` : ''}
         <span class="ei-cls-pill ei-cls-${cls} ei-conf-${conf}">${cls}</span>
