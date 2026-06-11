@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.226';
+const APP_VERSION = 'V12.227';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26791,6 +26791,18 @@ async function loadWartungsnehmerChat(emailId) {
   try {
     const recs = await atRead('WartungsnehmerChat', "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'", { sort: false });
     let items = (recs || []).slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    // V12.227: Lokale Pending-Items (eben gesendete Nachrichten) übernehmen, falls Airtable
+    // noch nicht eventual-consistent ist. So bleibt die UI auch bei Read-Race-Conditions korrekt.
+    const localCache = window._eiWnChatCache[emailId] || [];
+    for (const li of localCache) {
+      const liId = String(li.id || '').trim();
+      if (!liId) continue;
+      // Skip synthetic (haben _synthetic-Flag) und Items die schon in den Airtable-Records sind
+      if (li._synthetic) continue;
+      if (items.find(it => String(it.id || '') === liId)) continue;
+      items.push(li);
+    }
+    items.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
     // V12.225: WhatsApp-Style — eingehende Antworten der Chat-Partner als Bubbles im Chat einblenden.
     // Match per from_email + Zeitstempel (Email empfangen NACH der ersten ausgehenden Chat-Nachricht).
     const synthetic = _eiSynthesizeIncomingChatItems(emailId, items);
@@ -27017,28 +27029,31 @@ async function sendWartungsnehmerMessage(emailId) {
     const sentAt = new Date().toISOString();
     const newId  = 'wnc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
     // Eintrag in WartungsnehmerChat anlegen
+    const chatItemData = {
+      id:                newId,
+      email_id:          emailId,
+      aufzug_id:         String(r.aufzug_id || ''),
+      wartungsnehmer_id: String((wn && wn.id) || ''),
+      // V12.219: partner_typ markieren für Multi-Chat-Filter
+      partner_typ:       'wartungsnehmer',
+      chat_partner_firma:          String((wn && wn.firma) || ''),
+      chat_partner_ansprechperson: String((wn && wn.ansprechperson) || ''),
+      chat_partner_email:          toAddr,
+      chat_partner_telefon:        String((wn && wn.telefon) || ''),
+      direction:         'out',
+      from_email:        'check@liftaro.de',
+      from_name:         'Liftaro',
+      to_email:          toAddr,
+      subject:           subject,
+      body:              finalBody,
+      created_at:        sentAt,
+      in_reply_to:       inReplyTo || '',
+      bearbeiter_name:   (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+    };
+    let writeOk = false;
     try {
-      await atWrite('WartungsnehmerChat', {
-        id:                newId,
-        email_id:          emailId,
-        aufzug_id:         String(r.aufzug_id || ''),
-        wartungsnehmer_id: String((wn && wn.id) || ''),
-        // V12.219: partner_typ markieren für Multi-Chat-Filter
-        partner_typ:       'wartungsnehmer',
-        chat_partner_firma:          String((wn && wn.firma) || ''),
-        chat_partner_ansprechperson: String((wn && wn.ansprechperson) || ''),
-        chat_partner_email:          toAddr,
-        chat_partner_telefon:        String((wn && wn.telefon) || ''),
-        direction:         'out',
-        from_email:        'check@liftaro.de',
-        from_name:         'Liftaro',
-        to_email:          toAddr,
-        subject:           subject,
-        body:              finalBody,
-        created_at:        sentAt,
-        in_reply_to:       inReplyTo || '',
-        bearbeiter_name:   (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
-      });
+      await atWrite('WartungsnehmerChat', chatItemData);
+      writeOk = true;
     } catch (e) {
       console.warn('[V12.211] Chat-Eintrag fehlgeschlagen:', e.message);
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
@@ -27046,8 +27061,17 @@ async function sendWartungsnehmerMessage(emailId) {
     }
     if (ta) ta.value = '';
     showToast('✓ Nachricht an ' + (wn.ansprechperson || wn.firma || toAddr) + ' gesendet', 'success', 3200);
-    await loadWartungsnehmerChat(emailId);
-    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    // V12.227: Sofortiger lokaler Cache-Push — UI updated direkt, vermeidet Race condition mit Airtable-Eventual-Consistency
+    if (writeOk) {
+      window._eiWnChatCache = window._eiWnChatCache || {};
+      window._eiWnChatCache[emailId] = (window._eiWnChatCache[emailId] || []).concat([chatItemData]);
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      // Im Hintergrund nochmal aktualisieren — bringt evtl. eingehende synthetische Items (.catch silent)
+      loadWartungsnehmerChat(emailId).catch(() => {});
+    } else {
+      // Bei Schreib-Fehler trotzdem rendern (zeigt evtl. alte Items, lokaler Push war nicht möglich)
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    }
   } catch (e) {
     showToast('Senden fehlgeschlagen: ' + e.message, 'error', 5000);
     if (sendBtn) {
@@ -27360,27 +27384,30 @@ async function sendServicebetriebMessage(emailId, sbId) {
     }
     const sentAt = new Date().toISOString();
     const newId  = 'sbc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
+    const chatItemData = {
+      id:                            newId,
+      email_id:                      emailId,
+      aufzug_id:                     String(r.aufzug_id || ''),
+      partner_typ:                   'servicebetrieb',
+      servicebetrieb_id:             sbId,
+      chat_partner_firma:            String(sb.firma || ''),
+      chat_partner_ansprechperson:   String(sb.ansprechperson || ''),
+      chat_partner_email:            toAddr,
+      chat_partner_telefon:          String(sb.telefon || ''),
+      direction:                     'out',
+      from_email:                    'check@liftaro.de',
+      from_name:                     'Liftaro',
+      to_email:                      toAddr,
+      subject:                       subject,
+      body:                          finalBody,
+      created_at:                    sentAt,
+      in_reply_to:                   inReplyTo || '',
+      bearbeiter_name:               (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+    };
+    let writeOk = false;
     try {
-      await atWrite('WartungsnehmerChat', {
-        id:                            newId,
-        email_id:                      emailId,
-        aufzug_id:                     String(r.aufzug_id || ''),
-        partner_typ:                   'servicebetrieb',
-        servicebetrieb_id:             sbId,
-        chat_partner_firma:            String(sb.firma || ''),
-        chat_partner_ansprechperson:   String(sb.ansprechperson || ''),
-        chat_partner_email:            toAddr,
-        chat_partner_telefon:          String(sb.telefon || ''),
-        direction:                     'out',
-        from_email:                    'check@liftaro.de',
-        from_name:                     'Liftaro',
-        to_email:                      toAddr,
-        subject:                       subject,
-        body:                          finalBody,
-        created_at:                    sentAt,
-        in_reply_to:                   inReplyTo || '',
-        bearbeiter_name:               (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
-      });
+      await atWrite('WartungsnehmerChat', chatItemData);
+      writeOk = true;
     } catch (e) {
       console.warn('[V12.219] SB-Chat-Eintrag fehlgeschlagen:', e.message);
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
@@ -27388,8 +27415,16 @@ async function sendServicebetriebMessage(emailId, sbId) {
     }
     if (ta) ta.value = '';
     showToast('✓ Nachricht an ' + (sb.ansprechperson || sb.firma || toAddr) + ' gesendet', 'success', 3200);
-    await loadWartungsnehmerChat(emailId);
-    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    // V12.227: Sofortiger lokaler Cache-Push — UI updated direkt, vermeidet Race condition mit Airtable-Eventual-Consistency
+    if (writeOk) {
+      window._eiWnChatCache = window._eiWnChatCache || {};
+      window._eiWnChatCache[emailId] = (window._eiWnChatCache[emailId] || []).concat([chatItemData]);
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      // Im Hintergrund nochmal aktualisieren — bringt evtl. eingehende synthetische Items
+      loadWartungsnehmerChat(emailId).catch(() => {});
+    } else {
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    }
   } catch (e) {
     showToast('Senden fehlgeschlagen: ' + e.message, 'error', 5000);
     if (sendBtn) {
