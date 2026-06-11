@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.231';
+const APP_VERSION = 'V12.232';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8503,12 +8503,18 @@ function startChatWithServicebetrieb(sbId, firma, ansprech, tel, email) {
     }
   }
   // Servicebetrieb-Stammdaten im Frontend-Cache merken (für initialen Composer ohne dass schon Nachrichten existieren)
-  window._eiSbStartedChats = window._eiSbStartedChats || {};
+  // V12.232: Aus localStorage hydratisieren — überlebt Hard-Reload
+  if (!window._eiSbStartedChats) {
+    try { window._eiSbStartedChats = JSON.parse(localStorage.getItem('eiSbStartedChats') || '{}') || {}; }
+    catch (_) { window._eiSbStartedChats = {}; }
+  }
   window._eiSbStartedChats[emailId] = window._eiSbStartedChats[emailId] || [];
   const exists = window._eiSbStartedChats[emailId].find(c => c.id === sbId);
   if (!exists) {
     window._eiSbStartedChats[emailId].push({ id: sbId, firma, ansprechperson: ansprech, telefon: tel, email });
   }
+  // V12.232: Persistieren
+  try { localStorage.setItem('eiSbStartedChats', JSON.stringify(window._eiSbStartedChats)); } catch (_) {}
   setActiveChatTab(emailId, 'servicebetrieb', sbId);
   const m = document.getElementById('eiSbPickerModal');
   if (m) m.style.display = 'none';
@@ -26947,6 +26953,11 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
     }
   }
   // (c) Aus gestarteten (noch nicht versendeten) SB-Tabs
+  // V12.232: Falls noch nicht initialisiert, aus localStorage hydratisieren
+  if (!window._eiSbStartedChats) {
+    try { window._eiSbStartedChats = JSON.parse(localStorage.getItem('eiSbStartedChats') || '{}') || {}; }
+    catch (_) { window._eiSbStartedChats = {}; }
+  }
   const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
   for (const sb of started) {
     addPartner(sb.email, {
@@ -26989,20 +27000,37 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
     if (!matchEmail) continue;
     const partner = partnerByEmail.get(matchEmail);
     if (!partner) continue;
-    // V12.231: STRENGER Thread-Match — outgoing nur einbinden, wenn chat_email_id mit unserer Email matched
+    // V12.231/232: Outgoing Thread-Match — eindeutige Zuordnung via chat_email_id,
+    // mit Backward-Compat für alte Records (ohne chat_email_id) per WartungsnehmerChat-Match
     if (isOut) {
       const chatEmailId = String(e.chat_email_id || '').trim();
-      if (chatEmailId !== emailId) continue;
+      if (chatEmailId) {
+        // Neue V12.231-Records: eindeutige Zuordnung
+        if (chatEmailId !== emailId) continue;
+      } else {
+        // V12.232: Alte Records ohne chat_email_id → matche nur wenn ein echter WartungsnehmerChat-Record
+        // für diese Email+Partner existiert (Beweis dass ein Chat hier stattfand)
+        const hasRealChatRecord = existingItems.some(it => {
+          const isOutIt = String(it.direction || 'out') === 'out';
+          const itPartnerEmail = String(it.chat_partner_email || it.to_email || '').toLowerCase().trim();
+          return isOutIt && itPartnerEmail === matchEmail;
+        });
+        if (!hasRealChatRecord) continue;
+      }
     }
-    // V12.231: Eingehende Antworten — nur einbinden, wenn entweder:
-    //   (a) eine ausgehende Chat-Nachricht aus DIESER Email an diesen Partner gesendet wurde
-    //   (b) ODER der Partner der Wartungsnehmer dieser Aufzugsanlage ist
+    // V12.231/232: Eingehende Antworten — nur einbinden, wenn DIESER Email zuzuordnen
     if (!isOut) {
       const hasOutgoingThread = all.some(o => o && o.direction === 'outgoing'
         && String(o.chat_email_id || '').trim() === emailId
         && String(o.to_email || '').toLowerCase().trim() === matchEmail);
       const isWnHere = !!wnEmailForThisEmail && wnEmailForThisEmail === matchEmail;
-      if (!hasOutgoingThread && !isWnHere) continue;
+      // V12.232: Backward-Compat — wenn ein echter outgoing Chat-Record für diesen Partner existiert
+      const hasRealChatOut = existingItems.some(it => {
+        const isOutIt = String(it.direction || 'out') === 'out';
+        const itPartnerEmail = String(it.chat_partner_email || it.to_email || '').toLowerCase().trim();
+        return isOutIt && itPartnerEmail === matchEmail;
+      });
+      if (!hasOutgoingThread && !isWnHere && !hasRealChatOut) continue;
     }
     // Dedup gegen existing Chat-Records
     const msgId = String(e.message_id || '').trim();
