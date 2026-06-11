@@ -6170,7 +6170,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.240';
+const APP_VERSION = 'V12.241';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8711,6 +8711,8 @@ function openHvPickerForVollmacht() {
   window._hvPickerTarget = 'vm';
   const modal = document.getElementById('hvPickerCheckModal');
   if (!modal) { showToast('HV-Picker nicht verfügbar', 'error', 3000); return; }
+  // V12.241: z-index temporär hochsetzen — sonst liegt der Picker (5050) UNTER dem Vollmacht-Editor (5100)
+  modal.style.zIndex = '5200';
   modal.style.display = 'flex';
   const input = document.getElementById('hvPickerCheckSearchInput');
   const status = document.getElementById('hvPickerCheckStatus');
@@ -21305,6 +21307,8 @@ window._hvPickerTarget = 'f';
 function openHvPickerForLightVertrag() {
   window._hvPickerTarget = 'lv';
   const modal = document.getElementById('hvPickerCheckModal');
+  // V12.241: z-index aus evtl. vorherigem 'vm'-Open zurücksetzen
+  modal.style.zIndex = '';
   modal.style.display = 'flex';
   const input = document.getElementById('hvPickerCheckSearchInput');
   const status = document.getElementById('hvPickerCheckStatus');
@@ -21330,6 +21334,8 @@ function openHvPickerForCheck() {
     return;
   }
   const modal = document.getElementById('hvPickerCheckModal');
+  // V12.241: z-index aus evtl. vorherigem 'vm'-Open zurücksetzen
+  modal.style.zIndex = '';
   modal.style.display = 'flex';
   const input = document.getElementById('hvPickerCheckSearchInput');
   const status = document.getElementById('hvPickerCheckStatus');
