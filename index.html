@@ -2241,11 +2241,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         Wartungsnehmer
       </button>
-      <button class="nav-pill" data-nav="vollmachten" onclick="openVollmachtenModal()" title="Vollmachten · Unterschriebene Vollmachten pro Hausverwaltung">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
-        Vollmachten
-      </button>
-      <button class="nav-pill" data-nav="kunden" onclick="openKundenModal()" title="Hausverwaltungen (aus Pipedrive)">
+      <button class="nav-pill" data-nav="kunden" onclick="openKundenModal()" title="Hausverwaltungen (aus Pipedrive) · Vollmachten werden hier pro HV hinterlegt">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
         Hausverwaltungen
         <span id="kundenCountBadge" class="btn-badge" style="display:none">0</span>
@@ -6170,7 +6166,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.242';
+const APP_VERSION = 'V12.243';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8884,9 +8880,15 @@ async function saveVollmachtFromEditor() {
     }
     document.getElementById('vollmachtEditorModal').style.display = 'none';
     showToast('✓ Vollmacht gespeichert', 'success', 2400);
-    // Liste neu laden falls Übersicht offen
+    // V12.243: Cache invalidieren + relevante Listen neu rendern
+    window._vmByOrgIdCacheInvalid = true;
+    // Liste neu laden falls Übersicht (legacy) offen
     if (document.getElementById('vollmachtenModal')?.style.display === 'flex') {
       openVollmachtenModal();
+    }
+    // V12.243: Falls Hausverwaltungen-Modal offen — Vollmacht-Status-Buttons neu rendern
+    if (document.getElementById('kundenModal')?.style.display === 'flex') {
+      renderKundenList();
     }
   } catch (e) {
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 6000);
@@ -8899,7 +8901,10 @@ async function deleteVollmachtConfirm(recordId, name) {
     await atDelete('Vollmachten', recordId);
     document.getElementById('vollmachtEditorModal').style.display = 'none';
     showToast('✓ Vollmacht gelöscht', 'success', 2000);
+    // V12.243: Cache invalidieren + relevante Listen neu rendern
+    window._vmByOrgIdCacheInvalid = true;
     if (document.getElementById('vollmachtenModal')?.style.display === 'flex') openVollmachtenModal();
+    if (document.getElementById('kundenModal')?.style.display === 'flex') renderKundenList();
   } catch (e) {
     showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
   }
@@ -16571,12 +16576,40 @@ async function renderKundenList() {
   filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   // V12.165: Person-Cache initialisieren
   window._pipedrivePersonCache = window._pipedrivePersonCache || {};
+  // V12.243: Vollmacht-Cache pro Pipedrive-Org-ID — TTL 60s.
+  // Wird inline beim Rendern genutzt; Daten kommen aus der Vollmachten-Airtable-Tabelle.
+  if (!window._vmByOrgIdCache || (window.performance && performance.now() - (window._vmByOrgIdCacheAt || 0) > 60000) || window._vmByOrgIdCacheInvalid) {
+    try {
+      const allV = await loadVollmachten();
+      const map = {};
+      for (const r of allV || []) {
+        const oid = String((r.fields && r.fields.pipedrive_org_id) || '').trim();
+        if (oid) map[oid] = { ...r.fields, _recordId: r.id };
+      }
+      window._vmByOrgIdCache = map;
+      window._vmByOrgIdCacheAt = performance.now();
+      window._vmByOrgIdCacheInvalid = false;
+    } catch (_) { window._vmByOrgIdCache = window._vmByOrgIdCache || {}; }
+  }
+  const vmMap = window._vmByOrgIdCache || {};
   list.innerHTML = filtered.map(o => {
     const oid = String(o.org_id);
     const cached = window._pipedrivePersonCache[oid];
     const contactLine = cached && cached.name
       ? `<div data-pm-contact="${oid}">👤 ${escapeHtml(cached.name)}${cached.email ? ' · ' + escapeHtml(cached.email) : ''} · Pipedrive-ID ${oid}</div>`
       : `<div data-pm-contact="${oid}">👥 ${o.person_count || 0} Ansprechpartner · Pipedrive-ID ${oid}</div>`;
+    // V12.243: Vollmacht-Status-Button pro HV
+    const v = vmMap[oid];
+    const hasPdf = v && Array.isArray(v.vollmacht_pdf) && v.vollmacht_pdf.length > 0;
+    const safeName = String(o.name || '').replace(/'/g, '\\\'').replace(/"/g, '&quot;');
+    let vmBtn = '';
+    if (v && hasPdf) {
+      vmBtn = `<button onclick="openVollmachtEditorForOrg('${oid}','${safeName}','${v._recordId}')" title="Vollmacht für „${escapeHtml(o.name||'')}" ansehen / ersetzen" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">📜 Vollmacht ✓</button>`;
+    } else if (v) {
+      vmBtn = `<button onclick="openVollmachtEditorForOrg('${oid}','${safeName}','${v._recordId}')" title="Vollmacht-Record existiert, aber PDF fehlt — jetzt hochladen" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">📜 PDF fehlt</button>`;
+    } else {
+      vmBtn = `<button onclick="openVollmachtEditorForOrg('${oid}','${safeName}','')" title="Vollmacht für diese HV hinterlegen" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">📜 Vollmacht +</button>`;
+    }
     return `<div style="background:var(--sky);border:1px solid var(--border);border-radius:9px;padding:12px 14px;display:flex;gap:14px;align-items:flex-start">
       <div style="width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${(o.name||'?').charAt(0).toUpperCase()}</div>
       <div style="flex:1;min-width:0">
@@ -16587,6 +16620,7 @@ async function renderKundenList() {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        ${vmBtn}
         <button onclick="openLightVertragForOrg(${oid})" title="Neue EuC-Vereinbarung mit dieser HV anlegen" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">🛡 EuC</button>
         <button onclick="openVertragForOrg(${oid})" title="Neuen Rahmenvertrag mit dieser HV anlegen" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">📑 Rahmen</button>
       </div>
@@ -16596,6 +16630,18 @@ async function renderKundenList() {
   // V12.165: Lazy-Load Ansprechpartner für die sichtbaren Treffer (≤20)
   _lazyLoadPmContacts(filtered.slice(0, 20));
 }
+
+// V12.243: Brücke aus HV-Übersicht in den Vollmacht-Editor.
+// HV ist hier bereits eindeutig bekannt — kein zweiter Pipedrive-Picker mehr.
+function openVollmachtEditorForOrg(orgId, hvName, recordId) {
+  if (typeof openVollmachtEditor !== 'function') {
+    showToast('Vollmacht-Editor nicht geladen', 'error', 3000);
+    return;
+  }
+  // Kunden-Modal bleibt geöffnet im Hintergrund — User soll nach Save dahin zurück.
+  openVollmachtEditor(orgId || '', hvName || '', recordId || '');
+}
+window.openVollmachtEditorForOrg = openVollmachtEditorForOrg;
 
 // V12.165: Holt Detail-Persons für gefilterte HVs nach (parallel, Cache),
 // reichert dann die Zeile inline mit dem ersten "echten" Person-Namen an.
