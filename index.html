@@ -6172,7 +6172,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.244';
+const APP_VERSION = 'V12.245';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8916,13 +8916,21 @@ async function deleteVollmachtConfirm(recordId, name) {
   }
 }
 
-// V12.239: Vollmacht der zugeordneten HV an Chat-Composer anhängen
+// V12.239 + V12.245: Vollmacht an Chat-Composer anhängen.
+// Entscheidungslogik:
+//   - HV aus Email-Kontext bekannt + Vollmacht vorhanden  → direkt anhängen
+//   - HV bekannt + keine Vollmacht                        → confirm „jetzt anlegen?"
+//   - HV unbekannt (Email nicht zugeordnet)               → Mini-Picker mit allen vorhandenen Vollmachten
 async function attachVollmachtToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
-  if (!r) return;
+  if (!r) {
+    showToast('Email nicht gefunden — bitte Seite neu laden', 'warning', 3500);
+    return;
+  }
   const hv = _eiGetHvOrgIdForEmail(r);
   if (!hv.orgId) {
-    showToast('Keine Hausverwaltung der Email zugeordnet — kann keine Vollmacht zuweisen', 'warning', 4500);
+    // V12.245: Statt nur Toast → Picker mit allen verfügbaren Vollmachten zeigen
+    await _openVollmachtPickerForChat(emailId);
     return;
   }
   showToast('Suche Vollmacht für ' + (hv.name || 'HV') + ' …', 'info', 1500);
@@ -8939,7 +8947,16 @@ async function attachVollmachtToChat(emailId) {
     if (confirm('Vollmacht-PDF fehlt. Jetzt hinzufügen?')) openVollmachtEditor(hv.orgId, hv.name, v._recordId);
     return;
   }
-  // PDFs laden + zu Chat-Attachments hinzufügen
+  await _attachVollmachtCore(emailId, v, hv.name);
+}
+
+// V12.245: PDFs einer Vollmacht in den Composer ziehen — gemeinsame Logik
+async function _attachVollmachtCore(emailId, v, hvLabel) {
+  const atts = Array.isArray(v && v.vollmacht_pdf) ? v.vollmacht_pdf : [];
+  if (!atts.length) {
+    showToast('Vollmacht hat kein PDF', 'warning', 3500);
+    return;
+  }
   let added = 0;
   for (const a of atts) {
     try {
@@ -8948,13 +8965,12 @@ async function attachVollmachtToChat(emailId) {
       const blob = await resp.blob();
       const b64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+        reader.onload  = () => resolve(String(reader.result || '').split(',')[1] || '');
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
       window._eiChatAttachments = window._eiChatAttachments || {};
       window._eiChatAttachments[emailId] = window._eiChatAttachments[emailId] || [];
-      // Dedup: nicht doppelt anhängen
       const fn = a.filename || 'Vollmacht.pdf';
       if (window._eiChatAttachments[emailId].some(x => x.filename === fn)) continue;
       window._eiChatAttachments[emailId].push({
@@ -8965,17 +8981,73 @@ async function attachVollmachtToChat(emailId) {
       });
       added++;
     } catch (e) {
-      showToast('Fehler beim Laden: ' + e.message, 'error', 4000);
+      showToast('Fehler beim Laden der Vollmacht: ' + e.message, 'error', 4000);
       return;
     }
   }
   if (typeof _eiRenderChatAttachList === 'function') _eiRenderChatAttachList(emailId);
   if (added > 0) {
-    showToast('✓ Vollmacht von ' + (hv.name || 'HV') + ' angehängt', 'success', 3000);
+    showToast('✓ Vollmacht' + (hvLabel ? ' von ' + hvLabel : '') + ' angehängt', 'success', 3000);
   } else {
     showToast('Vollmacht ist bereits am Composer angehängt', 'info', 2500);
   }
 }
+
+// V12.245: Mini-Picker — wenn der HV-Kontext der Email fehlt, zeigen wir alle
+// vorhandenen Vollmachten und der User wählt die passende.
+async function _openVollmachtPickerForChat(emailId) {
+  let recs = [];
+  try { recs = await loadVollmachten(); } catch (_) {}
+  const items = (recs || []).map(x => ({ ...x.fields, _recordId: x.id }))
+    .filter(x => Array.isArray(x.vollmacht_pdf) && x.vollmacht_pdf.length > 0)
+    .sort((a, b) => String(a.hv_name || '').localeCompare(String(b.hv_name || ''), 'de'));
+  let m = document.getElementById('vmPickForChatModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'vmPickForChatModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:5300;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  window._vmPickForChatEmailId = emailId;
+  const list = items.length
+    ? items.map(x => `<button onclick="_pickVollmachtForChatById('${_esc(x._recordId)}')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-left:3px solid #16a34a;border-radius:8px;padding:11px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit">
+        <span style="font-size:20px">📜</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(x.hv_name || '(unbenannte HV)')}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">${_esc((x.vollmacht_pdf[0] && x.vollmacht_pdf[0].filename) || 'Vollmacht.pdf')}</div>
+        </div>
+      </button>`).join('')
+    : '<div style="text-align:center;padding:40px 20px;color:#94a3b8;font-size:13px"><div style="font-size:36px;opacity:.3;margin-bottom:8px">📜</div>Noch keine Vollmachten mit PDF hinterlegt.<br><span style="font-size:12px">Hausverwaltungen-Modal öffnen und dort die Vollmacht der HV hinterlegen.</span></div>';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(540px,96vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#16a34a;color:#fff;padding:13px 20px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:14.5px;font-weight:700">📜 Vollmacht auswählen</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.78);margin-top:2px">Keine HV der Email zugeordnet — wähle die Vollmacht manuell</div>
+      </div>
+      <button onclick="document.getElementById('vmPickForChatModal').style.display='none'" style="background:rgba(255,255,255,.14);border:none;color:#fff;border-radius:6px;padding:4px 11px;cursor:pointer">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px 18px;background:#f8fafc">${list}</div>
+  </div>`;
+  m.style.display = 'flex';
+  m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+}
+window._openVollmachtPickerForChat = _openVollmachtPickerForChat;
+
+async function _pickVollmachtForChatById(recordId) {
+  const emailId = window._vmPickForChatEmailId;
+  const m = document.getElementById('vmPickForChatModal');
+  if (m) m.style.display = 'none';
+  if (!emailId || !recordId) return;
+  try {
+    const recs = await atRead('Vollmachten', "RECORD_ID()='" + recordId + "'", { sort: false });
+    if (!recs.length) { showToast('Vollmacht nicht gefunden', 'error', 3000); return; }
+    const v = { ...recs[0].fields, _recordId: recs[0].id };
+    await _attachVollmachtCore(emailId, v, v.hv_name || '');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error', 4000);
+  }
+}
+window._pickVollmachtForChatById = _pickVollmachtForChatById;
 
 async function generateAufzugId() {
   let maxNr = 0;
@@ -28334,7 +28406,9 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         <button onclick="openChatAiHelper('${emailId}')" title="✨ KI-Hilfe — Stichworte rein, formulierte Nachricht raus" ${canSend ? '' : 'disabled'} style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;gap:4px">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
         </button>
-        <button onclick="attachVollmachtToChat('${emailId}')" title="📜 Vollmacht der HV anhängen" ${canSend ? '' : 'disabled'} style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;gap:4px;font-size:13px">📜</button>
+        <button onclick="attachVollmachtToChat('${emailId}')" title="Vollmacht der HV anhängen" ${canSend ? '' : 'disabled'} style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;gap:4px">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+        </button>
         <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
         <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;align-self:flex-end">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
