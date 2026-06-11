@@ -6166,7 +6166,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.236';
+const APP_VERSION = 'V12.237';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26889,6 +26889,179 @@ function _eiRemoveChatAttach(emailId, idx) {
   }
 }
 
+// V12.237: KI-Helfer-Modal für Chat-Nachrichten — Stichworte rein, formulierter Text raus.
+function openChatAiHelper(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const tab = (window._eiActiveChatTab || {})[emailId];
+  if (!tab || !tab.typ) { showToast('Wähle zuerst einen Chat-Partner-Tab', 'warning', 2500); return; }
+  // Partner ermitteln
+  let partner = { firma:'', ansprechperson:'' };
+  if (tab.typ === 'wartungsnehmer') {
+    partner = {
+      firma:          String(r.wartungsnehmer_firma || ''),
+      ansprechperson: String(r.wartungsnehmer_ansprechperson || ''),
+    };
+  } else if (tab.typ === 'servicebetrieb') {
+    const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
+    const sb = started.find(s => s.id === tab.id);
+    if (sb) partner = { firma: sb.firma, ansprechperson: sb.ansprechperson };
+  }
+  let m = document.getElementById('chatAiModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'chatAiModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6200;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(680px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
+          KI-Hilfe für Chat-Nachricht
+        </div>
+        <div style="font-size:11.5px;opacity:.9;margin-top:3px">An ${_esc(partner.ansprechperson || partner.firma || 'Empfänger')}${partner.firma && partner.ansprechperson ? ' (' + _esc(partner.firma) + ')' : ''}</div>
+      </div>
+      <button onclick="document.getElementById('chatAiModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;flex:1">
+      <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Stichworte — was soll geschrieben werden?</label>
+      <textarea id="chatAiInput_${emailId}" rows="4" placeholder="z.B. Bitte um Angebot für Türreparatur. Kunde meldet Quietschen. Wann könnt ihr vor Ort sein?" style="width:100%;padding:11px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical;line-height:1.5"></textarea>
+      <div style="font-size:11.5px;color:#94a3b8;margin-top:6px">💡 Schreib einfach was du dem Servicebetrieb mitteilen willst. Die KI macht daraus eine höfliche, professionelle Nachricht.</div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">
+        <button id="chatAiGenBtn_${emailId}" onclick="generateChatAiSuggestion('${emailId}')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
+          KI-Vorschlag generieren
+        </button>
+      </div>
+      <div id="chatAiResult_${emailId}" style="display:none;margin-top:18px">
+        <div style="font-size:11px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">📝 KI-Vorschlag</div>
+        <textarea id="chatAiText_${emailId}" rows="9" style="width:100%;background:#faf5ff;border:1px solid #c4b5fd;border-radius:10px;padding:14px;font-size:13.5px;color:#0f172a;line-height:1.55;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">Du kannst den Vorschlag direkt bearbeiten, bevor du ihn übernimmst.</div>
+        <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <button onclick="generateChatAiSuggestion('${emailId}')" style="background:#fff;border:1px solid #c4b5fd;color:#5b21b6;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">↻ Neu generieren</button>
+          <button onclick="adoptChatAiSuggestion('${emailId}')" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            In Composer übernehmen
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  setTimeout(() => document.getElementById('chatAiInput_' + emailId)?.focus(), 100);
+}
+
+async function generateChatAiSuggestion(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error', 4000); return; }
+  const input = document.getElementById('chatAiInput_' + emailId);
+  const stichworte = String(input?.value || '').trim();
+  if (!stichworte) { showToast('Bitte gib Stichworte ein', 'warning', 2500); return; }
+  // Partner-Kontext
+  const tab = (window._eiActiveChatTab || {})[emailId] || {};
+  let partner = { firma:'', ansprechperson:'' };
+  if (tab.typ === 'wartungsnehmer') {
+    partner = { firma: String(r.wartungsnehmer_firma || ''), ansprechperson: String(r.wartungsnehmer_ansprechperson || '') };
+  } else if (tab.typ === 'servicebetrieb') {
+    const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
+    const sb = started.find(s => s.id === tab.id);
+    if (sb) partner = { firma: String(sb.firma || ''), ansprechperson: String(sb.ansprechperson || '') };
+  }
+  const btn = document.getElementById('chatAiGenBtn_' + emailId);
+  if (btn) {
+    btn.disabled = true; btn.style.opacity = '0.7';
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Generiere …';
+  }
+  const fabri      = String(r.aufzug_fabriknummer || '').trim();
+  const standort   = String(r.aufzug_standort || '').trim();
+  const hersteller = String(r.aufzug_hersteller || '').trim();
+  const origSubj   = String((r.ai_subject || r.subject || '')).trim();
+  const userName   = (typeof _eiCurrentUserName === 'function' && _eiCurrentUserName()) || 'Liftaro GmbH';
+  // Bisherige Chat-Items für Kontext (max. 4 letzte)
+  const chatItems = (window._eiWnChatCache[emailId] || []).filter(it => String(it.body || '').trim()).slice(-4);
+  const chatContext = chatItems.length
+    ? '\n\nBisheriger Chat-Verlauf:\n' + chatItems.map(it => {
+        const who = String(it.direction || 'out') === 'out' ? 'Liftaro' : (it.from_name || it.chat_partner_ansprechperson || partner.ansprechperson || 'Partner');
+        return who + ': ' + String(it.body || '').slice(0, 300);
+      }).join('\n')
+    : '';
+  const systemPrompt = `Du formulierst kurze, professionelle Email-Nachrichten im Namen von Liftaro GmbH (Aufzugs-Verwaltungsservice) an Service-Betriebe bzw. Wartungsnehmer.
+
+REGELN:
+- Anrede: "Hallo [Vorname]" wenn ein Vorname bekannt ist, sonst "Sehr geehrte Damen und Herren".
+- Ton: höflich, präzise, sachlich-freundlich. Keine Floskeln, kein Konjunktiv-Übermaß.
+- Maximal 130 Wörter.
+- Nenne relevante Aufzug-Daten (Fabriknummer, Standort) nur, wenn sie für das Anliegen wichtig sind.
+- Schließe mit einer einzigen Zeile "Mit freundlichen Grüßen" + Name in der Folgezeile.
+- Keine Markdown-Formatierung, keine Sternchen, kein Fett. Reiner Plain-Text mit Absätzen (Leerzeilen zwischen Abschnitten).
+- "Sie"-Form, niemals "Du".
+- Konkrete Fragen oder Anweisungen klar formulieren.`;
+  const userMsg = `Empfänger: ${partner.ansprechperson || '(Name unbekannt)'}${partner.firma ? ' — Firma: ' + partner.firma : ''}
+${fabri ? 'Aufzug Fabriknummer: ' + fabri : ''}
+${standort ? 'Standort: ' + standort : ''}
+${hersteller ? 'Hersteller: ' + hersteller : ''}
+${origSubj ? 'Bezug zur Email: ' + origSubj : ''}
+Absender (unterschreibt): ${userName}, Liftaro GmbH${chatContext}
+
+Stichworte des Bearbeiters für die neue Nachricht:
+---
+${stichworte}
+---
+
+Formuliere die fertige Nachricht jetzt — direkt, kein Vortext.`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!resp.ok) { let txt = ''; try { txt = await resp.text(); } catch(_){} throw new Error('Claude HTTP ' + resp.status + ': ' + txt.slice(0, 150)); }
+    const data = await resp.json();
+    let text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    if (!text) throw new Error('Leere KI-Antwort');
+    // Sicher dass keine Markdown-Sternchen drin sind
+    text = text.replace(/\*\*/g, '').replace(/^\s*\*\s+/gm, '- ');
+    const resultBox = document.getElementById('chatAiResult_' + emailId);
+    const textBox   = document.getElementById('chatAiText_' + emailId);
+    if (resultBox) resultBox.style.display = 'block';
+    if (textBox)   textBox.value = text;
+    window._eiChatAiCurrent = window._eiChatAiCurrent || {};
+    window._eiChatAiCurrent[emailId] = text;
+  } catch (e) {
+    showToast('KI-Fehler: ' + e.message, 'error', 5500);
+  } finally {
+    if (btn) {
+      btn.disabled = false; btn.style.opacity = '1';
+      btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg> KI-Vorschlag generieren';
+    }
+  }
+}
+
+function adoptChatAiSuggestion(emailId) {
+  // Aktueller (evtl. editierter) Text aus dem Textarea
+  const textBox = document.getElementById('chatAiText_' + emailId);
+  const text = String((textBox && textBox.value) || (window._eiChatAiCurrent || {})[emailId] || '').trim();
+  if (!text) { showToast('Kein Vorschlag zu übernehmen', 'warning', 2000); return; }
+  const ta = document.getElementById('wnChatInput_' + emailId);
+  if (ta) { ta.value = text; ta.focus(); }
+  const m = document.getElementById('chatAiModal');
+  if (m) m.style.display = 'none';
+  showToast('✓ KI-Vorschlag übernommen — Klick „Senden" zum Versenden', 'success', 3800);
+}
+
 // V12.236: Chat-Antworten als gelesen markieren (Timestamp). Pille verschwindet, Sidebar-Counter sinkt.
 async function markChatRepliesAsSeen(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -27594,6 +27767,9 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         <input type="file" id="chatAttach_${emailId}" multiple style="display:none" onchange="onChatFilePick('${emailId}',this.files)">
         <button onclick="document.getElementById('chatAttach_${emailId}').click()" title="Anhang hinzufügen (max. 8 MB)" ${canSend ? '' : 'disabled'} style="background:transparent;border:1px solid #cbd5e1;color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <button onclick="openChatAiHelper('${emailId}')" title="✨ KI-Hilfe — Stichworte rein, formulierte Nachricht raus" ${canSend ? '' : 'disabled'} style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;gap:4px">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
         </button>
         <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
         <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;align-self:flex-end">
