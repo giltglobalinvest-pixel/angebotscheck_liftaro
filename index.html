@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.220';
+const APP_VERSION = 'V12.221';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8432,16 +8432,23 @@ function renderSbPickerResults(q) {
     cont.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Kein Treffer. Lege einen neuen Servicebetrieb an ↘</div>';
     return;
   }
+  // V12.221: WN-ID des zugeordneten Aufzugs für die Markierung "✓ Zugeordnet"
+  const emailRecId = window._eiSbPickerTargetEmail;
+  const targetEmail = emailRecId ? (_eiAllRecords || []).find(x => x._id === emailRecId) : null;
+  const aufzugWnId = targetEmail ? String(targetEmail.wartungsnehmer_id || '').trim() : '';
   cont.innerHTML = filt.map(x => {
     const meta = [x.ansprechperson, x.telefon, x.ort].filter(Boolean).join(' · ');
     const isWn = x._src === 'wn';
     // V12.220: Wartungsnehmer als Chat-Partner — eindeutige ID mit Prefix, damit der Chat-Thread sauber getrennt bleibt
     const chatId = isWn ? ('wn:' + (x.id || x._recordId || '')) : (x.id || '');
-    const accent = isWn ? '#7c3aed' : '#0891b2';
-    const accentBg = isWn ? '#faf5ff' : '#ecfeff';
-    const badge = isWn
-      ? '<span style="background:#ede9fe;color:#6b21a8;border:1px solid #c4b5fd;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">🔧 Wartungsnehmer</span>'
-      : '<span style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">🛠 Servicebetrieb</span>';
+    const isAufzugWn = isWn && aufzugWnId && String(x.id || '') === aufzugWnId;
+    const accent = isAufzugWn ? '#16a34a' : (isWn ? '#7c3aed' : '#0891b2');
+    const accentBg = isAufzugWn ? '#f0fdf4' : (isWn ? '#faf5ff' : '#ecfeff');
+    const badge = isAufzugWn
+      ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">✓ Wartungsnehmer dieses Aufzugs</span>'
+      : (isWn
+        ? '<span style="background:#ede9fe;color:#6b21a8;border:1px solid #c4b5fd;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">🔧 Wartungsnehmer</span>'
+        : '<span style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">🛠 Servicebetrieb</span>');
     return `<button onclick="startChatWithServicebetrieb('${_esc(chatId)}','${_esc(x.firma || '')}','${_esc(x.ansprechperson || '')}','${_esc(x.telefon || '')}','${_esc(x.email || '')}')" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid ${accent};border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;text-align:left;width:100%;font-family:inherit;display:block;transition:all .12s" onmouseover="this.style.borderColor='${accent}';this.style.background='${accentBg}'" onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(x.firma || '?')}</div>
@@ -8449,6 +8456,7 @@ function renderSbPickerResults(q) {
       </div>
       ${meta ? '<div style="font-size:11.5px;color:#64748b;margin-top:3px">' + _esc(meta) + '</div>' : ''}
       ${x.email ? `<div style="font-size:11px;color:#94a3b8;margin-top:1px">✉ ${_esc(x.email)}</div>` : ''}
+      ${isAufzugWn ? '<div style="font-size:10.5px;color:#166534;margin-top:3px;font-weight:600">→ Klick öffnet den existierenden Wartungsnehmer-Chat-Tab</div>' : ''}
     </button>`;
   }).join('');
 }
@@ -8464,6 +8472,20 @@ function setActiveChatTab(emailId, partnerTyp, partnerId) {
 function startChatWithServicebetrieb(sbId, firma, ansprech, tel, email) {
   const emailId = window._eiSbPickerTargetEmail;
   if (!emailId) return;
+  // V12.221: Wenn die gewählte Firma der bereits zugeordnete Wartungsnehmer am Aufzug ist,
+  //          springe in den existierenden WN-Tab statt einen separaten SB-Thread zu erzeugen.
+  if (String(sbId).startsWith('wn:')) {
+    const r = (_eiAllRecords || []).find(x => x._id === emailId);
+    const wnIdFromPicker = String(sbId).slice(3);
+    const wnIdOnEmail    = r ? String(r.wartungsnehmer_id || '').trim() : '';
+    if (wnIdFromPicker && wnIdFromPicker === wnIdOnEmail) {
+      setActiveChatTab(emailId, 'wartungsnehmer', wnIdOnEmail);
+      const m = document.getElementById('eiSbPickerModal');
+      if (m) m.style.display = 'none';
+      showToast('→ ' + firma + ' ist der Wartungsnehmer dieses Aufzugs — Chat-Tab geöffnet', 'success', 3500);
+      return;
+    }
+  }
   // Servicebetrieb-Stammdaten im Frontend-Cache merken (für initialen Composer ohne dass schon Nachrichten existieren)
   window._eiSbStartedChats = window._eiSbStartedChats || {};
   window._eiSbStartedChats[emailId] = window._eiSbStartedChats[emailId] || [];
@@ -26805,7 +26827,11 @@ async function sendWartungsnehmerMessage(emailId) {
         in_reply_to:       inReplyTo || '',
         bearbeiter_name:   (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
       });
-    } catch (e) { console.warn('[V12.211] Chat-Eintrag fehlgeschlagen:', e.message); }
+    } catch (e) {
+      console.warn('[V12.211] Chat-Eintrag fehlgeschlagen:', e.message);
+      // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
+      showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
+    }
     if (ta) ta.value = '';
     showToast('✓ Nachricht an ' + (wn.ansprechperson || wn.firma || toAddr) + ' gesendet', 'success', 3200);
     await loadWartungsnehmerChat(emailId);
@@ -26945,7 +26971,15 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           </div>
         </div>`;
       }).join('')
-    : `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0">Noch keine Nachrichten. Schreib eine erste Nachricht ↓</div>`;
+    : (function() {
+        // V12.221: Hilfreicher Empty-State — zeige Anzahl Nachrichten in anderen Tabs als Hinweis
+        const totalAll = allItems.length;
+        const inThisTab = filteredItems.length;
+        const hint = totalAll > inThisTab
+          ? '<div style="margin-top:8px;padding:8px 12px;background:#fff;border:1px solid #fde68a;border-radius:8px;font-size:11.5px;color:#92400e;line-height:1.5;text-align:left">💡 Es gibt <strong>' + (totalAll - inThisTab) + '</strong> Nachricht' + (totalAll - inThisTab === 1 ? '' : 'en') + ' in anderen Chat-Tabs. Wechsle den Tab oben.</div>'
+          : '';
+        return '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:18px 0">Noch keine Nachrichten in diesem Chat. Schreib eine erste Nachricht ↓' + hint + '</div>';
+      })();
 
   const canSend = !!partner.email && !!(APP_KEYS && APP_KEYS.emailSenderUrl && APP_KEYS.emailSenderSecret);
   const composer = `
@@ -27063,7 +27097,11 @@ async function sendServicebetriebMessage(emailId, sbId) {
         in_reply_to:                   inReplyTo || '',
         bearbeiter_name:               (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
       });
-    } catch (e) { console.warn('[V12.219] SB-Chat-Eintrag fehlgeschlagen:', e.message); }
+    } catch (e) {
+      console.warn('[V12.219] SB-Chat-Eintrag fehlgeschlagen:', e.message);
+      // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
+      showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
+    }
     if (ta) ta.value = '';
     showToast('✓ Nachricht an ' + (sb.ansprechperson || sb.firma || toAddr) + ' gesendet', 'success', 3200);
     await loadWartungsnehmerChat(emailId);
