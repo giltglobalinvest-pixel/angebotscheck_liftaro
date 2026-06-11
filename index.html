@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.230';
+const APP_VERSION = 'V12.231';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7310,6 +7310,10 @@ async function setupTables() {
       { name: 'email_typ',               type: 'singleLineText' },
       // V12.217: Liftaro-Email-ID — fortlaufender Nummernkreis "L-1", "L-2", … ersetzt die alte 4-Char-Slug-ID
       { name: 'email_id',                type: 'singleLineText' },
+      // V12.231: Chat-Thread-Verknüpfung für outgoing Chat-Records — speichert die Original-Email-ID,
+      // damit sie eindeutig der richtigen Email zugeordnet werden kann (verhindert dass Aszendio-Antworten
+      // in ALLEN Emails auftauchen, in denen Aszendio Chat-Partner ist).
+      { name: 'chat_email_id',           type: 'singleLineText' },
       // V12.211: Wartungsnehmer denormalisiert aus dem zugeordneten Aufzug — für Anzeige & Chat
       { name: 'wartungsnehmer_id',             type: 'singleLineText' },
       { name: 'wartungsnehmer_firma',          type: 'singleLineText' },
@@ -26968,12 +26972,16 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
     if (fp.length > 4) existingFingerprints.add(fp);
   }
 
+  // V12.231: Wartungsnehmer-Email der zugeordneten Aufzugsanlage — für WN-Tab-Fallback (auch
+  // ohne ausgehende Chat-Nachricht erscheinen WN-Antworten im WN-Tab)
+  const wnEmailForThisEmail = r ? String(r.wartungsnehmer_email || '').toLowerCase().trim() : '';
+
   // Im Posteingang nach Antworten UND ausgehenden Chat-Nachrichten suchen
   const synthetic = [];
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
   for (const e of all) {
     if (!e || e._id === emailId) continue;
-    // V12.230: Outgoing-Match (selbst gesendete Chat-Nachricht) UND incoming-Match (Antwort)
+    // V12.230/231: Outgoing-Match (selbst gesendete Chat-Nachricht) UND incoming-Match (Antwort)
     const isOut = e.direction === 'outgoing';
     const matchEmail = isOut
       ? String(e.to_email   || '').trim().toLowerCase()
@@ -26981,6 +26989,21 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
     if (!matchEmail) continue;
     const partner = partnerByEmail.get(matchEmail);
     if (!partner) continue;
+    // V12.231: STRENGER Thread-Match — outgoing nur einbinden, wenn chat_email_id mit unserer Email matched
+    if (isOut) {
+      const chatEmailId = String(e.chat_email_id || '').trim();
+      if (chatEmailId !== emailId) continue;
+    }
+    // V12.231: Eingehende Antworten — nur einbinden, wenn entweder:
+    //   (a) eine ausgehende Chat-Nachricht aus DIESER Email an diesen Partner gesendet wurde
+    //   (b) ODER der Partner der Wartungsnehmer dieser Aufzugsanlage ist
+    if (!isOut) {
+      const hasOutgoingThread = all.some(o => o && o.direction === 'outgoing'
+        && String(o.chat_email_id || '').trim() === emailId
+        && String(o.to_email || '').toLowerCase().trim() === matchEmail);
+      const isWnHere = !!wnEmailForThisEmail && wnEmailForThisEmail === matchEmail;
+      if (!hasOutgoingThread && !isWnHere) continue;
+    }
     // Dedup gegen existing Chat-Records
     const msgId = String(e.message_id || '').trim();
     if (msgId && existingMsgIds.has(msgId)) continue;
@@ -27165,7 +27188,7 @@ async function sendWartungsnehmerMessage(emailId) {
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
-    // V12.230: Zusätzlich als outgoing Emails-Record sichern (Persistenz-Backup falls WartungsnehmerChat fehlschlägt)
+    // V12.230/231: Zusätzlich als outgoing Emails-Record sichern (Persistenz + Thread-Verknüpfung)
     try {
       await atWrite('Emails', {
         direction:        'outgoing',
@@ -27176,6 +27199,8 @@ async function sendWartungsnehmerMessage(emailId) {
         sent_at:          sentAt,
         in_reply_to:      inReplyTo || '',
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+        // V12.231: Eindeutige Thread-Zuordnung — diese outgoing-Mail gehört zu DIESER Email
+        chat_email_id:    emailId,
       });
     } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
     if (ta) ta.value = '';
@@ -27585,7 +27610,7 @@ async function sendServicebetriebMessage(emailId, sbId) {
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
-    // V12.230: Zusätzlich als outgoing Emails-Record sichern (Persistenz-Backup falls WartungsnehmerChat fehlschlägt)
+    // V12.230/231: Zusätzlich als outgoing Emails-Record sichern (Persistenz + Thread-Verknüpfung)
     try {
       await atWrite('Emails', {
         direction:        'outgoing',
@@ -27596,6 +27621,8 @@ async function sendServicebetriebMessage(emailId, sbId) {
         sent_at:          sentAt,
         in_reply_to:      inReplyTo || '',
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+        // V12.231: Eindeutige Thread-Zuordnung — diese outgoing-Mail gehört zu DIESER Email
+        chat_email_id:    emailId,
       });
     } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
     if (ta) ta.value = '';
