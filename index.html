@@ -3894,6 +3894,10 @@ const pdfWorkerReady = Promise.resolve();</script>
     <div id="rechnungenList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:10px;background:var(--dr-bg-soft)">
       <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Rechnungen.</div>
     </div>
+    <!-- V12.251: Admin-Footer — Alle Rechnungen löschen -->
+    <div style="padding:12px 24px;border-top:1px solid var(--dr-border);background:var(--dr-surface);display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-shrink:0">
+      <button id="rechnungenDeleteAllBtn" class="dr-pill dr-pill--reset" onclick="deleteAllRechnungen()" title="Alle Rechnungen aus Airtable löschen – Admin" style="color:#9F1B1F">🗑 Alle löschen</button>
+    </div>
   </div>
 </div>
 
@@ -6302,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.250';
+const APP_VERSION = 'V12.251';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23852,6 +23856,40 @@ async function loadRechnungen() {
     return recs.map(r => ({ ...r.fields, _recordId: r.id, _attRechnung: r.fields.rechnung_pdf || null }));
   } catch(e) { console.warn('loadRechnungen:', e.message); return []; }
 }
+
+// V12.251: Admin — alle Rechnungen löschen (Doppel-Confirm wegen Daten-Vernichtung)
+async function deleteAllRechnungen() {
+  const recs = await loadRechnungen();
+  const n = recs.length;
+  if (!n) { showToast('Keine Rechnungen vorhanden.', 'info', 2200); return; }
+  if (!confirm('Wirklich ALLE ' + n + ' Rechnung' + (n === 1 ? '' : 'en') + ' aus Airtable löschen?\n\nDas kann NICHT rückgängig gemacht werden.')) return;
+  if (!confirm('Sicher? Letzte Warnung — ' + n + ' Rechnung' + (n === 1 ? '' : 'en') + ' werden permanent gelöscht.')) return;
+  const btn = document.getElementById('rechnungenDeleteAllBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Lösche …'; }
+  const ids = recs.map(r => r._recordId).filter(Boolean);
+  let deleted = 0, failed = 0;
+  for (let i = 0; i < ids.length; i += 10) {
+    const batch = ids.slice(i, i + 10);
+    try {
+      const out = await atDeleteBatch('Rechnungen', batch);
+      deleted += (Array.isArray(out) ? out.length : batch.length);
+    } catch (e) {
+      console.warn('[deleteAllRechnungen] Batch fehlgeschlagen:', e.message);
+      failed += batch.length;
+    }
+    if (i + 10 < ids.length) await new Promise(r => setTimeout(r, 250));
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🗑 Alle löschen'; }
+  if (failed) {
+    showToast('Teilweise Erfolg: ' + deleted + ' gelöscht, ' + failed + ' fehlgeschlagen', 'warning', 5000);
+  } else {
+    showToast('✓ ' + deleted + ' Rechnung' + (deleted === 1 ? '' : 'en') + ' gelöscht', 'success', 3000);
+  }
+  // Liste neu laden falls Modal offen
+  if (document.getElementById('rechnungenModal')?.style.display === 'flex'
+      && typeof openRechnungenModal === 'function') openRechnungenModal();
+}
+window.deleteAllRechnungen = deleteAllRechnungen;
 
 function getRechnungData() {
   const g = id => document.getElementById(id)?.value?.trim() || '';
