@@ -4114,7 +4114,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
             <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#22c55e"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
             <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
-            <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">Verworfen</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
+            <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
             <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#fff"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
           </div>
@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.254';
+const APP_VERSION = 'V12.255';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -25904,7 +25904,9 @@ function _eiFiltered() {
   if (_eiFilter === 'gesendet') {
     base = (_eiAllRecords || []).filter(r => r && r.direction === 'outgoing');
   } else if (_eiFilter === 'alle') {
-    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+    // V12.255: Filter "Alle" blendet verworfene/archivierte aus — analog zur Checks-Archivierung.
+    // Wer archivierte sehen will, wechselt explizit in den Filter "Verworfen".
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && r.status !== 'verworfen');
   } else if (_eiFilter === 'neue_antwort') {
     // Nur Parents mit ungesichteten Thread-Antworten
     base = (_eiAllRecords || []).filter(r => _eiHasUnseenReplies(r) && r.direction !== 'outgoing');
@@ -26240,7 +26242,7 @@ function renderEmailInboxList() {
     const quickActions = isOut ? '' : `
       <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','gesichtet')" title="Als gesichtet markieren"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Als gesichtet markieren</button>
       <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','in_bearbeitung')" title="In Bearbeitung"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>In Bearbeitung</button>
-      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','verworfen')" title="Verwerfen"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Verwerfen</button>
+      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','verworfen')" title="Archivieren — Email aus der Liste ausblenden (bleibt in Airtable erhalten)"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg>📦 Archivieren</button>
     `;
     // V12.179: Zuordnungs-Pillen unter dem Betreff (HV + Aufzug)
     const afn = String(r.aufzug_fabriknummer || '').trim();
@@ -30255,7 +30257,7 @@ function renderEmailInboxDetail() {
   }
   html += `<button class="dr-pill" onclick="setEmailStatus('${r._id}','gesichtet')">Als gesichtet markieren</button>
     <button class="dr-pill" onclick="setEmailStatus('${r._id}','in_bearbeitung')">In Bearbeitung</button>
-    <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')">Verwerfen</button>
+    <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')" title="Email archivieren (aus der Liste ausblenden)">📦 Archivieren</button>
     </div>
   </div>`;
 
@@ -30397,10 +30399,30 @@ async function setEmailStatus(recId, newStatus) {
     await atUpdate('Emails', recId, { status: newStatus, status_at: new Date().toISOString(), bearbeiter_name: _eiCurrentUserName() });
     const r = _eiAllRecords.find(x => x._id === recId);
     if (r) { r.status = newStatus; r.status_at = new Date().toISOString(); }
-    renderEmailInboxList();
-    renderEmailInboxDetail();
+    // V12.255: Wenn die Email aus dem aktuell sichtbaren Filter rausfällt UND das
+    // Detail-Overlay sie gerade zeigt, dann zur nächsten Email der gefilterten Liste
+    // springen oder das Overlay schließen. Damit „verschwindet" die archivierte
+    // Email aus User-Sicht spürbar.
+    const ov = document.getElementById('emailInboxDetailOverlay');
+    const overlayOpen = ov && ov.style.display === 'flex';
+    const filtNow = (typeof _eiFiltered === 'function') ? _eiFiltered() : [];
+    const stillVisible = filtNow.some(x => x._id === recId);
+    if (overlayOpen && recId === _eiSelectedId && !stillVisible) {
+      if (filtNow.length) {
+        // Nächste Email in der Liste auswählen (selectEmailRow ruft renderList + renderDetail intern)
+        selectEmailRow(filtNow[0]._id);
+      } else {
+        // Liste leer → Overlay schließen
+        if (typeof closeEmailDetailOverlay === 'function') closeEmailDetailOverlay();
+      }
+    } else {
+      renderEmailInboxList();
+      renderEmailInboxDetail();
+    }
     _refreshEmailInboxBadge();
-    showToast(`Email auf „${newStatus}" gesetzt.`, 'success');
+    // V12.255: Klarere Status-Labels statt techn. Strings
+    const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
+    showToast('Email ' + label + '.', 'success', 2200);
   } catch (e) {
     showToast('Fehler beim Status-Update: ' + e.message, 'error');
   }
