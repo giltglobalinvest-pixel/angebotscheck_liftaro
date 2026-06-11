@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.218';
+const APP_VERSION = 'V12.219';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7319,6 +7319,7 @@ async function setupTables() {
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
+  // V12.219: erweitert für generische Chats mit beliebigen Servicebetrieben (partner_typ-Feld)
   try {
     ensureTable('WartungsnehmerChat', [
       { name: 'id',                  type: 'singleLineText' },
@@ -7335,8 +7336,29 @@ async function setupTables() {
       { name: 'message_id',          type: 'singleLineText' },
       { name: 'in_reply_to',         type: 'singleLineText' },
       { name: 'bearbeiter_name',     type: 'singleLineText' },
+      // V12.219: Generischer Chat-Partner (Wartungsnehmer ODER Servicebetrieb)
+      { name: 'partner_typ',                 type: 'singleLineText' }, // 'wartungsnehmer' | 'servicebetrieb'
+      { name: 'servicebetrieb_id',           type: 'singleLineText' },
+      { name: 'chat_partner_firma',          type: 'singleLineText' },
+      { name: 'chat_partner_ansprechperson', type: 'singleLineText' },
+      { name: 'chat_partner_email',          type: 'singleLineText' },
+      { name: 'chat_partner_telefon',        type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.211] ensureTable(WartungsnehmerChat) failed:', e.message); }
+  // V12.219: Servicebetriebe-Stammdaten — analog zu Wartungsnehmer, aber für externe Service-Firmen
+  try {
+    ensureTable('Servicebetriebe', [
+      { name: 'id',             type: 'singleLineText' },
+      { name: 'firma',          type: 'singleLineText' },
+      { name: 'ansprechperson', type: 'singleLineText' },
+      { name: 'telefon',        type: 'singleLineText' },
+      { name: 'email',          type: 'singleLineText' },
+      { name: 'strasse',        type: 'singleLineText' },
+      { name: 'plz',            type: 'singleLineText' },
+      { name: 'ort',            type: 'singleLineText' },
+      { name: 'notiz',          type: 'multilineText'  },
+    ]);
+  } catch(e) { console.warn('[V12.219] ensureTable(Servicebetriebe) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
   // Wenn die Tabelle existiert aber einzelne Felder fehlen → 422 beim Speichern.
   // ensureFields ergänzt fehlende, ohne existierende anzufassen.
@@ -8307,6 +8329,189 @@ async function deleteWartungsnehmerConfirm(recordId, firma) {
     }
   } catch (e) {
     showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 3500);
+  }
+}
+
+// ============================================================================
+// V12.219: Servicebetriebe — Stammdaten + Picker für Multi-Chats mit externen Firmen
+// ============================================================================
+async function loadServicebetriebe(filter) {
+  try { return await atRead('Servicebetriebe', filter, { sort: false }); }
+  catch (e) { console.warn('loadServicebetriebe failed:', e.message); return []; }
+}
+async function findServicebetriebById(id) {
+  const fid = String(id || '').trim();
+  if (!fid) return null;
+  try {
+    const recs = await atRead('Servicebetriebe', "{id}='" + fid.replace(/'/g, "\\'") + "'", { sort: false });
+    if (!recs.length) return null;
+    return { ...recs[0].fields, _recordId: recs[0].id };
+  } catch (e) { console.warn('findServicebetrieb:', e.message); return null; }
+}
+async function generateServicebetriebId() {
+  const all = await loadServicebetriebe();
+  let max = 0;
+  for (const r of all) {
+    const id = String(r.fields?.id || '');
+    const m = id.match(/^SB-(\d+)$/);
+    if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; }
+  }
+  return 'SB-' + (max + 1);
+}
+async function upsertServicebetrieb(data) {
+  const fields = {
+    firma:          String(data.firma || '').trim(),
+    ansprechperson: String(data.ansprechperson || '').trim(),
+    telefon:        String(data.telefon || '').trim(),
+    email:          String(data.email || '').trim(),
+    strasse:        String(data.strasse || '').trim(),
+    plz:            String(data.plz || '').trim(),
+    ort:            String(data.ort || '').trim(),
+    notiz:          String(data.notiz || '').trim(),
+  };
+  if (data._recordId) {
+    await atUpdate('Servicebetriebe', data._recordId, fields);
+    return { ...data, ...fields };
+  }
+  fields.id = data.id || await generateServicebetriebId();
+  const rec = await atWrite('Servicebetriebe', fields);
+  return { ...fields, _recordId: rec && rec.id };
+}
+
+// Picker-Modal: Wählt einen Servicebetrieb aus für einen neuen Chat (Email)
+async function openServicebetriebPickerForChat(emailRecId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailRecId);
+  if (!r) return;
+  let recs = [];
+  try { recs = await loadServicebetriebe(); } catch (_) {}
+  const items = recs.map(x => ({ ...x.fields, _recordId: x.id }))
+    .sort((a, b) => String(a.firma || '').localeCompare(String(b.firma || ''), 'de'));
+  let m = document.getElementById('eiSbPickerModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'eiSbPickerModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6200;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(620px,96vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0891b2;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:15px;font-weight:700">🛠 Servicebetrieb auswählen — neuen Chat starten</span>
+      <button onclick="document.getElementById('eiSbPickerModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:12px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+      <input id="eiSbPickerSearch" type="search" placeholder="Suche Firma, Ansprechperson, Ort …" oninput="renderSbPickerResults(this.value)" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+    </div>
+    <div id="eiSbPickerList" style="flex:1;overflow-y:auto;padding:10px 22px;background:#f8fafc"></div>
+    <div style="padding:10px 22px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:11.5px;color:#64748b">${items.length} Servicebetriebe verfügbar</span>
+      <button onclick="openServicebetriebEditor()" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">+ Neuer Servicebetrieb</button>
+    </div>
+  </div>`;
+  window._eiSbPickerCache = items;
+  window._eiSbPickerTargetEmail = emailRecId;
+  renderSbPickerResults('');
+  m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  setTimeout(() => document.getElementById('eiSbPickerSearch')?.focus(), 80);
+}
+function renderSbPickerResults(q) {
+  const cont = document.getElementById('eiSbPickerList');
+  if (!cont) return;
+  const items = window._eiSbPickerCache || [];
+  const norm = String(q || '').toLowerCase().trim();
+  const filt = norm
+    ? items.filter(x => [x.firma, x.ansprechperson, x.email, x.ort].filter(Boolean).join(' ').toLowerCase().includes(norm))
+    : items;
+  if (!filt.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Kein Treffer. Lege einen neuen Servicebetrieb an ↘</div>';
+    return;
+  }
+  cont.innerHTML = filt.map(x => {
+    const meta = [x.ansprechperson, x.telefon, x.ort].filter(Boolean).join(' · ');
+    return `<button onclick="startChatWithServicebetrieb('${_esc(x.id || '')}','${_esc(x.firma || '')}','${_esc(x.ansprechperson || '')}','${_esc(x.telefon || '')}','${_esc(x.email || '')}')" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #0891b2;border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;text-align:left;width:100%;font-family:inherit;display:block;transition:all .12s" onmouseover="this.style.borderColor='#0891b2';this.style.background='#ecfeff'" onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
+      <div style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(x.firma || '?')}</div>
+      ${meta ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + _esc(meta) + '</div>' : ''}
+    </button>`;
+  }).join('');
+}
+
+// Aktiver Chat-Tab pro Email — partner_typ + partner_id
+window._eiActiveChatTab = window._eiActiveChatTab || {};
+function setActiveChatTab(emailId, partnerTyp, partnerId) {
+  window._eiActiveChatTab[emailId] = { typ: partnerTyp, id: partnerId };
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+}
+
+// Neuen Chat mit Servicebetrieb starten — setzt aktiven Tab, kein Send-Default
+function startChatWithServicebetrieb(sbId, firma, ansprech, tel, email) {
+  const emailId = window._eiSbPickerTargetEmail;
+  if (!emailId) return;
+  // Servicebetrieb-Stammdaten im Frontend-Cache merken (für initialen Composer ohne dass schon Nachrichten existieren)
+  window._eiSbStartedChats = window._eiSbStartedChats || {};
+  window._eiSbStartedChats[emailId] = window._eiSbStartedChats[emailId] || [];
+  const exists = window._eiSbStartedChats[emailId].find(c => c.id === sbId);
+  if (!exists) {
+    window._eiSbStartedChats[emailId].push({ id: sbId, firma, ansprechperson: ansprech, telefon: tel, email });
+  }
+  setActiveChatTab(emailId, 'servicebetrieb', sbId);
+  const m = document.getElementById('eiSbPickerModal');
+  if (m) m.style.display = 'none';
+  showToast('✓ Chat-Tab mit ' + firma + ' geöffnet', 'success', 2000);
+}
+
+// Servicebetrieb-Editor (Inline-Anlage)
+function openServicebetriebEditor(recordId) {
+  let data = { _recordId: '', id: '', firma:'', ansprechperson:'', telefon:'', email:'', strasse:'', plz:'', ort:'', notiz:'' };
+  let m = document.getElementById('eiSbEditorModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'eiSbEditorModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6300;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  const g = (id) => '<input id="sbEdit_' + id + '" type="text" value="' + _esc(data[id] || '') + '" placeholder="" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">';
+  const label = (lbl, html) => '<div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">' + lbl + '</label>' + html + '</div>';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(620px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0891b2;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:15px;font-weight:700">🛠 Neuer Servicebetrieb</span>
+      <button onclick="document.getElementById('eiSbEditorModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;flex:1">
+      ${label('Firma *', g('firma'))}
+      ${label('Ansprechperson', g('ansprechperson'))}
+      ${label('Email', g('email'))}
+      ${label('Telefon', g('telefon'))}
+      ${label('Notiz', '<textarea id="sbEdit_notiz" rows="2" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>')}
+    </div>
+    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="document.getElementById('eiSbEditorModal').style.display='none'" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
+      <button id="sbEditSaveBtn" onclick="saveServicebetriebFromEditor()" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Speichern</button>
+    </div>
+  </div>`;
+  setTimeout(() => document.getElementById('sbEdit_firma')?.focus(), 100);
+}
+async function saveServicebetriebFromEditor() {
+  const g = (id) => document.getElementById('sbEdit_' + id)?.value || '';
+  const firma = g('firma').trim();
+  if (!firma) { showToast('Firma ist Pflicht', 'warning', 2500); return; }
+  const btn = document.getElementById('sbEditSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Speichere …'; }
+  try {
+    const created = await upsertServicebetrieb({
+      firma, ansprechperson: g('ansprechperson'),
+      email: g('email'), telefon: g('telefon'), notiz: g('notiz'),
+    });
+    document.getElementById('eiSbEditorModal').style.display = 'none';
+    showToast('✓ ' + firma + ' angelegt', 'success', 2200);
+    // Wenn ein Email-Picker offen war → direkt Chat-Tab starten
+    const emailId = window._eiSbPickerTargetEmail;
+    if (emailId) {
+      startChatWithServicebetrieb(created.id, firma, g('ansprechperson'), g('telefon'), g('email'));
+    }
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 4000);
+    if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
   }
 }
 
@@ -25421,6 +25626,121 @@ async function deleteEmailComment(recId, commentId) {
 // V12.179: Zwei Kacheln nebeneinander — HV-Zuordnung links, Aufzug-Zuordnung rechts.
 // HV: aus assigned_org_* (Vorgang, bestätigt) oder real_hv_firma (KI gespeichert).
 // Aufzug: aus aufzug_fabriknummer/_standort/_hersteller.
+// V12.219: Aufzug aus existierenden Anlagen für eine Email auswählen.
+// Unterscheidet sich von "KI ändern": Hier wählt der User einen bestehenden Aufzug,
+// statt dass die KI ihn aus dem Email-Body/PDF erneut zu erkennen versucht.
+async function openAufzugPickerForEmail(emailRecId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailRecId);
+  if (!r) return;
+  let recs = [];
+  try { recs = await atRead('Aufzuege', null, { sort: false }); } catch (e) { console.warn('loadAufzuege:', e.message); }
+  const items = (recs || []).map(x => ({ ...x.fields, _recordId: x.id }))
+    .filter(x => x && (x.fabriknummer || x.standort))
+    .sort((a, b) => String(a.fabriknummer || '').localeCompare(String(b.fabriknummer || '')));
+  let m = document.getElementById('eiAufzugPickerModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'eiAufzugPickerModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6200;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(680px,96vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0e7490;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:15px;font-weight:700">🛗 Aufzug auswählen</span>
+      <button onclick="document.getElementById('eiAufzugPickerModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:12px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+      <input id="eiAufzugPickerSearch" type="search" placeholder="Suche Fabriknummer, Standort, Hersteller …" oninput="renderAufzugPickerResultsForEmail(this.value)" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+    </div>
+    <div id="eiAufzugPickerList" style="flex:1;overflow-y:auto;padding:10px 22px;background:#f8fafc"></div>
+    <div style="padding:10px 22px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:11.5px;color:#64748b">${items.length} Aufzüge verfügbar</span>
+      <button onclick="document.getElementById('eiAufzugPickerModal').style.display='none';openAufzugEditor()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:7px 14px;font-size:12.5px;cursor:pointer;font-family:inherit">+ Neuer Aufzug</button>
+    </div>
+  </div>`;
+  window._eiAufzugPickerCache = items;
+  window._eiAufzugPickerTargetEmail = emailRecId;
+  renderAufzugPickerResultsForEmail('');
+  m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  setTimeout(() => document.getElementById('eiAufzugPickerSearch')?.focus(), 80);
+}
+function renderAufzugPickerResultsForEmail(q) {
+  const cont = document.getElementById('eiAufzugPickerList');
+  if (!cont) return;
+  const items = window._eiAufzugPickerCache || [];
+  const norm = String(q || '').toLowerCase().trim();
+  const filt = norm
+    ? items.filter(x => [x.fabriknummer, x.standort, x.hersteller, x.hv_name].filter(Boolean).join(' ').toLowerCase().includes(norm))
+    : items;
+  if (!filt.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px">Kein Treffer.</div>';
+    return;
+  }
+  cont.innerHTML = filt.map(x => {
+    return `<button onclick="assignAufzugToEmail('${_esc(x._recordId)}')" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #0e7490;border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;text-align:left;width:100%;font-family:inherit;display:block;transition:all .12s" onmouseover="this.style.borderColor='#0e7490';this.style.background='#ecfeff'" onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:14px;font-weight:700;color:#0f172a;font-family:var(--dr-f-mono)">Fn ${_esc(x.fabriknummer || '—')}</div>
+        ${x.hersteller ? `<span style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:600">${_esc(x.hersteller)}</span>` : ''}
+      </div>
+      <div style="font-size:12.5px;color:#475569;margin-top:3px">${_esc(x.standort || '—')}</div>
+      ${x.hv_name ? `<div style="font-size:11px;color:#94a3b8;margin-top:1px">HV: ${_esc(x.hv_name)}</div>` : ''}
+    </button>`;
+  }).join('');
+}
+async function assignAufzugToEmail(aufzugRecordId) {
+  const emailRecId = window._eiAufzugPickerTargetEmail;
+  if (!emailRecId || !aufzugRecordId) return;
+  const r = (_eiAllRecords || []).find(x => x._id === emailRecId);
+  if (!r) return;
+  try {
+    const recs = await atRead('Aufzuege', "RECORD_ID()='" + aufzugRecordId + "'", { sort: false });
+    const az = recs && recs[0];
+    if (!az) { showToast('Aufzug nicht gefunden', 'error', 3000); return; }
+    const f = az.fields || {};
+    const aiAt = new Date().toISOString();
+    const baseFields = {
+      aufzug_id:           String(f.id || ''),
+      aufzug_record_id:    String(az.id || ''),
+      aufzug_fabriknummer: String(f.fabriknummer || ''),
+      aufzug_standort:     String(f.standort || ''),
+      aufzug_hersteller:   String(f.hersteller || ''),
+      ai_aufzug_at:        aiAt,
+    };
+    // Wartungsnehmer mit-denormalisieren
+    try {
+      const wnIdFromAz = String(f.wartungsnehmer_id || '').trim();
+      if (wnIdFromAz) {
+        const wn = await findWartungsnehmerById(wnIdFromAz);
+        if (wn) {
+          baseFields.wartungsnehmer_id             = String(wn.id || wnIdFromAz);
+          baseFields.wartungsnehmer_firma          = String(wn.firma || '');
+          baseFields.wartungsnehmer_ansprechperson = String(wn.ansprechperson || '');
+          baseFields.wartungsnehmer_email          = String(wn.email || '');
+          baseFields.wartungsnehmer_telefon        = String(wn.telefon || '');
+        }
+      }
+    } catch (_) {}
+    // ai_subject neu bauen mit den neuen Aufzug-Daten
+    const _rCopy = Object.assign({}, r, baseFields);
+    const _typ = String(r.email_typ || r.ai_subject_typ || '').trim();
+    if (_typ) {
+      baseFields.ai_subject     = _eiBuildAiSubject(_typ, String(r.ai_subject_anliegen || ''), _rCopy);
+      baseFields.ai_subject_typ = _typ;
+      baseFields.ai_subject_at  = aiAt;
+    }
+    await atUpdate('Emails', emailRecId, baseFields);
+    Object.assign(r, baseFields);
+    const m = document.getElementById('eiAufzugPickerModal');
+    if (m) m.style.display = 'none';
+    showToast('✓ Aufzug zugeordnet — Fn ' + (f.fabriknummer || '—'), 'success', 3000);
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    showToast('Zuordnung fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+
 function _renderEmailAssignmentCards(r) {
   // HV-Daten ermitteln
   let hvFirma = '', hvOrgId = '', hvEmail = '', hvSource = '';
@@ -25480,7 +25800,10 @@ function _renderEmailAssignmentCards(r) {
           ${ast ? `<div style="font-size:12.5px;color:#0f172a;margin-top:${afn ? '3' : '3'}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(ast)}</div>` : ''}
           ${ahr ? `<div style="font-size:11.5px;color:#475569;margin-top:2px">Hersteller: ${_esc(ahr)}</div>` : ''}
         </div>
-        <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug per KI neu erkennen" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Ändern</button>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
+          <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug per KI neu erkennen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🤖 KI ändern</button>
+        </div>
       </div>`
     : `<div style="background:#fff7ed;border:1px dashed #fdba74;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;min-width:0">
         <svg width="22" height="22" fill="none" stroke="#9a3412" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01"/></svg>
@@ -25488,7 +25811,10 @@ function _renderEmailAssignmentCards(r) {
           <div style="font-size:10.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:.06em">Aufzugsanlage</div>
           <div style="font-size:13px;color:#9a3412;margin-top:3px">Noch nicht zugeordnet</div>
         </div>
-        <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug automatisch per KI erkennen" style="background:#0891b2;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🛗 KI</button>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
+          <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug automatisch per KI erkennen" style="background:#0891b2;color:#fff;border:none;border-radius:6px;padding:6px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🤖 KI</button>
+        </div>
       </div>`;
   return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     ${hvCard}
@@ -26445,6 +26771,12 @@ async function sendWartungsnehmerMessage(emailId) {
         email_id:          emailId,
         aufzug_id:         String(r.aufzug_id || ''),
         wartungsnehmer_id: String((wn && wn.id) || ''),
+        // V12.219: partner_typ markieren für Multi-Chat-Filter
+        partner_typ:       'wartungsnehmer',
+        chat_partner_firma:          String((wn && wn.firma) || ''),
+        chat_partner_ansprechperson: String((wn && wn.ansprechperson) || ''),
+        chat_partner_email:          toAddr,
+        chat_partner_telefon:        String((wn && wn.telefon) || ''),
         direction:         'out',
         from_email:        'check@liftaro.de',
         from_name:         'Liftaro',
@@ -26470,65 +26802,261 @@ async function sendWartungsnehmerMessage(emailId) {
 }
 
 // Render: Wartungsnehmer-Kachel + Chat-Bereich
+// V12.219: Multi-Chat-Sektion — Tabs für Wartungsnehmer + N Servicebetriebe + "+ Neu".
+// Aktiver Tab wird in window._eiActiveChatTab[emailId] gehalten.
 function _eiRenderWartungsnehmerSection(r, wn) {
   if (!r) return '';
+  const emailId = r._id;
   const hasWn = !!(wn && (wn.firma || wn.email || wn.ansprechperson));
-  const wnHead = hasWn ? `
-    <div style="background:#fff;border:1px solid #c4b5fd;border-left:3px solid #7c3aed;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+
+  // Alle Chat-Items für diese Email aus dem Cache holen
+  const allItems = window._eiWnChatCache[emailId] || [];
+  // Servicebetrieb-Tabs: alle distinct (partner_typ='servicebetrieb', servicebetrieb_id) aus Chats + gestartete
+  const sbMap = new Map();
+  for (const it of allItems) {
+    if (String(it.partner_typ || '') === 'servicebetrieb') {
+      const sid = String(it.servicebetrieb_id || '').trim();
+      if (sid && !sbMap.has(sid)) {
+        sbMap.set(sid, {
+          id: sid,
+          firma:          it.chat_partner_firma || '',
+          ansprechperson: it.chat_partner_ansprechperson || '',
+          email:          it.chat_partner_email || it.to_email || '',
+          telefon:        it.chat_partner_telefon || '',
+        });
+      }
+    }
+  }
+  // Aus gestarteten (noch ohne Nachrichten) ergänzen
+  const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
+  for (const sb of started) {
+    if (sb.id && !sbMap.has(sb.id)) sbMap.set(sb.id, sb);
+  }
+  const sbList = Array.from(sbMap.values());
+
+  // Aktiven Tab bestimmen — Default: WN wenn vorhanden, sonst erster SB, sonst keiner
+  const stored = window._eiActiveChatTab && window._eiActiveChatTab[emailId];
+  let activeTyp = stored && stored.typ;
+  let activeId  = stored && stored.id;
+  if (!activeTyp || (activeTyp === 'wartungsnehmer' && !hasWn) ||
+      (activeTyp === 'servicebetrieb' && !sbMap.has(activeId))) {
+    if (hasWn) { activeTyp = 'wartungsnehmer'; activeId = String(wn.id || ''); }
+    else if (sbList.length) { activeTyp = 'servicebetrieb'; activeId = sbList[0].id; }
+    else { activeTyp = ''; activeId = ''; }
+    window._eiActiveChatTab = window._eiActiveChatTab || {};
+    window._eiActiveChatTab[emailId] = { typ: activeTyp, id: activeId };
+  }
+
+  // Tabs-Pille-Reihe
+  const tabPill = (typ, id, label, icon, isActive, color) => {
+    const safeId = String(id || '').replace(/'/g, "\\'");
+    return `<button onclick="setActiveChatTab('${emailId}','${typ}','${safeId}')" style="background:${isActive ? color.activeBg : '#fff'};color:${isActive ? color.activeFg : '#475569'};border:1px solid ${isActive ? color.activeBorder : '#cbd5e1'};border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">
+      ${icon}${_esc(label)}
+    </button>`;
+  };
+  const wnColor = { activeBg:'linear-gradient(135deg,#7c3aed,#5b21b6)', activeFg:'#fff', activeBorder:'#5b21b6' };
+  const sbColor = { activeBg:'linear-gradient(135deg,#0891b2,#0e7490)', activeFg:'#fff', activeBorder:'#0e7490' };
+  const tabsHtml = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center">
+    ${hasWn ? tabPill('wartungsnehmer', String(wn.id || ''), '🔧 ' + (wn.firma || 'Wartungsnehmer'), '', activeTyp === 'wartungsnehmer', wnColor) : ''}
+    ${sbList.map(sb => tabPill('servicebetrieb', sb.id, '🛠 ' + (sb.firma || '?'), '', activeTyp === 'servicebetrieb' && activeId === sb.id, sbColor)).join('')}
+    <button onclick="openServicebetriebPickerForChat('${emailId}')" title="Neuen Chat mit einem Servicebetrieb starten" style="background:#fff;color:#0891b2;border:1px dashed #67e8f9;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Servicebetrieb</button>
+  </div>`;
+
+  // Aktiver Partner-Header + Bubbles + Composer
+  let partner = null;
+  if (activeTyp === 'wartungsnehmer' && hasWn) {
+    partner = { firma: wn.firma, ansprechperson: wn.ansprechperson, email: wn.email, telefon: wn.telefon, color: 'wn' };
+  } else if (activeTyp === 'servicebetrieb') {
+    const sb = sbMap.get(activeId);
+    if (sb) partner = { firma: sb.firma, ansprechperson: sb.ansprechperson, email: sb.email, telefon: sb.telefon, color: 'sb' };
+  }
+
+  if (!partner) {
+    return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff;border-radius:0 8px 8px 0">
+      <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">💬 Chats</div>
+      ${tabsHtml}
+      <div style="background:#fef3c7;border:1px dashed #fbbf24;border-radius:10px;padding:12px 14px;font-size:12px;color:#92400e">
+        Noch kein Chat-Partner. Klicke „+ Servicebetrieb" um einen externen Servicebetrieb auszuwählen.
+        ${!hasWn ? '<br>Für den Wartungsnehmer-Chat trage den Wartungsnehmer am zugeordneten Aufzug ein.' : ''}
+      </div>
+    </div>`;
+  }
+
+  const isWn = partner.color === 'wn';
+  const accent = isWn ? '#7c3aed' : '#0891b2';
+  const accentDeep = isWn ? '#5b21b6' : '#0e7490';
+  const accentLight = isWn ? '#c4b5fd' : '#67e8f9';
+  const headerBg = isWn ? '#faf5ff' : '#ecfeff';
+  const bubblesBg = isWn ? '#f5f3ff' : '#f0fdfa';
+  const headerLabel = isWn ? 'Wartungsnehmer · Ansprechpartner' : 'Servicebetrieb · Ansprechpartner';
+
+  const partnerHead = `
+    <div style="background:#fff;border:1px solid ${accentLight};border-left:3px solid ${accent};border-radius:10px;padding:12px 14px;margin-bottom:10px">
       <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${_esc((wn.ansprechperson || wn.firma || '?').trim().slice(0, 2).toUpperCase())}</div>
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,${accent},${accentDeep});color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${_esc((partner.ansprechperson || partner.firma || '?').trim().slice(0, 2).toUpperCase())}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:10.5px;color:#6b21a8;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Wartungsnehmer · Ansprechpartner</div>
-          ${wn.ansprechperson ? `<div style="font-size:14px;color:#0f172a;font-weight:700;margin-top:2px">${_esc(wn.ansprechperson)}</div>` : ''}
-          ${wn.firma ? `<div style="font-size:12.5px;color:#475569;margin-top:1px">${_esc(wn.firma)}</div>` : ''}
+          <div style="font-size:10.5px;color:${accentDeep};font-weight:700;text-transform:uppercase;letter-spacing:.05em">${headerLabel}</div>
+          ${partner.ansprechperson ? `<div style="font-size:14px;color:#0f172a;font-weight:700;margin-top:2px">${_esc(partner.ansprechperson)}</div>` : ''}
+          ${partner.firma ? `<div style="font-size:12.5px;color:#475569;margin-top:1px">${_esc(partner.firma)}</div>` : ''}
           <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;font-size:12px;color:#475569">
-            ${wn.email ? `<a href="mailto:${_esc(wn.email)}" style="color:#6b21a8;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px">✉ ${_esc(wn.email)}</a>` : ''}
-            ${wn.telefon ? `<a href="tel:${_esc(wn.telefon)}" style="color:#6b21a8;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px">📞 ${_esc(wn.telefon)}</a>` : ''}
+            ${partner.email ? `<a href="mailto:${_esc(partner.email)}" style="color:${accentDeep};text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px">✉ ${_esc(partner.email)}</a>` : ''}
+            ${partner.telefon ? `<a href="tel:${_esc(partner.telefon)}" style="color:${accentDeep};text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px">📞 ${_esc(partner.telefon)}</a>` : ''}
           </div>
         </div>
       </div>
-    </div>` : `
-    <div style="background:#fef3c7;border:1px dashed #fbbf24;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#92400e">
-      ⚠ Kein Wartungsnehmer am Aufzug hinterlegt — Chat nicht verfügbar. Trage den Wartungsnehmer am Aufzug ein.
     </div>`;
 
-  const items = window._eiWnChatCache[r._id] || [];
-  const bubbles = items.length
-    ? items.map(it => {
+  // Bubbles für den aktiven Partner filtern
+  const filteredItems = allItems.filter(it => {
+    if (activeTyp === 'wartungsnehmer') {
+      // Backward: alte Records ohne partner_typ gelten als wartungsnehmer
+      const t = String(it.partner_typ || 'wartungsnehmer');
+      return t === 'wartungsnehmer';
+    }
+    return String(it.partner_typ || '') === 'servicebetrieb' && String(it.servicebetrieb_id || '') === activeId;
+  });
+  const bubbles = filteredItems.length
+    ? filteredItems.map(it => {
         const isOut = String(it.direction || 'out') === 'out';
         const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
-        const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || (wn && wn.ansprechperson) || 'Wartungsnehmer');
+        const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || partner.ansprechperson || 'Antwort');
         return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
           <div style="max-width:75%">
             <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)} · ${_esc(when)}</div>
-            <div style="background:${isOut ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(String(it.body || ''))}</div>
+            <div style="background:${isOut ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(String(it.body || ''))}</div>
           </div>
         </div>`;
       }).join('')
-    : `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0">Noch keine Nachrichten. Schreib dem Wartungsnehmer eine erste Nachricht ↓</div>`;
+    : `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0">Noch keine Nachrichten. Schreib eine erste Nachricht ↓</div>`;
 
-  const canSend = hasWn && !!(wn.email) && !!(APP_KEYS && APP_KEYS.emailSenderUrl && APP_KEYS.emailSenderSecret);
-  const composer = hasWn ? `
-    <div style="margin-top:10px;background:#fff;border:1px solid #c4b5fd;border-radius:10px;padding:8px;display:flex;gap:8px;align-items:flex-end">
-      <textarea id="wnChatInput_${r._id}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(wn.ansprechperson || wn.firma || wn.email) + ' …' : 'Wartungsnehmer hat keine Email-Adresse'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
-      <button id="wnChatSendBtn_${r._id}" onclick="sendWartungsnehmerMessage('${r._id}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,#7c3aed,#5b21b6)' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
+  const canSend = !!partner.email && !!(APP_KEYS && APP_KEYS.emailSenderUrl && APP_KEYS.emailSenderSecret);
+  const composer = `
+    <div style="margin-top:10px;background:#fff;border:1px solid ${accentLight};border-radius:10px;padding:8px;display:flex;gap:8px;align-items:flex-end">
+      <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Kein Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
+      <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Senden
       </button>
-    </div>` : '';
+    </div>`;
 
-  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff;border-radius:0 8px 8px 0">
+  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid ${accent};background:${headerBg};border-radius:0 8px 8px 0">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
       <div>
-        <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.05em">💬 Chat mit Wartungsnehmer</div>
-        <div style="font-size:11.5px;color:#7c3aed">Eigener Thread — getrennt vom Hauptverlauf der Email.</div>
+        <div style="font-size:11px;font-weight:700;color:${accentDeep};text-transform:uppercase;letter-spacing:.05em">💬 Chats — getrennte Threads pro Partner</div>
       </div>
-      ${hasWn ? `<button onclick="loadWartungsnehmerChat('${r._id}').then(()=>renderEmailInboxDetail())" title="Chat aktualisieren" style="background:#fff;border:1px solid #c4b5fd;color:#6b21a8;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Aktualisieren</button>` : ''}
+      <button onclick="loadWartungsnehmerChat('${emailId}').then(()=>renderEmailInboxDetail())" title="Chats aktualisieren" style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Aktualisieren</button>
     </div>
-    ${wnHead}
-    ${hasWn ? `<div style="background:#f5f3ff;border-radius:10px;padding:14px;min-height:80px">${bubbles}</div>` : ''}
+    ${tabsHtml}
+    ${partnerHead}
+    <div style="background:${bubblesBg};border-radius:10px;padding:14px;min-height:80px">${bubbles}</div>
     ${composer}
   </div>`;
+}
+
+// V12.219: Generisches Senden — je nach aktivem Tab Wartungsnehmer- oder Servicebetrieb-Chat
+async function sendChatMessage(emailId) {
+  const tab = (window._eiActiveChatTab || {})[emailId];
+  if (!tab || !tab.typ) { showToast('Kein Chat-Partner ausgewählt', 'warning', 2500); return; }
+  if (tab.typ === 'wartungsnehmer') {
+    return sendWartungsnehmerMessage(emailId);
+  }
+  if (tab.typ === 'servicebetrieb') {
+    return sendServicebetriebMessage(emailId, tab.id);
+  }
+}
+
+// V12.219: Nachricht an Servicebetrieb senden (analog sendWartungsnehmerMessage)
+async function sendServicebetriebMessage(emailId, sbId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const ta = document.getElementById('wnChatInput_' + emailId);
+  const body = (ta && ta.value || '').trim();
+  if (!body) { showToast('Nachricht ist leer', 'warning', 1800); return; }
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert', 'error', 4000); return;
+  }
+  // Servicebetrieb-Daten aus dem Cache oder per Lookup
+  let sb = null;
+  const cached = window._eiSbStartedChats && window._eiSbStartedChats[emailId];
+  if (cached) sb = cached.find(c => c.id === sbId);
+  if (!sb) {
+    const items = window._eiWnChatCache[emailId] || [];
+    const fromChat = items.find(it => String(it.servicebetrieb_id || '') === sbId);
+    if (fromChat) sb = {
+      id: sbId,
+      firma: fromChat.chat_partner_firma,
+      ansprechperson: fromChat.chat_partner_ansprechperson,
+      email: fromChat.chat_partner_email || fromChat.to_email,
+      telefon: fromChat.chat_partner_telefon,
+    };
+  }
+  if (!sb || !sb.email) { showToast('Servicebetrieb hat keine Email-Adresse', 'error', 3500); return; }
+  const toAddr = String(sb.email).trim();
+  const sendBtn = document.getElementById('wnChatSendBtn_' + emailId);
+  if (sendBtn) {
+    sendBtn.disabled = true; sendBtn.style.opacity = '0.7'; sendBtn.style.cursor = 'wait';
+    sendBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Sende …';
+  }
+  const subjBase = String((r.ai_subject && r.ai_subject.trim()) || r.subject || 'Anfrage').trim();
+  const fabri = String(r.aufzug_fabriknummer || '').trim();
+  const standort = String(r.aufzug_standort || '').trim();
+  const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
+  const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
+  const finalBody = sig ? body + '\n\n' + sig : body;
+  // in_reply_to-Kette aus diesem Chat-Thread
+  const items = window._eiWnChatCache[emailId] || [];
+  const sameSb = items.filter(it => String(it.partner_typ || '') === 'servicebetrieb' && String(it.servicebetrieb_id || '') === sbId);
+  const prev = sameSb.slice().reverse().find(x => String(x.message_id || '').trim());
+  const inReplyTo = prev ? prev.message_id : '';
+  try {
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
+      body: JSON.stringify({
+        to: toAddr, subject, text: finalBody,
+        replyTo: 'check@liftaro.de',
+        inReplyTo: inReplyTo || undefined,
+      }),
+    });
+    if (!resp.ok) {
+      let txt = ''; try { txt = await resp.text(); } catch (_) {}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+    }
+    const sentAt = new Date().toISOString();
+    const newId  = 'sbc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
+    try {
+      await atWrite('WartungsnehmerChat', {
+        id:                            newId,
+        email_id:                      emailId,
+        aufzug_id:                     String(r.aufzug_id || ''),
+        partner_typ:                   'servicebetrieb',
+        servicebetrieb_id:             sbId,
+        chat_partner_firma:            String(sb.firma || ''),
+        chat_partner_ansprechperson:   String(sb.ansprechperson || ''),
+        chat_partner_email:            toAddr,
+        chat_partner_telefon:          String(sb.telefon || ''),
+        direction:                     'out',
+        from_email:                    'check@liftaro.de',
+        from_name:                     'Liftaro',
+        to_email:                      toAddr,
+        subject:                       subject,
+        body:                          finalBody,
+        created_at:                    sentAt,
+        in_reply_to:                   inReplyTo || '',
+        bearbeiter_name:               (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      });
+    } catch (e) { console.warn('[V12.219] SB-Chat-Eintrag fehlgeschlagen:', e.message); }
+    if (ta) ta.value = '';
+    showToast('✓ Nachricht an ' + (sb.ansprechperson || sb.firma || toAddr) + ' gesendet', 'success', 3200);
+    await loadWartungsnehmerChat(emailId);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    showToast('Senden fehlgeschlagen: ' + e.message, 'error', 5000);
+    if (sendBtn) {
+      sendBtn.disabled = false; sendBtn.style.opacity = '1'; sendBtn.style.cursor = 'pointer';
+      sendBtn.innerHTML = 'Senden';
+    }
+  }
 }
 
 async function applyAufzugAnalysis(recId) {
