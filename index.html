@@ -6172,7 +6172,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.245';
+const APP_VERSION = 'V12.246';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16646,11 +16646,11 @@ async function renderKundenList() {
     return;
   }
   const q = (document.getElementById('kundenSearch')?.value || '').toLowerCase().trim();
-  const filtered = q
+  let filtered = q
     ? orgs.filter(o =>
         (o.name || '').toLowerCase().includes(q) ||
         (o.address || '').toLowerCase().includes(q))
-    : orgs;
+    : orgs.slice();
   filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   // V12.165: Person-Cache initialisieren
   window._pipedrivePersonCache = window._pipedrivePersonCache || {};
