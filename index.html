@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.233';
+const APP_VERSION = 'V12.234';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26900,12 +26900,8 @@ async function loadWartungsnehmerChat(emailId) {
       items.push(li);
     }
     items.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
-    // V12.225: WhatsApp-Style — eingehende Antworten der Chat-Partner als Bubbles im Chat einblenden.
-    // Match per from_email + Zeitstempel (Email empfangen NACH der ersten ausgehenden Chat-Nachricht).
-    const synthetic = _eiSynthesizeIncomingChatItems(emailId, items);
-    if (synthetic.length) {
-      items = items.concat(synthetic).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
-    }
+    // V12.234: KEIN synthetic-Merge mehr im Cache — synthetic items werden LIVE im Render
+    // aus dem aktuellen started-State generiert. So funktioniert Tab-Wechsel ohne Race.
     window._eiWnChatCache[emailId] = items;
     return items;
   } catch (e) {
@@ -27271,8 +27267,16 @@ function _eiRenderWartungsnehmerSection(r, wn) {
 
   // Alle Chat-Items für diese Email aus dem Cache holen
   // V12.226: Items ohne Body UND ohne Subject als "defekt" ausblenden (alte 422-Reste)
+  // V12.234: Synthetic items LIVE regenerieren — basierend auf aktuellem started-State
+  // (sonst Cache-Race nach "+ Servicebetrieb"-Klick: Cache hat keine synthetic items mit dem
+  // gewünschten Partner, weil Synthesize bei Load lief BEVOR der Tab gestartet wurde)
   const allItemsRaw = window._eiWnChatCache[emailId] || [];
-  const allItems = allItemsRaw.filter(it => String(it.body || '').trim() || String(it.subject || '').trim());
+  const realItems = allItemsRaw.filter(it => !it._synthetic && (String(it.body || '').trim() || String(it.subject || '').trim()));
+  const liveSynthetic = (typeof _eiSynthesizeIncomingChatItems === 'function')
+    ? _eiSynthesizeIncomingChatItems(emailId, realItems)
+    : [];
+  const allItems = realItems.concat(liveSynthetic)
+    .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
 
   // V12.226: Erst gestartete Tabs einsammeln (vor der Klassifizierung — die brauchen wir für Email-Match)
   const sbMap = new Map();
