@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.219';
+const APP_VERSION = 'V12.220';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8378,13 +8378,19 @@ async function upsertServicebetrieb(data) {
   return { ...fields, _recordId: rec && rec.id };
 }
 
-// Picker-Modal: Wählt einen Servicebetrieb aus für einen neuen Chat (Email)
+// Picker-Modal: Wählt eine Firma aus für einen neuen Chat — kombiniert Servicebetriebe und
+// Wartungsnehmer. Wartungsnehmer-Auswahl wird als externer Chat behandelt (ID-Prefix 'wn:').
 async function openServicebetriebPickerForChat(emailRecId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailRecId);
   if (!r) return;
-  let recs = [];
-  try { recs = await loadServicebetriebe(); } catch (_) {}
-  const items = recs.map(x => ({ ...x.fields, _recordId: x.id }))
+  let sbRecs = [], wnRecs = [];
+  try { sbRecs = await loadServicebetriebe(); } catch (_) {}
+  try { wnRecs = await loadWartungsnehmer(); } catch (_) {}
+  const sbItems = (sbRecs || []).map(x => ({ ...x.fields, _recordId: x.id, _src: 'sb' }))
+    .filter(x => x && (x.firma || x.email));
+  const wnItems = (wnRecs || []).map(x => ({ ...x.fields, _recordId: x.id, _src: 'wn' }))
+    .filter(x => x && (x.firma || x.email));
+  const items = [...sbItems, ...wnItems]
     .sort((a, b) => String(a.firma || '').localeCompare(String(b.firma || ''), 'de'));
   let m = document.getElementById('eiSbPickerModal');
   if (!m) {
@@ -8404,7 +8410,7 @@ async function openServicebetriebPickerForChat(emailRecId) {
     </div>
     <div id="eiSbPickerList" style="flex:1;overflow-y:auto;padding:10px 22px;background:#f8fafc"></div>
     <div style="padding:10px 22px;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:11.5px;color:#64748b">${items.length} Servicebetriebe verfügbar</span>
+      <span style="font-size:11.5px;color:#64748b">${sbItems.length} Servicebetrieb${sbItems.length === 1 ? '' : 'e'} + ${wnItems.length} Wartungsnehmer als Chat-Partner verfügbar</span>
       <button onclick="openServicebetriebEditor()" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">+ Neuer Servicebetrieb</button>
     </div>
   </div>`;
@@ -8428,9 +8434,21 @@ function renderSbPickerResults(q) {
   }
   cont.innerHTML = filt.map(x => {
     const meta = [x.ansprechperson, x.telefon, x.ort].filter(Boolean).join(' · ');
-    return `<button onclick="startChatWithServicebetrieb('${_esc(x.id || '')}','${_esc(x.firma || '')}','${_esc(x.ansprechperson || '')}','${_esc(x.telefon || '')}','${_esc(x.email || '')}')" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #0891b2;border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;text-align:left;width:100%;font-family:inherit;display:block;transition:all .12s" onmouseover="this.style.borderColor='#0891b2';this.style.background='#ecfeff'" onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-      <div style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(x.firma || '?')}</div>
-      ${meta ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + _esc(meta) + '</div>' : ''}
+    const isWn = x._src === 'wn';
+    // V12.220: Wartungsnehmer als Chat-Partner — eindeutige ID mit Prefix, damit der Chat-Thread sauber getrennt bleibt
+    const chatId = isWn ? ('wn:' + (x.id || x._recordId || '')) : (x.id || '');
+    const accent = isWn ? '#7c3aed' : '#0891b2';
+    const accentBg = isWn ? '#faf5ff' : '#ecfeff';
+    const badge = isWn
+      ? '<span style="background:#ede9fe;color:#6b21a8;border:1px solid #c4b5fd;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">🔧 Wartungsnehmer</span>'
+      : '<span style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.02em">🛠 Servicebetrieb</span>';
+    return `<button onclick="startChatWithServicebetrieb('${_esc(chatId)}','${_esc(x.firma || '')}','${_esc(x.ansprechperson || '')}','${_esc(x.telefon || '')}','${_esc(x.email || '')}')" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid ${accent};border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;text-align:left;width:100%;font-family:inherit;display:block;transition:all .12s" onmouseover="this.style.borderColor='${accent}';this.style.background='${accentBg}'" onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(x.firma || '?')}</div>
+        ${badge}
+      </div>
+      ${meta ? '<div style="font-size:11.5px;color:#64748b;margin-top:3px">' + _esc(meta) + '</div>' : ''}
+      ${x.email ? `<div style="font-size:11px;color:#94a3b8;margin-top:1px">✉ ${_esc(x.email)}</div>` : ''}
     </button>`;
   }).join('');
 }
