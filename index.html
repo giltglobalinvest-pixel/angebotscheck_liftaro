@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.253';
+const APP_VERSION = 'V12.254';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -26278,6 +26278,30 @@ function renderEmailInboxList() {
     const pillRow = (hvPill || azPill || notesPill || threadPill)
       ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${threadPill}${notesPill}</div>`
       : '';
+    // V12.254: Anhänge-Pills direkt in der Karte (Download via Klick, ohne Email-Detail zu öffnen)
+    const origAtts = Array.isArray(r.attachments) ? r.attachments : [];
+    const neutAtts = Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [];
+    const attPills = [];
+    for (const a of origAtts) {
+      const fn = a.filename || a.name || 'Anhang';
+      const url = a.url || '';
+      const kb = a.size ? Math.round(a.size / 1024) + ' KB' : '';
+      const isPdf = /\.pdf$/i.test(fn) || a.type === 'application/pdf';
+      const ico = isPdf ? '📄' : '📎';
+      attPills.push(`<a href="${_esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${_esc(fn)}${kb ? ' · ' + kb : ''} — herunterladen" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px;max-width:240px"><span style="flex-shrink:0">${ico}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fn)}</span></a>`);
+    }
+    for (const a of neutAtts) {
+      const fn = a.filename || a.name || 'Anhang';
+      const url = a.url || '';
+      const kb = a.size ? Math.round(a.size / 1024) + ' KB' : '';
+      attPills.push(`<a href="${_esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="🕶 Neutralisiert · ${_esc(fn)}${kb ? ' · ' + kb : ''} — herunterladen" style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px;max-width:240px"><span style="flex-shrink:0">🕶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fn)}</span></a>`);
+    }
+    const attRow = attPills.length
+      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;align-items:center">
+          <span style="font-size:10.5px;color:#94a3b8;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Anhänge:</span>
+          ${attPills.join('')}
+        </div>`
+      : '';
     // V12.180: Absender-Mini-Zeile über dem Betreff (statt eigener Spalte)
     const senderLine = `<span class="sender">${_esc(fromName)}${fromMail ? `<span class="sep">·</span><span class="mail">${_esc(fromMail)}</span>` : ''}</span>`;
     // V12.182: ID-Optik — externe Check-ID kräftiger als Slug
@@ -26299,6 +26323,7 @@ function renderEmailInboxList() {
         <span class="subj">${freshTag}${_esc(subject)}</span>
         ${preview ? `<span class="prev">${_esc(preview)}</span>` : ''}
         ${pillRow}
+        ${attRow}
       </div>
       <div class="ei-row-actions">${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
     </div>`;
