@@ -4092,6 +4092,8 @@ const pdfWorkerReady = Promise.resolve();</script>
           <div style="display:flex;flex-direction:column;gap:1px">
             <!-- V12.197: Schnellfilter für ungesichtete Antworten — oben & prominent -->
             <button class="ei-side-item" data-status="neue_antwort"   onclick="setEiFilter('neue_antwort')"  ><span class="ei-side-dot" style="background:#ef4444;animation:eiNeuPulse 1.4s ease-in-out infinite"></span><span class="ei-side-lbl">↶ Neue Antworten</span><span class="ei-side-cnt" id="eiSideCnt_neue_antwort">0</span></button>
+            <!-- V12.235: Chat-Antworten (von Wartungsnehmer/Servicebetrieb-Chats) -->
+            <button class="ei-side-item" data-status="chat_antwort"   onclick="setEiFilter('chat_antwort')"  ><span class="ei-side-dot" style="background:#0891b2;animation:eiNeuPulse 1.6s ease-in-out infinite"></span><span class="ei-side-lbl">💬 Chat-Antworten</span><span class="ei-side-cnt" id="eiSideCnt_chat_antwort">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:6px 10px"></div>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
             <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
@@ -6164,7 +6166,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.234';
+const APP_VERSION = 'V12.235';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -24135,6 +24137,10 @@ function _eiUpdateSidebarCounts() {
   // V12.197: Counter "ungesichtete Antworten"
   const unseenCnt = all.filter(r => _eiHasUnseenReplies(r) && r.direction !== 'outgoing').length;
   set('eiSideCnt_neue_antwort', unseenCnt);
+  // V12.235: Counter "Chat-Antworten" (Cache vorher leeren, damit aktueller Stand stimmt)
+  if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
+  const chatReplyCnt = all.filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r)).length;
+  set('eiSideCnt_chat_antwort', chatReplyCnt);
 }
 
 // V12.191/192: Threading — finde den Thread-Parent einer eingehenden Antwort
@@ -24632,6 +24638,10 @@ function _eiFiltered() {
   } else if (_eiFilter === 'neue_antwort') {
     // Nur Parents mit ungesichteten Thread-Antworten
     base = (_eiAllRecords || []).filter(r => _eiHasUnseenReplies(r) && r.direction !== 'outgoing');
+  } else if (_eiFilter === 'chat_antwort') {
+    // V12.235: Nur Emails mit eingehenden Chat-Antworten (von Wartungsnehmer/Servicebetrieb)
+    if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r));
   } else {
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (r.status || 'neu') === _eiFilter);
   }
@@ -26876,11 +26886,56 @@ function _eiRemoveChatAttach(emailId, idx) {
   }
 }
 
-// V12.228: Prüft ob eine Email eingehende Chat-Antworten hat (für Hauptlisten-Indikator).
+// V12.228/235: Prüft ob eine Email eingehende Chat-Antworten hat (für Hauptlisten-Indikator).
+// V12.235: Funktioniert auch OHNE dass die Email geöffnet wurde — leitet die Chat-Partner-Emails
+// aus Aufzug/WN, outgoing-Records mit chat_email_id und started-Tabs ab.
+window._eiChatReplyCache = window._eiChatReplyCache || {};
+function _eiClearChatReplyCache() { window._eiChatReplyCache = {}; }
 function _eiHasChatReply(r) {
   if (!r || !r._id) return false;
-  const items = (window._eiWnChatCache && window._eiWnChatCache[r._id]) || [];
-  return items.some(it => String(it.direction || '') === 'in' || it._synthetic);
+  const emailId = r._id;
+  if (window._eiChatReplyCache[emailId] !== undefined) return window._eiChatReplyCache[emailId];
+  const compute = () => {
+    // (1) Erst aus geladenem Chat-Cache: gibt es ein 'in' Item?
+    const cached = (window._eiWnChatCache && window._eiWnChatCache[emailId]) || [];
+    if (cached.some(it => String(it.direction || '') === 'in' || it._synthetic)) return true;
+    // (2) Sammele alle Partner-Email-Adressen für DIESE Email
+    const partnerEmails = new Set();
+    const wnEmail = String(r.wartungsnehmer_email || '').toLowerCase().trim();
+    if (wnEmail) partnerEmails.add(wnEmail);
+    for (const it of cached) {
+      const pe = String(it.chat_partner_email || '').toLowerCase().trim();
+      if (pe) partnerEmails.add(pe);
+    }
+    const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+    for (const e of all) {
+      if (e && e.direction === 'outgoing' && String(e.chat_email_id || '').trim() === emailId) {
+        const to = String(e.to_email || '').toLowerCase().trim();
+        if (to) partnerEmails.add(to);
+      }
+    }
+    // Started-Tabs aus localStorage
+    if (!window._eiSbStartedChats) {
+      try { window._eiSbStartedChats = JSON.parse(localStorage.getItem('eiSbStartedChats') || '{}') || {}; }
+      catch (_) { window._eiSbStartedChats = {}; }
+    }
+    const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
+    for (const sb of started) {
+      const se = String(sb.email || '').toLowerCase().trim();
+      if (se) partnerEmails.add(se);
+    }
+    if (partnerEmails.size === 0) return false;
+    // (3) Check ob eingehende Email von einem dieser Partner existiert
+    for (const e of all) {
+      if (!e || e._id === emailId || e.direction === 'outgoing') continue;
+      const fromE = String(e.from_email || '').toLowerCase().trim();
+      if (partnerEmails.has(fromE)) return true;
+    }
+    return false;
+  };
+  const result = compute();
+  window._eiChatReplyCache[emailId] = result;
+  return result;
 }
 
 async function loadWartungsnehmerChat(emailId) {
@@ -27318,12 +27373,10 @@ function _eiRenderWartungsnehmerSection(r, wn) {
   const stored = window._eiActiveChatTab && window._eiActiveChatTab[emailId];
   let activeTyp = stored && stored.typ;
   let activeId  = stored && stored.id;
-  // V12.224: 'all' als gültiger Default — zeigt alle Chats über alle Partner kombiniert
-  if (!activeTyp || (activeTyp === 'wartungsnehmer' && !hasWn) ||
+  // V12.235: "Alle"-Tab entfernt — Chats sollen pro Partner getrennt bleiben
+  if (!activeTyp || activeTyp === 'all' || (activeTyp === 'wartungsnehmer' && !hasWn) ||
       (activeTyp === 'servicebetrieb' && !sbMap.has(activeId))) {
-    // V12.224: Wenn Items existieren, default 'all' — sonst spezifischer Partner
-    if (allItems.length > 0) { activeTyp = 'all'; activeId = ''; }
-    else if (hasWn) { activeTyp = 'wartungsnehmer'; activeId = String(wn.id || ''); }
+    if (hasWn) { activeTyp = 'wartungsnehmer'; activeId = String(wn.id || ''); }
     else if (sbList.length) { activeTyp = 'servicebetrieb'; activeId = sbList[0].id; }
     else { activeTyp = ''; activeId = ''; }
     window._eiActiveChatTab = window._eiActiveChatTab || {};
@@ -27354,7 +27407,6 @@ function _eiRenderWartungsnehmerSection(r, wn) {
   const wnColor = { activeBg:'linear-gradient(135deg,#7c3aed,#5b21b6)', activeFg:'#fff', activeBorder:'#5b21b6' };
   const sbColor = { activeBg:'linear-gradient(135deg,#0891b2,#0e7490)', activeFg:'#fff', activeBorder:'#0e7490' };
   const tabsHtml = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center">
-    ${(hasWn || sbList.length > 0) ? tabPill('all', '', '📋 Alle Nachrichten', allItems.length, activeTyp === 'all', allColor) : ''}
     ${hasWn ? tabPill('wartungsnehmer', String(wn.id || ''), '🔧 ' + (wn.firma || 'Wartungsnehmer'), countWn, activeTyp === 'wartungsnehmer', wnColor) : ''}
     ${sbList.map(sb => tabPill('servicebetrieb', sb.id, '🛠 ' + (sb.firma || '?'), countPerSb[sb.id] || 0, activeTyp === 'servicebetrieb' && activeId === sb.id, sbColor)).join('')}
     <button onclick="openServicebetriebPickerForChat('${emailId}')" title="Neuen Chat mit einem Servicebetrieb starten" style="background:#fff;color:#0891b2;border:1px dashed #67e8f9;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Servicebetrieb</button>
