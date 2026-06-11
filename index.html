@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.222';
+const APP_VERSION = 'V12.223';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -25164,6 +25164,30 @@ function _eiSetSignature(text) {
   try { localStorage.setItem('eiSignature', String(text || '').trim()); } catch (_) {}
 }
 
+// V12.223: Subject ASCII-sanitisieren — verhindert kaputte =?utf-8?Q?…?= encoded-words
+// (Bug der alten denomailer-v1.6.0-SMTP-Library im Backend, der iOS Mail das ganze MIME-Format
+// als Roh-Text anzeigen lässt). Deutsche Umlaute → ASCII-Äquivalente, andere Non-ASCII → '?'.
+// Plus: Subjects über 120 Zeichen werden gekürzt — der Hauptinhalt landet im Body.
+function _eiSanitizeSubjectForEmail(s) {
+  if (!s) return '';
+  let out = String(s)
+    .replace(/ä/g, 'ae').replace(/Ä/g, 'Ae')
+    .replace(/ö/g, 'oe').replace(/Ö/g, 'Oe')
+    .replace(/ü/g, 'ue').replace(/Ü/g, 'Ue')
+    .replace(/ß/g, 'ss')
+    .replace(/€/g, 'EUR')
+    .replace(/[‐-―]/g, '-') // verschiedene Bindestriche/Gedankenstriche
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”„]/g, '"')
+    .replace(/[…]/g, '...')
+    .replace(/[ ]/g, ' ')        // non-breaking space
+    .replace(/[^\x20-\x7E]/g, '?');   // alles übrige non-ASCII → '?'
+  // Zeilenumbrüche & überflüssige Whitespaces zusammenführen
+  out = out.replace(/\s+/g, ' ').trim();
+  if (out.length > 120) out = out.slice(0, 117).trim() + '...';
+  return out;
+}
+
 // V12.193: Inline-Editor für die Signatur (kleines Overlay)
 function openSignatureEditor() {
   const current = _eiGetSignature();
@@ -25456,6 +25480,8 @@ async function quickReplyToEmail(recId, bodyText) {
   // V12.192: ai_subject bevorzugt
   const origSubj = String((r.ai_subject && r.ai_subject.trim()) || r.subject || '');
   const replySubject = /^re:/i.test(origSubj) ? origSubj : 'Re: ' + origSubj;
+  // V12.223: ASCII-sanitisieren — verhindert kaputtes utf-8-encoded-word im Mail-Header
+  const replySubjectSafe = _eiSanitizeSubjectForEmail(replySubject);
   // V12.193: Signatur ans Ende der Antwort anhängen
   const sig = _eiGetSignature();
   const finalBody = sig ? bodyText + '\n\n' + sig : bodyText;
@@ -25465,7 +25491,7 @@ async function quickReplyToEmail(recId, bodyText) {
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
       body: JSON.stringify({
         to:        toAddr,
-        subject:   replySubject,
+        subject:   replySubjectSafe,
         text:      finalBody,
         replyTo:   'check@liftaro.de',
         inReplyTo: r.message_id || undefined,
@@ -25558,7 +25584,9 @@ async function forwardEmailTo(recId, toEmail, preMessage) {
       + 'Datum:    ' + origDate + '\n'
       + 'Betreff:  ' + origSubj + '\n'
       + 'An:       ' + origTo + '\n\n';
-    const fwdSubject = /^(fwd:|wg:)/i.test(origSubj) ? origSubj : 'Fwd: ' + origSubj;
+    const fwdSubjectRaw = /^(fwd:|wg:)/i.test(origSubj) ? origSubj : 'Fwd: ' + origSubj;
+    // V12.223: ASCII-sanitisieren für Mail-Header
+    const fwdSubject = _eiSanitizeSubjectForEmail(fwdSubjectRaw);
     const pre = String(preMessage || '').trim();
     // V12.193: Signatur an die Pre-Message anhängen (vor dem Forward-Header)
     const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
@@ -26793,6 +26821,8 @@ async function sendWartungsnehmerMessage(emailId) {
   const fabri = String(r.aufzug_fabriknummer || '').trim();
   const standort = String(r.aufzug_standort || '').trim();
   const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
+  // V12.223: ASCII-sanitisieren für Mail-Header
+  const subjectSafe = _eiSanitizeSubjectForEmail(subject);
   const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
   const finalBody = sig ? body + '\n\n' + sig : body;
   // Vorherige Out-Nachricht aus diesem Chat → in_reply_to-Kette
@@ -26804,7 +26834,7 @@ async function sendWartungsnehmerMessage(emailId) {
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
       body: JSON.stringify({
         to:        toAddr,
-        subject:   subject,
+        subject:   subjectSafe,
         text:      finalBody,
         replyTo:   'check@liftaro.de',
         inReplyTo: inReplyTo || undefined,
@@ -27065,6 +27095,8 @@ async function sendServicebetriebMessage(emailId, sbId) {
   const fabri = String(r.aufzug_fabriknummer || '').trim();
   const standort = String(r.aufzug_standort || '').trim();
   const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
+  // V12.223: ASCII-sanitisieren für Mail-Header
+  const subjectSafe = _eiSanitizeSubjectForEmail(subject);
   const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
   const finalBody = sig ? body + '\n\n' + sig : body;
   // in_reply_to-Kette aus diesem Chat-Thread
@@ -27077,7 +27109,7 @@ async function sendServicebetriebMessage(emailId, sbId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
       body: JSON.stringify({
-        to: toAddr, subject, text: finalBody,
+        to: toAddr, subject: subjectSafe, text: finalBody,
         replyTo: 'check@liftaro.de',
         inReplyTo: inReplyTo || undefined,
       }),
