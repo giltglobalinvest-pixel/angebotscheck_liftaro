@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.255';
+const APP_VERSION = 'V12.256';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9231,17 +9231,59 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
       'BEHALTEN: Sachlicher Inhalt (Leistungsbeschreibung, Vertragsbedingungen, technische Daten, Anlagen-Standort soweit nicht eindeutig identifizierbar), Datum (sofern nicht firmenspezifisch), allgemeine Klauseln.\n' +
       'Antworte AUSSCHLIESSLICH mit gültigem JSON in folgendem Schema:\n' +
       '{ "title": "Knappe neutrale Überschrift", "sections": [ { "heading": "...", "content": "..." } ], "notes": "Optionaler Hinweis" }';
-    const userMsg = 'Hier ist der extrahierte Text des Original-Dokuments. Neutralisiere ihn streng nach den Vorgaben:\n\n```\n' + fullText.slice(0, 30000) + '\n```';
-    const raw = await callClaude([{ role: 'user', content: userMsg }], systemPrompt);
+    // V12.256: Eingabe-Text begrenzen, damit der Output-Token-Budget sicher reicht
+    const userMsg = 'Hier ist der extrahierte Text des Original-Dokuments. Neutralisiere ihn streng nach den Vorgaben. Bleibe sachlich und KOMPAKT — eine `content`-Zeichenkette pro `sections`-Eintrag, keine eingebetteten Arrays:\n\n```\n' + fullText.slice(0, 16000) + '\n```';
+    // max_tokens = 8000 ist genug für ~6000 Wörter neutralisierten Text
+    const raw = await callClaude([{ role: 'user', content: userMsg }], systemPrompt, { maxTokens: 8000 });
 
-    // JSON aus der Antwort extrahieren (Claude wraps gelegentlich in Markdown-Codeblöcken)
-    let parsed;
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(raw);
-    } catch (e) {
-      throw new Error('KI-Antwort konnte nicht geparst werden: ' + e.message);
-    }
+    // V12.256: robuster JSON-Parser — räumt Markdown-Wrapper weg, repariert
+    // typische Claude-Fehler (Trailing commas, abgeschnittene Arrays/Strings).
+    const parseNeutralizedJson = (txt) => {
+      let s = String(txt || '').trim();
+      // Markdown-Codeblock entfernen
+      s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+      // Erste { bis letzte } extrahieren
+      const i = s.indexOf('{');
+      const j = s.lastIndexOf('}');
+      if (i >= 0 && j > i) s = s.slice(i, j + 1);
+      // Versuch 1: direkt
+      try { return JSON.parse(s); } catch (_) {}
+      // Versuch 2: Trailing-Commas raus
+      try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch (_) {}
+      // Versuch 3: abgeschnittener String — letzte unvollständige "..." entfernen, dann
+      // offene Strukturen schließen
+      let s2 = s;
+      // Wenn die letzte Zeile mitten in einem String/Wert hängt: schneide ab beim
+      // letzten validen ",". Das hängende Element wird geopfert.
+      const lastComma = s2.lastIndexOf(',');
+      if (lastComma > 0) s2 = s2.slice(0, lastComma);
+      // Offene Klammern zählen + schließen
+      const opens = { '{': 0, '[': 0 };
+      let inStr = false, esc = false;
+      for (const ch of s2) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '{') opens['{']++;
+        else if (ch === '}') opens['{']--;
+        else if (ch === '[') opens['[']++;
+        else if (ch === ']') opens['[']--;
+      }
+      if (inStr) s2 += '"';
+      while (opens['['] > 0) { s2 += ']'; opens['[']--; }
+      while (opens['{'] > 0) { s2 += '}'; opens['{']--; }
+      try { return JSON.parse(s2.replace(/,(\s*[}\]])/g, '$1')); } catch (e) {
+        // Versuch 4: aus dem Rohtext title + ein "Inhalt"-Block bauen, damit
+        // wenigstens ein neutralisiertes PDF rauskommt
+        return {
+          title: 'Neutralisiertes Dokument',
+          sections: [{ heading: 'Inhalt (KI-Rohtext)', content: String(txt || '').slice(0, 6000) }],
+          notes: 'Hinweis: JSON-Antwort der KI war unvollständig (' + e.message + '). Inhalt ggf. lückenhaft — bitte vor Versand prüfen.',
+        };
+      }
+    };
+    const parsed = parseNeutralizedJson(raw);
     const title = String(parsed.title || 'Neutralisiertes Dokument');
     const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
     const notes = String(parsed.notes || '');
@@ -13376,10 +13418,12 @@ document.getElementById('apiKeyInput').addEventListener('keydown', e => {
 });
 
 // ── Claude API Call ───────────────────────────────────────────────
-async function callClaude(messages, systemPrompt = '') {
+async function callClaude(messages, systemPrompt = '', opts = {}) {
+  // V12.256: max_tokens optional erhöhbar — für lange JSON-Antworten (Neutralisierung)
+  // Default bleibt 1000 für Rückwärtskompatibilität aller anderen Aufrufer.
   const body = {
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1000,
+    max_tokens: (opts && Number(opts.maxTokens)) || 1000,
     messages,
   };
   if (systemPrompt) body.system = systemPrompt;
