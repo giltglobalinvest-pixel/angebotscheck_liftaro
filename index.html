@@ -6166,7 +6166,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.237';
+const APP_VERSION = 'V12.238';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26889,6 +26889,67 @@ function _eiRemoveChatAttach(emailId, idx) {
   }
 }
 
+// V12.238: Prompt-Vorlagen für KI-Helfer (persistent in localStorage)
+function _eiLoadChatAiTemplates() {
+  try { return JSON.parse(localStorage.getItem('eiChatAiTemplates') || '[]') || []; }
+  catch (_) { return []; }
+}
+function _eiSaveChatAiTemplates(list) {
+  try { localStorage.setItem('eiChatAiTemplates', JSON.stringify(list || [])); } catch (_) {}
+}
+function saveChatAiAsTemplate(emailId) {
+  const input = document.getElementById('chatAiInput_' + emailId);
+  const content = String((input && input.value) || '').trim();
+  if (!content) { showToast('Stichworte sind leer — nichts zu speichern', 'warning', 2200); return; }
+  const title = prompt('Titel für diese Vorlage:', content.slice(0, 50));
+  if (!title || !title.trim()) return;
+  const templates = _eiLoadChatAiTemplates();
+  templates.unshift({
+    id:        't_' + Date.now() + '_' + Math.floor(Math.random() * 0x10000).toString(36),
+    title:     title.trim(),
+    content:   content,
+    createdAt: new Date().toISOString(),
+  });
+  _eiSaveChatAiTemplates(templates);
+  showToast('✓ Vorlage „' + title.trim() + '" gespeichert', 'success', 2400);
+  renderChatAiTemplates(emailId);
+}
+function applyChatAiTemplate(emailId, templateId) {
+  const templates = _eiLoadChatAiTemplates();
+  const t = templates.find(x => x.id === templateId);
+  if (!t) return;
+  const input = document.getElementById('chatAiInput_' + emailId);
+  if (input) { input.value = t.content; input.focus(); }
+  showToast('✓ Vorlage „' + t.title + '" geladen', 'success', 1800);
+}
+function deleteChatAiTemplate(emailId, templateId, event) {
+  if (event) event.stopPropagation();
+  const templates = _eiLoadChatAiTemplates();
+  const t = templates.find(x => x.id === templateId);
+  if (!t) return;
+  if (!confirm('Vorlage „' + t.title + '" wirklich löschen?')) return;
+  _eiSaveChatAiTemplates(templates.filter(x => x.id !== templateId));
+  renderChatAiTemplates(emailId);
+  showToast('✓ Vorlage gelöscht', 'success', 1600);
+}
+function renderChatAiTemplates(emailId) {
+  const container = document.getElementById('chatAiTemplatesList_' + emailId);
+  if (!container) return;
+  const templates = _eiLoadChatAiTemplates();
+  if (!templates.length) {
+    container.innerHTML = '<div style="font-size:11.5px;color:#94a3b8;padding:8px 10px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:7px;text-align:center">Noch keine Vorlagen. Tippe Stichworte unten und klicke „💾 Als Vorlage speichern".</div>';
+    return;
+  }
+  container.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:5px">' + templates.map(t => `
+    <div style="display:inline-flex;align-items:center;gap:4px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:999px;padding:0 4px 0 0;font-size:12px">
+      <button onclick="applyChatAiTemplate('${emailId}','${t.id}')" title="${_esc(t.content).slice(0, 200)}" style="background:transparent;border:none;color:#5b21b6;font-weight:600;cursor:pointer;font-family:inherit;padding:5px 10px;display:inline-flex;align-items:center;gap:5px">
+        📋 ${_esc(t.title)}
+      </button>
+      <button onclick="deleteChatAiTemplate('${emailId}','${t.id}',event)" title="Vorlage löschen" style="background:transparent;border:none;color:#a8a29e;cursor:pointer;font-size:13px;padding:3px 8px 3px 4px;border-radius:50%">✕</button>
+    </div>
+  `).join('') + '</div>';
+}
+
 // V12.237: KI-Helfer-Modal für Chat-Nachrichten — Stichworte rein, formulierter Text raus.
 function openChatAiHelper(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -26927,10 +26988,18 @@ function openChatAiHelper(emailId) {
       <button onclick="document.getElementById('chatAiModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
     </div>
     <div style="padding:18px 22px;overflow-y:auto;flex:1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em">📋 Vorlagen</label>
+        <span style="font-size:11px;color:#94a3b8">Klick übernimmt die Stichworte</span>
+      </div>
+      <div id="chatAiTemplatesList_${emailId}" style="margin-bottom:14px"></div>
       <label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Stichworte — was soll geschrieben werden?</label>
       <textarea id="chatAiInput_${emailId}" rows="4" placeholder="z.B. Bitte um Angebot für Türreparatur. Kunde meldet Quietschen. Wann könnt ihr vor Ort sein?" style="width:100%;padding:11px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical;line-height:1.5"></textarea>
       <div style="font-size:11.5px;color:#94a3b8;margin-top:6px">💡 Schreib einfach was du dem Servicebetrieb mitteilen willst. Die KI macht daraus eine höfliche, professionelle Nachricht.</div>
-      <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">
+      <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <button onclick="saveChatAiAsTemplate('${emailId}')" title="Aktuelle Stichworte als wiederverwendbare Vorlage speichern" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">
+          💾 Als Vorlage speichern
+        </button>
         <button id="chatAiGenBtn_${emailId}" onclick="generateChatAiSuggestion('${emailId}')" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
           KI-Vorschlag generieren
@@ -26950,6 +27019,8 @@ function openChatAiHelper(emailId) {
       </div>
     </div>
   </div>`;
+  // V12.238: Vorlagen rendern (aus localStorage)
+  if (typeof renderChatAiTemplates === 'function') renderChatAiTemplates(emailId);
   setTimeout(() => document.getElementById('chatAiInput_' + emailId)?.focus(), 100);
 }
 
