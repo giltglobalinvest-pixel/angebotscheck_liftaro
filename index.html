@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.227';
+const APP_VERSION = 'V12.228';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -24908,6 +24908,13 @@ function renderEmailInboxList() {
           🔀 ${_isCopy ? 'Kopie' : (_splitCnt >= 2 ? '1/' + _splitCnt : 'Split')}
         </span>`
       : '';
+    // V12.228: Chat-Antwort-Indikator — eingehende Antworten von Chat-Partnern im Cache
+    const _hasChatReply = (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
+    const chatReplyChip = _hasChatReply
+      ? `<span title="Neue Chat-Antwort von einem Service-Partner — Klick öffnet die Email" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;animation:eiNeuPulse 1.6s ease-in-out infinite">
+          💬 CHAT-ANTWORT
+        </span>`
+      : '';
     // Schnellaktionen
     const quickActions = isOut ? '' : `
       <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','gesichtet')" title="Als gesichtet markieren"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Als gesichtet markieren</button>
@@ -24972,7 +24979,7 @@ function renderEmailInboxList() {
         ${preview ? `<span class="prev">${_esc(preview)}</span>` : ''}
         ${pillRow}
       </div>
-      <div class="ei-row-actions">${splitChip}${emTypChip}${statusChip}${quickActions}</div>
+      <div class="ei-row-actions">${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
     </div>`;
   }).join('');
 }
@@ -26786,6 +26793,86 @@ async function _eiHydrateWartungsnehmer(r) {
 
 // Chat-Items zur Email laden — sortiert nach created_at aufsteigend
 window._eiWnChatCache = window._eiWnChatCache || {};
+// V12.228: Chat-Body bereinigen — entfernt quoted reply ("Am ... schrieb:"), >-Quotes,
+// Signatur-Trennlinien und mehrfache Whitespaces. Macht eingehende Antworten lesbar.
+function _eiCleanChatBody(s) {
+  if (!s) return '';
+  let text = String(s).replace(/\r\n/g, '\n');
+  // Quoted reply abschneiden — verschiedene Sprachen / Mail-Clients
+  text = text.replace(/\n+\s*Am\s+\w+,?\s+[0-9.]+\s*(?:[A-Za-zäöü]+|[A-Z]{3})[\s\S]+?schrieb:[\s\S]*$/i, '');
+  text = text.replace(/\n+\s*On\s+\w+,?\s+[\s\S]+?wrote:[\s\S]*$/i, '');
+  text = text.replace(/\n+\s*Von:\s+[\s\S]+?Gesendet:[\s\S]*$/i, '');
+  text = text.replace(/\n+\s*From:\s+[\s\S]+?Sent:[\s\S]*$/i, '');
+  text = text.replace(/\n+\s*-{3,}\s*Weitergeleitete\s+Nachricht[\s\S]*$/i, '');
+  text = text.replace(/\n+\s*-{3,}\s*Original\s+Message[\s\S]*$/i, '');
+  // Quoted lines (> ...) komplette Blöcke entfernen
+  text = text.replace(/^>.*$/gm, '');
+  // Signatur ab "-- " eigene Zeile (RFC-3676 Signatur-Trenner)
+  text = text.replace(/\n+\s*--\s*\n[\s\S]*$/m, '');
+  // Mehrfache Leerzeilen auf max. 1 reduzieren
+  text = text.replace(/\n{3,}/g, '\n\n');
+  // Trailing/leading whitespace
+  return text.trim();
+}
+
+// V12.228: Anhänge — pro Email-ID eine Liste von { filename, contentType, contentBase64, size }
+window._eiChatAttachments = window._eiChatAttachments || {};
+function onChatFilePick(emailId, files) {
+  if (!files || !files.length) return;
+  window._eiChatAttachments[emailId] = window._eiChatAttachments[emailId] || [];
+  const MAX_MB = 8;
+  for (const f of files) {
+    if (f.size > MAX_MB * 1024 * 1024) {
+      showToast('⚠ ' + f.name + ' zu groß (max. ' + MAX_MB + ' MB)', 'warning', 5000);
+      continue;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = String(e.target.result || '');
+      const b64 = dataUrl.split(',')[1] || '';
+      window._eiChatAttachments[emailId].push({
+        filename:      f.name,
+        contentType:   f.type || 'application/octet-stream',
+        contentBase64: b64,
+        size:          f.size,
+      });
+      _eiRenderChatAttachList(emailId);
+    };
+    reader.onerror = () => showToast('Fehler beim Lesen: ' + f.name, 'error', 4000);
+    reader.readAsDataURL(f);
+  }
+  // Input resetten, damit dieselbe Datei nochmal hinzugefügt werden kann
+  const inp = document.getElementById('chatAttach_' + emailId);
+  if (inp) inp.value = '';
+}
+function _eiRenderChatAttachList(emailId) {
+  const el = document.getElementById('chatAttachList_' + emailId);
+  if (!el) return;
+  const atts = window._eiChatAttachments[emailId] || [];
+  if (!atts.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = atts.map((a, i) => {
+    const kb = Math.round(a.size / 1024);
+    return `<span style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 9px;font-size:11px;color:#475569;display:inline-flex;align-items:center;gap:6px">
+      📎 ${_esc(a.filename)} <span style="color:#94a3b8;font-size:10px">${kb} KB</span>
+      <button onclick="_eiRemoveChatAttach('${emailId}',${i})" style="background:transparent;border:none;color:#a8312f;cursor:pointer;font-size:13px;line-height:1;padding:0 2px" title="Entfernen">✕</button>
+    </span>`;
+  }).join('');
+}
+function _eiRemoveChatAttach(emailId, idx) {
+  if (window._eiChatAttachments[emailId]) {
+    window._eiChatAttachments[emailId].splice(idx, 1);
+    _eiRenderChatAttachList(emailId);
+  }
+}
+
+// V12.228: Prüft ob eine Email eingehende Chat-Antworten hat (für Hauptlisten-Indikator).
+function _eiHasChatReply(r) {
+  if (!r || !r._id) return false;
+  const items = (window._eiWnChatCache && window._eiWnChatCache[r._id]) || [];
+  return items.some(it => String(it.direction || '') === 'in' || it._synthetic);
+}
+
 async function loadWartungsnehmerChat(emailId) {
   if (!emailId) return [];
   try {
@@ -27011,16 +27098,24 @@ async function sendWartungsnehmerMessage(emailId) {
   const prev = (window._eiWnChatCache[emailId] || []).slice().reverse().find(x => String(x.message_id || '').trim());
   const inReplyTo = prev ? prev.message_id : '';
   try {
+    // V12.228: Anhänge mitschicken
+    const sendPayload = {
+      to:        toAddr,
+      subject:   subjectSafe,
+      text:      finalBody,
+      replyTo:   'check@liftaro.de',
+      inReplyTo: inReplyTo || undefined,
+    };
+    const pendingAttsWn = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
+    if (pendingAttsWn.length) {
+      sendPayload.attachments = pendingAttsWn.map(a => ({
+        filename: a.filename, contentType: a.contentType, contentBase64: a.contentBase64
+      }));
+    }
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
-      body: JSON.stringify({
-        to:        toAddr,
-        subject:   subjectSafe,
-        text:      finalBody,
-        replyTo:   'check@liftaro.de',
-        inReplyTo: inReplyTo || undefined,
-      }),
+      body: JSON.stringify(sendPayload),
     });
     if (!resp.ok) {
       let txt = ''; try { txt = await resp.text(); } catch (_) {}
@@ -27060,7 +27155,10 @@ async function sendWartungsnehmerMessage(emailId) {
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
     if (ta) ta.value = '';
-    showToast('✓ Nachricht an ' + (wn.ansprechperson || wn.firma || toAddr) + ' gesendet', 'success', 3200);
+    // V12.228: Anhänge nach erfolgreichem Send leeren
+    if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
+    const attCountWn = pendingAttsWn.length;
+    showToast('✓ Nachricht an ' + (wn.ansprechperson || wn.firma || toAddr) + ' gesendet' + (attCountWn ? ' (' + attCountWn + ' Anhang' + (attCountWn === 1 ? '' : 'änge') + ')' : ''), 'success', 3200);
     // V12.227: Sofortiger lokaler Cache-Push — UI updated direkt, vermeidet Race condition mit Airtable-Eventual-Consistency
     if (writeOk) {
       window._eiWnChatCache = window._eiWnChatCache || {};
@@ -27189,12 +27287,26 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           const accDeep = itPartnerTyp === 'wartungsnehmer' ? '#5b21b6' : '#0e7490';
           const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
           const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || cls.ansprechperson || partnerLabel);
-          const bodyText = String(it.body || '').trim() || '(leere Nachricht)';
+          // V12.228: Body bereinigen + Anhang-Chips für eingehende
+          const rawBody = String(it.body || '');
+          const cleanBody = isOut ? rawBody : _eiCleanChatBody(rawBody);
+          const bodyText = (cleanBody || rawBody).trim() || '(leere Nachricht)';
+          const showOriginal = !isOut && cleanBody && cleanBody !== rawBody.trim();
+          let attsHtml = '';
+          if (it._synthetic && it._source_email_id) {
+            const src = (_eiAllRecords || []).find(x => x._id === it._source_email_id);
+            const atts = src && Array.isArray(src.attachments) ? src.attachments : [];
+            if (atts.length) {
+              attsHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">'
+                + atts.map(a => `<a href="${_esc(a.url || '#')}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11px;color:#475569;text-decoration:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer">📎 ${_esc(a.filename || a.name || 'Anhang')}</a>`).join('')
+                + '</div>';
+            }
+          }
           return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
             <div style="max-width:75%">
               <div style="font-size:10px;color:${acc};font-weight:700;margin-bottom:2px;padding:0 8px;text-transform:uppercase;letter-spacing:.04em;${isOut ? 'text-align:right' : ''}">${itPartnerTyp === 'wartungsnehmer' ? '🔧' : '🛠'} ${_esc(partnerLabel)}</div>
               <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)}${when ? ' · ' + _esc(when) : ''}</div>
-              <div style="background:${isOut ? 'linear-gradient(135deg,' + acc + ',' + accDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(bodyText)}</div>
+              <div style="background:${isOut ? 'linear-gradient(135deg,' + acc + ',' + accDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(bodyText)}${attsHtml}${showOriginal ? '<details style="margin-top:6px"><summary style="font-size:10.5px;color:#94a3b8;cursor:pointer">Vollen Text mit Zitat anzeigen</summary><div style="margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#64748b;white-space:pre-wrap">' + _esc(rawBody) + '</div></details>' : ''}</div>
             </div>
           </div>`;
         }).join('')
@@ -27270,10 +27382,25 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         const isOut = String(it.direction || 'out') === 'out';
         const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
         const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || partner.ansprechperson || 'Antwort');
+        // V12.228: Eingehende Bodys bereinigen (quoted reply / Signaturen entfernen)
+        const rawBody = String(it.body || '');
+        const cleanBody = isOut ? rawBody : _eiCleanChatBody(rawBody);
+        const showOriginal = !isOut && cleanBody && cleanBody !== rawBody.trim();
+        // V12.228: Anhänge bei eingehenden synthetic items aus Source-Email holen
+        let attsHtml = '';
+        if (it._synthetic && it._source_email_id) {
+          const src = (_eiAllRecords || []).find(x => x._id === it._source_email_id);
+          const atts = src && Array.isArray(src.attachments) ? src.attachments : [];
+          if (atts.length) {
+            attsHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">'
+              + atts.map(a => `<a href="${_esc(a.url || '#')}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11px;color:#475569;text-decoration:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer">📎 ${_esc(a.filename || a.name || 'Anhang')}</a>`).join('')
+              + '</div>';
+          }
+        }
         return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
           <div style="max-width:75%">
             <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)} · ${_esc(when)}</div>
-            <div style="background:${isOut ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(String(it.body || ''))}</div>
+            <div style="background:${isOut ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(cleanBody || rawBody || '(leer)')}${attsHtml}${showOriginal ? '<details style="margin-top:6px"><summary style="font-size:10.5px;color:#94a3b8;cursor:pointer">Vollen Text mit Zitat anzeigen</summary><div style="margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#64748b;white-space:pre-wrap">' + _esc(rawBody) + '</div></details>' : ''}</div>
           </div>
         </div>`;
       }).join('')
@@ -27288,13 +27415,26 @@ function _eiRenderWartungsnehmerSection(r, wn) {
       })();
 
   const canSend = !!partner.email && !!(APP_KEYS && APP_KEYS.emailSenderUrl && APP_KEYS.emailSenderSecret);
+  // V12.228: Anhang-Liste pre-rendern (falls schon Dateien gewählt sind)
+  const pendingAtts = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
+  const attListInitial = pendingAtts.map((a, i) => {
+    const kb = Math.round(a.size / 1024);
+    return `<span style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 9px;font-size:11px;color:#475569;display:inline-flex;align-items:center;gap:6px">📎 ${_esc(a.filename)} <span style="color:#94a3b8;font-size:10px">${kb} KB</span><button onclick="_eiRemoveChatAttach('${emailId}',${i})" style="background:transparent;border:none;color:#a8312f;cursor:pointer;font-size:13px;line-height:1;padding:0 2px" title="Entfernen">✕</button></span>`;
+  }).join('');
   const composer = `
-    <div style="margin-top:10px;background:#fff;border:1px solid ${accentLight};border-radius:10px;padding:8px;display:flex;gap:8px;align-items:flex-end">
-      <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Kein Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
-      <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        Senden
-      </button>
+    <div style="margin-top:10px;background:#fff;border:1px solid ${accentLight};border-radius:10px;padding:8px">
+      <div id="chatAttachList_${emailId}" style="display:${pendingAtts.length ? 'flex' : 'none'};flex-wrap:wrap;gap:6px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #f1f5f9">${attListInitial}</div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <input type="file" id="chatAttach_${emailId}" multiple style="display:none" onchange="onChatFilePick('${emailId}',this.files)">
+        <button onclick="document.getElementById('chatAttach_${emailId}').click()" title="Anhang hinzufügen (max. 8 MB)" ${canSend ? '' : 'disabled'} style="background:transparent;border:1px solid #cbd5e1;color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
+        <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;align-self:flex-end">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Senden
+        </button>
+      </div>
     </div>`;
 
   return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid ${accent};background:${headerBg};border-radius:0 8px 8px 0">
@@ -27369,14 +27509,22 @@ async function sendServicebetriebMessage(emailId, sbId) {
   const prev = sameSb.slice().reverse().find(x => String(x.message_id || '').trim());
   const inReplyTo = prev ? prev.message_id : '';
   try {
+    // V12.228: Anhänge aus dem Composer mitschicken
+    const sendPayload = {
+      to: toAddr, subject: subjectSafe, text: finalBody,
+      replyTo: 'check@liftaro.de',
+      inReplyTo: inReplyTo || undefined,
+    };
+    const pendingAtts = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
+    if (pendingAtts.length) {
+      sendPayload.attachments = pendingAtts.map(a => ({
+        filename: a.filename, contentType: a.contentType, contentBase64: a.contentBase64
+      }));
+    }
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
-      body: JSON.stringify({
-        to: toAddr, subject: subjectSafe, text: finalBody,
-        replyTo: 'check@liftaro.de',
-        inReplyTo: inReplyTo || undefined,
-      }),
+      body: JSON.stringify(sendPayload),
     });
     if (!resp.ok) {
       let txt = ''; try { txt = await resp.text(); } catch (_) {}
@@ -27414,7 +27562,10 @@ async function sendServicebetriebMessage(emailId, sbId) {
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
     if (ta) ta.value = '';
-    showToast('✓ Nachricht an ' + (sb.ansprechperson || sb.firma || toAddr) + ' gesendet', 'success', 3200);
+    // V12.228: Anhänge nach erfolgreichem Send leeren
+    if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
+    const attCount = pendingAtts.length;
+    showToast('✓ Nachricht an ' + (sb.ansprechperson || sb.firma || toAddr) + ' gesendet' + (attCount ? ' (' + attCount + ' Anhang' + (attCount === 1 ? '' : 'änge') + ')' : ''), 'success', 3200);
     // V12.227: Sofortiger lokaler Cache-Push — UI updated direkt, vermeidet Race condition mit Airtable-Eventual-Consistency
     if (writeOk) {
       window._eiWnChatCache = window._eiWnChatCache || {};
