@@ -6166,7 +6166,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.235';
+const APP_VERSION = 'V12.236';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7316,6 +7316,9 @@ async function setupTables() {
       // damit sie eindeutig der richtigen Email zugeordnet werden kann (verhindert dass Aszendio-Antworten
       // in ALLEN Emails auftauchen, in denen Aszendio Chat-Partner ist).
       { name: 'chat_email_id',           type: 'singleLineText' },
+      // V12.236: Timestamp ab dem alle Chat-Antworten als gesehen markiert sind — Antworten DAVOR
+      // zählen nicht mehr als "neu" für Listen-Pille und Sidebar-Filter
+      { name: 'chat_replies_seen_at',    type: 'singleLineText' },
       // V12.211: Wartungsnehmer denormalisiert aus dem zugeordneten Aufzug — für Anzeige & Chat
       { name: 'wartungsnehmer_id',             type: 'singleLineText' },
       { name: 'wartungsnehmer_firma',          type: 'singleLineText' },
@@ -26886,6 +26889,24 @@ function _eiRemoveChatAttach(emailId, idx) {
   }
 }
 
+// V12.236: Chat-Antworten als gelesen markieren (Timestamp). Pille verschwindet, Sidebar-Counter sinkt.
+async function markChatRepliesAsSeen(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const now = new Date().toISOString();
+  try {
+    await atUpdate('Emails', emailId, { chat_replies_seen_at: now });
+    r.chat_replies_seen_at = now;
+    if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
+    showToast('✓ Chat-Antworten als gelesen markiert', 'success', 2200);
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof _eiUpdateSidebarCounts === 'function') _eiUpdateSidebarCounts();
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+
 // V12.228/235: Prüft ob eine Email eingehende Chat-Antworten hat (für Hauptlisten-Indikator).
 // V12.235: Funktioniert auch OHNE dass die Email geöffnet wurde — leitet die Chat-Partner-Emails
 // aus Aufzug/WN, outgoing-Records mit chat_email_id und started-Tabs ab.
@@ -26925,11 +26946,18 @@ function _eiHasChatReply(r) {
       if (se) partnerEmails.add(se);
     }
     if (partnerEmails.size === 0) return false;
-    // (3) Check ob eingehende Email von einem dieser Partner existiert
+    // V12.236: "Gesehen"-Timestamp — Antworten DAVOR zählen nicht mehr als neu
+    const seenAt = String(r.chat_replies_seen_at || '').trim();
+    // (3) Check ob eingehende Email von einem dieser Partner existiert UND nach seenAt empfangen
     for (const e of all) {
       if (!e || e._id === emailId || e.direction === 'outgoing') continue;
       const fromE = String(e.from_email || '').toLowerCase().trim();
-      if (partnerEmails.has(fromE)) return true;
+      if (!partnerEmails.has(fromE)) continue;
+      if (seenAt) {
+        const recvAt = String(e.received_at || e.created_at || '');
+        if (recvAt && recvAt <= seenAt) continue;
+      }
+      return true;
     }
     return false;
   };
@@ -27575,12 +27603,17 @@ function _eiRenderWartungsnehmerSection(r, wn) {
       </div>
     </div>`;
 
+  // V12.236: "Als gelesen markieren"-Button anzeigen wenn ungelesene Chat-Antworten existieren
+  const _hasUnseenChatReply = (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
   return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid ${accent};background:${headerBg};border-radius:0 8px 8px 0">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
       <div>
         <div style="font-size:11px;font-weight:700;color:${accentDeep};text-transform:uppercase;letter-spacing:.05em">💬 Chats — getrennte Threads pro Partner</div>
       </div>
-      <button onclick="loadWartungsnehmerChat('${emailId}').then(()=>renderEmailInboxDetail())" title="Chats aktualisieren" style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Aktualisieren</button>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${_hasUnseenChatReply ? `<button onclick="markChatRepliesAsSeen('${emailId}')" title="Markiert alle Chat-Antworten als gelesen — Pille in der Übersicht verschwindet" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px">✓ Gelesen, nichts weiter</button>` : ''}
+        <button onclick="loadWartungsnehmerChat('${emailId}').then(()=>renderEmailInboxDetail())" title="Chats aktualisieren" style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Aktualisieren</button>
+      </div>
     </div>
     ${tabsHtml}
     ${partnerHead}
