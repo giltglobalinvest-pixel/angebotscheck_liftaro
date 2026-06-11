@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.229';
+const APP_VERSION = 'V12.230';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26955,49 +26955,60 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
   }
   if (partnerByEmail.size === 0) return [];
 
-  // Zeitstempel des ersten outgoing Chat-Items (Threshold)
-  let firstOutAt = '';
+  // V12.230: Dedup-Set — bereits in existingItems vorhandene message_ids (echte Chat-Records)
+  const existingMsgIds = new Set();
   for (const it of existingItems) {
-    if (String(it.direction || '') === 'out') {
-      const t = String(it.created_at || '');
-      if (t && (!firstOutAt || t < firstOutAt)) firstOutAt = t;
-    }
+    const mid = String(it.message_id || '').trim();
+    if (mid) existingMsgIds.add(mid);
+  }
+  // V12.230: Auch existing Subject+to-Kombi merken — als zusätzlicher Dedup-Key, falls message_id leer
+  const existingFingerprints = new Set();
+  for (const it of existingItems) {
+    const fp = String(it.direction || '') + '|' + String(it.subject || '').slice(0, 80).toLowerCase().trim() + '|' + String(it.to_email || '').toLowerCase().trim() + '|' + String(it.created_at || '').slice(0, 16);
+    if (fp.length > 4) existingFingerprints.add(fp);
   }
 
-  // Im Posteingang nach Antworten suchen
+  // Im Posteingang nach Antworten UND ausgehenden Chat-Nachrichten suchen
   const synthetic = [];
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
   for (const e of all) {
-    if (!e || e._id === emailId || e.direction === 'outgoing') continue;
-    const fromE = String(e.from_email || '').trim().toLowerCase();
-    if (!fromE) continue;
-    const partner = partnerByEmail.get(fromE);
+    if (!e || e._id === emailId) continue;
+    // V12.230: Outgoing-Match (selbst gesendete Chat-Nachricht) UND incoming-Match (Antwort)
+    const isOut = e.direction === 'outgoing';
+    const matchEmail = isOut
+      ? String(e.to_email   || '').trim().toLowerCase()
+      : String(e.from_email || '').trim().toLowerCase();
+    if (!matchEmail) continue;
+    const partner = partnerByEmail.get(matchEmail);
     if (!partner) continue;
-    // Zeit-Filter: Email muss NACH der ersten outgoing Chat-Nachricht empfangen worden sein
-    // (Ausnahme: kein firstOutAt vorhanden — dann ALLE Emails dieses Partners zeigen)
-    const receivedAt = String(e.received_at || e.created_at || '');
-    if (firstOutAt && receivedAt && receivedAt < firstOutAt) continue;
-    // Body extrahieren — kurze Vorschau für Bubble
+    // Dedup gegen existing Chat-Records
+    const msgId = String(e.message_id || '').trim();
+    if (msgId && existingMsgIds.has(msgId)) continue;
+    const when = String(e.received_at || e.sent_at || e.created_at || '');
+    const fp = (isOut ? 'out' : 'in') + '|' + String(e.subject || '').slice(0, 80).toLowerCase().trim() + '|' + String(e.to_email || '').toLowerCase().trim() + '|' + when.slice(0, 16);
+    if (existingFingerprints.has(fp)) continue;
+    // Body
     const body = String(e.body_text || e.body_preview || e.body || '');
     synthetic.push({
       id:                           'synthetic_' + e._id,
       email_id:                     emailId,
-      direction:                    'in',
+      direction:                    isOut ? 'out' : 'in',
       from_email:                   e.from_email,
       from_name:                    e.from_name,
       to_email:                     e.to_email,
       subject:                      e.subject || e.ai_subject || '',
       body:                         body.length > 4000 ? body.slice(0, 4000) + '\n…' : body,
-      created_at:                   receivedAt,
-      message_id:                   e.message_id || '',
+      created_at:                   when,
+      message_id:                   msgId,
       in_reply_to:                  e.in_reply_to || '',
       partner_typ:                  partner.partner_typ,
       servicebetrieb_id:            partner.servicebetrieb_id || '',
       wartungsnehmer_id:            partner.wartungsnehmer_id || '',
       chat_partner_firma:           partner.chat_partner_firma,
       chat_partner_ansprechperson:  partner.chat_partner_ansprechperson,
-      chat_partner_email:           fromE,
+      chat_partner_email:           isOut ? String(e.to_email || '').toLowerCase() : matchEmail,
       chat_partner_telefon:         partner.chat_partner_telefon,
+      bearbeiter_name:              isOut ? (e.bearbeiter_name || 'Du') : '',
       _synthetic:                   true,
       _source_email_id:             e._id,
     });
@@ -27154,6 +27165,19 @@ async function sendWartungsnehmerMessage(emailId) {
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
+    // V12.230: Zusätzlich als outgoing Emails-Record sichern (Persistenz-Backup falls WartungsnehmerChat fehlschlägt)
+    try {
+      await atWrite('Emails', {
+        direction:        'outgoing',
+        from_email:       'check@liftaro.de',
+        to_email:         toAddr,
+        subject:          subject,
+        body:             finalBody,
+        sent_at:          sentAt,
+        in_reply_to:      inReplyTo || '',
+        bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      });
+    } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
     if (ta) ta.value = '';
     // V12.228: Anhänge nach erfolgreichem Send leeren
     if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
@@ -27561,6 +27585,19 @@ async function sendServicebetriebMessage(emailId, sbId) {
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
+    // V12.230: Zusätzlich als outgoing Emails-Record sichern (Persistenz-Backup falls WartungsnehmerChat fehlschlägt)
+    try {
+      await atWrite('Emails', {
+        direction:        'outgoing',
+        from_email:       'check@liftaro.de',
+        to_email:         toAddr,
+        subject:          subject,
+        body:             finalBody,
+        sent_at:          sentAt,
+        in_reply_to:      inReplyTo || '',
+        bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      });
+    } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
     if (ta) ta.value = '';
     // V12.228: Anhänge nach erfolgreichem Send leeren
     if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
