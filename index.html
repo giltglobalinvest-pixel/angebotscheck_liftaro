@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.252';
+const APP_VERSION = 'V12.253';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7584,6 +7584,8 @@ async function setupTables() {
       { name: 'wartungsnehmer_ansprechperson', type: 'singleLineText' },
       { name: 'wartungsnehmer_email',          type: 'singleLineText' },
       { name: 'wartungsnehmer_telefon',        type: 'singleLineText' },
+      // V12.253: KI-neutralisierte Anhänge — separat vom Original, für Versand an Servicebetriebe
+      { name: 'neutralized_attachments',       type: 'multipleAttachments' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
@@ -9169,6 +9171,190 @@ async function deleteVollmachtConfirm(recordId, name) {
   }
 }
 
+// V12.253: KI-Neutralisierung eines Email-Anhangs.
+// Workflow:
+//   1. PDF via fetch → ArrayBuffer
+//   2. Text via pdfjs extrahieren
+//   3. Claude erhält Text + Auftrag → liefert JSON { title, sections[], notes }
+//   4. pdf-lib generiert daraus ein neues PDF (Liftaro-Layout)
+//   5. uploadAirtableAttachment → Feld `neutralized_attachments` der Email
+//   6. Email-Record lokal aktualisieren + Detail neu rendern
+async function neutralizeEmailAttachment(emailId, attIdx) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden', 'warning', 3000); return; }
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic API-Key fehlt — Einstellungen prüfen', 'error', 4000); return; }
+  const atts = Array.isArray(r.attachments) ? r.attachments : [];
+  const a = atts[attIdx];
+  if (!a) { showToast('Anhang nicht gefunden', 'warning', 3000); return; }
+  const isPdf = /\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf';
+  if (!isPdf) { showToast('Nur PDF-Anhänge können neutralisiert werden', 'info', 3500); return; }
+
+  const btn = document.getElementById('neutralizeBtn_' + attIdx);
+  const setBtn = (txt, dis) => {
+    if (!btn) return;
+    btn.disabled = !!dis;
+    btn.textContent = txt;
+    btn.style.opacity = dis ? '.7' : '1';
+  };
+  try {
+    setBtn('1/4 PDF laden …', true);
+    const resp = await fetch(a.url);
+    if (!resp.ok) throw new Error('PDF-Download HTTP ' + resp.status);
+    const arrayBuffer = await resp.arrayBuffer();
+
+    // 2. Text extrahieren — wir nutzen pdfjs direkt (NICHT das vorhandene extractTextFromPDF,
+    // das ein File-Objekt erwartet)
+    setBtn('2/4 Text extrahieren …', true);
+    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+    let fullText = '';
+    const maxPages = Math.min(pdfDoc.numPages, 12);
+    for (let p = 1; p <= maxPages; p++) {
+      const page = await pdfDoc.getPage(p);
+      const tc = await page.getTextContent();
+      const pageText = (tc.items || []).map(it => it.str).join(' ');
+      fullText += '\n\n--- Seite ' + p + ' ---\n' + pageText;
+    }
+    if (!fullText.trim()) throw new Error('PDF enthält keinen extrahierbaren Text');
+
+    // 3. Claude bittet um Neutralisierung als strukturiertes JSON
+    setBtn('3/4 KI neutralisiert …', true);
+    const systemPrompt = 'Du bist ein Assistent, der Geschäfts-Dokumente (z.B. Wartungsverträge, Angebote, Rechnungen) für den weiteren Versand an Dritte ANONYMISIERT. Du musst ALLE folgenden Informationen entfernen oder durch Platzhalter ersetzen:\n' +
+      '- Firmennamen → "[FIRMA]"\n' +
+      '- Personennamen → "[NAME]"\n' +
+      '- Adressen (Straßen, Orte, PLZ wenn firmenspezifisch) → "[ADRESSE]"\n' +
+      '- Telefon, Fax, Email → "[KONTAKT]"\n' +
+      '- ALLE Preise, Beträge, Summen, Stundensätze → "[BETRAG]"\n' +
+      '- Steuernummern, USt-IdNr, Handelsregister → "[ID]"\n' +
+      '- Logos (sind in der grafischen Darstellung, du erwähnst sie nicht im Text)\n' +
+      '- Kundennummern, Vertragsnummern → "[NR]"\n' +
+      '- Bankverbindungen (IBAN, BIC) → "[BANK]"\n' +
+      'BEHALTEN: Sachlicher Inhalt (Leistungsbeschreibung, Vertragsbedingungen, technische Daten, Anlagen-Standort soweit nicht eindeutig identifizierbar), Datum (sofern nicht firmenspezifisch), allgemeine Klauseln.\n' +
+      'Antworte AUSSCHLIESSLICH mit gültigem JSON in folgendem Schema:\n' +
+      '{ "title": "Knappe neutrale Überschrift", "sections": [ { "heading": "...", "content": "..." } ], "notes": "Optionaler Hinweis" }';
+    const userMsg = 'Hier ist der extrahierte Text des Original-Dokuments. Neutralisiere ihn streng nach den Vorgaben:\n\n```\n' + fullText.slice(0, 30000) + '\n```';
+    const raw = await callClaude([{ role: 'user', content: userMsg }], systemPrompt);
+
+    // JSON aus der Antwort extrahieren (Claude wraps gelegentlich in Markdown-Codeblöcken)
+    let parsed;
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(raw);
+    } catch (e) {
+      throw new Error('KI-Antwort konnte nicht geparst werden: ' + e.message);
+    }
+    const title = String(parsed.title || 'Neutralisiertes Dokument');
+    const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
+    const notes = String(parsed.notes || '');
+
+    // 4. PDF mit pdf-lib bauen — A4, einfaches Layout
+    setBtn('4/4 PDF erzeugen …', true);
+    const { PDFDocument: PDFDoc, StandardFonts, rgb } = window.PDFLib || {};
+    const outDoc = await (window.PDFLib ? PDFLib.PDFDocument.create() : PDFDocument.create());
+    const helv = await outDoc.embedFont((window.PDFLib ? PDFLib.StandardFonts : StandardFonts).Helvetica);
+    const helvBold = await outDoc.embedFont((window.PDFLib ? PDFLib.StandardFonts : StandardFonts).HelveticaBold);
+    const A4 = [595.28, 841.89];
+    const MARGIN = 56;
+    const LINE_H = 14;
+    const PAGE_W = A4[0];
+    const PAGE_H = A4[1];
+    let page = outDoc.addPage(A4);
+    let y = PAGE_H - MARGIN;
+    const newPage = () => { page = outDoc.addPage(A4); y = PAGE_H - MARGIN; };
+    const ensureSpace = (needed) => { if (y - needed < MARGIN) newPage(); };
+    const drawText = (txt, opts) => {
+      const o = opts || {};
+      const font = o.bold ? helvBold : helv;
+      const size = o.size || 11;
+      const maxW = PAGE_W - 2 * MARGIN;
+      // Word-Wrap
+      const words = String(txt).split(/\s+/);
+      let line = '';
+      for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        const widthPt = font.widthOfTextAtSize(test, size);
+        if (widthPt > maxW && line) {
+          ensureSpace(LINE_H);
+          page.drawText(line, { x: MARGIN, y, size, font, color: o.color || rgb(0.06, 0.09, 0.16) });
+          y -= LINE_H;
+          line = w;
+        } else {
+          line = test;
+        }
+      }
+      if (line) {
+        ensureSpace(LINE_H);
+        page.drawText(line, { x: MARGIN, y, size, font, color: o.color || rgb(0.06, 0.09, 0.16) });
+        y -= LINE_H;
+      }
+    };
+    // Header
+    page.drawRectangle({ x: 0, y: PAGE_H - 32, width: PAGE_W, height: 32, color: rgb(0.10, 0.23, 0.36) });
+    page.drawText('NEUTRALISIERTES DOKUMENT', { x: MARGIN, y: PAGE_H - 22, size: 11, font: helvBold, color: rgb(1, 1, 1) });
+    page.drawText('via Liftaro KI', { x: PAGE_W - MARGIN - 80, y: PAGE_H - 22, size: 9, font: helv, color: rgb(0.85, 0.92, 1) });
+    y = PAGE_H - 32 - 28;
+    // Titel
+    drawText(title, { bold: true, size: 18 });
+    y -= 6;
+    // Hinweis-Block
+    drawText('Dieses Dokument wurde automatisch anonymisiert: Firmennamen, Preise, Kontaktdaten und ID-Nummern wurden entfernt.', { size: 9.5, color: rgb(0.45, 0.50, 0.59) });
+    y -= 10;
+    // Sections
+    for (const s of sections) {
+      y -= 6;
+      ensureSpace(40);
+      drawText(String(s.heading || ''), { bold: true, size: 13, color: rgb(0.10, 0.23, 0.36) });
+      y -= 3;
+      const content = String(s.content || '');
+      // Absätze
+      for (const para of content.split(/\n\s*\n/)) {
+        const t = para.trim();
+        if (!t) continue;
+        drawText(t, { size: 11 });
+        y -= 6;
+      }
+    }
+    if (notes) {
+      y -= 10;
+      ensureSpace(30);
+      drawText('Hinweis', { bold: true, size: 11, color: rgb(0.45, 0.50, 0.59) });
+      drawText(notes, { size: 10, color: rgb(0.30, 0.36, 0.46) });
+    }
+    // Footer auf jeder Seite — Quelle
+    const pages = outDoc.getPages();
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
+      p.drawText('Quelle: ' + String(a.filename || 'Anhang') + ' (anonymisiert) · Seite ' + (i + 1) + ' / ' + pages.length, {
+        x: MARGIN, y: 28, size: 8, font: helv, color: rgb(0.58, 0.64, 0.71),
+      });
+    }
+    const pdfBytes = await outDoc.save();
+
+    // 5. Upload zu Airtable
+    setBtn('Hochladen …', true);
+    const outName = (String(a.filename || 'Anhang').replace(/\.pdf$/i, '') || 'Anhang') + '_neutral.pdf';
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const file = new File([blob], outName, { type: 'application/pdf' });
+    await uploadAirtableAttachment('Emails', emailId, 'neutralized_attachments', file);
+
+    // 6. Lokale Email-Daten aktualisieren (frischer atRead vom Record)
+    try {
+      const recs = await atRead('Emails', "RECORD_ID()='" + emailId + "'", { sort: false });
+      if (recs.length) {
+        const fresh = { _id: recs[0].id, ...recs[0].fields };
+        const idx = _eiAllRecords.findIndex(x => x._id === emailId);
+        if (idx >= 0) _eiAllRecords[idx] = fresh;
+      }
+    } catch (_) {}
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    showToast('✓ „' + outName + '" wurde KI-neutralisiert und an die Email angehängt', 'success', 4500);
+  } catch (e) {
+    console.error('[neutralizeEmailAttachment]', e);
+    showToast('Neutralisierung fehlgeschlagen: ' + e.message, 'error', 6000);
+    setBtn('🕶 Neutralisieren', false);
+  }
+}
+window.neutralizeEmailAttachment = neutralizeEmailAttachment;
+
 // V12.252: Email-Anhänge an den Chat-Composer übergeben.
 // Workflow:
 //   - Picker zeigt alle r.attachments der aktuellen Email mit Checkboxen
@@ -9177,7 +9363,13 @@ async function deleteVollmachtConfirm(recordId, name) {
 async function attachEmailFilesToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) { showToast('Email nicht gefunden — bitte Seite neu laden', 'warning', 3500); return; }
-  const atts = Array.isArray(r.attachments) ? r.attachments : [];
+  // V12.253: Original + neutralisierte Anhänge zusammen anbieten (mit Markierung)
+  const origAtts = Array.isArray(r.attachments) ? r.attachments : [];
+  const neutAtts = Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [];
+  const atts = [
+    ...origAtts.map(a => ({ ...a, _kind: 'orig' })),
+    ...neutAtts.map(a => ({ ...a, _kind: 'neut' })),
+  ];
   if (!atts.length) {
     showToast('Diese Email hat keine Anhänge', 'info', 3000);
     return;
@@ -9241,15 +9433,33 @@ function _pickEmailAttachmentsForChat(atts, emailId) {
       const isPdf = /\.pdf$/i.test(fn) || a.type === 'application/pdf';
       const isImg = /\.(png|jpe?g|gif|webp|svg)$/i.test(fn) || (a.type || '').startsWith('image/');
       const icon = isPdf ? '📄' : (isImg ? '🖼' : '📎');
-      return `<label style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:#fff;transition:background .12s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
-        <input type="checkbox" class="_eaf_item" data-idx="${i}" checked style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#2456E5">
+      // V12.253: neutralisierte Anhänge visuell deutlich abheben
+      const isNeut = a._kind === 'neut';
+      const rowBg  = isNeut ? '#f0fdf4' : '#fff';
+      const hovBg  = isNeut ? '#dcfce7' : '#f8fafc';
+      return `<label style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:${rowBg};transition:background .12s" onmouseover="this.style.background='${hovBg}'" onmouseout="this.style.background='${rowBg}'">
+        <input type="checkbox" class="_eaf_item" data-idx="${i}" ${isNeut ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#2456E5">
         <span style="font-size:18px;flex-shrink:0">${icon}</span>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:#0f172a;word-break:break-word;line-height:1.3">${_esc(fn)}</div>
+          <div style="font-size:13px;font-weight:600;color:#0f172a;word-break:break-word;line-height:1.3;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+            ${_esc(fn)}
+            ${isNeut ? '<span style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;letter-spacing:.3px">🕶 NEUTRALISIERT</span>' : ''}
+          </div>
           ${sz ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;font-family:var(--dr-f-mono)">${sz}</div>` : ''}
         </div>
       </label>`;
     }).join('');
+    // V12.253: Per Default bei vorhandenen neutralisierten Anhängen nur diese vorauswählen,
+    // damit der User nicht versehentlich das Original mit Preisen verschickt.
+    const hasNeut = atts.some(a => a._kind === 'neut');
+    if (!hasNeut) {
+      // keine neutralen — alle vorauswählen wie bisher
+      setTimeout(() => {
+        const all = document.querySelectorAll('#_eafList ._eaf_item');
+        all.forEach(c => { c.checked = true; });
+        const allCb = document.getElementById('_eafAll'); if (allCb) allCb.checked = true;
+      }, 0);
+    }
     m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(540px,96vw);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
       <div style="background:#2456E5;color:#fff;padding:13px 20px;display:flex;justify-content:space-between;align-items:center">
         <div>
@@ -28927,12 +29137,20 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         <button onclick="document.getElementById('chatAttach_${emailId}').click()" title="Anhang hinzufügen (max. 8 MB)" ${canSend ? '' : 'disabled'} style="background:transparent;border:1px solid #cbd5e1;color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
-        ${(Array.isArray(r.attachments) && r.attachments.length) ? `
-        <!-- V12.252: Email-Anhänge in den Chat übernehmen -->
-        <button onclick="attachEmailFilesToChat('${emailId}')" title="Anhänge aus dieser Email in den Chat übernehmen (${r.attachments.length})" ${canSend ? '' : 'disabled'} style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;position:relative">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="17" r="4" fill="#fff" stroke="${accentDeep}"/><line x1="18" y1="15" x2="18" y2="19" stroke="${accentDeep}"/><line x1="16" y1="17" x2="20" y2="17" stroke="${accentDeep}"/></svg>
-          <span style="position:absolute;top:-5px;right:-5px;background:${accent};color:#fff;font-size:9px;font-weight:700;border-radius:9px;padding:1px 5px;font-family:'DM Sans',sans-serif;min-width:14px;text-align:center">${r.attachments.length}</span>
-        </button>` : ''}
+        ${(() => {
+          // V12.252/253: Email-Anhänge-Button — Counter umfasst Original + neutralisierte Anhänge
+          const _o = (Array.isArray(r.attachments) ? r.attachments.length : 0);
+          const _n = (Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments.length : 0);
+          const _total = _o + _n;
+          if (!_total) return '';
+          const _tip = _n
+            ? 'Anhänge aus dieser Email in den Chat übernehmen — ' + _o + ' Original, ' + _n + ' neutralisiert (für Servicebetriebe empfohlen)'
+            : 'Anhänge aus dieser Email in den Chat übernehmen (' + _o + ')';
+          return `<button onclick="attachEmailFilesToChat('${emailId}')" title="${_tip}" ${canSend ? '' : 'disabled'} style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;position:relative">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="17" r="4" fill="#fff" stroke="${accentDeep}"/><line x1="18" y1="15" x2="18" y2="19" stroke="${accentDeep}"/><line x1="16" y1="17" x2="20" y2="17" stroke="${accentDeep}"/></svg>
+            <span style="position:absolute;top:-5px;right:-5px;background:${_n ? '#16a34a' : accent};color:#fff;font-size:9px;font-weight:700;border-radius:9px;padding:1px 5px;font-family:'DM Sans',sans-serif;min-width:14px;text-align:center">${_total}</span>
+          </button>`;
+        })()}
         <button onclick="openChatAiHelper('${emailId}')" title="✨ KI-Hilfe — Stichworte rein, formulierte Nachricht raus" ${canSend ? '' : 'disabled'} style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;gap:4px">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
         </button>
@@ -29637,20 +29855,45 @@ function renderEmailInboxDetail() {
   </div>`;
 
   // V12.187: Anhänge prominent direkt unter dem Body
+  // V12.253: pro PDF-Anhang ein "🕶 Neutralisieren"-Button
   if (Array.isArray(r.attachments) && r.attachments.length) {
     html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
       <div class="dr-section-head" style="margin-bottom:10px">
         <div class="dr-section-title">📎 Anhänge<span class="dr-section-title__count">${r.attachments.length}</span></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">`;
-    r.attachments.forEach(a => {
+    r.attachments.forEach((a, idx) => {
       const fname = a.filename || a.name || 'Anhang';
       const url = a.url || '';
       const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
-      html += `<a href="${_esc(url)}" target="_blank" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:var(--dr-ink);text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface-alt)';this.style.borderColor='var(--dr-border)'">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--dr-blue);flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      const isPdf = /\.pdf$/i.test(fname) || a.type === 'application/pdf';
+      html += `<div style="display:flex;align-items:center;gap:8px">
+        <a href="${_esc(url)}" target="_blank" style="flex:1;min-width:0;background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:var(--dr-ink);text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface-alt)';this.style.borderColor='var(--dr-border)'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--dr-blue);flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
+          ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
+        </a>
+        ${isPdf ? `<button id="neutralizeBtn_${idx}" onclick="neutralizeEmailAttachment('${r._id}',${idx})" title="PDF KI-anonymisieren (Preise, Firmennamen, Kontakte entfernen)" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🕶 Neutralisieren</button>` : ''}
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+  // V12.253: Neutralisierte Anhänge — separater Bereich nach den Originalen
+  if (Array.isArray(r.neutralized_attachments) && r.neutralized_attachments.length) {
+    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px;background:#f0fdf4;border:1px solid #86efac">
+      <div class="dr-section-head" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+        <div class="dr-section-title" style="color:#15803d">🕶 Neutralisierte Anhänge<span class="dr-section-title__count" style="background:#dcfce7;color:#166534">${r.neutralized_attachments.length}</span></div>
+        <span style="font-size:11px;color:#15803d;background:#dcfce7;border:1px solid #86efac;border-radius:999px;padding:2px 9px;font-weight:600">für Versand an Dritte</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">`;
+    r.neutralized_attachments.forEach(a => {
+      const fname = a.filename || a.name || 'Anhang';
+      const url = a.url || '';
+      const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
+      html += `<a href="${_esc(url)}" target="_blank" style="background:#fff;border:1px solid #86efac;border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:#0f172a;text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#fff'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#16a34a;flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
-        ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
+        ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:#16a34a;letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
       </a>`;
     });
     html += `</div></div>`;
