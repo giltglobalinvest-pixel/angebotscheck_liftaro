@@ -6170,7 +6170,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.239';
+const APP_VERSION = 'V12.240';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -8706,6 +8706,26 @@ function renderVollmachtenList(q) {
     </div>`;
   }).join('');
 }
+// V12.240: HV-Picker für Vollmacht-Editor — nutzt existierenden Pipedrive-Picker
+function openHvPickerForVollmacht() {
+  window._hvPickerTarget = 'vm';
+  const modal = document.getElementById('hvPickerCheckModal');
+  if (!modal) { showToast('HV-Picker nicht verfügbar', 'error', 3000); return; }
+  modal.style.display = 'flex';
+  const input = document.getElementById('hvPickerCheckSearchInput');
+  const status = document.getElementById('hvPickerCheckStatus');
+  const list = document.getElementById('hvPickerCheckList');
+  const cur = String((document.getElementById('vmEdit_hv_name') || {}).value || '').trim();
+  if (input) {
+    input.value = cur;
+    setTimeout(() => { input.focus(); input.select(); }, 80);
+  }
+  if (status) status.textContent = '';
+  if (list) list.innerHTML = '<div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:30px 18px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Tippe oben, um in Pipedrive zu suchen.</div>';
+  window._hvPickerCheckLastQ = '';
+  if (cur.length >= 3 && typeof _hvPickerCheckSearchDebounced === 'function') _hvPickerCheckSearchDebounced();
+}
+
 // Inline-Editor für Vollmacht
 async function openVollmachtEditor(orgId, hvName, recordId) {
   let data = { _recordId: recordId || '', id: '', pipedrive_org_id: orgId || '', hv_name: hvName || '', unterschrieben_am: '', notiz: '', vollmacht_pdf: [] };
@@ -8736,8 +8756,26 @@ async function openVollmachtEditor(orgId, hvName, recordId) {
       <button onclick="document.getElementById('vollmachtEditorModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
     </div>
     <div style="padding:18px 22px;overflow-y:auto;flex:1">
-      <div style="margin-bottom:12px">${lbl('Hausverwaltung *')}${inp('hv_name', data.hv_name, 'z. B. Hausverwaltung Müller GmbH')}</div>
-      <div style="margin-bottom:12px">${lbl('Pipedrive-Org-ID')}${inp('pipedrive_org_id', data.pipedrive_org_id, 'optional — für Auto-Match')}</div>
+      <div style="margin-bottom:14px">${lbl('Hausverwaltung * (aus Pipedrive)')}
+        ${data.hv_name && data.pipedrive_org_id ? `
+          <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <svg width="18" height="18" fill="none" stroke="#15803d" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+            <div style="flex:1;min-width:0">
+              <div id="vmEdit_hv_name_label" style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(data.hv_name)}</div>
+              <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:#64748b;margin-top:2px">Pipedrive-ID ${_esc(data.pipedrive_org_id)}</div>
+            </div>
+            <button onclick="openHvPickerForVollmacht()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Ändern</button>
+          </div>
+        ` : `
+          <div style="background:#fff7ed;border:1px dashed #fdba74;border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <span style="color:#9a3412">⚠</span>
+            <div id="vmEdit_hv_name_label" style="flex:1;font-size:12.5px;color:#9a3412">Noch keine HV ausgewählt</div>
+            <button onclick="openHvPickerForVollmacht()" style="background:#0e7490;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔍 HV auswählen</button>
+          </div>
+        `}
+        <input type="hidden" id="vmEdit_hv_name" value="${_esc(data.hv_name || '')}">
+        <input type="hidden" id="vmEdit_pipedrive_org_id" value="${_esc(data.pipedrive_org_id || '')}">
+      </div>
       <div style="margin-bottom:12px">${lbl('Unterschrieben am')}<input id="vmEdit_unterschrieben_am" type="date" value="${_esc(data.unterschrieben_am || '')}" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box"></div>
       <div style="margin-bottom:12px">${lbl('Notiz')}<textarea id="vmEdit_notiz" rows="2" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical">${_esc(data.notiz || '')}</textarea></div>
       <div style="margin-bottom:12px">
@@ -8763,7 +8801,12 @@ async function openVollmachtEditor(orgId, hvName, recordId) {
 async function saveVollmachtFromEditor() {
   const g = (id) => (document.getElementById('vmEdit_' + id) || {}).value || '';
   const hv_name = g('hv_name').trim();
-  if (!hv_name) { showToast('HV-Name ist Pflicht', 'warning', 2500); return; }
+  const pipedrive_org_id = g('pipedrive_org_id').trim();
+  // V12.240: HV muss aus Pipedrive ausgewählt werden — sonst gibt's keine eindeutige Zuordnung
+  if (!hv_name || !pipedrive_org_id) {
+    showToast('Bitte zuerst eine Hausverwaltung aus Pipedrive auswählen', 'warning', 4000);
+    return;
+  }
   const btn = document.getElementById('vmSaveBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Speichere …'; }
   try {
@@ -21392,6 +21435,20 @@ async function pickHvForCheckFromModal(idx) {
     if (orgIdEl) orgIdEl.value = hit.org_id || '';
     closeHvPickerForCheck();
     showToast('✓ HV „' + (details?.firma || hit.name || '') + '" übernommen — klick „🌐 Web-Daten" für USt/Steuer', 'ok', 4500);
+    return;
+  }
+  // V12.240: Target 'vm' → Vollmacht-Editor befüllen
+  if (target === 'vm') {
+    const firma = details?.firma || hit.name || '';
+    const orgId = hit.org_id || '';
+    const fName = document.getElementById('vmEdit_hv_name');
+    const fOrg  = document.getElementById('vmEdit_pipedrive_org_id');
+    const fLbl  = document.getElementById('vmEdit_hv_name_label');
+    if (fName) fName.value = firma;
+    if (fOrg)  fOrg.value  = orgId;
+    if (fLbl)  fLbl.textContent = firma + (orgId ? '  (Pipedrive-ID ' + orgId + ')' : '');
+    closeHvPickerForCheck();
+    showToast('✓ HV „' + firma + '" zugeordnet', 'success', 2800);
     return;
   }
   const orgInfo = {
