@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.221';
+const APP_VERSION = 'V12.222';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7345,6 +7345,18 @@ async function setupTables() {
       { name: 'chat_partner_telefon',        type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.211] ensureTable(WartungsnehmerChat) failed:', e.message); }
+  // V12.222: ensureTable legt KEINE neuen Felder zu existierenden Tabellen hinzu — dafür braucht's ensureFields.
+  // Ohne diesen Block bekommen ältere Bases den 422-Fehler "Unknown field name: partner_typ".
+  try {
+    await ensureFields('WartungsnehmerChat', [
+      { name: 'partner_typ',                 type: 'singleLineText' },
+      { name: 'servicebetrieb_id',           type: 'singleLineText' },
+      { name: 'chat_partner_firma',          type: 'singleLineText' },
+      { name: 'chat_partner_ansprechperson', type: 'singleLineText' },
+      { name: 'chat_partner_email',          type: 'singleLineText' },
+      { name: 'chat_partner_telefon',        type: 'singleLineText' },
+    ]);
+  } catch(e) { console.warn('[V12.222] ensureFields(WartungsnehmerChat) failed:', e.message); }
   // V12.219: Servicebetriebe-Stammdaten — analog zu Wartungsnehmer, aber für externe Service-Firmen
   try {
     ensureTable('Servicebetriebe', [
