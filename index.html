@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.225';
+const APP_VERSION = 'V12.226';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26906,6 +26906,69 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
   return synthetic;
 }
 
+// V12.226: Robuste Klassifizierung eines Chat-Items — auch wenn partner_typ/servicebetrieb_id leer sind,
+// versuche per to_email/from_email den effektiven Partner zu finden. Behebt das Problem mit alten
+// Records aus V12.219/220, wo Felder noch nicht im Schema waren und leer/null gespeichert wurden.
+function _eiClassifyChatItem(it, r, sbList) {
+  const itTyp = String(it.partner_typ || '').toLowerCase().trim();
+  const isOut = String(it.direction || 'out') === 'out';
+  const counterEmail = String((isOut ? it.to_email : it.from_email) || '').toLowerCase().trim();
+  const wnEmail = r ? String(r.wartungsnehmer_email || '').toLowerCase().trim() : '';
+
+  // 1. Wenn partner_typ explizit gesetzt → glauben
+  if (itTyp === 'servicebetrieb') {
+    return {
+      partner_typ:    'servicebetrieb',
+      partner_id:     String(it.servicebetrieb_id || '').trim(),
+      firma:          String(it.chat_partner_firma || '').trim(),
+      ansprechperson: String(it.chat_partner_ansprechperson || '').trim(),
+      email:          String(it.chat_partner_email || counterEmail || '').trim(),
+    };
+  }
+  if (itTyp === 'wartungsnehmer') {
+    return {
+      partner_typ:    'wartungsnehmer',
+      partner_id:     String(it.wartungsnehmer_id || (r && r.wartungsnehmer_id) || '').trim(),
+      firma:          String(it.chat_partner_firma || (r && r.wartungsnehmer_firma) || '').trim(),
+      ansprechperson: String(it.chat_partner_ansprechperson || (r && r.wartungsnehmer_ansprechperson) || '').trim(),
+      email:          String(it.chat_partner_email || (r && r.wartungsnehmer_email) || counterEmail || '').trim(),
+    };
+  }
+  // 2. partner_typ LEER → heuristisch per counterEmail
+  if (counterEmail) {
+    // Match gegen WN-Email
+    if (wnEmail && wnEmail === counterEmail) {
+      return {
+        partner_typ:    'wartungsnehmer',
+        partner_id:     String((r && r.wartungsnehmer_id) || '').trim(),
+        firma:          String((r && r.wartungsnehmer_firma) || '').trim(),
+        ansprechperson: String((r && r.wartungsnehmer_ansprechperson) || '').trim(),
+        email:          counterEmail,
+      };
+    }
+    // Match gegen Servicebetrieb-Liste
+    for (const sb of (sbList || [])) {
+      if (sb && sb.email && String(sb.email).toLowerCase().trim() === counterEmail) {
+        return {
+          partner_typ:    'servicebetrieb',
+          partner_id:     String(sb.id || '').trim(),
+          firma:          String(sb.firma || '').trim(),
+          ansprechperson: String(sb.ansprechperson || '').trim(),
+          email:          counterEmail,
+        };
+      }
+    }
+  }
+  // 3. Fallback: unbekannt — als wartungsnehmer-Default (Email als Label wenn vorhanden)
+  return {
+    partner_typ:    'wartungsnehmer',
+    partner_id:     '',
+    firma:          counterEmail || '',
+    ansprechperson: '',
+    email:          counterEmail,
+  };
+}
+
 // Chat-Nachricht an Wartungsnehmer senden
 async function sendWartungsnehmerMessage(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -27003,27 +27066,43 @@ function _eiRenderWartungsnehmerSection(r, wn) {
   const hasWn = !!(wn && (wn.firma || wn.email || wn.ansprechperson));
 
   // Alle Chat-Items für diese Email aus dem Cache holen
-  const allItems = window._eiWnChatCache[emailId] || [];
-  // Servicebetrieb-Tabs: alle distinct (partner_typ='servicebetrieb', servicebetrieb_id) aus Chats + gestartete
+  // V12.226: Items ohne Body UND ohne Subject als "defekt" ausblenden (alte 422-Reste)
+  const allItemsRaw = window._eiWnChatCache[emailId] || [];
+  const allItems = allItemsRaw.filter(it => String(it.body || '').trim() || String(it.subject || '').trim());
+
+  // V12.226: Erst gestartete Tabs einsammeln (vor der Klassifizierung — die brauchen wir für Email-Match)
   const sbMap = new Map();
-  for (const it of allItems) {
-    if (String(it.partner_typ || '') === 'servicebetrieb') {
-      const sid = String(it.servicebetrieb_id || '').trim();
-      if (sid && !sbMap.has(sid)) {
-        sbMap.set(sid, {
-          id: sid,
-          firma:          it.chat_partner_firma || '',
-          ansprechperson: it.chat_partner_ansprechperson || '',
-          email:          it.chat_partner_email || it.to_email || '',
-          telefon:        it.chat_partner_telefon || '',
-        });
-      }
-    }
-  }
-  // Aus gestarteten (noch ohne Nachrichten) ergänzen
   const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
   for (const sb of started) {
     if (sb.id && !sbMap.has(sb.id)) sbMap.set(sb.id, sb);
+  }
+  // V12.226: Items klassifizieren — robust mit Email-Fallback
+  let sbListCurrent = Array.from(sbMap.values());
+  for (const it of allItems) {
+    const cls = _eiClassifyChatItem(it, r, sbListCurrent);
+    if (cls.partner_typ === 'servicebetrieb' && cls.partner_id) {
+      if (!sbMap.has(cls.partner_id)) {
+        sbMap.set(cls.partner_id, {
+          id:             cls.partner_id,
+          firma:          cls.firma || cls.email || 'Servicebetrieb',
+          ansprechperson: cls.ansprechperson || '',
+          email:          cls.email || '',
+          telefon:        '',
+        });
+      }
+    } else if (cls.partner_typ === 'servicebetrieb' && !cls.partner_id && cls.email) {
+      // Defektes Item ohne partner_id, aber Email vorhanden → über Email-Bucket gruppieren
+      const bucketKey = 'email:' + cls.email;
+      if (!sbMap.has(bucketKey)) {
+        sbMap.set(bucketKey, {
+          id:             bucketKey,
+          firma:          cls.firma || cls.email,
+          ansprechperson: cls.ansprechperson || '',
+          email:          cls.email,
+          telefon:        '',
+        });
+      }
+    }
   }
   const sbList = Array.from(sbMap.values());
 
@@ -27043,13 +27122,15 @@ function _eiRenderWartungsnehmerSection(r, wn) {
     window._eiActiveChatTab[emailId] = { typ: activeTyp, id: activeId };
   }
 
-  // V12.224: Pro-Tab Anzahl berechnen für Badge
-  const countWn = allItems.filter(it => String(it.partner_typ || 'wartungsnehmer') === 'wartungsnehmer').length;
+  // V12.224/226: Pro-Tab Anzahl berechnen für Badge — via Classify-Helper (robust gegen leere Felder)
+  let countWn = 0;
   const countPerSb = {};
   for (const it of allItems) {
-    if (String(it.partner_typ || '') === 'servicebetrieb') {
-      const sid = String(it.servicebetrieb_id || '').trim();
-      if (sid) countPerSb[sid] = (countPerSb[sid] || 0) + 1;
+    const cls = _eiClassifyChatItem(it, r, sbList);
+    if (cls.partner_typ === 'wartungsnehmer') countWn++;
+    else if (cls.partner_typ === 'servicebetrieb') {
+      const key = cls.partner_id || ('email:' + cls.email);
+      countPerSb[key] = (countPerSb[key] || 0) + 1;
     }
   }
 
@@ -27071,23 +27152,25 @@ function _eiRenderWartungsnehmerSection(r, wn) {
     <button onclick="openServicebetriebPickerForChat('${emailId}')" title="Neuen Chat mit einem Servicebetrieb starten" style="background:#fff;color:#0891b2;border:1px dashed #67e8f9;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Servicebetrieb</button>
   </div>`;
 
-  // V12.224: "Alle"-Tab — zeigt ALLE Chats über alle Partner, chronologisch
+  // V12.224/226: "Alle"-Tab — zeigt ALLE Chats über alle Partner, chronologisch (Classify-Helper)
   if (activeTyp === 'all') {
     const sortedAll = allItems.slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
     const allBubbles = sortedAll.length
       ? sortedAll.map(it => {
-          const itPartnerTyp = String(it.partner_typ || 'wartungsnehmer');
+          const cls = _eiClassifyChatItem(it, r, sbList);
+          const itPartnerTyp = cls.partner_typ;
           const isOut = String(it.direction || 'out') === 'out';
-          const partnerLabel = it.chat_partner_firma || (itPartnerTyp === 'wartungsnehmer' ? 'Wartungsnehmer' : 'Servicebetrieb');
+          const partnerLabel = cls.firma || cls.email || (itPartnerTyp === 'wartungsnehmer' ? 'Wartungsnehmer' : 'Servicebetrieb');
           const acc = itPartnerTyp === 'wartungsnehmer' ? '#7c3aed' : '#0891b2';
           const accDeep = itPartnerTyp === 'wartungsnehmer' ? '#5b21b6' : '#0e7490';
           const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
-          const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || partnerLabel);
+          const sender = isOut ? (it.bearbeiter_name || 'Du') : (it.from_name || it.from_email || cls.ansprechperson || partnerLabel);
+          const bodyText = String(it.body || '').trim() || '(leere Nachricht)';
           return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
             <div style="max-width:75%">
               <div style="font-size:10px;color:${acc};font-weight:700;margin-bottom:2px;padding:0 8px;text-transform:uppercase;letter-spacing:.04em;${isOut ? 'text-align:right' : ''}">${itPartnerTyp === 'wartungsnehmer' ? '🔧' : '🛠'} ${_esc(partnerLabel)}</div>
-              <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)} · ${_esc(when)}</div>
-              <div style="background:${isOut ? 'linear-gradient(135deg,' + acc + ',' + accDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(String(it.body || ''))}</div>
+              <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)}${when ? ' · ' + _esc(when) : ''}</div>
+              <div style="background:${isOut ? 'linear-gradient(135deg,' + acc + ',' + accDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(bodyText)}</div>
             </div>
           </div>`;
         }).join('')
@@ -27147,14 +27230,16 @@ function _eiRenderWartungsnehmerSection(r, wn) {
       </div>
     </div>`;
 
-  // Bubbles für den aktiven Partner filtern
+  // Bubbles für den aktiven Partner filtern — V12.226: via Classify-Helper (Email-Fallback)
   const filteredItems = allItems.filter(it => {
-    if (activeTyp === 'wartungsnehmer') {
-      // Backward: alte Records ohne partner_typ gelten als wartungsnehmer
-      const t = String(it.partner_typ || 'wartungsnehmer');
-      return t === 'wartungsnehmer';
+    const cls = _eiClassifyChatItem(it, r, sbList);
+    if (activeTyp === 'wartungsnehmer') return cls.partner_typ === 'wartungsnehmer';
+    if (activeTyp === 'servicebetrieb') {
+      if (cls.partner_typ !== 'servicebetrieb') return false;
+      const key = cls.partner_id || ('email:' + cls.email);
+      return key === activeId;
     }
-    return String(it.partner_typ || '') === 'servicebetrieb' && String(it.servicebetrieb_id || '') === activeId;
+    return false;
   });
   const bubbles = filteredItems.length
     ? filteredItems.map(it => {
