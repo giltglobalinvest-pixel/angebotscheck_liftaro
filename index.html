@@ -3692,6 +3692,12 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
+        <!-- V12.244: Filter Vollmacht-Status (Alle / mit / ohne) -->
+        <div id="kundenVmFilterBar" style="display:inline-flex;gap:2px;background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);border-radius:8px;padding:3px;font-family:'DM Sans',sans-serif">
+          <button id="kundenVmFilter_all"     onclick="setKundenVmFilter('all')"     title="Alle Hausverwaltungen"            style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s">Alle</button>
+          <button id="kundenVmFilter_with"    onclick="setKundenVmFilter('with')"    title="Nur HVs mit hinterlegter Vollmacht" style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s">📜 mit</button>
+          <button id="kundenVmFilter_without" onclick="setKundenVmFilter('without')" title="Nur HVs ohne Vollmacht"             style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s">ohne</button>
+        </div>
         <div style="position:relative">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="search" id="kundenSearch" placeholder="Filtern …" oninput="renderKundenList()" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:8px 12px 8px 32px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none;width:200px;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
@@ -6166,7 +6172,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.243';
+const APP_VERSION = 'V12.244';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -16592,6 +16598,24 @@ async function renderKundenList() {
     } catch (_) { window._vmByOrgIdCache = window._vmByOrgIdCache || {}; }
   }
   const vmMap = window._vmByOrgIdCache || {};
+  // V12.244: Vollmacht-Filter anwenden (Alle / mit / ohne)
+  const vmFilter = window._kundenVmFilter || 'all';
+  if (vmFilter !== 'all') {
+    const has = (oid) => {
+      const v = vmMap[String(oid)];
+      return !!(v && Array.isArray(v.vollmacht_pdf) && v.vollmacht_pdf.length > 0);
+    };
+    filtered = vmFilter === 'with'
+      ? filtered.filter(o => has(o.org_id))
+      : filtered.filter(o => !has(o.org_id));
+  }
+  // Stats um Filter-Hinweis ergänzen (nur wenn aktiv)
+  if (stats && vmFilter !== 'all') {
+    const total = orgs.length;
+    const shown = filtered.length;
+    const label = vmFilter === 'with' ? 'mit Vollmacht' : 'ohne Vollmacht';
+    stats.textContent = shown + ' von ' + total + ' HVs · Filter: ' + label;
+  }
   list.innerHTML = filtered.map(o => {
     const oid = String(o.org_id);
     const cached = window._pipedrivePersonCache[oid];
@@ -16642,6 +16666,26 @@ function openVollmachtEditorForOrg(orgId, hvName, recordId) {
   openVollmachtEditor(orgId || '', hvName || '', recordId || '');
 }
 window.openVollmachtEditorForOrg = openVollmachtEditorForOrg;
+
+// V12.244: Vollmacht-Filter im HV-Modal (Alle / mit / ohne)
+function setKundenVmFilter(mode) {
+  const valid = ['all', 'with', 'without'];
+  window._kundenVmFilter = valid.includes(mode) ? mode : 'all';
+  // Active-Style der Tab-Buttons
+  valid.forEach(m => {
+    const b = document.getElementById('kundenVmFilter_' + m);
+    if (!b) return;
+    if (m === window._kundenVmFilter) {
+      b.style.background = 'var(--dr-blue,#2456E5)';
+      b.style.color      = '#fff';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color      = 'var(--dr-ink-mute)';
+    }
+  });
+  renderKundenList();
+}
+window.setKundenVmFilter = setKundenVmFilter;
 
 // V12.165: Holt Detail-Persons für gefilterte HVs nach (parallel, Cache),
 // reichert dann die Zeile inline mit dem ersten "echten" Person-Namen an.
