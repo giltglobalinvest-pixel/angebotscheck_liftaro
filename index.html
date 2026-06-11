@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.256';
+const APP_VERSION = 'V12.257';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9171,14 +9171,15 @@ async function deleteVollmachtConfirm(recordId, name) {
   }
 }
 
-// V12.253: KI-Neutralisierung eines Email-Anhangs.
+// V12.257: KI-Neutralisierung eines Email-Anhangs — Strukturerhalt.
 // Workflow:
 //   1. PDF via fetch → ArrayBuffer
-//   2. Text via pdfjs extrahieren
-//   3. Claude erhält Text + Auftrag → liefert JSON { title, sections[], notes }
-//   4. pdf-lib generiert daraus ein neues PDF (Liftaro-Layout)
-//   5. uploadAirtableAttachment → Feld `neutralized_attachments` der Email
-//   6. Email-Record lokal aktualisieren + Detail neu rendern
+//   2. Pro Seite: pdfjs rendert zu PNG (Scale 2.0)
+//   3. Pro Seite: Claude Sonnet 4.5 Vision liefert Bounding-Boxes (0..1)
+//      der zu schwärzenden Inhalte (Preise, Firmennamen, Kontakte, Logos)
+//   4. pdf-lib öffnet das Original-PDF und zeichnet schwarze Rechtecke
+//      auf die identifizierten Bereiche → Struktur und Layout bleiben 1:1
+//   5. Upload als `neutralized_attachments`-Anhang an der Email
 async function neutralizeEmailAttachment(emailId, attIdx) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) { showToast('Email nicht gefunden', 'warning', 3000); return; }
@@ -9197,188 +9198,197 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
     btn.style.opacity = dis ? '.7' : '1';
   };
   try {
-    setBtn('1/4 PDF laden …', true);
+    // 1. Original-PDF laden
+    setBtn('PDF laden …', true);
     const resp = await fetch(a.url);
     if (!resp.ok) throw new Error('PDF-Download HTTP ' + resp.status);
     const arrayBuffer = await resp.arrayBuffer();
 
-    // 2. Text extrahieren — wir nutzen pdfjs direkt (NICHT das vorhandene extractTextFromPDF,
-    // das ein File-Objekt erwartet)
-    setBtn('2/4 Text extrahieren …', true);
-    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
-    let fullText = '';
-    const maxPages = Math.min(pdfDoc.numPages, 12);
-    for (let p = 1; p <= maxPages; p++) {
-      const page = await pdfDoc.getPage(p);
-      const tc = await page.getTextContent();
-      const pageText = (tc.items || []).map(it => it.str).join(' ');
-      fullText += '\n\n--- Seite ' + p + ' ---\n' + pageText;
+    // 2. pdfjs für Render, pdf-lib für Manipulation (eigene Kopien der ArrayBuffer,
+    // sonst werden die Buffer nach erstem getDocument detached)
+    const pdfJsDoc  = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0), disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+    const PDFLibNS  = window.PDFLib;
+    if (!PDFLibNS) throw new Error('PDFLib (pdf-lib) nicht geladen');
+    const editDoc   = await PDFLibNS.PDFDocument.load(arrayBuffer.slice(0));
+    const editPages = editDoc.getPages();
+    const numPages  = pdfJsDoc.numPages;
+    if (numPages !== editPages.length) {
+      console.warn('[neutralize] Seitenanzahl-Mismatch pdfjs vs. pdf-lib:', numPages, editPages.length);
     }
-    if (!fullText.trim()) throw new Error('PDF enthält keinen extrahierbaren Text');
 
-    // 3. Claude bittet um Neutralisierung als strukturiertes JSON
-    setBtn('3/4 KI neutralisiert …', true);
-    const systemPrompt = 'Du bist ein Assistent, der Geschäfts-Dokumente (z.B. Wartungsverträge, Angebote, Rechnungen) für den weiteren Versand an Dritte ANONYMISIERT. Du musst ALLE folgenden Informationen entfernen oder durch Platzhalter ersetzen:\n' +
-      '- Firmennamen → "[FIRMA]"\n' +
-      '- Personennamen → "[NAME]"\n' +
-      '- Adressen (Straßen, Orte, PLZ wenn firmenspezifisch) → "[ADRESSE]"\n' +
-      '- Telefon, Fax, Email → "[KONTAKT]"\n' +
-      '- ALLE Preise, Beträge, Summen, Stundensätze → "[BETRAG]"\n' +
-      '- Steuernummern, USt-IdNr, Handelsregister → "[ID]"\n' +
-      '- Logos (sind in der grafischen Darstellung, du erwähnst sie nicht im Text)\n' +
-      '- Kundennummern, Vertragsnummern → "[NR]"\n' +
-      '- Bankverbindungen (IBAN, BIC) → "[BANK]"\n' +
-      'BEHALTEN: Sachlicher Inhalt (Leistungsbeschreibung, Vertragsbedingungen, technische Daten, Anlagen-Standort soweit nicht eindeutig identifizierbar), Datum (sofern nicht firmenspezifisch), allgemeine Klauseln.\n' +
-      'Antworte AUSSCHLIESSLICH mit gültigem JSON in folgendem Schema:\n' +
-      '{ "title": "Knappe neutrale Überschrift", "sections": [ { "heading": "...", "content": "..." } ], "notes": "Optionaler Hinweis" }';
-    // V12.256: Eingabe-Text begrenzen, damit der Output-Token-Budget sicher reicht
-    const userMsg = 'Hier ist der extrahierte Text des Original-Dokuments. Neutralisiere ihn streng nach den Vorgaben. Bleibe sachlich und KOMPAKT — eine `content`-Zeichenkette pro `sections`-Eintrag, keine eingebetteten Arrays:\n\n```\n' + fullText.slice(0, 16000) + '\n```';
-    // max_tokens = 8000 ist genug für ~6000 Wörter neutralisierten Text
-    const raw = await callClaude([{ role: 'user', content: userMsg }], systemPrompt, { maxTokens: 8000 });
-
-    // V12.256: robuster JSON-Parser — räumt Markdown-Wrapper weg, repariert
-    // typische Claude-Fehler (Trailing commas, abgeschnittene Arrays/Strings).
-    const parseNeutralizedJson = (txt) => {
-      let s = String(txt || '').trim();
-      // Markdown-Codeblock entfernen
-      s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
-      // Erste { bis letzte } extrahieren
-      const i = s.indexOf('{');
-      const j = s.lastIndexOf('}');
+    // 3. Helper — robuster JSON-Parser (gleicher Ansatz wie vorher, kompakter)
+    const parseRedactionJson = (txt) => {
+      let s = String(txt || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+      const i = s.indexOf('{'), j = s.lastIndexOf('}');
       if (i >= 0 && j > i) s = s.slice(i, j + 1);
-      // Versuch 1: direkt
-      try { return JSON.parse(s); } catch (_) {}
-      // Versuch 2: Trailing-Commas raus
-      try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch (_) {}
-      // Versuch 3: abgeschnittener String — letzte unvollständige "..." entfernen, dann
-      // offene Strukturen schließen
-      let s2 = s;
-      // Wenn die letzte Zeile mitten in einem String/Wert hängt: schneide ab beim
-      // letzten validen ",". Das hängende Element wird geopfert.
-      const lastComma = s2.lastIndexOf(',');
-      if (lastComma > 0) s2 = s2.slice(0, lastComma);
-      // Offene Klammern zählen + schließen
-      const opens = { '{': 0, '[': 0 };
-      let inStr = false, esc = false;
-      for (const ch of s2) {
-        if (esc) { esc = false; continue; }
-        if (ch === '\\') { esc = true; continue; }
-        if (ch === '"') { inStr = !inStr; continue; }
-        if (inStr) continue;
-        if (ch === '{') opens['{']++;
-        else if (ch === '}') opens['{']--;
-        else if (ch === '[') opens['[']++;
-        else if (ch === ']') opens['[']--;
-      }
-      if (inStr) s2 += '"';
-      while (opens['['] > 0) { s2 += ']'; opens['[']--; }
-      while (opens['{'] > 0) { s2 += '}'; opens['{']--; }
-      try { return JSON.parse(s2.replace(/,(\s*[}\]])/g, '$1')); } catch (e) {
-        // Versuch 4: aus dem Rohtext title + ein "Inhalt"-Block bauen, damit
-        // wenigstens ein neutralisiertes PDF rauskommt
-        return {
-          title: 'Neutralisiertes Dokument',
-          sections: [{ heading: 'Inhalt (KI-Rohtext)', content: String(txt || '').slice(0, 6000) }],
-          notes: 'Hinweis: JSON-Antwort der KI war unvollständig (' + e.message + '). Inhalt ggf. lückenhaft — bitte vor Versand prüfen.',
-        };
-      }
+      const tries = [
+        () => JSON.parse(s),
+        () => JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')),
+        () => {
+          let s2 = s;
+          const lastComma = s2.lastIndexOf(',');
+          if (lastComma > 0) s2 = s2.slice(0, lastComma);
+          const opens = { '{': 0, '[': 0 };
+          let inStr = false, esc = false;
+          for (const ch of s2) {
+            if (esc) { esc = false; continue; }
+            if (ch === '\\') { esc = true; continue; }
+            if (ch === '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+            if (ch === '{') opens['{']++; else if (ch === '}') opens['{']--;
+            else if (ch === '[') opens['[']++; else if (ch === ']') opens['[']--;
+          }
+          if (inStr) s2 += '"';
+          while (opens['['] > 0) { s2 += ']'; opens['[']--; }
+          while (opens['{'] > 0) { s2 += '}'; opens['{']--; }
+          return JSON.parse(s2.replace(/,(\s*[}\]])/g, '$1'));
+        },
+      ];
+      for (const t of tries) { try { return t(); } catch (_) {} }
+      return { redactions: [] };
     };
-    const parsed = parseNeutralizedJson(raw);
-    const title = String(parsed.title || 'Neutralisiertes Dokument');
-    const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
-    const notes = String(parsed.notes || '');
 
-    // 4. PDF mit pdf-lib bauen — A4, einfaches Layout
-    setBtn('4/4 PDF erzeugen …', true);
-    const { PDFDocument: PDFDoc, StandardFonts, rgb } = window.PDFLib || {};
-    const outDoc = await (window.PDFLib ? PDFLib.PDFDocument.create() : PDFDocument.create());
-    const helv = await outDoc.embedFont((window.PDFLib ? PDFLib.StandardFonts : StandardFonts).Helvetica);
-    const helvBold = await outDoc.embedFont((window.PDFLib ? PDFLib.StandardFonts : StandardFonts).HelveticaBold);
-    const A4 = [595.28, 841.89];
-    const MARGIN = 56;
-    const LINE_H = 14;
-    const PAGE_W = A4[0];
-    const PAGE_H = A4[1];
-    let page = outDoc.addPage(A4);
-    let y = PAGE_H - MARGIN;
-    const newPage = () => { page = outDoc.addPage(A4); y = PAGE_H - MARGIN; };
-    const ensureSpace = (needed) => { if (y - needed < MARGIN) newPage(); };
-    const drawText = (txt, opts) => {
-      const o = opts || {};
-      const font = o.bold ? helvBold : helv;
-      const size = o.size || 11;
-      const maxW = PAGE_W - 2 * MARGIN;
-      // Word-Wrap
-      const words = String(txt).split(/\s+/);
-      let line = '';
-      for (const w of words) {
-        const test = line ? line + ' ' + w : w;
-        const widthPt = font.widthOfTextAtSize(test, size);
-        if (widthPt > maxW && line) {
-          ensureSpace(LINE_H);
-          page.drawText(line, { x: MARGIN, y, size, font, color: o.color || rgb(0.06, 0.09, 0.16) });
-          y -= LINE_H;
-          line = w;
-        } else {
-          line = test;
+    // 4. Vision-System-Prompt — JSON mit normalisierten Bounding-Boxes
+    const visionSystem = 'Du bist ein Assistent, der Bilder von Geschaeftsdokumenten analysiert und ' +
+      'alle SENSITIVEN Inhalte zur Schwaerzung markiert. Markiere ALLE folgenden Elemente mit ' +
+      'praezisen Bounding-Boxen:\n' +
+      '- Firmennamen und Marken (auch in Logos)\n' +
+      '- Personennamen (Mitarbeiter, Ansprechpartner)\n' +
+      '- Postadressen (Strasse + Ort + PLZ), die das Unternehmen identifizieren\n' +
+      '- Telefonnummern, Faxnummern, Email-Adressen, Websites/URLs\n' +
+      '- ALLE Preise, Betraege, Summen, Stundensaetze, EUR-Werte\n' +
+      '- Steuernummern, USt-IdNr, Handelsregister-Nummern\n' +
+      '- Kundennummern, Vertragsnummern, Auftragsnummern, Rechnungsnummern\n' +
+      '- Bankverbindungen: IBAN, BIC, Kontonummer, BLZ\n' +
+      '- Logos und Bildmarken (komplette grafische Logo-Bereiche)\n' +
+      '- Unterschriften und Stempel\n' +
+      'BEHALTEN: technische Inhalte, allgemeine Klauseln, Datum, Anlagen-Standort wenn anonym, Leistungsbeschreibungen.\n' +
+      'Liefere AUSSCHLIESSLICH valides JSON in diesem Schema:\n' +
+      '{ "redactions": [ { "x": 0..1, "y": 0..1, "w": 0..1, "h": 0..1, "kind": "logo|firma|name|adresse|kontakt|betrag|id|nr|bank|signatur|sonstiges", "label": "kurzer Hinweis was es ist" } ] }\n' +
+      'KOORDINATEN-SYSTEM:\n' +
+      '- x, y, w, h sind NORMALISIERTE Werte zwischen 0 und 1, relativ zur Bildgroesse\n' +
+      '- x = linke Kante der Box (0 = linker Bildrand)\n' +
+      '- y = obere Kante der Box (0 = oberer Bildrand)\n' +
+      '- w = Breite der Box (bezogen auf Bildbreite)\n' +
+      '- h = Hoehe der Box (bezogen auf Bildhoehe)\n' +
+      '- Die Boxen sollten ETWAS groesser sein als der reine Text/Logo (kleiner Padding-Buffer von ~0.005),\n' +
+      '  damit nach dem Schwaerzen keine Rand-Pixel sichtbar bleiben.\n' +
+      'Falls die Seite KEINE zu schwaerzenden Inhalte hat: { "redactions": [] }';
+
+    // 5. Per Seite: rendern + Vision + Boxen sammeln
+    const allRedactions = [];
+    const RENDER_SCALE = 1.8;
+    for (let p = 1; p <= numPages; p++) {
+      setBtn('Seite ' + p + ' / ' + numPages + ' analysieren …', true);
+      const page = await pdfJsDoc.getPage(p);
+      const viewport = page.getViewport({ scale: RENDER_SCALE });
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      const ctx = canvas.getContext('2d');
+      // Weisser Hintergrund (sonst transparent)
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      // Als JPEG (kleiner als PNG, reicht fuer Text-Erkennung)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const b64 = dataUrl.split(',')[1] || '';
+
+      // Vision-Call — Claude Sonnet 4.5 ("beste KI" wie gewuenscht)
+      const visionBody = {
+        model: 'claude-sonnet-4-5',
+        max_tokens: 8000,
+        system: visionSystem,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text: 'Identifiziere ALLE zu schwaerzenden Bereiche auf dieser Seite (' + p + '/' + numPages + '). Antworte nur mit dem JSON.' },
+          ],
+        }],
+      };
+      let visionText = '';
+      try {
+        const vr = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': APP_KEYS.anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify(visionBody),
+        });
+        if (!vr.ok) {
+          const err = await vr.json().catch(() => ({}));
+          throw new Error(err.error?.message || ('HTTP ' + vr.status));
         }
+        const vd = await vr.json();
+        visionText = (vd.content && vd.content[0] && vd.content[0].text) || '';
+      } catch (vErr) {
+        console.warn('[neutralize] Seite ' + p + ' Vision fehlgeschlagen:', vErr.message);
+        continue;
       }
-      if (line) {
-        ensureSpace(LINE_H);
-        page.drawText(line, { x: MARGIN, y, size, font, color: o.color || rgb(0.06, 0.09, 0.16) });
-        y -= LINE_H;
+      const parsed = parseRedactionJson(visionText);
+      const redactions = Array.isArray(parsed.redactions) ? parsed.redactions : [];
+      // Boxen in PDF-Punkte konvertieren und auf die richtige pdf-lib-Seite zeichnen
+      const editPage = editPages[p - 1];
+      if (!editPage) continue;
+      const { width: pageW, height: pageH } = editPage.getSize();
+      let drawn = 0;
+      for (const red of redactions) {
+        // Werte clampen + auf 0..1 normalisieren (falls KI 0..100 liefert)
+        let nx = Number(red.x), ny = Number(red.y), nw = Number(red.w), nh = Number(red.h);
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nw) || !Number.isFinite(nh)) continue;
+        // Wenn Werte > 1 sind, war's vermutlich 0-100
+        if (nx > 1 || ny > 1 || nw > 1 || nh > 1) {
+          if (nx > 1) nx /= 100; if (ny > 1) ny /= 100;
+          if (nw > 1) nw /= 100; if (nh > 1) nh /= 100;
+        }
+        nx = Math.max(0, Math.min(1, nx));
+        ny = Math.max(0, Math.min(1, ny));
+        nw = Math.max(0, Math.min(1 - nx, nw));
+        nh = Math.max(0, Math.min(1 - ny, nh));
+        if (nw < 0.002 || nh < 0.002) continue; // zu kleine Boxen verwerfen
+        // PDF-Koordinaten: Origin links UNTEN, y-Achse zeigt nach oben
+        // Vision lieferte y vom oberen Bildrand → in PDF-y umrechnen
+        const x = nx * pageW;
+        const w = nw * pageW;
+        const h = nh * pageH;
+        const y = pageH - (ny * pageH) - h;
+        editPage.drawRectangle({
+          x: x,
+          y: y,
+          width: w,
+          height: h,
+          color: PDFLibNS.rgb(0, 0, 0),
+        });
+        drawn++;
       }
-    };
-    // Header
-    page.drawRectangle({ x: 0, y: PAGE_H - 32, width: PAGE_W, height: 32, color: rgb(0.10, 0.23, 0.36) });
-    page.drawText('NEUTRALISIERTES DOKUMENT', { x: MARGIN, y: PAGE_H - 22, size: 11, font: helvBold, color: rgb(1, 1, 1) });
-    page.drawText('via Liftaro KI', { x: PAGE_W - MARGIN - 80, y: PAGE_H - 22, size: 9, font: helv, color: rgb(0.85, 0.92, 1) });
-    y = PAGE_H - 32 - 28;
-    // Titel
-    drawText(title, { bold: true, size: 18 });
-    y -= 6;
-    // Hinweis-Block
-    drawText('Dieses Dokument wurde automatisch anonymisiert: Firmennamen, Preise, Kontaktdaten und ID-Nummern wurden entfernt.', { size: 9.5, color: rgb(0.45, 0.50, 0.59) });
-    y -= 10;
-    // Sections
-    for (const s of sections) {
-      y -= 6;
-      ensureSpace(40);
-      drawText(String(s.heading || ''), { bold: true, size: 13, color: rgb(0.10, 0.23, 0.36) });
-      y -= 3;
-      const content = String(s.content || '');
-      // Absätze
-      for (const para of content.split(/\n\s*\n/)) {
-        const t = para.trim();
-        if (!t) continue;
-        drawText(t, { size: 11 });
-        y -= 6;
-      }
+      allRedactions.push({ page: p, count: drawn });
     }
-    if (notes) {
-      y -= 10;
-      ensureSpace(30);
-      drawText('Hinweis', { bold: true, size: 11, color: rgb(0.45, 0.50, 0.59) });
-      drawText(notes, { size: 10, color: rgb(0.30, 0.36, 0.46) });
-    }
-    // Footer auf jeder Seite — Quelle
-    const pages = outDoc.getPages();
-    for (let i = 0; i < pages.length; i++) {
-      const p = pages[i];
-      p.drawText('Quelle: ' + String(a.filename || 'Anhang') + ' (anonymisiert) · Seite ' + (i + 1) + ' / ' + pages.length, {
-        x: MARGIN, y: 28, size: 8, font: helv, color: rgb(0.58, 0.64, 0.71),
+
+    // 6. Watermark/Footer minimal — kleiner Hinweis am Fußrand jeder Seite
+    const helv = await editDoc.embedFont(PDFLibNS.StandardFonts.Helvetica);
+    for (let i = 0; i < editPages.length; i++) {
+      const pg = editPages[i];
+      const { width: pw } = pg.getSize();
+      const label = 'NEUTRALISIERT via Liftaro KI · ' + (i + 1) + ' / ' + editPages.length;
+      pg.drawText(label, {
+        x: pw - 220, y: 8, size: 7, font: helv, color: PDFLibNS.rgb(0.55, 0.55, 0.55),
       });
     }
-    const pdfBytes = await outDoc.save();
 
-    // 5. Upload zu Airtable
+    // 7. Speichern + Upload
     setBtn('Hochladen …', true);
-    const outName = (String(a.filename || 'Anhang').replace(/\.pdf$/i, '') || 'Anhang') + '_neutral.pdf';
+    const pdfBytes = await editDoc.save();
+    const baseName = String(a.filename || 'Anhang').replace(/\.pdf$/i, '') || 'Anhang';
+    const outName  = baseName + '_neutral.pdf';
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const file = new File([blob], outName, { type: 'application/pdf' });
     await uploadAirtableAttachment('Emails', emailId, 'neutralized_attachments', file);
 
-    // 6. Lokale Email-Daten aktualisieren (frischer atRead vom Record)
+    // 8. Lokale Email-Daten aktualisieren + UI refresh
     try {
       const recs = await atRead('Emails', "RECORD_ID()='" + emailId + "'", { sort: false });
       if (recs.length) {
@@ -9388,7 +9398,9 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
       }
     } catch (_) {}
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    showToast('✓ „' + outName + '" wurde KI-neutralisiert und an die Email angehängt', 'success', 4500);
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    const totalBoxes = allRedactions.reduce((s, r) => s + r.count, 0);
+    showToast('✓ „' + outName + '" angelegt · ' + totalBoxes + ' Schwärzung' + (totalBoxes === 1 ? '' : 'en') + ' auf ' + numPages + ' Seite' + (numPages === 1 ? '' : 'n'), 'success', 5000);
   } catch (e) {
     console.error('[neutralizeEmailAttachment]', e);
     showToast('Neutralisierung fehlgeschlagen: ' + e.message, 'error', 6000);
@@ -9396,6 +9408,34 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
   }
 }
 window.neutralizeEmailAttachment = neutralizeEmailAttachment;
+
+// V12.257: Neutralisierten Anhang einer Email wieder loeschen
+async function deleteNeutralizedAttachment(emailId, attIdx) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const arr = Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [];
+  const a = arr[attIdx];
+  if (!a) return;
+  if (!confirm('Neutralisierten Anhang „' + (a.filename || 'Anhang') + '" wirklich löschen?\n\nDas Original-PDF bleibt erhalten — du kannst jederzeit erneut neutralisieren.')) return;
+  try {
+    // Airtable: Anhänge-Feld mit neuer Liste (ohne den gelöschten) patchen.
+    // Wir patchen nur Filename + URL — das genügt Airtable für die Identifikation.
+    const kept = arr
+      .filter((_, i) => i !== attIdx)
+      .map(x => ({ url: x.url, filename: x.filename }));
+    await atUpdate('Emails', emailId, { neutralized_attachments: kept });
+    // Lokal aktualisieren statt komplett neu zu laden (sonst flackert die Liste)
+    if (Array.isArray(r.neutralized_attachments)) {
+      r.neutralized_attachments = r.neutralized_attachments.filter((_, i) => i !== attIdx);
+    }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    showToast('✓ Neutralisierter Anhang gelöscht', 'success', 2500);
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+window.deleteNeutralizedAttachment = deleteNeutralizedAttachment;
 
 // V12.252: Email-Anhänge an den Chat-Composer übergeben.
 // Workflow:
@@ -29957,15 +29997,20 @@ function renderEmailInboxDetail() {
         <span style="font-size:11px;color:#15803d;background:#dcfce7;border:1px solid #86efac;border-radius:999px;padding:2px 9px;font-weight:600">für Versand an Dritte</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">`;
-    r.neutralized_attachments.forEach(a => {
+    r.neutralized_attachments.forEach((a, nIdx) => {
       const fname = a.filename || a.name || 'Anhang';
       const url = a.url || '';
       const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
-      html += `<a href="${_esc(url)}" target="_blank" style="background:#fff;border:1px solid #86efac;border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:#0f172a;text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#fff'">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#16a34a;flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
-        ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:#16a34a;letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
-      </a>`;
+      html += `<div style="display:flex;align-items:center;gap:6px">
+        <a href="${_esc(url)}" target="_blank" style="flex:1;min-width:0;background:#fff;border:1px solid #86efac;border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:#0f172a;text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#fff'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#16a34a;flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
+          ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:#16a34a;letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
+        </a>
+        <button onclick="deleteNeutralizedAttachment('${r._id}',${nIdx})" title="Neutralisierten Anhang löschen (Original bleibt erhalten)" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:8px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>`;
     });
     html += `</div></div>`;
   }
