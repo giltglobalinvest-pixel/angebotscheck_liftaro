@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.224';
+const APP_VERSION = 'V12.225';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -26790,13 +26790,120 @@ async function loadWartungsnehmerChat(emailId) {
   if (!emailId) return [];
   try {
     const recs = await atRead('WartungsnehmerChat', "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'", { sort: false });
-    const items = (recs || []).slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    let items = (recs || []).slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    // V12.225: WhatsApp-Style — eingehende Antworten der Chat-Partner als Bubbles im Chat einblenden.
+    // Match per from_email + Zeitstempel (Email empfangen NACH der ersten ausgehenden Chat-Nachricht).
+    const synthetic = _eiSynthesizeIncomingChatItems(emailId, items);
+    if (synthetic.length) {
+      items = items.concat(synthetic).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    }
     window._eiWnChatCache[emailId] = items;
     return items;
   } catch (e) {
     console.warn('[V12.211] loadWartungsnehmerChat failed:', e.message);
     return window._eiWnChatCache[emailId] || [];
   }
+}
+
+// V12.225: Synthetische Chat-Items aus eingehenden Posteingang-Emails generieren.
+// Match-Logik:
+//   1) Sammle die Email-Adressen aller bekannten Chat-Partner (WN am Aufzug + alle SBs aus
+//      bisherigen Chat-Records + gestartete SB-Tabs ohne Nachrichten).
+//   2) Für jede eingehende Email im Posteingang prüfen, ob from_email zu einem Partner passt
+//      UND ob die Email NACH dem ersten outgoing Chat-Item empfangen wurde.
+//   3) → in 'in'-Chat-Bubble umwandeln, mit Verlinkung auf die Original-Email.
+function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return [];
+
+  // Partner-Adressen sammeln (Email-Adresse → Partner-Metadaten)
+  const partnerByEmail = new Map();
+  const addPartner = (email, p) => {
+    const e = String(email || '').trim().toLowerCase();
+    if (!e || partnerByEmail.has(e)) return;
+    partnerByEmail.set(e, p);
+  };
+  // (a) WN am Aufzug
+  addPartner(r.wartungsnehmer_email, {
+    partner_typ:                 'wartungsnehmer',
+    wartungsnehmer_id:           String(r.wartungsnehmer_id || ''),
+    chat_partner_firma:          String(r.wartungsnehmer_firma || ''),
+    chat_partner_ansprechperson: String(r.wartungsnehmer_ansprechperson || ''),
+    chat_partner_telefon:        String(r.wartungsnehmer_telefon || ''),
+  });
+  // (b) Aus existierenden Chat-Items (Servicebetriebe + WN-Backups)
+  for (const it of existingItems) {
+    if (String(it.partner_typ || '') === 'servicebetrieb') {
+      addPartner(it.chat_partner_email, {
+        partner_typ:                 'servicebetrieb',
+        servicebetrieb_id:           String(it.servicebetrieb_id || ''),
+        chat_partner_firma:          String(it.chat_partner_firma || ''),
+        chat_partner_ansprechperson: String(it.chat_partner_ansprechperson || ''),
+        chat_partner_telefon:        String(it.chat_partner_telefon || ''),
+      });
+    }
+  }
+  // (c) Aus gestarteten (noch nicht versendeten) SB-Tabs
+  const started = (window._eiSbStartedChats && window._eiSbStartedChats[emailId]) || [];
+  for (const sb of started) {
+    addPartner(sb.email, {
+      partner_typ:                 'servicebetrieb',
+      servicebetrieb_id:           String(sb.id || ''),
+      chat_partner_firma:          String(sb.firma || ''),
+      chat_partner_ansprechperson: String(sb.ansprechperson || ''),
+      chat_partner_telefon:        String(sb.telefon || ''),
+    });
+  }
+  if (partnerByEmail.size === 0) return [];
+
+  // Zeitstempel des ersten outgoing Chat-Items (Threshold)
+  let firstOutAt = '';
+  for (const it of existingItems) {
+    if (String(it.direction || '') === 'out') {
+      const t = String(it.created_at || '');
+      if (t && (!firstOutAt || t < firstOutAt)) firstOutAt = t;
+    }
+  }
+
+  // Im Posteingang nach Antworten suchen
+  const synthetic = [];
+  const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  for (const e of all) {
+    if (!e || e._id === emailId || e.direction === 'outgoing') continue;
+    const fromE = String(e.from_email || '').trim().toLowerCase();
+    if (!fromE) continue;
+    const partner = partnerByEmail.get(fromE);
+    if (!partner) continue;
+    // Zeit-Filter: Email muss NACH der ersten outgoing Chat-Nachricht empfangen worden sein
+    // (Ausnahme: kein firstOutAt vorhanden — dann ALLE Emails dieses Partners zeigen)
+    const receivedAt = String(e.received_at || e.created_at || '');
+    if (firstOutAt && receivedAt && receivedAt < firstOutAt) continue;
+    // Body extrahieren — kurze Vorschau für Bubble
+    const body = String(e.body_text || e.body_preview || e.body || '');
+    synthetic.push({
+      id:                           'synthetic_' + e._id,
+      email_id:                     emailId,
+      direction:                    'in',
+      from_email:                   e.from_email,
+      from_name:                    e.from_name,
+      to_email:                     e.to_email,
+      subject:                      e.subject || e.ai_subject || '',
+      body:                         body.length > 4000 ? body.slice(0, 4000) + '\n…' : body,
+      created_at:                   receivedAt,
+      message_id:                   e.message_id || '',
+      in_reply_to:                  e.in_reply_to || '',
+      partner_typ:                  partner.partner_typ,
+      servicebetrieb_id:            partner.servicebetrieb_id || '',
+      wartungsnehmer_id:            partner.wartungsnehmer_id || '',
+      chat_partner_firma:           partner.chat_partner_firma,
+      chat_partner_ansprechperson:  partner.chat_partner_ansprechperson,
+      chat_partner_email:           fromE,
+      chat_partner_telefon:         partner.chat_partner_telefon,
+      _synthetic:                   true,
+      _source_email_id:             e._id,
+    });
+  }
+  return synthetic;
 }
 
 // Chat-Nachricht an Wartungsnehmer senden
