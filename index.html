@@ -2698,7 +2698,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <!-- WARTUNG SECTION -->
         <div id="section-wartung" style="display:none">
           <!-- V12.50: Mode-Toggle ganz oben — Standard-Vertragscheck vs Equipment under Control -->
-          <div id="check_mode_toggle_row" data-frozen-allow style="margin-top:20px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div id="check_mode_toggle_row" data-frozen-allow data-feature="euc_im_check" style="margin-top:20px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
             <div style="display:flex;flex-direction:column;gap:1px">
               <span style="font-size:12.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.3px">Check-Modus</span>
               <span style="font-size:11.5px;color:var(--muted)">Welches Konzept bietet Liftaro dieser WEG an?</span>
@@ -4714,6 +4714,8 @@ const pdfWorkerReady = Promise.resolve();</script>
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
 /* V12.248: Feature-Hide-System — body-Klasse + data-feature-Attribut */
 body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !important; }
+/* V12.250: EuC im Vertragscheck & an Anlagen ausblenden */
+body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !important; }
 /* V12.247: Karten-Layout für die Email-Liste — überschreibt das Tabellen-Look */
 #emailInboxList .ei-row {
   background:#fff;
@@ -5198,7 +5200,7 @@ body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !i
         </div>
       </div>
       <!-- V12.64: EuC-Zusatzklausel (§5a) optional -->
-      <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-top:6px;margin-bottom:6px">
+      <div class="field-row" data-feature="euc_im_check" style="grid-template-columns:1fr;gap:12px;margin-top:6px;margin-bottom:6px">
         <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f5efff;border:1.5px solid #d6c4f0;border-radius:8px;cursor:pointer">
           <input type="checkbox" id="v_euc_klausel" style="width:18px;height:18px;cursor:pointer;accent-color:#7c3aed;margin-top:1px">
           <div style="flex:1">
@@ -5517,7 +5519,7 @@ body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !i
       <input type="hidden" id="az_euc_vertrag_id">
 
       <!-- EuC-Status Badge (read-only) -->
-      <div id="az_eucStatus" style="display:none;background:#ecf6e1;border:1px solid #c8e2a2;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12.5px;color:#3d5e1c">
+      <div id="az_eucStatus" data-feature="euc_im_check" style="display:none;background:#ecf6e1;border:1px solid #c8e2a2;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12.5px;color:#3d5e1c">
         <strong>🛡 In Equipment under Control:</strong> <span id="az_eucVertragLabel">–</span>
       </div>
 
@@ -6300,7 +6302,7 @@ body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.249';
+const APP_VERSION = 'V12.250';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6316,6 +6318,12 @@ const FEATURE_REGISTRY = [
     label:  'Rahmenverträge',
     desc:   'Klassische Rahmenverträge mit HVs (Erfolgsbeteiligung). Ausblenden, wenn du nur noch EuC-Verträge nutzt.',
     icon:   '📑',
+  },
+  {
+    key:    'euc_im_check',
+    label:  'EuC im Vertragscheck & an Anlagen',
+    desc:   'Versteckt den 🛡 Equipment-under-Control-Modus-Schalter im Vertragscheck, die EuC-Zusatzklausel im Beratervertrag und den EuC-Status-Banner an Aufzügen. Das eigenständige EuC-Modul (Nav-Pille) bleibt erhalten.',
+    icon:   '🛡',
   },
   // Erweiterbar: weitere Features hier ergänzen.
 ];
@@ -6351,10 +6359,18 @@ function setFeatureHidden(key, hidden) {
   else        window._hiddenFeatures.delete(String(key));
   _saveHiddenFeatures(window._hiddenFeatures);
   applyHiddenFeatures();
-  // Falls die HV-Übersicht offen ist: neu rendern, damit die ☐ Rahmen-Buttons mit dem
-  // data-feature-Attribut korrekt angezeigt/versteckt werden.
+  // V12.250: Bei Bedarf JS-gerenderte Listen neu zeichnen, damit conditional
+  // gerenderte Badges/Buttons (die nicht über data-feature laufen) sich sofort
+  // anpassen — sonst greift das erst beim nächsten Öffnen.
   if (document.getElementById('kundenModal')?.style.display === 'flex'
       && typeof renderKundenList === 'function') renderKundenList();
+  if (document.getElementById('aufzugPickerModal')?.style.display === 'flex'
+      && typeof renderAufzugPickerList === 'function'
+      && Array.isArray(window._aufzugPickerCache)) {
+    renderAufzugPickerList(window._aufzugPickerCache, '');
+  }
+  if (document.getElementById('aufzuegeModal')?.style.display === 'flex'
+      && typeof renderAufzuegeList === 'function') renderAufzuegeList();
 }
 window.setFeatureHidden = setFeatureHidden;
 
@@ -20668,9 +20684,11 @@ function renderAufzuegeList(items, query) {
   listEl.innerHTML = items.map(a => {
     const cacheIdx = cache.indexOf(a);
     const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
-    const eucBadge = eucActive
+    // V12.250: Feature-Toggle "euc_im_check" — bei aus: Badges (EuC / Frei) komplett weglassen
+    const _eucHidden = (typeof isFeatureHidden === 'function') && isFeatureHidden('euc_im_check');
+    const eucBadge = _eucHidden ? '' : (eucActive
       ? '<span style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🛡 EuC' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '</span>'
-      : '<span style="background:#e5e7eb;color:#6b7280;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase">Frei</span>';
+      : '<span style="background:#e5e7eb;color:#6b7280;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase">Frei</span>');
     const hvLine = a.hv_name ? escapeHtml(a.hv_name) : '<span style="color:#a8312f">⚠ ohne HV</span>';
     const standortLine = a.standort ? escapeHtml(a.standort) : '–';
     const hersteller = a.hersteller ? ' · ' + escapeHtml(a.hersteller) : '';
@@ -21364,7 +21382,9 @@ function renderAufzugPickerList(items, query) {
   listEl.innerHTML = items.map(a => {
     const idx = cache.indexOf(a);
     const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
-    const eucBadge = eucActive
+    // V12.250: Feature-Toggle "euc_im_check" — wenn aus: kein EuC-Badge im Picker
+    const _eucHidden = (typeof isFeatureHidden === 'function') && isFeatureHidden('euc_im_check');
+    const eucBadge = (!_eucHidden && eucActive)
       ? '<span style="background:#16a34a;color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:7px;letter-spacing:.3px;text-transform:uppercase">🛡 EuC</span>'
       : '';
     const hv = a.hv_name ? escapeHtml(a.hv_name) : '<span style="color:#a8312f">— HV fehlt</span>';
