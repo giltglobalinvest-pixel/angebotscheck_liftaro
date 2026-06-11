@@ -6170,7 +6170,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.241';
+const APP_VERSION = 'V12.242';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -7385,6 +7385,7 @@ async function setupTables() {
     ]);
   } catch(e) { console.warn('[V12.219] ensureTable(Servicebetriebe) failed:', e.message); }
   // V12.239: Vollmachten pro Hausverwaltung — unterschriebenes PDF zum Anhängen in Chat-Nachrichten
+  // V12.242: + ensureFields als Backup, falls Tabelle existiert aber Felder fehlen (sonst 422 bei atWrite)
   try {
     ensureTable('Vollmachten', [
       { name: 'id',                 type: 'singleLineText' },
@@ -7395,6 +7396,16 @@ async function setupTables() {
       { name: 'notiz',              type: 'multilineText' },
     ]);
   } catch(e) { console.warn('[V12.239] ensureTable(Vollmachten) failed:', e.message); }
+  try {
+    await ensureFields('Vollmachten', [
+      { name: 'id',                 type: 'singleLineText' },
+      { name: 'pipedrive_org_id',   type: 'singleLineText' },
+      { name: 'hv_name',            type: 'singleLineText' },
+      { name: 'vollmacht_pdf',      type: 'multipleAttachments' },
+      { name: 'unterschrieben_am',  type: 'singleLineText' },
+      { name: 'notiz',              type: 'multilineText' },
+    ]);
+  } catch(e) { console.warn('[V12.242] ensureFields(Vollmachten) failed:', e.message); }
   // V12.140: Light-Vertraege-Tabelle — alle Felder die saveLightVertrag sendet.
   // Wenn die Tabelle existiert aber einzelne Felder fehlen → 422 beim Speichern.
   // ensureFields ergänzt fehlende, ohne existierende anzufassen.
@@ -8800,6 +8811,37 @@ async function openVollmachtEditor(orgId, hvName, recordId) {
   window._vmExistingId = data.id || '';
   window._vmExistingPdf = currentPdf || null;
 }
+// V12.242: Airtable Content-Upload für Attachment-Felder (uploadAttachment-Endpoint)
+// Direkter base64-Upload statt der nicht funktionierenden data:URL-im-attachment-field-Methode.
+async function uploadAirtableAttachment(table, recordId, fieldName, file) {
+  if (!recordId || !fieldName || !file) throw new Error('uploadAttachment: missing args');
+  const baseId = APP_KEYS.appBaseId || APP_CONFIG.APP_BASE_ID;
+  const b64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const url = 'https://content.airtable.com/v0/' + baseId + '/' + recordId + '/' + encodeURIComponent(fieldName) + '/uploadAttachment';
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + APP_KEYS.airtableWriteKey,
+      'Content-Type':  'application/json',
+    },
+    body: JSON.stringify({
+      contentType: file.type || 'application/pdf',
+      file:        b64,
+      filename:    file.name,
+    }),
+  });
+  if (!resp.ok) {
+    let txt = ''; try { txt = await resp.text(); } catch (_) {}
+    throw new Error('Attachment-Upload HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+  }
+  return await resp.json();
+}
+
 async function saveVollmachtFromEditor() {
   const g = (id) => (document.getElementById('vmEdit_' + id) || {}).value || '';
   const hv_name = g('hv_name').trim();
@@ -8814,34 +8856,31 @@ async function saveVollmachtFromEditor() {
   try {
     const fileInput = document.getElementById('vmEdit_pdf');
     const file = fileInput && fileInput.files && fileInput.files[0];
-    let attachmentField = undefined;
-    if (file) {
-      // Validieren
-      if (file.size > 15 * 1024 * 1024) throw new Error('PDF zu groß (max. 15 MB)');
-      // Upload als Airtable-Attachment via base64-URL-Encoding ist nicht direkt möglich.
-      // Workaround: wir nutzen FileReader → DataURL und schicken's als url-Attachment-Feld.
-      // Airtable akzeptiert URL-based Attachments im POST.
-      // Alternative: Wir speichern es als base64-Datenfeld zusätzlich.
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      attachmentField = [{ url: dataUrl, filename: file.name }];
-    }
+    if (file && file.size > 15 * 1024 * 1024) throw new Error('PDF zu groß (max. 15 MB)');
+    // V12.242: vollmacht_pdf wird NICHT mit atWrite/atUpdate gesendet — das geht nur über uploadAttachment
     const fields = {
       hv_name:           hv_name,
-      pipedrive_org_id:  g('pipedrive_org_id').trim(),
+      pipedrive_org_id:  pipedrive_org_id,
       unterschrieben_am: g('unterschrieben_am').trim(),
       notiz:             g('notiz').trim(),
     };
-    if (attachmentField) fields.vollmacht_pdf = attachmentField;
+    let recordId;
     if (window._vmEditingId) {
       await atUpdate('Vollmachten', window._vmEditingId, fields);
+      recordId = window._vmEditingId;
+      // Bei Update + neuer Datei: alte Attachments leeren (sonst werden sie nur ergänzt)
+      if (file) {
+        try { await atUpdate('Vollmachten', recordId, { vollmacht_pdf: [] }); } catch (_) {}
+      }
     } else {
       fields.id = window._vmExistingId || await generateVollmachtId();
-      await atWrite('Vollmachten', fields);
+      const created = await atWrite('Vollmachten', fields);
+      recordId = created && created.id;
+    }
+    // V12.242: Datei via Content-API hochladen
+    if (file && recordId) {
+      if (btn) btn.textContent = 'Lade PDF hoch …';
+      await uploadAirtableAttachment('Vollmachten', recordId, 'vollmacht_pdf', file);
     }
     document.getElementById('vollmachtEditorModal').style.display = 'none';
     showToast('✓ Vollmacht gespeichert', 'success', 2400);
@@ -8850,7 +8889,7 @@ async function saveVollmachtFromEditor() {
       openVollmachtenModal();
     }
   } catch (e) {
-    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 6000);
     if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
   }
 }
