@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.228';
+const APP_VERSION = 'V12.229';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -28130,10 +28130,17 @@ function renderEmailInboxDetail() {
       // Background-Hydration, danach Re-Render
       _eiHydrateWartungsnehmer(r).then(wn => { if (wn) renderEmailInboxDetail(); }).catch(() => {});
     }
-    // Chat-Items im Hintergrund laden, falls noch nicht da
-    if (!window._eiWnChatCache[r._id]) {
+    // V12.229: Chat-Items beim Email-Öffnen IMMER frisch aus Airtable laden (max. alle 5 s gedrosselt)
+    // — vorher wurden Items nur einmalig geladen, wodurch nach Hard-Reload oder anderen
+    // Cache-Resets die Chats nicht wieder sichtbar wurden.
+    window._eiWnChatLastLoad = window._eiWnChatLastLoad || {};
+    const _now    = Date.now();
+    const _lastAt = window._eiWnChatLastLoad[r._id] || 0;
+    if (_now - _lastAt > 5000) {
+      window._eiWnChatLastLoad[r._id] = _now;
       loadWartungsnehmerChat(r._id).then(items => {
-        if (items && items.length) renderEmailInboxDetail();
+        // Re-Render nur wenn sich der Anzahl Items geändert hat (Vermeidung von Render-Loops)
+        renderEmailInboxDetail();
       }).catch(() => {});
     }
     html += _eiRenderWartungsnehmerSection(r, _wnImmediate);
