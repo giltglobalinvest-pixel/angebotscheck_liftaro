@@ -6164,7 +6164,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.232';
+const APP_VERSION = 'V12.233';
 
 // V12.126: Wählt das "richtige" ergebnis_pdf-Attachment aus einem Array.
 //   - Airtable's uploadAttachment-API APPENDED neue Uploads — alte bleiben drin.
@@ -27000,25 +27000,27 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
     if (!matchEmail) continue;
     const partner = partnerByEmail.get(matchEmail);
     if (!partner) continue;
-    // V12.231/232: Outgoing Thread-Match — eindeutige Zuordnung via chat_email_id,
-    // mit Backward-Compat für alte Records (ohne chat_email_id) per WartungsnehmerChat-Match
+    // V12.231/232/233: Outgoing Thread-Match — eindeutige Zuordnung via chat_email_id,
+    // mit Backward-Compat für alte Records (ohne chat_email_id) per WartungsnehmerChat-Match ODER
+    // explizit gestartetem Tab.
     if (isOut) {
       const chatEmailId = String(e.chat_email_id || '').trim();
       if (chatEmailId) {
         // Neue V12.231-Records: eindeutige Zuordnung
         if (chatEmailId !== emailId) continue;
       } else {
-        // V12.232: Alte Records ohne chat_email_id → matche nur wenn ein echter WartungsnehmerChat-Record
-        // für diese Email+Partner existiert (Beweis dass ein Chat hier stattfand)
+        // V12.232: Alte Records ohne chat_email_id → matche wenn echter WartungsnehmerChat-Record existiert
         const hasRealChatRecord = existingItems.some(it => {
           const isOutIt = String(it.direction || 'out') === 'out';
           const itPartnerEmail = String(it.chat_partner_email || it.to_email || '').toLowerCase().trim();
           return isOutIt && itPartnerEmail === matchEmail;
         });
-        if (!hasRealChatRecord) continue;
+        // V12.233: ODER der User hat den Tab für diese Email explizit gestartet (localStorage-persistent)
+        const isStartedHere = started.some(s => String(s.email || '').toLowerCase().trim() === matchEmail);
+        if (!hasRealChatRecord && !isStartedHere) continue;
       }
     }
-    // V12.231/232: Eingehende Antworten — nur einbinden, wenn DIESER Email zuzuordnen
+    // V12.231/232/233: Eingehende Antworten — nur einbinden, wenn DIESER Email zuzuordnen
     if (!isOut) {
       const hasOutgoingThread = all.some(o => o && o.direction === 'outgoing'
         && String(o.chat_email_id || '').trim() === emailId
@@ -27030,7 +27032,10 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
         const itPartnerEmail = String(it.chat_partner_email || it.to_email || '').toLowerCase().trim();
         return isOutIt && itPartnerEmail === matchEmail;
       });
-      if (!hasOutgoingThread && !isWnHere && !hasRealChatOut) continue;
+      // V12.233: Wenn der User den Tab EXPLIZIT für diese Email gestartet hat (per "+ Servicebetrieb"),
+      // zählt das auch als Match — User hat ja die Zuordnung selbst vorgenommen.
+      const isStartedHere = started.some(s => String(s.email || '').toLowerCase().trim() === matchEmail);
+      if (!hasOutgoingThread && !isWnHere && !hasRealChatOut && !isStartedHere) continue;
     }
     // Dedup gegen existing Chat-Records
     const msgId = String(e.message_id || '').trim();
