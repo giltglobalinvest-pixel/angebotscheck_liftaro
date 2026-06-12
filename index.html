@@ -6328,7 +6328,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.272';
+const APP_VERSION = 'V12.273';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -27733,6 +27733,7 @@ function _renderEmailTimeline(r) {
           ${attCount ? `<span style="font-size:10.5px;color:#92400e;font-weight:600">📎 ${attCount}</span>` : ''}
           ${isManualLink ? `<span title="Manuell verknüpft" style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700">🔗 manuell</span><button onclick="unlinkEmailManually('${x._id}',event)" title="Verknüpfung lösen" style="background:transparent;border:1px solid transparent;color:#94a3b8;border-radius:5px;padding:1px 5px;font-size:10.5px;cursor:pointer;font-family:'DM Sans',sans-serif" onmouseover="this.style.borderColor='#a8312f';this.style.color='#a8312f'" onmouseout="this.style.borderColor='transparent';this.style.color='#94a3b8'">✕ trennen</button>` : ''}
           <span style="font-size:11px;color:#a16207;font-family:var(--dr-f-mono);margin-left:auto">${_esc(fmtWhen(it.when))}</span>
+          <button onclick="event.stopPropagation();deleteChatBubble('${r._id}','email:${x._id}')" title="Diese eingegangene Antwort löschen" style="background:transparent;border:none;color:#fcd34d;cursor:pointer;font-size:14px;padding:0 4px;line-height:1" onmouseover="this.style.color='#a8312f'" onmouseout="this.style.color='#fcd34d'">✕</button>
         </div>
         <div style="font-size:11.5px;color:#a16207;margin-bottom:6px"><strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
         <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #fde68a">${_esc(bodyTrim)}${String(bodyRaw).length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
