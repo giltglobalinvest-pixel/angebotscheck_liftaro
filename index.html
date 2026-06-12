@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.260';
+const APP_VERSION = 'V12.261';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9171,15 +9171,20 @@ async function deleteVollmachtConfirm(recordId, name) {
   }
 }
 
-// V12.257: KI-Neutralisierung eines Email-Anhangs — Strukturerhalt.
+// V12.261: KI-Neutralisierung als Neu-Generierung (statt Schwärzung).
 // Workflow:
-//   1. PDF via fetch → ArrayBuffer
-//   2. Pro Seite: pdfjs rendert zu PNG (Scale 2.0)
-//   3. Pro Seite: Claude Sonnet 4.5 Vision liefert Bounding-Boxes (0..1)
-//      der zu schwärzenden Inhalte (Preise, Firmennamen, Kontakte, Logos)
-//   4. pdf-lib öffnet das Original-PDF und zeichnet schwarze Rechtecke
-//      auf die identifizierten Bereiche → Struktur und Layout bleiben 1:1
-//   5. Upload als `neutralized_attachments`-Anhang an der Email
+//   1. PDF → ArrayBuffer
+//   2. Text aller Seiten via pdfjs extrahieren
+//   3. Claude erhält Text + klare Vorgaben (was raus, was bleibt)
+//   4. Claude liefert strukturierten JSON-Inhalt
+//   5. pdf-lib generiert sauberes neutralisiertes PDF im Liftaro-Look
+//   6. Upload als `neutralized_attachments`
+//
+// Wichtige Regeln:
+//   ✓ BLEIBT: Standort, Fabriknummer, Leistungsumfang, technische Daten,
+//             Klauseln, Datum, Vertragslaufzeit, Stückzahlen, allgemeine Daten
+//   ✗ RAUS:   Anbieter/Firmenname, Personennamen, Kundendaten (HV-Name,
+//             Adressen), Preise/Beträge, Kontaktdaten, IDs, Bankdaten, Logos
 async function neutralizeEmailAttachment(emailId, attIdx) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) { showToast('Email nicht gefunden', 'warning', 3000); return; }
@@ -9197,258 +9202,298 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
     btn.textContent = txt;
     btn.style.opacity = dis ? '.7' : '1';
   };
+
   try {
-    // 1. Original-PDF laden
-    setBtn('PDF laden …', true);
+    setBtn('1/4 PDF laden …', true);
     const resp = await fetch(a.url);
     if (!resp.ok) throw new Error('PDF-Download HTTP ' + resp.status);
     const arrayBuffer = await resp.arrayBuffer();
 
-    // 2. pdfjs für Render, pdf-lib für Manipulation (eigene Kopien der ArrayBuffer,
-    // sonst werden die Buffer nach erstem getDocument detached)
-    const pdfJsDoc  = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0), disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
-    const PDFLibNS  = window.PDFLib;
-    if (!PDFLibNS) throw new Error('PDFLib (pdf-lib) nicht geladen');
-    const editDoc   = await PDFLibNS.PDFDocument.load(arrayBuffer.slice(0));
-    const editPages = editDoc.getPages();
-    const numPages  = pdfJsDoc.numPages;
-    if (numPages !== editPages.length) {
-      console.warn('[neutralize] Seitenanzahl-Mismatch pdfjs vs. pdf-lib:', numPages, editPages.length);
+    // 2. Text-Extraktion via pdfjs
+    setBtn('2/4 Text extrahieren …', true);
+    const pdfJsDoc = await pdfjsLib.getDocument({
+      data: arrayBuffer.slice(0),
+      disableRange: true, disableStream: true, disableAutoFetch: true,
+    }).promise;
+    const numPages = pdfJsDoc.numPages;
+    let fullText = '';
+    for (let p = 1; p <= numPages; p++) {
+      const page = await pdfJsDoc.getPage(p);
+      const tc = await page.getTextContent();
+      const pageText = (tc.items || []).map(it => it.str).join(' ');
+      fullText += '\n\n--- Seite ' + p + ' ---\n' + pageText;
     }
+    if (!fullText.trim()) throw new Error('PDF enthält keinen extrahierbaren Text');
 
-    // 3. Helper — robuster JSON-Parser (gleicher Ansatz wie vorher, kompakter)
-    const parseRedactionJson = (txt) => {
-      let s = String(txt || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+    // 3. Claude neutralisiert
+    setBtn('3/4 KI analysiert …', true);
+    const systemPrompt =
+      'Du bist ein Assistent, der Geschäfts-Dokumente (Wartungsverträge, Angebote, Rechnungen, ' +
+      'Wartungsprotokolle, Prüfberichte etc.) für die Weiterleitung an Dritte ANONYMISIERT. ' +
+      'Du erhältst den extrahierten Text eines PDFs und gibst eine strukturierte, lesbare ' +
+      'Wiedergabe des Inhalts zurück — ohne identifizierende Informationen.\n\n' +
+      'ENTFERNEN bzw. durch Platzhalter ersetzen:\n' +
+      '- Anbieter-/Firmennamen → "[Anbieter]"\n' +
+      '- Kunden-/Hausverwaltungsnamen → "[Kunde]"\n' +
+      '- Personennamen (Ansprechpartner, Mitarbeiter, Unterschriften) → "[Person]"\n' +
+      '- Adressen des Anbieters und des Kunden → "[Adresse]"\n' +
+      '- Telefon, Fax, Email, Website, Briefkopf-Kontaktdaten → entfernen\n' +
+      '- Alle Preise, Beträge, Summen, Stundensätze, EUR-Werte → "[Betrag]"\n' +
+      '- Steuernummern, USt-IdNr, Handelsregister → entfernen\n' +
+      '- Kunden-, Vertrags-, Auftrags-, Rechnungs-, Angebotsnummern → entfernen\n' +
+      '- IBAN, BIC, Bankverbindungen → entfernen\n' +
+      '- Logos und Bildmarken → entfernen (textuell nicht erwähnen)\n\n' +
+      'UNBEDINGT BEHALTEN (das sind wichtige Sachdaten):\n' +
+      '- Standort der Anlage (Straße/Hausnummer, PLZ, Ort) — wenn es die Anlage selbst ' +
+      '  identifiziert, NICHT den Kunden\n' +
+      '- Fabriknummer der Anlage / Aufzug-Nummer / Anlagen-Nr.\n' +
+      '- Hersteller der Anlage, Anlagentyp, Baujahr, Nennlast, Personenzahl, Förderhöhe, ' +
+      '  Haltestellen, Geschwindigkeit, Steuerungsart, technische Daten\n' +
+      '- Leistungsbeschreibung, Leistungsumfang, Vertragsklauseln, AGB-Verweise, ' +
+      '  Zahlungsbedingungen-Beschreibung (ohne konkrete Beträge), Laufzeit, Kündigungsfristen\n' +
+      '- Datumsangaben (Datum des Dokuments, Vertragsbeginn, Vertragsende)\n' +
+      '- Sachliche Mengenangaben (Stückzahlen, Wartungs-Intervalle, Prüfumfänge)\n\n' +
+      'ANTWORT-FORMAT — ausschließlich valides JSON:\n' +
+      '{\n' +
+      '  "title": "Knappe neutrale Überschrift, z.B. \\"Wartungsvertrag Aufzugsanlage\\"",\n' +
+      '  "anlage": { "standort": "...", "fabriknummer": "...", "hersteller": "...", "weitere": "..." },\n' +
+      '  "sections": [\n' +
+      '    { "heading": "Abschnittstitel", "content": "Fließtext — verwende \\\\n für Absätze, * für Bullet-Punkte" }\n' +
+      '  ],\n' +
+      '  "notes": "Optionaler Hinweis"\n' +
+      '}\n\n' +
+      'Falls eine Anlage-Eigenschaft (Standort, Fabriknummer etc.) nicht im Dokument steht: ' +
+      'Feld leer lassen. Erfinde NICHTS.';
+
+    const userMsg = 'Hier ist der extrahierte Text. Neutralisiere ihn streng nach den Vorgaben.\n\n' +
+      '```\n' + fullText.slice(0, 24000) + '\n```';
+
+    const raw = await callClaude(
+      [{ role: 'user', content: userMsg }],
+      systemPrompt,
+      { maxTokens: 12000 },
+    );
+
+    // Robuster JSON-Parser mit Auto-Repair
+    const parseJsonLoose = (txt) => {
+      let s = String(txt || '').trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```\s*$/i, '');
       const i = s.indexOf('{'), j = s.lastIndexOf('}');
       if (i >= 0 && j > i) s = s.slice(i, j + 1);
-      const tries = [
-        () => JSON.parse(s),
-        () => JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')),
-        () => {
-          let s2 = s;
-          const lastComma = s2.lastIndexOf(',');
-          if (lastComma > 0) s2 = s2.slice(0, lastComma);
-          const opens = { '{': 0, '[': 0 };
-          let inStr = false, esc = false;
-          for (const ch of s2) {
-            if (esc) { esc = false; continue; }
-            if (ch === '\\') { esc = true; continue; }
-            if (ch === '"') { inStr = !inStr; continue; }
-            if (inStr) continue;
-            if (ch === '{') opens['{']++; else if (ch === '}') opens['{']--;
-            else if (ch === '[') opens['[']++; else if (ch === ']') opens['[']--;
-          }
-          if (inStr) s2 += '"';
-          while (opens['['] > 0) { s2 += ']'; opens['[']--; }
-          while (opens['{'] > 0) { s2 += '}'; opens['{']--; }
-          return JSON.parse(s2.replace(/,(\s*[}\]])/g, '$1'));
-        },
-      ];
-      for (const t of tries) { try { return t(); } catch (_) {} }
-      return { redactions: [] };
+      try { return JSON.parse(s); } catch (_) {}
+      try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch (_) {}
+      let s2 = s;
+      const lastComma = s2.lastIndexOf(',');
+      if (lastComma > 0) s2 = s2.slice(0, lastComma);
+      const opens = { '{': 0, '[': 0 };
+      let inStr = false, esc = false;
+      for (const ch of s2) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '{') opens['{']++; else if (ch === '}') opens['{']--;
+        else if (ch === '[') opens['[']++; else if (ch === ']') opens['[']--;
+      }
+      if (inStr) s2 += '"';
+      while (opens['['] > 0) { s2 += ']'; opens['[']--; }
+      while (opens['{'] > 0) { s2 += '}'; opens['{']--; }
+      try { return JSON.parse(s2.replace(/,(\s*[}\]])/g, '$1')); } catch (e) {
+        return {
+          title: 'Neutralisiertes Dokument',
+          anlage: {},
+          sections: [{ heading: 'Inhalt (KI-Rohtext)', content: String(txt || '').slice(0, 8000) }],
+          notes: 'Hinweis: JSON-Antwort war unvollständig (' + e.message + '). Bitte prüfen.',
+        };
+      }
     };
 
-    // 4. Vision-System-Prompt — JSON mit normalisierten Bounding-Boxes
-    const visionSystem = 'Du bist ein Assistent, der Bilder von Geschaeftsdokumenten analysiert und ' +
-      'alle SENSITIVEN Inhalte zur Schwaerzung markiert. Markiere ALLE folgenden Elemente mit ' +
-      'praezisen Bounding-Boxen:\n' +
-      '- Firmennamen und Marken (auch in Logos)\n' +
-      '- Personennamen (Mitarbeiter, Ansprechpartner)\n' +
-      '- Postadressen (Strasse + Ort + PLZ), die das Unternehmen identifizieren\n' +
-      '- Telefonnummern, Faxnummern, Email-Adressen, Websites/URLs\n' +
-      '- ALLE Preise, Betraege, Summen, Stundensaetze, EUR-Werte\n' +
-      '- Steuernummern, USt-IdNr, Handelsregister-Nummern\n' +
-      '- Kundennummern, Vertragsnummern, Auftragsnummern, Rechnungsnummern\n' +
-      '- Bankverbindungen: IBAN, BIC, Kontonummer, BLZ\n' +
-      '- Logos und Bildmarken (komplette grafische Logo-Bereiche)\n' +
-      '- Unterschriften und Stempel\n' +
-      'BEHALTEN: technische Inhalte, allgemeine Klauseln, Datum, Anlagen-Standort wenn anonym, Leistungsbeschreibungen.\n' +
-      'Liefere AUSSCHLIESSLICH valides JSON in diesem Schema:\n' +
-      '{ "redactions": [ { "x": 0..1, "y": 0..1, "w": 0..1, "h": 0..1, "kind": "logo|firma|name|adresse|kontakt|betrag|id|nr|bank|signatur|sonstiges", "label": "kurzer Hinweis was es ist" } ] }\n' +
-      'KOORDINATEN-SYSTEM:\n' +
-      '- x, y, w, h sind NORMALISIERTE Werte zwischen 0 und 1, relativ zur Bildgroesse\n' +
-      '- x = linke Kante der Box (0 = linker Bildrand)\n' +
-      '- y = obere Kante der Box (0 = oberer Bildrand)\n' +
-      '- w = Breite der Box (bezogen auf Bildbreite)\n' +
-      '- h = Hoehe der Box (bezogen auf Bildhoehe)\n' +
-      '- Die Boxen sollten ETWAS groesser sein als der reine Text/Logo (kleiner Padding-Buffer von ~0.005),\n' +
-      '  damit nach dem Schwaerzen keine Rand-Pixel sichtbar bleiben.\n' +
-      'Falls die Seite KEINE zu schwaerzenden Inhalte hat: { "redactions": [] }';
+    const parsed = parseJsonLoose(raw);
+    const title = String(parsed.title || 'Neutralisiertes Dokument');
+    const anlage = parsed.anlage || {};
+    const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
+    const notes = String(parsed.notes || '');
 
-    // V12.258: Vision-Call mit Timeout + Retry, sequentiell mit kleiner Pause.
-    // Sonnet 4.5 wird priorisiert ("beste KI"), bei wiederholten Fehlern fallback auf Haiku.
-    const callVisionForPage = async (b64, p, model) => {
-      const body = {
-        model: model,
-        max_tokens: 8000,
-        system: visionSystem,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-            { type: 'text', text: 'Identifiziere ALLE zu schwaerzenden Bereiche auf dieser Seite (' + p + '/' + numPages + '). Antworte nur mit dem JSON.' },
-          ],
-        }],
-      };
-      // 90s Timeout via AbortController — sonst kann ein hängender Call die ganze
-      // Loop einfrieren (User-Report V12.257: Anzeige hängt bei "Seite 8 / 23")
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort('Timeout 90s'), 90000);
-      try {
-        const vr = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': APP_KEYS.anthropicKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
+    // 4. PDF mit pdf-lib bauen — sauberes Liftaro-Layout
+    setBtn('4/4 PDF erzeugen …', true);
+    const PDFLibNS = window.PDFLib;
+    if (!PDFLibNS) throw new Error('PDFLib (pdf-lib) nicht geladen');
+    const outDoc = await PDFLibNS.PDFDocument.create();
+    const helv     = await outDoc.embedFont(PDFLibNS.StandardFonts.Helvetica);
+    const helvBold = await outDoc.embedFont(PDFLibNS.StandardFonts.HelveticaBold);
+    const rgb = PDFLibNS.rgb;
+
+    const A4 = [595.28, 841.89];
+    const MARGIN_L = 56;
+    const MARGIN_R = 56;
+    const MARGIN_T = 56;
+    const MARGIN_B = 56;
+    const PAGE_W = A4[0];
+    const PAGE_H = A4[1];
+    const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R;
+    const NAVY = rgb(0.10, 0.23, 0.36);
+    const INK  = rgb(0.06, 0.09, 0.16);
+    const SOFT = rgb(0.45, 0.50, 0.59);
+    const MUTE = rgb(0.58, 0.64, 0.71);
+    const ACCENT_BG = rgb(0.92, 0.96, 1.00);
+
+    let page = outDoc.addPage(A4);
+    let y = PAGE_H - MARGIN_T;
+    const newPage = () => { page = outDoc.addPage(A4); y = PAGE_H - MARGIN_T; };
+    const ensure = (needed) => { if (y - needed < MARGIN_B + 24) newPage(); };
+
+    // Word-Wrap-Helper
+    const drawWrapped = (txt, opts) => {
+      const o = opts || {};
+      const font = o.bold ? helvBold : helv;
+      const size = o.size || 11;
+      const color = o.color || INK;
+      const lineH = (o.lineH || size * 1.35);
+      const indent = (o.indent || 0);
+      const maxW = CONTENT_W - indent;
+      // Mehrzeiliger Eingabetext mit Manual \n
+      const lines = String(txt).split(/\r?\n/);
+      for (const para of lines) {
+        if (!para.trim()) { y -= lineH * 0.5; continue; }
+        const words = para.split(/\s+/);
+        let line = '';
+        for (const w of words) {
+          const test = line ? line + ' ' + w : w;
+          const wPt = font.widthOfTextAtSize(test, size);
+          if (wPt > maxW && line) {
+            ensure(lineH);
+            page.drawText(line, { x: MARGIN_L + indent, y, size, font, color });
+            y -= lineH;
+            line = w;
+          } else {
+            line = test;
+          }
+        }
+        if (line) {
+          ensure(lineH);
+          page.drawText(line, { x: MARGIN_L + indent, y, size, font, color });
+          y -= lineH;
+        }
+      }
+    };
+
+    // Bullet-Render (Zeile beginnt mit "* ")
+    const drawBullet = (txt, opts) => {
+      const o = opts || {};
+      ensure(16);
+      page.drawText('•', { x: MARGIN_L + 4, y: y - 1, size: 11, font: helvBold, color: NAVY });
+      drawWrapped(txt, { ...o, indent: 16 });
+    };
+
+    // Header-Streifen
+    page.drawRectangle({ x: 0, y: PAGE_H - 36, width: PAGE_W, height: 36, color: NAVY });
+    page.drawText('NEUTRALISIERTES DOKUMENT', {
+      x: MARGIN_L, y: PAGE_H - 24, size: 11, font: helvBold, color: rgb(1, 1, 1),
+    });
+    page.drawText('via Liftaro KI', {
+      x: PAGE_W - MARGIN_R - 78, y: PAGE_H - 24, size: 9, font: helv, color: rgb(0.85, 0.92, 1),
+    });
+    y = PAGE_H - 36 - 22;
+
+    // Titel
+    drawWrapped(title, { bold: true, size: 19, color: INK, lineH: 24 });
+    y -= 4;
+
+    // Hinweis-Zeile
+    drawWrapped(
+      'Anbieter, Kunde, Preise, Kontaktdaten und IDs wurden entfernt. ' +
+      'Standort und Fabriknummer der Anlage bleiben sichtbar.',
+      { size: 9.5, color: MUTE, lineH: 13 },
+    );
+    y -= 10;
+
+    // Anlagen-Datenblock
+    const anlageEntries = [];
+    if (anlage.standort)     anlageEntries.push(['Standort',      String(anlage.standort)]);
+    if (anlage.fabriknummer) anlageEntries.push(['Fabriknummer',  String(anlage.fabriknummer)]);
+    if (anlage.hersteller)   anlageEntries.push(['Hersteller',    String(anlage.hersteller)]);
+    if (anlage.weitere)      anlageEntries.push(['Weitere Daten', String(anlage.weitere)]);
+    if (anlageEntries.length) {
+      ensure(28 + anlageEntries.length * 16);
+      const boxTop = y + 2;
+      const boxH = 16 + anlageEntries.length * 16;
+      page.drawRectangle({
+        x: MARGIN_L, y: boxTop - boxH, width: CONTENT_W, height: boxH,
+        color: ACCENT_BG,
+      });
+      page.drawText('ANLAGE', {
+        x: MARGIN_L + 12, y: boxTop - 14, size: 9, font: helvBold, color: NAVY,
+      });
+      let entryY = boxTop - 26;
+      for (const [k, v] of anlageEntries) {
+        page.drawText(k + ':', {
+          x: MARGIN_L + 12, y: entryY, size: 10, font: helvBold, color: NAVY,
         });
-        if (!vr.ok) {
-          const err = await vr.json().catch(() => ({}));
-          const e = new Error(err.error?.message || ('HTTP ' + vr.status));
-          e.status = vr.status;
-          throw e;
-        }
-        const vd = await vr.json();
-        return (vd.content && vd.content[0] && vd.content[0].text) || '';
-      } finally {
-        clearTimeout(timer);
+        // Wert begrenzt darstellen, bei zu langem Text abschneiden
+        const valStr = v.length > 90 ? v.slice(0, 90) + '…' : v;
+        page.drawText(valStr, {
+          x: MARGIN_L + 110, y: entryY, size: 10, font: helv, color: INK,
+        });
+        entryY -= 14;
       }
-    };
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    // V12.260: Default Haiku 4.5 — gleich gut für Bounding-Box-Detection,
-    // ~3× schneller und höheres Rate-Limit als Sonnet. Bei 429 zusätzlich Retry.
-    let currentModel = 'claude-haiku-4-5-20251001';
-    const allRedactions = [];
-    const RENDER_SCALE = 1.6;
-    let completedCount = 0;
-    const updateBtn = () => setBtn(completedCount + ' / ' + numPages + ' Seiten fertig …', true);
-    updateBtn();
-
-    // V12.260: Pro-Seite-Worker (rendern + analysieren + schwärzen)
-    const processPage = async (p) => {
-      console.log('[neutralize] Seite ' + p + '/' + numPages + ' startet');
-      const page = await pdfJsDoc.getPage(p);
-      const viewport = page.getViewport({ scale: RENDER_SCALE });
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-      const b64 = dataUrl.split(',')[1] || '';
-      canvas.width = 0; canvas.height = 0;
-
-      let visionText = '';
-      let attempts = 0;
-      const MAX_ATTEMPTS = 4;
-      while (attempts < MAX_ATTEMPTS) {
-        attempts++;
-        try {
-          visionText = await callVisionForPage(b64, p, currentModel);
-          break;
-        } catch (vErr) {
-          const st = vErr.status || 0;
-          const msg = String(vErr.message || '');
-          console.warn('[neutralize] Seite ' + p + ' Versuch ' + attempts + ' (' + currentModel + ') fehlgeschlagen:', st, msg);
-          if (st === 404 || /not.*found|unknown.*model/i.test(msg)) {
-            console.warn('[neutralize] Modell ' + currentModel + ' nicht erreichbar — Abbruch dieser Seite');
-            break;
-          }
-          if (st === 429 || st === 529 || st === 502 || st === 503 || /timeout|abort/i.test(msg)) {
-            if (attempts < MAX_ATTEMPTS) {
-              // Exponential Backoff mit Jitter — verhindert Thundering-Herd bei parallelen 429
-              const wait = 1500 * Math.pow(2, attempts - 1) + Math.floor(Math.random() * 500);
-              console.log('[neutralize] Seite ' + p + ' Backoff ' + wait + 'ms');
-              await sleep(wait);
-              continue;
-            }
-          }
-          console.warn('[neutralize] Seite ' + p + ' wird übersprungen (' + msg + ')');
-          break;
-        }
-      }
-      if (!visionText) {
-        completedCount++;
-        updateBtn();
-        return;
-      }
-      const parsed = parseRedactionJson(visionText);
-      const redactions = Array.isArray(parsed.redactions) ? parsed.redactions : [];
-      const editPage = editPages[p - 1];
-      let drawn = 0;
-      if (editPage) {
-        const { width: pageW, height: pageH } = editPage.getSize();
-        for (const red of redactions) {
-          let nx = Number(red.x), ny = Number(red.y), nw = Number(red.w), nh = Number(red.h);
-          if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nw) || !Number.isFinite(nh)) continue;
-          if (nx > 1 || ny > 1 || nw > 1 || nh > 1) {
-            if (nx > 1) nx /= 100; if (ny > 1) ny /= 100;
-            if (nw > 1) nw /= 100; if (nh > 1) nh /= 100;
-          }
-          nx = Math.max(0, Math.min(1, nx));
-          ny = Math.max(0, Math.min(1, ny));
-          nw = Math.max(0, Math.min(1 - nx, nw));
-          nh = Math.max(0, Math.min(1 - ny, nh));
-          if (nw < 0.002 || nh < 0.002) continue;
-          const x = nx * pageW;
-          const w = nw * pageW;
-          const h = nh * pageH;
-          const y = pageH - (ny * pageH) - h;
-          editPage.drawRectangle({ x, y, width: w, height: h, color: PDFLibNS.rgb(0, 0, 0) });
-          drawn++;
-        }
-      }
-      allRedactions.push({ page: p, count: drawn });
-      completedCount++;
-      updateBtn();
-      console.log('[neutralize] Seite ' + p + ' fertig · ' + drawn + ' Schwärzung(en) · ' + completedCount + '/' + numPages + ' gesamt');
-    };
-
-    // V12.260: Worker-Pool — CONCURRENCY parallele Vision-Calls.
-    // Bei Haiku 4.5 Tier 1 sind 50 RPM erlaubt → 5 parallel ist sicher.
-    const queue = [];
-    for (let p = 1; p <= numPages; p++) queue.push(p);
-    const CONCURRENCY = Math.min(5, numPages);
-    const workers = [];
-    for (let w = 0; w < CONCURRENCY; w++) {
-      workers.push((async () => {
-        while (queue.length) {
-          const p = queue.shift();
-          if (!p) break;
-          try { await processPage(p); }
-          catch (e) { console.error('[neutralize] Seite ' + p + ' unhandled:', e); }
-        }
-      })());
+      y = boxTop - boxH - 14;
     }
-    await Promise.all(workers);
 
-    // 6. Watermark/Footer minimal — kleiner Hinweis am Fußrand jeder Seite
-    const helv = await editDoc.embedFont(PDFLibNS.StandardFonts.Helvetica);
-    for (let i = 0; i < editPages.length; i++) {
-      const pg = editPages[i];
-      const { width: pw } = pg.getSize();
-      const label = 'NEUTRALISIERT via Liftaro KI · ' + (i + 1) + ' / ' + editPages.length;
-      pg.drawText(label, {
-        x: pw - 220, y: 8, size: 7, font: helv, color: PDFLibNS.rgb(0.55, 0.55, 0.55),
+    // Sections rendern
+    for (const s of sections) {
+      const heading = String(s.heading || '').trim();
+      const content = String(s.content || '').trim();
+      if (!heading && !content) continue;
+      y -= 4;
+      ensure(28);
+      if (heading) {
+        drawWrapped(heading, { bold: true, size: 13, color: NAVY, lineH: 17 });
+        y -= 3;
+      }
+      // Content kann \n haben + "* "-Bullets
+      const lines = content.split(/\r?\n/);
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t) { y -= 6; continue; }
+        if (/^\*\s+/.test(t)) {
+          drawBullet(t.replace(/^\*\s+/, ''), { size: 10.5, lineH: 14 });
+        } else {
+          drawWrapped(t, { size: 10.5, lineH: 14 });
+        }
+      }
+      y -= 4;
+    }
+
+    // Optional Notes-Block
+    if (notes) {
+      y -= 10;
+      ensure(40);
+      drawWrapped('Hinweis', { bold: true, size: 11, color: SOFT, lineH: 14 });
+      drawWrapped(notes, { size: 9.5, color: SOFT, lineH: 13 });
+    }
+
+    // Footer + Seitenzahlen
+    const pages = outDoc.getPages();
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
+      const footer = 'Quelle: ' + String(a.filename || 'Anhang') + ' · anonymisiert via Liftaro KI · Seite ' + (i + 1) + ' / ' + pages.length;
+      p.drawText(footer, {
+        x: MARGIN_L, y: 26, size: 7.5, font: helv, color: MUTE,
       });
     }
 
-    // 7. Speichern + Upload
+    const pdfBytes = await outDoc.save();
+
+    // 5. Upload zu Airtable
     setBtn('Hochladen …', true);
-    const pdfBytes = await editDoc.save();
     const baseName = String(a.filename || 'Anhang').replace(/\.pdf$/i, '') || 'Anhang';
     const outName  = baseName + '_neutral.pdf';
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const file = new File([blob], outName, { type: 'application/pdf' });
     await uploadAirtableAttachment('Emails', emailId, 'neutralized_attachments', file);
 
-    // 8. Lokale Email-Daten aktualisieren + UI refresh
+    // 6. Lokale Email-Daten aktualisieren + UI refresh
     try {
       const recs = await atRead('Emails', "RECORD_ID()='" + emailId + "'", { sort: false });
       if (recs.length) {
@@ -9458,9 +9503,8 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
       }
     } catch (_) {}
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
-    const totalBoxes = allRedactions.reduce((s, r) => s + r.count, 0);
-    showToast('✓ „' + outName + '" angelegt · ' + totalBoxes + ' Schwärzung' + (totalBoxes === 1 ? '' : 'en') + ' auf ' + numPages + ' Seite' + (numPages === 1 ? '' : 'n'), 'success', 5000);
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    showToast('✓ „' + outName + '" angelegt · ' + sections.length + ' Abschnitte', 'success', 4500);
   } catch (e) {
     console.error('[neutralizeEmailAttachment]', e);
     showToast('Neutralisierung fehlgeschlagen: ' + e.message, 'error', 6000);
