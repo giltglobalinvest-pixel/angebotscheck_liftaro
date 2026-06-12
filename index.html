@@ -6328,7 +6328,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.273';
+const APP_VERSION = 'V12.274';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -27450,13 +27450,14 @@ function renderEmailInboxList() {
       }
       const checkOpts = [
         { val: '',               label: '—' },
+        { val: 'kein_check',     label: '🚫 Kein Check' },
         { val: 'in_bearbeitung', label: '🔄 In Bearbeitung' },
         { val: 'gecheckt',       label: '✓ Gecheckt' },
         { val: 'beauftragt',     label: '📤 Beauftragt' },
         { val: 'abgerechnet',    label: '💶 Abgerechnet' },
       ];
       // Backward-Compat
-      if (curCheck && !['','in_bearbeitung','gecheckt','beauftragt','abgerechnet'].includes(curCheck)) {
+      if (curCheck && !['','kein_check','in_bearbeitung','gecheckt','beauftragt','abgerechnet'].includes(curCheck)) {
         checkOpts.push({ val: curCheck, label: curCheck });
       }
       const selStyle = 'background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:6px;padding:5px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;outline:none;width:100%;max-width:170px';
@@ -31894,7 +31895,7 @@ async function setEmailCheckStatus(recId, val) {
     if (r) r.check_status = value;
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    const labels = { in_bearbeitung: 'In Bearbeitung', gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet' };
+    const labels = { kein_check: 'Kein Check', in_bearbeitung: 'In Bearbeitung', gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet' };
     showToast(value ? 'Check-Status: ' + (labels[value] || value) : 'Check-Status zurückgesetzt', 'success', 1800);
   } catch (e) {
     showToast('Fehler beim Check-Status-Update: ' + e.message, 'error');
