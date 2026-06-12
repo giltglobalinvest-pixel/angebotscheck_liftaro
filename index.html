@@ -4112,6 +4112,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
             <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
+            <button class="ei-side-item" data-status="wartend"        onclick="setEiFilter('wartend')"       ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Wartend</span><span class="ei-side-cnt" id="eiSideCnt_wartend">0</span></button>
             <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#22c55e"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
             <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
@@ -4705,6 +4706,9 @@ const pdfWorkerReady = Promise.resolve();</script>
 .ei-status-chip.gesichtet .dot  { background:#94a3b8; }
 .ei-status-chip.in_bearbeitung  { background:#dbeafe; color:#1e40af; }
 .ei-status-chip.in_bearbeitung .dot { background:#60a5fa; }
+/* V12.266: Wartend-Status (zwischen In Bearbeitung und Archiviert) */
+.ei-status-chip.wartend         { background:#fef3c7; color:#92400e; }
+.ei-status-chip.wartend .dot    { background:#f59e0b; }
 .ei-status-chip.geantwortet     { background:#dcfce7; color:#166534; }
 .ei-status-chip.geantwortet .dot { background:#22c55e; }
 .ei-status-chip.verworfen       { background:#fee2e2; color:#991b1b; }
@@ -6309,7 +6313,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.265';
+const APP_VERSION = 'V12.266';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -26910,10 +26914,11 @@ function renderEmailInboxList() {
       const statusOpts = [
         { val: 'neu',            label: 'Neu' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
+        { val: 'wartend',        label: 'Wartend' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
       // Backward-Compat: falls Status='gesichtet'/'geantwortet' (alte Werte) → als Option anbieten
-      if (curStatus && !['neu','in_bearbeitung','verworfen'].includes(curStatus)) {
+      if (curStatus && !['neu','in_bearbeitung','wartend','verworfen'].includes(curStatus)) {
         const oldLabels = { gesichtet: 'Gesichtet', geantwortet: 'Geantwortet', gesendet: 'Gesendet' };
         statusOpts.unshift({ val: curStatus, label: oldLabels[curStatus] || curStatus });
       }
@@ -31396,7 +31401,7 @@ async function setEmailStatus(recId, newStatus) {
     }
     _refreshEmailInboxBadge();
     // V12.255: Klarere Status-Labels statt techn. Strings
-    const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
+    const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', wartend: 'wartend', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
     showToast('Email ' + label + '.', 'success', 2200);
   } catch (e) {
     showToast('Fehler beim Status-Update: ' + e.message, 'error');
