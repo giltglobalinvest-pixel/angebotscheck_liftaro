@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.258';
+const APP_VERSION = 'V12.259';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29921,7 +29921,11 @@ function renderEmailInboxDetail() {
     const sentDate = String(r.sent_at || r.status_at || '').replace('T', ' ').slice(0, 19);
     const att = String(r.attachment_filenames || '').trim();
     const bcc = String(r.bcc_email || '').trim();
-    const bodyHtml = _esc(r.body || '').replace(/\n/g, '<br>');
+    // V12.259: bevorzugt body_html (echtes HTML, sanitisiert), sonst plain-Text mit <br>
+    const hasOutHtml = !!(r.body_html && String(r.body_html).trim());
+    const bodyHtml = hasOutHtml
+      ? '' // kommt via data-html in den Container
+      : _esc(r.body || '').replace(/\n/g, '<br>');
     detEl.innerHTML = `<div style="padding:20px 24px">
       <button class="ei-mobile-back" onclick="backToInboxList()" style="background:var(--dr-surface);border:1px solid var(--dr-border);color:var(--dr-ink);border-radius:var(--dr-r-md);padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;align-items:center;gap:7px;margin-bottom:14px;box-shadow:var(--dr-elev-1)">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -29941,7 +29945,9 @@ function renderEmailInboxDetail() {
           ${r.linked_check_ids ? `<div><strong>Verlinkte Checks:</strong> <code style="font-size:11.5px">${_esc(r.linked_check_ids)}</code></div>` : ''}
           ${att ? `<div><strong>Anhänge:</strong> ${_esc(att)}</div>` : ''}
         </div>
-        <div style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:8px;padding:14px 16px;font-size:13.5px;color:var(--dr-ink);line-height:1.6;white-space:pre-wrap">${bodyHtml || '<em style="color:var(--dr-ink-mute)">(kein Body)</em>'}</div>
+        ${hasOutHtml
+          ? `<div data-html="${_esc(String(r.body_html || ''))}" style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:8px;padding:14px 16px;font-size:13.5px;color:var(--dr-ink);line-height:1.6"></div>`
+          : `<div style="background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:8px;padding:14px 16px;font-size:13.5px;color:var(--dr-ink);line-height:1.6;white-space:pre-wrap">${bodyHtml || '<em style="color:var(--dr-ink-mute)">(kein Body)</em>'}</div>`}
       </div>
     </div>`;
     return;
@@ -30021,13 +30027,16 @@ function renderEmailInboxDetail() {
   // V12.187: Body direkt nach Header sichtbar machen
   const bodyText = (r.body_text && r.body_text.trim()) || _stripHtml(r.body_html || '') || '(leer)';
   const hasHtml = !!(r.body_html && r.body_html.trim());
+  // V12.259: Wenn body_html vorhanden → standardmäßig das Original-HTML zeigen.
+  // Toggle bleibt verfügbar, falls jemand den extrahierten Plain-Text sehen will.
+  const htmlDefault = hasHtml;
   html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
     <div class="dr-section-head" style="margin-bottom:10px">
       <div class="dr-section-title">Email-Inhalt${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
-      ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Original-HTML anzeigen</button>` : ''}
+      ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Als Text anzeigen</button>` : ''}
     </div>
-    <div id="eiBodyText_${r._id}" style="font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
-    ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:none;width:100%;max-height:520px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;margin-top:8px"></div>` : ''}
+    <div id="eiBodyText_${r._id}" style="display:${htmlDefault ? 'none' : 'block'};font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
+    ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:block;width:100%;max-height:620px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--dr-ink)"></div>` : ''}
   </div>`;
 
   // V12.187: Anhänge prominent direkt unter dem Body
@@ -30423,7 +30432,25 @@ function renderEmailInboxDetail() {
 
   html += `</div>`;
   detEl.innerHTML = html;
+  // V12.259: HTML-Bodies sofort hydratisieren (statt lazy beim Toggle), damit
+  // das Original-HTML standardmäßig sichtbar ist.
+  if (typeof _eiHydrateHtmlBodies === 'function') _eiHydrateHtmlBodies(detEl);
 }
+
+// V12.259: alle [data-html]-Elemente innerhalb des Containers in echtes DOM-Markup
+// umwandeln (sanitisiert via _sanitizeEmailHtml). Wird nach jedem Detail-Render
+// gerufen, damit das Original-HTML der Email default sichtbar ist.
+function _eiHydrateHtmlBodies(container) {
+  if (!container) return;
+  container.querySelectorAll('[data-html]').forEach(el => {
+    if (el.dataset.rendered === '1') return;
+    const raw = el.getAttribute('data-html') || '';
+    el.innerHTML = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(raw) : raw;
+    el.dataset.rendered = '1';
+    el.removeAttribute('data-html');
+  });
+}
+window._eiHydrateHtmlBodies = _eiHydrateHtmlBodies;
 
 function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -30497,7 +30524,9 @@ function _eiToggleHtml(recId) {
   const btn    = document.getElementById('eiHtmlToggle_' + recId);
   if (!textEl || !htmlEl || !btn) return;
 
-  // Lazy: HTML erst beim ersten Click rein-rendern (sicher)
+  // V12.259: HTML wird nach jedem Render hydratisiert; falls noch nicht passiert
+  // (z.B. Toggle direkt nach Initial-Render bevor _eiHydrateHtmlBodies lief),
+  // hier nochmal als Fallback.
   if (!htmlEl.dataset.rendered) {
     const raw = htmlEl.getAttribute('data-html') || '';
     htmlEl.innerHTML = _sanitizeEmailHtml(raw);
@@ -30505,14 +30534,16 @@ function _eiToggleHtml(recId) {
     htmlEl.removeAttribute('data-html');
   }
 
-  if (htmlEl.style.display === 'none') {
+  // Default seit V12.259: HTML ist sichtbar, Text ist versteckt — Toggle invertiert.
+  const htmlVisible = htmlEl.style.display !== 'none';
+  if (htmlVisible) {
+    htmlEl.style.display = 'none';
+    textEl.style.display = 'block';
+    btn.textContent = 'Als HTML anzeigen';
+  } else {
     htmlEl.style.display = 'block';
     textEl.style.display = 'none';
     btn.textContent = 'Als Text anzeigen';
-  } else {
-    htmlEl.style.display = 'none';
-    textEl.style.display = 'block';
-    btn.textContent = 'Original-HTML anzeigen';
   }
 }
 
@@ -30524,6 +30555,26 @@ function _sanitizeEmailHtml(html) {
     tpl.innerHTML = String(html || '');
     // Gefährliche Elemente entfernen
     tpl.content.querySelectorAll('script, iframe, object, embed, link[rel="stylesheet"], style').forEach(el => el.remove());
+    // V12.259: cid:-Inline-Images werfen ERR_UNKNOWN_URL_SCHEME — Platzhalter ersetzen
+    tpl.content.querySelectorAll('img').forEach(img => {
+      const src = String(img.getAttribute('src') || '').trim();
+      if (/^cid:/i.test(src)) {
+        // Inline-Bild durch dezente Platzhalter-Notiz ersetzen
+        const ph = document.createElement('span');
+        ph.style.cssText = 'display:inline-block;padding:2px 8px;background:#f1f5f9;color:#94a3b8;border:1px dashed #cbd5e1;border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif';
+        ph.textContent = '🖼 inline-Bild';
+        img.replaceWith(ph);
+      } else {
+        // Externe Bilder: lazy laden, kein Referer leaken
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('referrerpolicy', 'no-referrer');
+      }
+    });
+    // V12.259: Links in neuem Tab öffnen, kein Referer
+    tpl.content.querySelectorAll('a').forEach(a => {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+    });
     // on*-Attributes entfernen + javascript:-URLs neutralisieren
     tpl.content.querySelectorAll('*').forEach(el => {
       [...el.attributes].forEach(attr => {
