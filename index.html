@@ -5380,9 +5380,18 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
       </div>
       <!-- Vertrag-PDF Upload -->
       <div id="lv_uploadSection" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:none">
+        <input type="hidden" id="lv_hv_pipedrive_org_id">
         <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Unterschriebene Vereinbarung</div>
         <div id="lv_signedInfo" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
         <input type="file" id="lv_signedFile" accept=".pdf,image/*" style="font-size:12px">
+        <!-- V12.269: KI-Vollmacht-Extraktion aus dem zurückgesendeten Gesamt-PDF -->
+        <div style="margin-top:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:12.5px;font-weight:700;color:#15803d">📜 Vollmacht automatisch extrahieren</div>
+            <div style="font-size:11px;color:#166534;margin-top:2px;line-height:1.4">Bei zurückgesendetem Komplett-PDF (Datenschutz + Rahmenvertrag + Vollmacht) erkennt die KI die Vollmacht-Seite(n) und legt sie als Vollmacht der HV im Modul ab.</div>
+          </div>
+          <button id="lv_extractVollmachtBtn" type="button" onclick="extractVollmachtFromSignedContract()" style="background:#15803d;border:none;color:#fff;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">✂ Vollmacht extrahieren</button>
+        </div>
       </div>
     </div>
     <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -6313,7 +6322,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.268';
+const APP_VERSION = 'V12.269';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7678,6 +7687,9 @@ async function setupTables() {
   try {
     await ensureFields('Light-Vertraege', [
       { name: 'id',                              type: 'singleLineText' },
+      // V12.269: Pipedrive-Org-ID mitschreiben, damit die Vollmacht-Extraktion auch
+      // beim Re-Öffnen eines Bestands-Vertrags die HV-Zuordnung hat
+      { name: 'pipedrive_org_id',                type: 'singleLineText' },
       { name: 'firma',                           type: 'singleLineText' },
       { name: 'gf',                              type: 'singleLineText' },
       { name: 'strasse',                         type: 'singleLineText' },
@@ -9165,6 +9177,216 @@ async function saveVollmachtFromEditor() {
     if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
   }
 }
+// V12.269: KI-Vollmacht-Extraktion aus dem zurückgesendeten Gesamt-PDF
+// (Datenschutz + Rahmenvertrag + Vollmacht in einer Datei) — pro Seite identifiziert
+// Claude Haiku 4.5 Vision, ob es die Vollmachts-Seite ist; pdf-lib kopiert die
+// Treffer-Seiten in ein neues PDF und das wird via uploadAttachment-API als neue
+// Vollmacht zur HV des EuC-Vertrags angelegt.
+async function extractVollmachtFromSignedContract() {
+  const btn = document.getElementById('lv_extractVollmachtBtn');
+  const setBtn = (txt, dis) => {
+    if (!btn) return;
+    btn.disabled = !!dis;
+    btn.textContent = txt;
+    btn.style.opacity = dis ? '.7' : '1';
+  };
+  const fileInput = document.getElementById('lv_signedFile');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  const hvName = (document.getElementById('lv_firma') || {}).value || '';
+  const hvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
+  if (!file) { showToast('Bitte erst die unterschriebene PDF auswählen', 'warning', 4000); return; }
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+    showToast('Nur PDF-Dateien können automatisch erkannt werden', 'warning', 4000);
+    return;
+  }
+  if (!hvName.trim()) { showToast('Keine HV ausgewählt — bitte zuerst HV über Pipedrive zuweisen', 'warning', 4500); return; }
+  if (!hvOrgId.trim()) { showToast('HV ohne Pipedrive-ID — Vollmacht-Zuordnung nicht möglich. HV neu über Pipedrive auswählen.', 'warning', 5000); return; }
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic API-Key fehlt — Einstellungen prüfen', 'error', 4000); return; }
+  const PDFLibNS = window.PDFLib;
+  if (!PDFLibNS) { showToast('pdf-lib nicht geladen', 'error', 3000); return; }
+
+  try {
+    setBtn('PDF laden …', true);
+    const arrayBuffer = await file.arrayBuffer();
+
+    setBtn('PDF analysieren …', true);
+    const pdfJsDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0), disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+    const srcDoc   = await PDFLibNS.PDFDocument.load(arrayBuffer.slice(0));
+    const numPages = pdfJsDoc.numPages;
+    if (numPages < 1) throw new Error('PDF enthält keine Seiten');
+
+    // Vision-Prompt — pro Seite: ist es eine Vollmacht?
+    const visionSystem =
+      'Du analysierst eine einzelne Seite eines unterschriebenen Geschäftsdokuments. ' +
+      'Stell fest, ob es sich um eine VOLLMACHT (Bevollmächtigung, Vertretungsvollmacht) handelt — ' +
+      'typischerweise eine Seite mit den Wörtern "Vollmacht", "bevollmächtigt", "Vertretungsvollmacht", "Generalvollmacht", ' +
+      'inkl. Vollmachtgeber, Bevollmächtigte, Umfang der Vollmacht, Unterschrift. ' +
+      'Andere Dokumenttypen (Datenschutzvereinbarung, Rahmenvertrag, AGB, Anlage, ' +
+      'Beratervertrag) sind KEINE Vollmacht. Antworte ausschließlich mit gültigem JSON:\n' +
+      '{ "is_vollmacht": true|false, "confidence": 0.0-1.0, "reason": "kurze Begründung" }';
+
+    const visionForPage = async (b64, p) => {
+      const body = {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        system: visionSystem,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text: 'Klassifiziere diese Seite (' + p + '/' + numPages + '). Antworte nur mit dem JSON.' },
+          ],
+        }],
+      };
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort('Timeout'), 60000);
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': APP_KEYS.anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error?.message || ('HTTP ' + r.status));
+        }
+        const d = await r.json();
+        return (d.content && d.content[0] && d.content[0].text) || '';
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const parseLoose = (txt) => {
+      let s = String(txt || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+      const i = s.indexOf('{'), j = s.lastIndexOf('}');
+      if (i >= 0 && j > i) s = s.slice(i, j + 1);
+      try { return JSON.parse(s); } catch (_) {}
+      try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch (_) {}
+      return {};
+    };
+
+    // Pro Seite: rendern + analysieren (mit Concurrency 3)
+    const RENDER_SCALE = 1.6;
+    const renderPageToJpeg = async (p) => {
+      const page = await pdfJsDoc.getPage(p);
+      const viewport = page.getViewport({ scale: RENDER_SCALE });
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      canvas.width = 0; canvas.height = 0;
+      return (dataUrl.split(',')[1] || '');
+    };
+
+    const classifications = new Array(numPages).fill(null);
+    let completed = 0;
+    const updateProgress = () => setBtn('Seite ' + completed + ' / ' + numPages + ' …', true);
+    updateProgress();
+    const queue = [];
+    for (let p = 1; p <= numPages; p++) queue.push(p);
+    const CONCURRENCY = Math.min(3, numPages);
+    const workers = [];
+    for (let w = 0; w < CONCURRENCY; w++) {
+      workers.push((async () => {
+        while (queue.length) {
+          const p = queue.shift();
+          if (!p) break;
+          try {
+            console.log('[vollmacht-extract] Seite ' + p + ' analysieren');
+            const b64 = await renderPageToJpeg(p);
+            const txt = await visionForPage(b64, p);
+            const parsed = parseLoose(txt);
+            const isV   = !!parsed.is_vollmacht;
+            const conf  = Math.max(0, Math.min(1, Number(parsed.confidence) || 0));
+            const reason = String(parsed.reason || '').slice(0, 200);
+            classifications[p - 1] = { page: p, isVollmacht: isV, confidence: conf, reason: reason };
+            console.log('[vollmacht-extract] Seite ' + p + ' → vollmacht=' + isV + ' conf=' + conf + ' (' + reason + ')');
+          } catch (e) {
+            console.warn('[vollmacht-extract] Seite ' + p + ' fehlgeschlagen:', e.message);
+            classifications[p - 1] = { page: p, isVollmacht: false, confidence: 0, reason: 'Fehler: ' + e.message };
+          }
+          completed++;
+          updateProgress();
+        }
+      })());
+    }
+    await Promise.all(workers);
+
+    // Vollmacht-Seiten zusammenstellen (confidence ≥ 0.6 als Schwelle)
+    const hits = classifications.filter(c => c && c.isVollmacht && c.confidence >= 0.6);
+    if (!hits.length) {
+      setBtn('✂ Vollmacht extrahieren', false);
+      const summary = classifications.map(c => 'S' + c.page + ': ' + (c.isVollmacht ? 'V?' + Math.round(c.confidence * 100) + '%' : '-')).join(' · ');
+      console.log('[vollmacht-extract] Keine Vollmacht-Seite gefunden:', summary);
+      showToast('Keine Vollmacht-Seite erkannt (Schwelle 60% Vertrauen). Details in der Konsole.', 'warning', 6000);
+      return;
+    }
+
+    setBtn('PDF erzeugen …', true);
+    const outDoc = await PDFLibNS.PDFDocument.create();
+    const copied = await outDoc.copyPages(srcDoc, hits.map(h => h.page - 1));
+    copied.forEach(p => outDoc.addPage(p));
+    const outBytes = await outDoc.save();
+
+    setBtn('Vollmacht anlegen …', true);
+    const todayIso = (function () {
+      // YYYY-MM-DD (lokale Zeit, nicht UTC) — Date.now() ist im sandboxed Code erlaubt
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    })();
+
+    // Existiert bereits eine Vollmacht für diese HV? Dann nur ergänzen, kein zweiter Record.
+    let existing = null;
+    try { existing = await findVollmachtByHvOrgId(hvOrgId); } catch (_) {}
+    let recordId = existing && existing._recordId;
+    const pagesNote = 'KI-extrahiert aus EuC-Vertrag · Seite(n) ' + hits.map(h => h.page).join(', ');
+    if (!recordId) {
+      const id = await generateVollmachtId();
+      const created = await atWrite('Vollmachten', {
+        id: id,
+        hv_name: hvName,
+        pipedrive_org_id: hvOrgId,
+        unterschrieben_am: todayIso,
+        notiz: pagesNote,
+      });
+      recordId = created && created.id;
+    } else {
+      try { await atUpdate('Vollmachten', recordId, { unterschrieben_am: todayIso, notiz: pagesNote, vollmacht_pdf: [] }); } catch (_) {}
+    }
+
+    setBtn('Hochladen …', true);
+    const outName = 'Vollmacht_' + (hvName || 'HV').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 40) + '.pdf';
+    const blob = new Blob([outBytes], { type: 'application/pdf' });
+    const fileObj = new File([blob], outName, { type: 'application/pdf' });
+    await uploadAirtableAttachment('Vollmachten', recordId, 'vollmacht_pdf', fileObj);
+
+    // Caches invalidieren — sodass HV-Übersicht beim nächsten Mal aktualisiert
+    window._vmByOrgIdCacheInvalid = true;
+    if (document.getElementById('kundenModal')?.style.display === 'flex' && typeof renderKundenList === 'function') renderKundenList();
+
+    setBtn('✓ Vollmacht hinterlegt', false);
+    showToast('✓ Vollmacht erkannt · ' + hits.length + ' Seite(n) · für „' + hvName + '" gespeichert', 'success', 5500);
+    // Nach 4s den Button zurücksetzen
+    setTimeout(() => setBtn('✂ Vollmacht extrahieren', false), 4000);
+  } catch (e) {
+    console.error('[extractVollmachtFromSignedContract]', e);
+    showToast('Extraktion fehlgeschlagen: ' + e.message, 'error', 6000);
+    setBtn('✂ Vollmacht extrahieren', false);
+  }
+}
+window.extractVollmachtFromSignedContract = extractVollmachtFromSignedContract;
+
 async function deleteVollmachtConfirm(recordId, name) {
   if (!confirm('Vollmacht „' + (name || 'unbenannt') + '" wirklich löschen?')) return;
   try {
@@ -21298,6 +21520,8 @@ function setLightVertragForm(d) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
   set('lv_recordId', d._recordId);
   set('lv_id', d.id);
+  // V12.269: Pipedrive-Org-ID wieder ins Hidden-Field laden (für Vollmacht-Extraktion)
+  set('lv_hv_pipedrive_org_id', d.pipedrive_org_id);
   set('lv_firma', d.firma);
   set('lv_gf', d.gf);
   set('lv_strasse', d.strasse);
@@ -21352,8 +21576,11 @@ async function saveLightVertrag() {
   if (!d.firma) { showToast('Firma ist Pflichtfeld', 'error'); return; }
   let lvId = d.id || (d._recordId ? '' : await generateLightVertragId());
   if (!lvId && !d._recordId) lvId = await generateLightVertragId();
+  // V12.269: Org-ID aus Hidden-Field mitspeichern (für Vollmacht-Extraktion + Spätere Lookups)
+  const lvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
   const fields = {
     id: lvId,
+    pipedrive_org_id: lvOrgId,
     firma: d.firma, gf: d.gf, strasse: d.strasse, plz: d.plz, ort: d.ort,
     tel: d.tel, email: d.email,
     ustidnr: d.ustidnr, steuernr: d.steuernr,
