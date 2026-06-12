@@ -4696,7 +4696,7 @@ const pdfWorkerReady = Promise.resolve();</script>
 .ei-row-subj .sender .mail { color:#94a3b8; font-weight:400; }
 .ei-row-subj .subj { font-size:14px; font-weight:600; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ei-row-subj .prev { font-size:12.5px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ei-row-actions { display:flex; flex-direction:column; gap:4px; min-width:170px; align-items:flex-start; }
+.ei-row-actions { display:flex; flex-direction:column; gap:4px; min-width:185px; align-items:flex-start; }
 .ei-status-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; font-family:'DM Sans',sans-serif; }
 .ei-status-chip .dot { width:7px; height:7px; border-radius:50%; }
 .ei-status-chip.neu             { background:#fef3c7; color:#92400e; }
@@ -6309,7 +6309,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.264';
+const APP_VERSION = 'V12.265';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7589,6 +7589,8 @@ async function setupTables() {
       { name: 'wartungsnehmer_telefon',        type: 'singleLineText' },
       // V12.253: KI-neutralisierte Anhänge — separat vom Original, für Versand an Servicebetriebe
       { name: 'neutralized_attachments',       type: 'multipleAttachments' },
+      // V12.265: Ticket-System — Check-Status (gecheckt/beauftragt/abgerechnet)
+      { name: 'check_status',                  type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
@@ -26894,12 +26896,74 @@ function renderEmailInboxList() {
           💬 CHAT-ANTWORT
         </span>`
       : '';
-    // Schnellaktionen
-    const quickActions = isOut ? '' : `
-      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','gesichtet')" title="Als gesichtet markieren"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Als gesichtet markieren</button>
-      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','in_bearbeitung')" title="In Bearbeitung"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>In Bearbeitung</button>
-      <button class="ei-quick-action" onclick="event.stopPropagation();setEmailStatus('${r._id}','verworfen')" title="Archivieren — Email aus der Liste ausblenden (bleibt in Airtable erhalten)"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg>📦 Archivieren</button>
-    `;
+    // V12.265: Schnellaktionen → 3 Dropdowns (Ticket-System-Stil)
+    // Status / Bearbeiter / Check-Status
+    let quickActions = '';
+    if (!isOut) {
+      const curStatus = String(r.status || 'neu');
+      const curBearb  = String(r.bearbeiter_name || '');
+      const curCheck  = String(r.check_status || '');
+      const bearbList = (typeof getBearbeiterList === 'function') ? getBearbeiterList() : [];
+      // Falls aktueller Bearbeiter nicht in der Liste → trotzdem als Option zeigen (Backward-Compat)
+      const bearbOpts = curBearb && !bearbList.includes(curBearb) ? [curBearb, ...bearbList] : bearbList;
+      const optEsc = (v) => _esc(String(v));
+      const statusOpts = [
+        { val: 'neu',            label: 'Neu' },
+        { val: 'in_bearbeitung', label: 'In Bearbeitung' },
+        { val: 'verworfen',      label: 'Archiviert' },
+      ];
+      // Backward-Compat: falls Status='gesichtet'/'geantwortet' (alte Werte) → als Option anbieten
+      if (curStatus && !['neu','in_bearbeitung','verworfen'].includes(curStatus)) {
+        const oldLabels = { gesichtet: 'Gesichtet', geantwortet: 'Geantwortet', gesendet: 'Gesendet' };
+        statusOpts.unshift({ val: curStatus, label: oldLabels[curStatus] || curStatus });
+      }
+      const checkOpts = [
+        { val: '',            label: '—' },
+        { val: 'gecheckt',    label: '✓ Gecheckt' },
+        { val: 'beauftragt',  label: '📤 Beauftragt' },
+        { val: 'abgerechnet', label: '💶 Abgerechnet' },
+      ];
+      // Backward-Compat
+      if (curCheck && !['','gecheckt','beauftragt','abgerechnet'].includes(curCheck)) {
+        checkOpts.push({ val: curCheck, label: curCheck });
+      }
+      const selStyle = 'background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:6px;padding:5px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;outline:none;width:100%;max-width:170px';
+      const renderSel = (id, options, current, onchange) =>
+        '<select onclick="event.stopPropagation()" onchange="event.stopPropagation();' + onchange + '" style="' + selStyle + '">'
+        + options.map(o => '<option value="' + optEsc(o.val) + '"' + (String(o.val) === String(current) ? ' selected' : '') + '>' + optEsc(o.label) + '</option>').join('')
+        + '</select>';
+      const statusSel = renderSel(
+        'st_' + r._id,
+        statusOpts,
+        curStatus,
+        'setEmailStatus(\'' + r._id + '\', this.value)'
+      );
+      const bearbSelOpts = [
+        { val: '', label: '— Bearbeiter wählen —' },
+        ...bearbOpts.map(b => ({ val: b, label: b })),
+        { val: '__manage__', label: '⚙ Bearbeiter verwalten …' },
+      ];
+      const bearbSel = renderSel(
+        'be_' + r._id,
+        bearbSelOpts,
+        curBearb,
+        '_eiBearbeiterDropdownHandler(\'' + r._id + '\', this)'
+      );
+      const checkSel = renderSel(
+        'ck_' + r._id,
+        checkOpts,
+        curCheck,
+        'setEmailCheckStatus(\'' + r._id + '\', this.value)'
+      );
+      quickActions = '<div style="display:flex;flex-direction:column;gap:4px;width:100%;max-width:180px">'
+        + '<div style="font-size:9.5px;color:#94a3b8;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:-2px;padding-left:2px">Status</div>'
+        + statusSel
+        + '<div style="font-size:9.5px;color:#94a3b8;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;padding-left:2px">Bearbeiter</div>'
+        + bearbSel
+        + '<div style="font-size:9.5px;color:#94a3b8;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;padding-left:2px">Check-Status</div>'
+        + checkSel
+        + '</div>';
+    }
     // V12.179: Zuordnungs-Pillen unter dem Betreff (HV + Aufzug)
     const afn = String(r.aufzug_fabriknummer || '').trim();
     const ast = String(r.aufzug_standort || '').trim();
@@ -31158,6 +31222,152 @@ function _eiCurrentUserName() {
     return String(u.name || u.email || u.username || '');
   } catch(_) { return ''; }
 }
+
+// V12.265: Ticket-System — Bearbeiter-Liste lokal verwalten + Check-Status patchen.
+function getBearbeiterList() {
+  try {
+    const raw = localStorage.getItem('liftaro_bearbeiter');
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(x => typeof x === 'string' && x.trim()) : [];
+  } catch (_) { return []; }
+}
+function setBearbeiterList(arr) {
+  try { localStorage.setItem('liftaro_bearbeiter', JSON.stringify(Array.isArray(arr) ? arr : [])); } catch (_) {}
+}
+window.getBearbeiterList = getBearbeiterList;
+window.setBearbeiterList = setBearbeiterList;
+
+async function setEmailBearbeiter(recId, name) {
+  try {
+    const value = String(name || '').trim();
+    await atUpdate('Emails', recId, { bearbeiter_name: value });
+    const r = _eiAllRecords.find(x => x._id === recId);
+    if (r) r.bearbeiter_name = value;
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    showToast(value ? 'Bearbeiter: ' + value : 'Bearbeiter entfernt', 'success', 1800);
+  } catch (e) {
+    showToast('Fehler beim Bearbeiter-Update: ' + e.message, 'error');
+  }
+}
+window.setEmailBearbeiter = setEmailBearbeiter;
+
+async function setEmailCheckStatus(recId, val) {
+  try {
+    const value = String(val || '').trim();
+    await atUpdate('Emails', recId, { check_status: value });
+    const r = _eiAllRecords.find(x => x._id === recId);
+    if (r) r.check_status = value;
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    const labels = { gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet' };
+    showToast(value ? 'Check-Status: ' + (labels[value] || value) : 'Check-Status zurückgesetzt', 'success', 1800);
+  } catch (e) {
+    showToast('Fehler beim Check-Status-Update: ' + e.message, 'error');
+  }
+}
+window.setEmailCheckStatus = setEmailCheckStatus;
+
+// Dropdown-Handler — fängt das Wert "__manage__" ab und öffnet stattdessen den Editor
+function _eiBearbeiterDropdownHandler(emailId, selectEl) {
+  if (!selectEl) return;
+  const val = selectEl.value;
+  if (val === '__manage__') {
+    selectEl.value = '';
+    openBearbeiterEditor(emailId);
+    return;
+  }
+  setEmailBearbeiter(emailId, val);
+}
+window._eiBearbeiterDropdownHandler = _eiBearbeiterDropdownHandler;
+
+// V12.265: Bearbeiter-Liste editieren (Modal)
+function openBearbeiterEditor(reopenForEmailId) {
+  let m = document.getElementById('bearbeiterEditorModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'bearbeiterEditorModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:5700;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  window._bearbeiterEditorReopenFor = reopenForEmailId || null;
+  _renderBearbeiterEditor();
+  m.style.display = 'flex';
+  m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+}
+window.openBearbeiterEditor = openBearbeiterEditor;
+
+function _renderBearbeiterEditor() {
+  const m = document.getElementById('bearbeiterEditorModal');
+  if (!m) return;
+  const list = getBearbeiterList();
+  const rows = list.length
+    ? list.map((name, i) => `<div data-bidx="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
+        <input type="text" value="${_esc(name)}" data-bedit="${i}" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;outline:none">
+        <button onclick="_bearbDelete(${i})" title="Bearbeiter entfernen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit">✕</button>
+      </div>`).join('')
+    : '<div style="text-align:center;color:#94a3b8;font-size:12.5px;padding:20px;background:#fff;border:1px dashed #cbd5e1;border-radius:8px">Noch keine Bearbeiter. Füge mit „+ Bearbeiter" einen hinzu.</div>';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(540px,96vw);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0f172a;color:#fff;padding:13px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:14.5px;font-weight:700">👥 Bearbeiter verwalten</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:2px">Die Liste der Personen, die Emails zugewiesen bekommen können. Wird lokal gespeichert.</div>
+      </div>
+      <button onclick="document.getElementById('bearbeiterEditorModal').style.display='none'" style="background:rgba(255,255,255,.14);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px 20px;background:#f8fafc">
+      ${rows}
+    </div>
+    <div style="padding:12px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <button onclick="_bearbAddNew()" style="background:#fff;border:1px dashed #2456E5;color:#2456E5;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">+ Bearbeiter</button>
+      <button onclick="_bearbSaveAndClose()" style="background:#2456E5;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Speichern</button>
+    </div>
+  </div>`;
+}
+window._renderBearbeiterEditor = _renderBearbeiterEditor;
+
+function _bearbCollect() {
+  const arr = [];
+  document.querySelectorAll('#bearbeiterEditorModal [data-bedit]').forEach((inp) => {
+    const v = String(inp.value || '').trim();
+    if (v) arr.push(v);
+  });
+  return arr;
+}
+function _bearbAddNew() {
+  const cur = _bearbCollect();
+  cur.push('Neuer Bearbeiter');
+  setBearbeiterList(cur);
+  _renderBearbeiterEditor();
+  // Letzten Input fokussieren
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#bearbeiterEditorModal [data-bedit]');
+    const last = inputs[inputs.length - 1];
+    if (last) { last.focus(); last.select(); }
+  }, 30);
+}
+window._bearbAddNew = _bearbAddNew;
+
+function _bearbDelete(i) {
+  const cur = _bearbCollect();
+  cur.splice(Number(i), 1);
+  setBearbeiterList(cur);
+  _renderBearbeiterEditor();
+}
+window._bearbDelete = _bearbDelete;
+
+function _bearbSaveAndClose() {
+  const cur = _bearbCollect();
+  // Dedup + sort alphabetisch
+  const dedup = Array.from(new Set(cur.map(s => s.trim()).filter(Boolean)));
+  dedup.sort((a, b) => a.localeCompare(b, 'de'));
+  setBearbeiterList(dedup);
+  const m = document.getElementById('bearbeiterEditorModal');
+  if (m) m.style.display = 'none';
+  if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+  showToast('✓ Bearbeiter-Liste gespeichert · ' + dedup.length, 'success', 2000);
+}
+window._bearbSaveAndClose = _bearbSaveAndClose;
 
 async function setEmailStatus(recId, newStatus) {
   try {
