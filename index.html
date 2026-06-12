@@ -6306,7 +6306,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.259';
+const APP_VERSION = 'V12.260';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9319,16 +9319,18 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
       }
     };
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    // Sonnet 4.5 wird zuerst probiert; bei 404 (Modell unbekannt) oder dreifach 429
-    // ein-für-allemal Umschwung auf Haiku 4.5 — dann werden die restlichen Seiten
-    // mit Haiku verarbeitet.
-    let currentModel = 'claude-sonnet-4-5';
-    let sonnetGiveUp = false;
+    // V12.260: Default Haiku 4.5 — gleich gut für Bounding-Box-Detection,
+    // ~3× schneller und höheres Rate-Limit als Sonnet. Bei 429 zusätzlich Retry.
+    let currentModel = 'claude-haiku-4-5-20251001';
     const allRedactions = [];
-    const RENDER_SCALE = 1.8;
-    for (let p = 1; p <= numPages; p++) {
-      setBtn('Seite ' + p + ' / ' + numPages + ' analysieren …', true);
-      console.log('[neutralize] Seite ' + p + '/' + numPages + ' rendern + analysieren (Modell: ' + currentModel + ')');
+    const RENDER_SCALE = 1.6;
+    let completedCount = 0;
+    const updateBtn = () => setBtn(completedCount + ' / ' + numPages + ' Seiten fertig …', true);
+    updateBtn();
+
+    // V12.260: Pro-Seite-Worker (rendern + analysieren + schwärzen)
+    const processPage = async (p) => {
+      console.log('[neutralize] Seite ' + p + '/' + numPages + ' startet');
       const page = await pdfJsDoc.getPage(p);
       const viewport = page.getViewport({ scale: RENDER_SCALE });
       const canvas = document.createElement('canvas');
@@ -9338,100 +9340,93 @@ async function neutralizeEmailAttachment(emailId, attIdx) {
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
       const b64 = dataUrl.split(',')[1] || '';
-      // Canvas freigeben — 23 Seiten × hochauflösendes Canvas kann Browser-Memory sprengen
       canvas.width = 0; canvas.height = 0;
 
       let visionText = '';
       let attempts = 0;
-      const MAX_ATTEMPTS = 3;
+      const MAX_ATTEMPTS = 4;
       while (attempts < MAX_ATTEMPTS) {
         attempts++;
         try {
           visionText = await callVisionForPage(b64, p, currentModel);
-          break; // Erfolg
+          break;
         } catch (vErr) {
           const st = vErr.status || 0;
           const msg = String(vErr.message || '');
           console.warn('[neutralize] Seite ' + p + ' Versuch ' + attempts + ' (' + currentModel + ') fehlgeschlagen:', st, msg);
-          // Sonnet nicht verfügbar → fest auf Haiku umschwenken
-          if (currentModel.includes('sonnet') && (st === 404 || /not.*found|unknown.*model/i.test(msg))) {
-            console.log('[neutralize] Sonnet 4.5 nicht erreichbar — Fallback auf Haiku 4.5');
-            currentModel = 'claude-haiku-4-5-20251001';
-            sonnetGiveUp = true;
-            attempts = 0; // Mit neuem Modell von vorn beginnen
-            continue;
+          if (st === 404 || /not.*found|unknown.*model/i.test(msg)) {
+            console.warn('[neutralize] Modell ' + currentModel + ' nicht erreichbar — Abbruch dieser Seite');
+            break;
           }
-          // 429 / 529 / Timeout / 502 → Backoff + Retry
           if (st === 429 || st === 529 || st === 502 || st === 503 || /timeout|abort/i.test(msg)) {
             if (attempts < MAX_ATTEMPTS) {
-              const wait = 2000 * attempts; // 2s, 4s, 6s
-              setBtn('Seite ' + p + ' / ' + numPages + ' wartet ' + (wait/1000) + 's (Rate-Limit) …', true);
-              console.log('[neutralize] Backoff ' + wait + 'ms ...');
+              // Exponential Backoff mit Jitter — verhindert Thundering-Herd bei parallelen 429
+              const wait = 1500 * Math.pow(2, attempts - 1) + Math.floor(Math.random() * 500);
+              console.log('[neutralize] Seite ' + p + ' Backoff ' + wait + 'ms');
               await sleep(wait);
               continue;
             }
-            // Letzter Versuch: Sonnet → Haiku-Fallback
-            if (!sonnetGiveUp && currentModel.includes('sonnet')) {
-              console.log('[neutralize] Sonnet rate-limited — Fallback auf Haiku 4.5 für restliche Seiten');
-              currentModel = 'claude-haiku-4-5-20251001';
-              sonnetGiveUp = true;
-              attempts = 0;
-              continue;
-            }
           }
-          // Andere Fehler: Seite überspringen
           console.warn('[neutralize] Seite ' + p + ' wird übersprungen (' + msg + ')');
           break;
         }
       }
       if (!visionText) {
-        // Kleine Pause auch nach fehlgeschlagener Seite — hilft bei 429
-        await sleep(500);
-        continue;
+        completedCount++;
+        updateBtn();
+        return;
       }
       const parsed = parseRedactionJson(visionText);
       const redactions = Array.isArray(parsed.redactions) ? parsed.redactions : [];
-      // Boxen in PDF-Punkte konvertieren und auf die richtige pdf-lib-Seite zeichnen
       const editPage = editPages[p - 1];
-      if (!editPage) continue;
-      const { width: pageW, height: pageH } = editPage.getSize();
       let drawn = 0;
-      for (const red of redactions) {
-        // Werte clampen + auf 0..1 normalisieren (falls KI 0..100 liefert)
-        let nx = Number(red.x), ny = Number(red.y), nw = Number(red.w), nh = Number(red.h);
-        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nw) || !Number.isFinite(nh)) continue;
-        // Wenn Werte > 1 sind, war's vermutlich 0-100
-        if (nx > 1 || ny > 1 || nw > 1 || nh > 1) {
-          if (nx > 1) nx /= 100; if (ny > 1) ny /= 100;
-          if (nw > 1) nw /= 100; if (nh > 1) nh /= 100;
+      if (editPage) {
+        const { width: pageW, height: pageH } = editPage.getSize();
+        for (const red of redactions) {
+          let nx = Number(red.x), ny = Number(red.y), nw = Number(red.w), nh = Number(red.h);
+          if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nw) || !Number.isFinite(nh)) continue;
+          if (nx > 1 || ny > 1 || nw > 1 || nh > 1) {
+            if (nx > 1) nx /= 100; if (ny > 1) ny /= 100;
+            if (nw > 1) nw /= 100; if (nh > 1) nh /= 100;
+          }
+          nx = Math.max(0, Math.min(1, nx));
+          ny = Math.max(0, Math.min(1, ny));
+          nw = Math.max(0, Math.min(1 - nx, nw));
+          nh = Math.max(0, Math.min(1 - ny, nh));
+          if (nw < 0.002 || nh < 0.002) continue;
+          const x = nx * pageW;
+          const w = nw * pageW;
+          const h = nh * pageH;
+          const y = pageH - (ny * pageH) - h;
+          editPage.drawRectangle({ x, y, width: w, height: h, color: PDFLibNS.rgb(0, 0, 0) });
+          drawn++;
         }
-        nx = Math.max(0, Math.min(1, nx));
-        ny = Math.max(0, Math.min(1, ny));
-        nw = Math.max(0, Math.min(1 - nx, nw));
-        nh = Math.max(0, Math.min(1 - ny, nh));
-        if (nw < 0.002 || nh < 0.002) continue; // zu kleine Boxen verwerfen
-        // PDF-Koordinaten: Origin links UNTEN, y-Achse zeigt nach oben
-        // Vision lieferte y vom oberen Bildrand → in PDF-y umrechnen
-        const x = nx * pageW;
-        const w = nw * pageW;
-        const h = nh * pageH;
-        const y = pageH - (ny * pageH) - h;
-        editPage.drawRectangle({
-          x: x,
-          y: y,
-          width: w,
-          height: h,
-          color: PDFLibNS.rgb(0, 0, 0),
-        });
-        drawn++;
       }
       allRedactions.push({ page: p, count: drawn });
-      console.log('[neutralize] Seite ' + p + ' fertig · ' + drawn + ' Schwärzung(en)');
-      // V12.258: kleine Pause zwischen Seiten (Rate-Limit-Schutz)
-      if (p < numPages) await sleep(600);
+      completedCount++;
+      updateBtn();
+      console.log('[neutralize] Seite ' + p + ' fertig · ' + drawn + ' Schwärzung(en) · ' + completedCount + '/' + numPages + ' gesamt');
+    };
+
+    // V12.260: Worker-Pool — CONCURRENCY parallele Vision-Calls.
+    // Bei Haiku 4.5 Tier 1 sind 50 RPM erlaubt → 5 parallel ist sicher.
+    const queue = [];
+    for (let p = 1; p <= numPages; p++) queue.push(p);
+    const CONCURRENCY = Math.min(5, numPages);
+    const workers = [];
+    for (let w = 0; w < CONCURRENCY; w++) {
+      workers.push((async () => {
+        while (queue.length) {
+          const p = queue.shift();
+          if (!p) break;
+          try { await processPage(p); }
+          catch (e) { console.error('[neutralize] Seite ' + p + ' unhandled:', e); }
+        }
+      })());
     }
+    await Promise.all(workers);
 
     // 6. Watermark/Footer minimal — kleiner Hinweis am Fußrand jeder Seite
     const helv = await editDoc.embedFont(PDFLibNS.StandardFonts.Helvetica);
