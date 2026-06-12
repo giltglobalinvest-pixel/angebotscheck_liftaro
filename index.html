@@ -21,6 +21,8 @@
 <title>Reparaturangebot – Liftaro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<!-- V12.272: fontkit für embed custom (script) Fonts in pdf-lib -->
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const pdfWorkerReady = Promise.resolve();</script>
@@ -5400,6 +5402,8 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button id="lv_btnPreview" onclick="previewLightVertrag()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">👁 Vorschau</button>
         <button id="lv_btnDownload" onclick="downloadLightVertrag()" style="background:#fff;border:1.5px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">⬇ PDF herunterladen</button>
+        <!-- V12.272: Liftaro-Signatur konfigurieren -->
+        <button type="button" onclick="openLiftaroSignatureSettings()" title="Name + Ort für die Liftaro-Signatur konfigurieren" style="background:#fff;border:1.5px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">✍ Unterschrift</button>
       </div>
       <div style="display:flex;gap:8px">
         <button id="lv_btnDelete" onclick="deleteLightVertragCurrent()" style="display:none;background:#fff;border:1px solid #e0a09a;color:#a8312f;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;cursor:pointer">🗑 Löschen</button>
@@ -6324,7 +6328,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.271';
+const APP_VERSION = 'V12.272';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -19856,6 +19860,121 @@ function _shortenZahlungsziel(s) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// V12.272: Settings für die Liftaro-Signatur im EuC-PDF (Name + Ort).
+// Werden im localStorage persistiert. Default: Francesco Ricioppo / Mainz.
+function getLiftaroSignatureSettings() {
+  try {
+    const raw = localStorage.getItem('liftaro_eoc_signature');
+    const o = raw ? JSON.parse(raw) : null;
+    return {
+      name: (o && o.name) || 'Francesco Ricioppo',
+      ort:  (o && o.ort)  || 'Mainz',
+    };
+  } catch (_) { return { name: 'Francesco Ricioppo', ort: 'Mainz' }; }
+}
+function setLiftaroSignatureSettings(o) {
+  try { localStorage.setItem('liftaro_eoc_signature', JSON.stringify({ name: String(o.name || ''), ort: String(o.ort || '') })); } catch (_) {}
+}
+window.getLiftaroSignatureSettings = getLiftaroSignatureSettings;
+window.setLiftaroSignatureSettings = setLiftaroSignatureSettings;
+
+// V12.272: Modal zum Konfigurieren der Liftaro-Signatur
+function openLiftaroSignatureSettings() {
+  const cur = getLiftaroSignatureSettings();
+  let m = document.getElementById('liftaroSigSettingsModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'liftaroSigSettingsModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:5800;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(480px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700">✍ Liftaro-Unterschrift für EuC-Verträge</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">Wird beim PDF-Versand mit dem heutigen Datum auf den EuC-Vertrag gesetzt.</div>
+      </div>
+      <button onclick="document.getElementById('liftaroSigSettingsModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;background:#f8fafc">
+      <div style="margin-bottom:14px">
+        <label for="liftaroSigName" style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Name (wird im Skript-Font dargestellt)</label>
+        <input id="liftaroSigName" type="text" value="${_esc(cur.name)}" placeholder="Francesco Ricioppo" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff">
+      </div>
+      <div style="margin-bottom:14px">
+        <label for="liftaroSigOrt" style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Ort (wird vor dem Datum eingefügt)</label>
+        <input id="liftaroSigOrt" type="text" value="${_esc(cur.ort)}" placeholder="Mainz" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff">
+      </div>
+      <div style="background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#64748b;line-height:1.5">
+        <strong>Vorschau im PDF:</strong><br>
+        <span id="liftaroSigPreviewName" style="font-family:'Brush Script MT','Lucida Handwriting','Snell Roundhand',cursive;font-size:22px;color:#0f172a;display:inline-block;margin-top:6px">${_esc(cur.name)}</span><br>
+        <span style="font-size:10.5px;color:#94a3b8" id="liftaroSigPreviewMeta">${_esc(cur.ort)}, [aktuelles Datum] · für Liftaro GmbH</span>
+      </div>
+    </div>
+    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="document.getElementById('liftaroSigSettingsModal').style.display='none'" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
+      <button onclick="_saveLiftaroSigAndClose()" style="background:#2456E5;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Speichern</button>
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+  m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  // Live-Vorschau-Updates
+  const sync = () => {
+    const n = document.getElementById('liftaroSigName').value || '';
+    const o = document.getElementById('liftaroSigOrt').value || '';
+    const np = document.getElementById('liftaroSigPreviewName');
+    const mp = document.getElementById('liftaroSigPreviewMeta');
+    if (np) np.textContent = n;
+    if (mp) mp.textContent = o + ', [aktuelles Datum] · für Liftaro GmbH';
+  };
+  document.getElementById('liftaroSigName').addEventListener('input', sync);
+  document.getElementById('liftaroSigOrt').addEventListener('input', sync);
+}
+window.openLiftaroSignatureSettings = openLiftaroSignatureSettings;
+
+function _saveLiftaroSigAndClose() {
+  const n = (document.getElementById('liftaroSigName') || {}).value || '';
+  const o = (document.getElementById('liftaroSigOrt') || {}).value || '';
+  setLiftaroSignatureSettings({ name: n.trim() || 'Francesco Ricioppo', ort: o.trim() || 'Mainz' });
+  const m = document.getElementById('liftaroSigSettingsModal');
+  if (m) m.style.display = 'none';
+  showToast('✓ Liftaro-Unterschrift gespeichert', 'success', 2000);
+}
+window._saveLiftaroSigAndClose = _saveLiftaroSigAndClose;
+
+// V12.272: Skript-Font (Caveat-Bold) für die Liftaro-Unterschrift im PDF.
+// Erstes Laden via fetch — danach in window-Cache. Fallback: TimesBoldItalic.
+async function _embedScriptFont(doc) {
+  const PDFLibNS = window.PDFLib;
+  try {
+    if (window.fontkit && doc.registerFontkit) doc.registerFontkit(window.fontkit);
+    if (!window._scriptFontBytes) {
+      const candidates = [
+        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/caveat/Caveat-Bold.ttf',
+        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/dancingscript/static/DancingScript-Bold.ttf',
+        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/sacramento/Sacramento-Regular.ttf',
+      ];
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, { mode: 'cors' });
+          if (!r.ok) continue;
+          window._scriptFontBytes = new Uint8Array(await r.arrayBuffer());
+          console.log('[script-font] geladen:', url);
+          break;
+        } catch (_) {}
+      }
+    }
+    if (window._scriptFontBytes) {
+      return await doc.embedFont(window._scriptFontBytes);
+    }
+  } catch (e) {
+    console.warn('[script-font] Embed fehlgeschlagen, Fallback TimesBoldItalic:', e.message);
+  }
+  // Fallback
+  return await doc.embedFont(PDFLibNS.StandardFonts.TimesBoldItalic);
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EuC-RAHMENVEREINBARUNG — PDF nativ mit pdf-lib
 // Pro HV: §1 Vertragsgegenstand · §2 Leistungsumfang · §3 Mitwirkung
 //         §4 Vergütung (KOSTENFREI · 25% Erfolgsbeteiligung) · §5–§8
@@ -20108,13 +20227,29 @@ async function buildLightVertragPDF() {
   draw('(4) Gerichtsstand — soweit gesetzlich zulässig — ist ' + (d.gerichtsstand || 'Mainz') + '.');
 
   // ── Unterschriften
-  spacer(20); ensure(120);
+  // V12.272: Liftaro-Seite wird vor-unterschrieben mit Skript-Font + heutigem Datum + Ort
+  spacer(20); ensure(140);
+  const sigSettings = (typeof getLiftaroSignatureSettings === 'function') ? getLiftaroSignatureSettings() : { name: 'Francesco Ricioppo', ort: 'Mainz' };
+  let scriptFont = null;
+  try { scriptFont = await _embedScriptFont(doc); } catch (_) {}
   const sigY = y;
+  // Skript-Unterschrift ÜBER der linken Linie zeichnen (so dass die Linie unten ist)
+  if (scriptFont) {
+    const sigSize = 22;
+    const sigW = scriptFont.widthOfTextAtSize(sigSettings.name, sigSize);
+    // Mittig auf der Linie, leicht nach links
+    const sigX = MARGIN_X + Math.max(0, (200 - sigW) / 2 - 8);
+    // Y so dass die Schrift gerade über der Linie liegt (Baseline ~3pt über sigY)
+    page.drawText(_safeWinAnsi(sigSettings.name), { x: sigX, y: sigY + 4, size: sigSize, font: scriptFont, color: COLOR });
+  }
+  // Linien
   page.drawLine({ start: { x: MARGIN_X, y: sigY }, end: { x: MARGIN_X + 200, y: sigY }, thickness: 0.5, color: COLOR });
   page.drawLine({ start: { x: PAGE_W - MARGIN_X - 200, y: sigY }, end: { x: PAGE_W - MARGIN_X, y: sigY }, thickness: 0.5, color: COLOR });
   y = sigY - 14;
-  page.drawText(_safeWinAnsi('Ort, Datum · für Liftaro GmbH'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
+  page.drawText(_safeWinAnsi(sigSettings.ort + ', ' + today + ' · für Liftaro GmbH'), { x: MARGIN_X, y, size: 9, font: helv, color: MUTED });
   page.drawText(_safeWinAnsi('Ort, Datum · für ' + (d.firma || 'die Verwaltung')), { x: PAGE_W - MARGIN_X - 200, y, size: 9, font: helv, color: MUTED });
+  y -= 12;
+  page.drawText(_safeWinAnsi(sigSettings.name + ' · Geschäftsführer'), { x: MARGIN_X, y, size: 8.5, font: helv, color: MUTED });
 
   // V12.154: Anlage A (Aufzugslisten-Tabelle) entfällt — Anlagen werden separat
   // per Liste übermittelt, Einsichtsrecht über Vollmacht (siehe § 1 Abs. 3).
