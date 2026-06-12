@@ -6324,7 +6324,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.270';
+const APP_VERSION = 'V12.271';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9454,7 +9454,8 @@ async function extractVollmachtFromSignedContract() {
     if (document.getElementById('kundenModal')?.style.display === 'flex' && typeof renderKundenList === 'function') renderKundenList();
 
     setBtn('✓ Vollmacht hinterlegt', false);
-    setStatus('success', '<strong>✓ Vollmacht angelegt</strong> · ' + hits.length + ' Seite(n) für „' + _esc(hvName) + '" gespeichert <span style="font-size:11px;opacity:.8">(Pipedrive-ID ' + _esc(hvOrgId) + ')</span>');
+    // V12.271: nach Erfolg → Status-Box mit Download + Delete via Helper neu rendern
+    try { await _renderExtractedVollmachtInLvEditor(); } catch (_) {}
     showToast('✓ Vollmacht erkannt · ' + hits.length + ' Seite(n) gespeichert', 'success', 5500);
     setTimeout(() => setBtn('✂ Vollmacht extrahieren', false), 4000);
   } catch (e) {
@@ -9464,6 +9465,81 @@ async function extractVollmachtFromSignedContract() {
   }
 }
 window.extractVollmachtFromSignedContract = extractVollmachtFromSignedContract;
+
+// V12.271: Status-Box-Helper — zeigt die im EuC-Editor zur HV gehörende
+// extrahierte Vollmacht mit Download- und Löschen-Button.
+async function _renderExtractedVollmachtInLvEditor() {
+  const statusEl = document.getElementById('lv_extractStatus');
+  if (!statusEl) return;
+  const hvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
+  if (!hvOrgId.trim()) { statusEl.style.display = 'none'; return; }
+  let v = null;
+  try { v = await findVollmachtByHvOrgId(hvOrgId); } catch (_) {}
+  if (!v) { statusEl.style.display = 'none'; return; }
+  const atts = Array.isArray(v.vollmacht_pdf) ? v.vollmacht_pdf : [];
+  if (!atts.length) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#fff7ed';
+    statusEl.style.border = '1px solid #fdba74';
+    statusEl.style.color = '#9a3412';
+    statusEl.innerHTML = '<strong>⚠ Vollmacht-Record vorhanden, aber kein PDF.</strong> Bitte erneut extrahieren oder im Vollmachten-Modul Datei hochladen.';
+    return;
+  }
+  const a = atts[0];
+  const hvName = (document.getElementById('lv_firma') || {}).value || 'HV';
+  statusEl.style.display = 'block';
+  statusEl.style.background = '#dcfce7';
+  statusEl.style.border = '1px solid #86efac';
+  statusEl.style.color = '#166534';
+  statusEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="font-size:14px">📜</span>
+    <div style="flex:1;min-width:140px">
+      <div style="font-weight:700">Vollmacht hinterlegt für „${_esc(hvName)}"</div>
+      <div style="font-size:11px;color:#15803d;margin-top:2px">${_esc(a.filename || 'Vollmacht.pdf')}${a.size ? ' · ' + Math.round(a.size/1024) + ' KB' : ''}${v.notiz ? ' · ' + _esc(String(v.notiz).slice(0, 80)) : ''}</div>
+    </div>
+    <a href="${_esc(a.url || '#')}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit">⬇ Download</a>
+    <button onclick="deleteExtractedVollmacht('${_esc(v._recordId)}')" title="Vollmacht-Record komplett löschen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Löschen</button>
+  </div>`;
+}
+window._renderExtractedVollmachtInLvEditor = _renderExtractedVollmachtInLvEditor;
+
+// V12.271: Vollmacht-Record komplett löschen (aus dem EuC-Editor heraus aufgerufen)
+async function deleteExtractedVollmacht(recordId) {
+  if (!recordId) return;
+  const hvName = (document.getElementById('lv_firma') || {}).value || 'HV';
+  if (!confirm('Vollmacht für „' + hvName + '" wirklich komplett löschen?\n\nDer Original-Vertrag bleibt unangetastet — du kannst jederzeit neu extrahieren.')) return;
+  try {
+    await atDelete('Vollmachten', recordId);
+    window._vmByOrgIdCacheInvalid = true;
+    if (document.getElementById('kundenModal')?.style.display === 'flex' && typeof renderKundenList === 'function') renderKundenList();
+    // Status-Box ausblenden
+    const statusEl = document.getElementById('lv_extractStatus');
+    if (statusEl) statusEl.style.display = 'none';
+    showToast('✓ Vollmacht gelöscht', 'success', 2400);
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4500);
+  }
+}
+window.deleteExtractedVollmacht = deleteExtractedVollmacht;
+
+// V12.271: Unterschriebene Vereinbarung aus dem Light-Vertrag-Record entfernen
+async function removeSignedVereinbarung() {
+  const recId = (document.getElementById('lv_recordId') || {}).value || '';
+  if (!recId) { showToast('Vertrag noch nicht gespeichert', 'warning', 3000); return; }
+  if (!confirm('Unterschriebene Vereinbarung wirklich vom Vertrag entfernen?\n\nDer Light-Vertrag bleibt erhalten, nur die hochgeladene PDF wird gelöscht.')) return;
+  try {
+    await atUpdate('Light-Vertraege', recId, { vertrag_signed_pdf: [] });
+    // Lokale Anzeige zurücksetzen
+    const sigInfo = document.getElementById('lv_signedInfo');
+    if (sigInfo) sigInfo.textContent = 'Noch keine unterschriebene Version hochgeladen.';
+    const fileInput = document.getElementById('lv_signedFile');
+    if (fileInput) fileInput.value = '';
+    showToast('✓ Unterschriebene Vereinbarung entfernt', 'success', 2400);
+  } catch (e) {
+    showToast('Entfernen fehlgeschlagen: ' + e.message, 'error', 4500);
+  }
+}
+window.removeSignedVereinbarung = removeSignedVereinbarung;
 
 async function deleteVollmachtConfirm(recordId, name) {
   if (!confirm('Vollmacht „' + (name || 'unbenannt') + '" wirklich löschen?')) return;
@@ -21555,9 +21631,19 @@ function openLightVertragEditor(data) {
     const sigInfo = document.getElementById('lv_signedInfo');
     if (data._attSigned && data._attSigned.length) {
       const a = data._attSigned[0];
-      sigInfo.innerHTML = `Bereits hochgeladen: <strong>${a.filename}</strong>`;
+      sigInfo.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px">
+        <span style="font-size:14px">📄</span>
+        <strong style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d">${_esc(a.filename)}</strong>
+        ${a.size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:#16a34a">${Math.round(a.size/1024)} KB</span>` : ''}
+        <a href="${_esc(a.url || '#')}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:6px;padding:4px 11px;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit">⬇ Download</a>
+        <button onclick="removeSignedVereinbarung()" title="Datei aus dem Vertrag entfernen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;padding:4px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Entfernen</button>
+      </div>`;
     } else {
       sigInfo.textContent = 'Noch keine unterschriebene Version hochgeladen.';
+    }
+    // V12.271: Extrahierte Vollmacht laden + anzeigen (async, blockt Editor-Open nicht)
+    if (typeof _renderExtractedVollmachtInLvEditor === 'function') {
+      _renderExtractedVollmachtInLvEditor().catch(() => {});
     }
     // WEGs nachladen + rendern
     renderAufzuegeInEuCEditor(data.id);
