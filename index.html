@@ -6313,7 +6313,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.267';
+const APP_VERSION = 'V12.268';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -26923,13 +26923,14 @@ function renderEmailInboxList() {
         statusOpts.unshift({ val: curStatus, label: oldLabels[curStatus] || curStatus });
       }
       const checkOpts = [
-        { val: '',            label: '—' },
-        { val: 'gecheckt',    label: '✓ Gecheckt' },
-        { val: 'beauftragt',  label: '📤 Beauftragt' },
-        { val: 'abgerechnet', label: '💶 Abgerechnet' },
+        { val: '',               label: '—' },
+        { val: 'in_bearbeitung', label: '🔄 In Bearbeitung' },
+        { val: 'gecheckt',       label: '✓ Gecheckt' },
+        { val: 'beauftragt',     label: '📤 Beauftragt' },
+        { val: 'abgerechnet',    label: '💶 Abgerechnet' },
       ];
       // Backward-Compat
-      if (curCheck && !['','gecheckt','beauftragt','abgerechnet'].includes(curCheck)) {
+      if (curCheck && !['','in_bearbeitung','gecheckt','beauftragt','abgerechnet'].includes(curCheck)) {
         checkOpts.push({ val: curCheck, label: curCheck });
       }
       const selStyle = 'background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:6px;padding:5px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;outline:none;width:100%;max-width:170px';
@@ -27346,20 +27347,34 @@ function _renderEmailComposer(r) {
 
 // V12.193: Kompakte Signatur-Anzeige + Anpass-Button
 function _renderSignaturePreview() {
+  // V12.268: bevorzugt HTML-Signatur des angemeldeten Bearbeiters
+  const me = (typeof _eiCurrentUserName === 'function') ? _eiCurrentUserName() : '';
+  const htmlSig = (typeof getBearbeiterSignatureHtml === 'function') ? getBearbeiterSignatureHtml(me) : '';
+  if (htmlSig && htmlSig.trim()) {
+    const sanitized = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(htmlSig) : htmlSig;
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:11.5px;color:#475569">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;margin-bottom:4px">✍ Signatur${me ? ' · ' + _esc(me) : ''} (HTML, wird formatiert gesendet)</div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.5;color:#0f172a">${sanitized}</div>
+      </div>
+      <button onclick="openBearbeiterEditor()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">✍ Anpassen</button>
+    </div>`;
+  }
+  // Fallback: legacy plain-text-signature
   const sig = _eiGetSignature();
   if (sig) {
     const short = sig.length > 240 ? sig.slice(0, 240) + ' …' : sig;
     return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:11.5px;color:#475569">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;margin-bottom:4px">✍ Signatur (wird automatisch angehängt)</div>
+        <div style="font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;margin-bottom:4px">✍ Signatur (Plain-Text, wird angehängt)</div>
         <div style="white-space:pre-wrap;color:#475569;font-style:italic;line-height:1.5;font-size:12px">${_esc(short)}</div>
       </div>
       <button onclick="openSignatureEditor()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">✍ Anpassen</button>
     </div>`;
   }
   return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:#a16207">
-    <span>✍ Keine Signatur eingestellt — wird leer angehängt</span>
-    <button onclick="openSignatureEditor()" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">✍ Signatur einstellen</button>
+    <span>✍ Keine Signatur eingestellt — lege eine pro Bearbeiter an</span>
+    <button onclick="openBearbeiterEditor()" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">✍ Bearbeiter & Signatur</button>
   </div>`;
 }
 
@@ -29570,8 +29585,9 @@ async function sendWartungsnehmerMessage(emailId) {
   const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
   // V12.223: ASCII-sanitisieren für Mail-Header
   const subjectSafe = _eiSanitizeSubjectForEmail(subject);
-  const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
-  const finalBody = sig ? body + '\n\n' + sig : body;
+  // V12.268: HTML-Signatur des aktuellen Bearbeiters einbinden
+  const _sigWn = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body) : { textSig: '', htmlBody: '' };
+  const finalBody = _sigWn.textSig ? body + '\n\n' + _sigWn.textSig : body;
   // Vorherige Out-Nachricht aus diesem Chat → in_reply_to-Kette
   const prev = (window._eiWnChatCache[emailId] || []).slice().reverse().find(x => String(x.message_id || '').trim());
   const inReplyTo = prev ? prev.message_id : '';
@@ -29584,6 +29600,7 @@ async function sendWartungsnehmerMessage(emailId) {
       replyTo:   'check@liftaro.de',
       inReplyTo: inReplyTo || undefined,
     };
+    if (_sigWn.htmlBody) sendPayload.html = _sigWn.htmlBody;
     const pendingAttsWn = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
     if (pendingAttsWn.length) {
       sendPayload.attachments = pendingAttsWn.map(a => ({
@@ -30040,8 +30057,9 @@ async function sendServicebetriebMessage(emailId, sbId) {
   const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
   // V12.223: ASCII-sanitisieren für Mail-Header
   const subjectSafe = _eiSanitizeSubjectForEmail(subject);
-  const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
-  const finalBody = sig ? body + '\n\n' + sig : body;
+  // V12.268: HTML-Signatur des aktuellen Bearbeiters einbinden
+  const _sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body) : { textSig: '', htmlBody: '' };
+  const finalBody = _sig.textSig ? body + '\n\n' + _sig.textSig : body;
   // in_reply_to-Kette aus diesem Chat-Thread
   const items = window._eiWnChatCache[emailId] || [];
   const sameSb = items.filter(it => String(it.partner_typ || '') === 'servicebetrieb' && String(it.servicebetrieb_id || '') === sbId);
@@ -30054,6 +30072,7 @@ async function sendServicebetriebMessage(emailId, sbId) {
       replyTo: 'check@liftaro.de',
       inReplyTo: inReplyTo || undefined,
     };
+    if (_sig.htmlBody) sendPayload.html = _sig.htmlBody;
     const pendingAtts = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
     if (pendingAtts.length) {
       sendPayload.attachments = pendingAtts.map(a => ({
@@ -31229,19 +31248,101 @@ function _eiCurrentUserName() {
   } catch(_) { return ''; }
 }
 
-// V12.265: Ticket-System — Bearbeiter-Liste lokal verwalten + Check-Status patchen.
-function getBearbeiterList() {
+// V12.265/268: Ticket-System — Bearbeiter-Liste mit HTML-Signatur pro Eintrag.
+// Speicher-Format: Array<{ name: string, signatureHtml: string }>. Legacy Array<string>
+// wird beim Laden automatisch migriert (Signatur leer).
+function _loadBearbRaw() {
   try {
     const raw = localStorage.getItem('liftaro_bearbeiter');
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter(x => typeof x === 'string' && x.trim()) : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map(it => {
+      if (typeof it === 'string') return { name: it.trim(), signatureHtml: '' };
+      if (it && typeof it === 'object' && typeof it.name === 'string') {
+        return { name: it.name.trim(), signatureHtml: String(it.signatureHtml || '') };
+      }
+      return null;
+    }).filter(x => x && x.name);
   } catch (_) { return []; }
 }
-function setBearbeiterList(arr) {
-  try { localStorage.setItem('liftaro_bearbeiter', JSON.stringify(Array.isArray(arr) ? arr : [])); } catch (_) {}
+function getBearbeiterRecords() { return _loadBearbRaw(); }
+function setBearbeiterRecords(arr) {
+  const clean = (Array.isArray(arr) ? arr : [])
+    .filter(x => x && typeof x.name === 'string' && x.name.trim())
+    .map(x => ({ name: x.name.trim(), signatureHtml: String(x.signatureHtml || '') }));
+  try { localStorage.setItem('liftaro_bearbeiter', JSON.stringify(clean)); } catch (_) {}
 }
-window.getBearbeiterList = getBearbeiterList;
-window.setBearbeiterList = setBearbeiterList;
+function getBearbeiterList() {
+  return _loadBearbRaw().map(x => x.name);
+}
+// Backward-Compat — Calls mit Array<string> akzeptieren
+function setBearbeiterList(arr) {
+  if (!Array.isArray(arr)) return;
+  // Wenn der erste Eintrag schon ein Record-Objekt ist → direkt durchreichen
+  if (arr.length && typeof arr[0] === 'object' && arr[0]) {
+    setBearbeiterRecords(arr);
+    return;
+  }
+  const existing = _loadBearbRaw();
+  const sigMap = new Map(existing.map(r => [r.name, r.signatureHtml]));
+  const recs = arr
+    .filter(n => typeof n === 'string' && n.trim())
+    .map(n => ({ name: n.trim(), signatureHtml: sigMap.get(n.trim()) || '' }));
+  setBearbeiterRecords(recs);
+}
+window.getBearbeiterList    = getBearbeiterList;
+window.getBearbeiterRecords = getBearbeiterRecords;
+window.setBearbeiterList    = setBearbeiterList;
+window.setBearbeiterRecords = setBearbeiterRecords;
+
+// V12.268: Signatur-Lookup — pro Bearbeiter HTML, sonst globale Signatur als Fallback.
+function getBearbeiterSignatureHtml(name) {
+  const n = String(name || '').trim();
+  if (n) {
+    const rec = _loadBearbRaw().find(r => r.name === n);
+    if (rec && String(rec.signatureHtml || '').trim()) return rec.signatureHtml;
+  }
+  // Fallback: globale Plain-Text-Signatur als pre-formatiertes HTML
+  try {
+    const fallback = String(localStorage.getItem('eiSignature') || '').trim();
+    if (!fallback) return '';
+    return '<div style="white-space:pre-wrap;font-family:Arial,sans-serif">' + (typeof _esc === 'function' ? _esc(fallback) : fallback) + '</div>';
+  } catch (_) { return ''; }
+}
+function getCurrentUserSignatureHtml() {
+  const me = (typeof _eiCurrentUserName === 'function') ? _eiCurrentUserName() : '';
+  return getBearbeiterSignatureHtml(me);
+}
+window.getBearbeiterSignatureHtml = getBearbeiterSignatureHtml;
+window.getCurrentUserSignatureHtml = getCurrentUserSignatureHtml;
+
+// V12.268: Helper — liefert Text-Signatur + (optional) HTML-Body für den Send-Payload.
+// userBody = das was der Bearbeiter im Composer getippt hat (ohne Signatur).
+// Ergebnis:
+//   { textSig, htmlBody }
+//   textSig  → wird wie bisher an den Text-Body angehängt
+//   htmlBody → wenn nicht leer, in payload.html setzen (Backend versendet Multipart)
+function _eiResolveSignatureForSend(userBody) {
+  const htmlSig = getCurrentUserSignatureHtml();
+  if (!htmlSig || !htmlSig.trim()) {
+    // Kein HTML — alte Plain-Text-Signatur als Fallback
+    const legacy = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
+    return { textSig: legacy, htmlBody: '' };
+  }
+  // HTML-Signatur → Text-Variante via stripHtml
+  const textSig = (typeof _stripHtml === 'function') ? _stripHtml(htmlSig) : htmlSig;
+  // HTML-Body aus userBody (Plain → HTML) + Signatur-HTML
+  const escFn = (typeof _esc === 'function') ? _esc : (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const userHtml = escFn(String(userBody || '')).replace(/\r?\n/g, '<br>');
+  const htmlBody =
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:14px;line-height:1.5">' +
+      userHtml +
+    '</div>' +
+    '<br>' +
+    htmlSig;
+  return { textSig: String(textSig || '').trim(), htmlBody: htmlBody };
+}
+window._eiResolveSignatureForSend = _eiResolveSignatureForSend;
 
 async function setEmailBearbeiter(recId, name) {
   try {
@@ -31266,7 +31367,7 @@ async function setEmailCheckStatus(recId, val) {
     if (r) r.check_status = value;
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    const labels = { gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet' };
+    const labels = { in_bearbeitung: 'In Bearbeitung', gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet' };
     showToast(value ? 'Check-Status: ' + (labels[value] || value) : 'Check-Status zurückgesetzt', 'success', 1800);
   } catch (e) {
     showToast('Fehler beim Check-Status-Update: ' + e.message, 'error');
@@ -31306,18 +31407,27 @@ window.openBearbeiterEditor = openBearbeiterEditor;
 function _renderBearbeiterEditor() {
   const m = document.getElementById('bearbeiterEditorModal');
   if (!m) return;
-  const list = getBearbeiterList();
-  const rows = list.length
-    ? list.map((name, i) => `<div data-bidx="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
-        <input type="text" value="${_esc(name)}" data-bedit="${i}" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;outline:none">
-        <button onclick="_bearbDelete(${i})" title="Bearbeiter entfernen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit">✕</button>
+  const recs = getBearbeiterRecords();
+  const rows = recs.length
+    ? recs.map((rec, i) => `<div data-bidx="${i}" style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input type="text" value="${_esc(rec.name)}" data-bname="${i}" placeholder="Name" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:7px 11px;font-size:13.5px;font-weight:600;font-family:inherit;outline:none;background:#fff">
+          <button onclick="_bearbDelete(${i})" title="Bearbeiter entfernen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit">✕ entfernen</button>
+        </div>
+        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Signatur (HTML)</label>
+        <textarea data-bsig="${i}" rows="6" placeholder="&lt;p&gt;Mit freundlichen Grüßen&lt;br&gt;&lt;strong&gt;Vorname Nachname&lt;/strong&gt;&lt;br&gt;Liftaro GmbH&lt;/p&gt;" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:9px 11px;font-family:'DM Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.55;color:#0f172a;background:#f8fafc;outline:none;resize:vertical" spellcheck="false">${_esc(rec.signatureHtml || '')}</textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <div style="font-size:10.5px;color:#94a3b8">HTML wird beim Senden ans Mail-Ende gehängt. Vorschau:</div>
+          <button onclick="_bearbToggleSigPreview(${i})" id="bearbSigPrevToggle_${i}" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:5px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:inherit">👁 Vorschau</button>
+        </div>
+        <div id="bearbSigPrev_${i}" style="display:none;margin-top:8px;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:#0f172a"></div>
       </div>`).join('')
     : '<div style="text-align:center;color:#94a3b8;font-size:12.5px;padding:20px;background:#fff;border:1px dashed #cbd5e1;border-radius:8px">Noch keine Bearbeiter. Füge mit „+ Bearbeiter" einen hinzu.</div>';
-  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(540px,96vw);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(700px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
     <div style="background:#0f172a;color:#fff;padding:13px 22px;display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-size:14.5px;font-weight:700">👥 Bearbeiter verwalten</div>
-        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:2px">Die Liste der Personen, die Emails zugewiesen bekommen können. Wird lokal gespeichert.</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:2px">Name + HTML-Signatur pro Bearbeiter. Beim Senden wird die Signatur des angemeldeten Bearbeiters formatiert angehängt.</div>
       </div>
       <button onclick="document.getElementById('bearbeiterEditorModal').style.display='none'" style="background:rgba(255,255,255,.14);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
     </div>
@@ -31334,20 +31444,23 @@ window._renderBearbeiterEditor = _renderBearbeiterEditor;
 
 function _bearbCollect() {
   const arr = [];
-  document.querySelectorAll('#bearbeiterEditorModal [data-bedit]').forEach((inp) => {
-    const v = String(inp.value || '').trim();
-    if (v) arr.push(v);
+  document.querySelectorAll('#bearbeiterEditorModal [data-bidx]').forEach((wrap) => {
+    const i = wrap.getAttribute('data-bidx');
+    const nameEl = wrap.querySelector('[data-bname="' + i + '"]');
+    const sigEl  = wrap.querySelector('[data-bsig="' + i + '"]');
+    const name = (nameEl && nameEl.value || '').trim();
+    if (!name) return;
+    arr.push({ name: name, signatureHtml: (sigEl && sigEl.value) || '' });
   });
   return arr;
 }
 function _bearbAddNew() {
   const cur = _bearbCollect();
-  cur.push('Neuer Bearbeiter');
-  setBearbeiterList(cur);
+  cur.push({ name: 'Neuer Bearbeiter', signatureHtml: '' });
+  setBearbeiterRecords(cur);
   _renderBearbeiterEditor();
-  // Letzten Input fokussieren
   setTimeout(() => {
-    const inputs = document.querySelectorAll('#bearbeiterEditorModal [data-bedit]');
+    const inputs = document.querySelectorAll('#bearbeiterEditorModal [data-bname]');
     const last = inputs[inputs.length - 1];
     if (last) { last.focus(); last.select(); }
   }, 30);
@@ -31357,21 +31470,40 @@ window._bearbAddNew = _bearbAddNew;
 function _bearbDelete(i) {
   const cur = _bearbCollect();
   cur.splice(Number(i), 1);
-  setBearbeiterList(cur);
+  setBearbeiterRecords(cur);
   _renderBearbeiterEditor();
 }
 window._bearbDelete = _bearbDelete;
 
+function _bearbToggleSigPreview(i) {
+  const prevEl = document.getElementById('bearbSigPrev_' + i);
+  const btn = document.getElementById('bearbSigPrevToggle_' + i);
+  if (!prevEl) return;
+  const sigEl = document.querySelector('[data-bsig="' + i + '"]');
+  if (!sigEl) return;
+  if (prevEl.style.display === 'none') {
+    const raw = String(sigEl.value || '');
+    prevEl.innerHTML = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(raw) : raw;
+    prevEl.style.display = 'block';
+    if (btn) btn.textContent = '✕ Vorschau ausblenden';
+  } else {
+    prevEl.style.display = 'none';
+    if (btn) btn.textContent = '👁 Vorschau';
+  }
+}
+window._bearbToggleSigPreview = _bearbToggleSigPreview;
+
 function _bearbSaveAndClose() {
   const cur = _bearbCollect();
-  // Dedup + sort alphabetisch
-  const dedup = Array.from(new Set(cur.map(s => s.trim()).filter(Boolean)));
-  dedup.sort((a, b) => a.localeCompare(b, 'de'));
-  setBearbeiterList(dedup);
+  // Dedup nach name + sort alphabetisch
+  const byName = new Map();
+  for (const r of cur) { byName.set(r.name, r); }
+  const recs = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  setBearbeiterRecords(recs);
   const m = document.getElementById('bearbeiterEditorModal');
   if (m) m.style.display = 'none';
   if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
-  showToast('✓ Bearbeiter-Liste gespeichert · ' + dedup.length, 'success', 2000);
+  showToast('✓ Bearbeiter-Liste gespeichert · ' + recs.length, 'success', 2000);
 }
 window._bearbSaveAndClose = _bearbSaveAndClose;
 
