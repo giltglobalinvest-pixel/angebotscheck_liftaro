@@ -6328,7 +6328,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.274';
+const APP_VERSION = 'V12.275';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -31936,19 +31936,20 @@ function _renderBearbeiterEditor() {
   const m = document.getElementById('bearbeiterEditorModal');
   if (!m) return;
   const recs = getBearbeiterRecords();
+  // V12.275: Editor ist jetzt WYSIWYG via contenteditable — User fügt einfach aus Mail
+  // ein, Formatierung bleibt. Die Sanitisierung passiert beim Speichern.
+  const sanitize = (h) => (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(h || '') : (h || '');
   const rows = recs.length
     ? recs.map((rec, i) => `<div data-bidx="${i}" style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <input type="text" value="${_esc(rec.name)}" data-bname="${i}" placeholder="Name" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:7px 11px;font-size:13.5px;font-weight:600;font-family:inherit;outline:none;background:#fff">
           <button onclick="_bearbDelete(${i})" title="Bearbeiter entfernen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit">✕ entfernen</button>
         </div>
-        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Signatur (HTML)</label>
-        <textarea data-bsig="${i}" rows="6" placeholder="&lt;p&gt;Mit freundlichen Grüßen&lt;br&gt;&lt;strong&gt;Vorname Nachname&lt;/strong&gt;&lt;br&gt;Liftaro GmbH&lt;/p&gt;" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:9px 11px;font-family:'DM Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.55;color:#0f172a;background:#f8fafc;outline:none;resize:vertical" spellcheck="false">${_esc(rec.signatureHtml || '')}</textarea>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-          <div style="font-size:10.5px;color:#94a3b8">HTML wird beim Senden ans Mail-Ende gehängt. Vorschau:</div>
-          <button onclick="_bearbToggleSigPreview(${i})" id="bearbSigPrevToggle_${i}" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:5px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:inherit">👁 Vorschau</button>
+        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Signatur</label>
+        <div data-bsig="${i}" contenteditable="true" style="min-height:110px;width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.55;color:#0f172a;background:#fff;outline:none">${sanitize(rec.signatureHtml || '')}</div>
+        <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.45">
+          💡 Tipp: Markiere die Signatur in deinem Mail-Programm, kopiere sie (⌘C / Strg+C) und füge sie hier ein (⌘V / Strg+V). Formatierung, Links und Bilder werden übernommen.
         </div>
-        <div id="bearbSigPrev_${i}" style="display:none;margin-top:8px;background:#fff;border:1px dashed #cbd5e1;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:#0f172a"></div>
       </div>`).join('')
     : '<div style="text-align:center;color:#94a3b8;font-size:12.5px;padding:20px;background:#fff;border:1px dashed #cbd5e1;border-radius:8px">Noch keine Bearbeiter. Füge mit „+ Bearbeiter" einen hinzu.</div>';
   m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(700px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
@@ -31978,7 +31979,13 @@ function _bearbCollect() {
     const sigEl  = wrap.querySelector('[data-bsig="' + i + '"]');
     const name = (nameEl && nameEl.value || '').trim();
     if (!name) return;
-    arr.push({ name: name, signatureHtml: (sigEl && sigEl.value) || '' });
+    // V12.275: Inhalt aus contenteditable lesen + sanitisieren (Scripts, Event-Handler, cid:-Bilder)
+    let raw = '';
+    if (sigEl) {
+      raw = (typeof sigEl.value !== 'undefined') ? String(sigEl.value || '') : String(sigEl.innerHTML || '');
+    }
+    const clean = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(raw) : raw;
+    arr.push({ name: name, signatureHtml: clean });
   });
   return arr;
 }
