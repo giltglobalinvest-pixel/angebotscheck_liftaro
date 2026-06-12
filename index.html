@@ -4716,6 +4716,9 @@ const pdfWorkerReady = Promise.resolve();</script>
 }
 .ei-quick-action:hover { color:#2456E5; text-decoration:underline; }
 .ei-quick-action svg { color:#94a3b8; flex-shrink:0; }
+/* V12.264: Chat-Bubble Löschen-Button — zeigt sich bei Hover über die Bubble-Zeile */
+.ei-chat-row:hover .ei-chat-del { opacity: 1 !important; }
+.ei-chat-del:focus-visible { opacity: 1 !important; outline: 2px solid #2456E5; outline-offset: 1px; }
 /* V12.248: Feature-Hide-System — body-Klasse + data-feature-Attribut */
 body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !important; }
 /* V12.250: EuC im Vertragscheck & an Anlagen ausblenden */
@@ -6306,7 +6309,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.263';
+const APP_VERSION = 'V12.264';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29188,6 +29191,43 @@ function _eiHasChatReply(r) {
   return result;
 }
 
+// V12.264: einzelne Chat-Nachricht löschen — funktioniert für beide Quellen:
+//   token = "email:<recId>"  → outgoing Email-Record (Emails-Tabelle)
+//   token = "chat:<recId>"   → eingehende Chat-Antwort (WartungsnehmerChat-Tabelle)
+async function deleteChatBubble(emailId, token) {
+  const t = String(token || '');
+  if (!t.includes(':')) { showToast('Lösch-Token fehlt', 'error', 2500); return; }
+  const [kind, recId] = t.split(':', 2);
+  if (!recId) { showToast('Lösch-ID fehlt', 'error', 2500); return; }
+  if (!confirm('Diese Chat-Nachricht wirklich löschen?\n\nDas kann NICHT rückgängig gemacht werden.')) return;
+  try {
+    if (kind === 'email') {
+      await atDelete('Emails', recId);
+      // Aus _eiAllRecords entfernen
+      const idx = (_eiAllRecords || []).findIndex(x => x._id === recId);
+      if (idx >= 0) _eiAllRecords.splice(idx, 1);
+    } else if (kind === 'chat') {
+      await atDelete('WartungsnehmerChat', recId);
+      // Aus dem WnChat-Cache entfernen
+      window._eiWnChatCache = window._eiWnChatCache || {};
+      if (Array.isArray(window._eiWnChatCache[emailId])) {
+        window._eiWnChatCache[emailId] = window._eiWnChatCache[emailId].filter(it => String(it.id || '') !== recId);
+      }
+      // Reply-Cache invalidieren, sonst hängt die "neue Antwort"-Pille noch
+      if (window._eiChatReplyCache) delete window._eiChatReplyCache[emailId];
+    } else {
+      throw new Error('Unbekannte Quelle: ' + kind);
+    }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    showToast('✓ Nachricht gelöscht', 'success', 2400);
+  } catch (e) {
+    console.error('[deleteChatBubble]', e);
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4500);
+  }
+}
+window.deleteChatBubble = deleteChatBubble;
+
 async function loadWartungsnehmerChat(emailId) {
   if (!emailId) return [];
   try {
@@ -29690,12 +29730,20 @@ function _eiRenderWartungsnehmerSection(r, wn) {
                 + '</div>';
             }
           }
-          return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
+          // V12.264: Lösch-Token bestimmen — entweder outgoing Email-Record oder WartungsnehmerChat-Record
+          const _delTok = it._source_email_id ? ('email:' + it._source_email_id)
+                        : (it.id && !it._synthetic ? ('chat:' + it.id) : '');
+          const _delBtn = _delTok
+            ? `<button class="ei-chat-del" onclick="deleteChatBubble('${emailId}','${_delTok}')" title="Nachricht löschen" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:2px 6px;border-radius:5px;opacity:0;transition:opacity .15s,background .15s,color .15s" onmouseover="this.style.background='#fee2e2';this.style.color='#9F1B1F'" onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">✕</button>`
+            : '';
+          return `<div class="ei-chat-row" style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px;align-items:flex-start;gap:4px">
+            ${isOut ? _delBtn : ''}
             <div style="max-width:75%">
               <div style="font-size:10px;color:${acc};font-weight:700;margin-bottom:2px;padding:0 8px;text-transform:uppercase;letter-spacing:.04em;${isOut ? 'text-align:right' : ''}">${itPartnerTyp === 'wartungsnehmer' ? '🔧' : '🛠'} ${_esc(partnerLabel)}</div>
               <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)}${when ? ' · ' + _esc(when) : ''}</div>
               <div style="background:${isOut ? 'linear-gradient(135deg,' + acc + ',' + accDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(bodyText)}${attsHtml}${showOriginal ? '<details style="margin-top:6px"><summary style="font-size:10.5px;color:#94a3b8;cursor:pointer">Vollen Text mit Zitat anzeigen</summary><div style="margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#64748b;white-space:pre-wrap">' + _esc(rawBody) + '</div></details>' : ''}</div>
             </div>
+            ${!isOut ? _delBtn : ''}
           </div>`;
         }).join('')
       : '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:24px 0">Noch keine Chat-Nachrichten. Wechsle in einen Partner-Tab und schreib eine Nachricht.</div>';
@@ -29785,11 +29833,19 @@ function _eiRenderWartungsnehmerSection(r, wn) {
               + '</div>';
           }
         }
-        return `<div style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px">
+        // V12.264: Lösch-Token bestimmen
+        const _delTok2 = it._source_email_id ? ('email:' + it._source_email_id)
+                       : (it.id && !it._synthetic ? ('chat:' + it.id) : '');
+        const _delBtn2 = _delTok2
+          ? `<button class="ei-chat-del" onclick="deleteChatBubble('${emailId}','${_delTok2}')" title="Nachricht löschen" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:2px 6px;border-radius:5px;opacity:0;transition:opacity .15s,background .15s,color .15s" onmouseover="this.style.background='#fee2e2';this.style.color='#9F1B1F'" onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">✕</button>`
+          : '';
+        return `<div class="ei-chat-row" style="display:flex;justify-content:${isOut ? 'flex-end' : 'flex-start'};margin-bottom:8px;align-items:flex-start;gap:4px">
+          ${isOut ? _delBtn2 : ''}
           <div style="max-width:75%">
             <div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;${isOut ? 'text-align:right' : ''}">${_esc(sender)} · ${_esc(when)}</div>
             <div style="background:${isOut ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#fff'};color:${isOut ? '#fff' : '#0f172a'};border:${isOut ? 'none' : '1px solid #e2e8f0'};border-radius:14px;border-${isOut ? 'br' : 'bl'}-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word">${_esc(cleanBody || rawBody || '(leer)')}${attsHtml}${showOriginal ? '<details style="margin-top:6px"><summary style="font-size:10.5px;color:#94a3b8;cursor:pointer">Vollen Text mit Zitat anzeigen</summary><div style="margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#64748b;white-space:pre-wrap">' + _esc(rawBody) + '</div></details>' : ''}</div>
           </div>
+          ${!isOut ? _delBtn2 : ''}
         </div>`;
       }).join('')
     : (function() {
