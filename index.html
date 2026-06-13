@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.282';
+const APP_VERSION = 'V12.283';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -31442,8 +31442,14 @@ function _eiCloneEmailFields(r) {
     'attachment_filenames','status','direction','is_forwarded','forwarded_via','raw_subject',
     'vorgaenge_json','linked_check_ids',
     'real_from_name','real_from_email','real_hv_firma','real_hv_email','real_hv_tel','real_anliegen','real_kategorie','ai_quick_at',
+    'attachments_ignored',
   ];
   const KEEP_NUM = ['attachment_count','ki_vorgaenge_count','linked_checks_count','ki_cost_eur','ki_confidence'];
+  // V12.283: Anhänge mitkopieren — Airtable akzeptiert [{url, filename}] und
+  // re-fetcht die Originaldatei zu einem neuen Attachment am Zielrecord.
+  // Sowohl Original- als auch neutralisierte Anhänge übernehmen, damit der
+  // User in der Split-Kopie sofort den gleichen Anhang-Stand hat.
+  const KEEP_ATT = ['attachments','neutralized_attachments'];
   const out = {};
   for (const k of KEEP_STR) {
     const v = r[k];
@@ -31454,6 +31460,14 @@ function _eiCloneEmailFields(r) {
     if (v === undefined || v === null || v === '') continue;
     const n = Number(v);
     if (!Number.isNaN(n)) out[k] = n;
+  }
+  for (const k of KEEP_ATT) {
+    const arr = r[k];
+    if (!Array.isArray(arr) || !arr.length) continue;
+    const slim = arr
+      .filter(a => a && a.url)
+      .map(a => ({ url: String(a.url), filename: String(a.filename || a.name || 'Anhang') }));
+    if (slim.length) out[k] = slim;
   }
   // Wichtig: status standardmäßig auf 'neu' damit die Kopie sichtbar wird
   if (!out.status) out.status = 'neu';
