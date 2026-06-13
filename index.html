@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.279';
+const APP_VERSION = 'V12.280';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9759,24 +9759,67 @@ async function neutralizeEmailAttachment(emailId, attIdx, opts) {
       const pageText = (tc.items || []).map(it => it.str).join(' ');
       fullText += '\n\n--- Seite ' + p + ' ---\n' + pageText;
     }
-    if (!fullText.trim()) throw new Error('PDF enthält keinen extrahierbaren Text');
+    // V12.280: Garbled-Check — wenn pdfjs nur Whitespace oder Müll extrahiert
+    // hat (z.B. gescannte PDFs ohne Text-Layer, custom-encoded Fonts), fallen
+    // wir auf Vision zurück und schicken die Seiten als JPEGs an Claude.
+    // Stripe Seiten-Marker ("--- Seite 1 ---") bevor wir Garbled-Check machen
+    // — sonst zählen die Marker als "ausreichend printable text".
+    const textWithoutMarkers = fullText.replace(/--- Seite \d+ ---/g, '').trim();
+    const useVision = (
+      !textWithoutMarkers ||
+      textWithoutMarkers.length < 80 ||
+      (typeof isGarbledText === 'function' && isGarbledText(textWithoutMarkers))
+    );
 
     // 3. Claude neutralisiert. V12.262: Prompt aus opts.systemPrompt, sonst aus
     // localStorage (User-Edit), sonst Default. So kann der Bearbeiter pro Lauf
     // optimieren ohne Code-Änderung.
-    setBtn('3/4 KI analysiert …', true);
     const systemPrompt = (opts && opts.systemPrompt)
       ? String(opts.systemPrompt)
       : ((typeof getNeutralizePrompt === 'function') ? getNeutralizePrompt() : DEFAULT_NEUTRALIZE_PROMPT);
 
-    const userMsg = 'Hier ist der extrahierte Text. Neutralisiere ihn streng nach den Vorgaben.\n\n' +
-      '```\n' + fullText.slice(0, 24000) + '\n```';
-
-    const raw = await callClaude(
-      [{ role: 'user', content: userMsg }],
-      systemPrompt,
-      { maxTokens: 12000 },
-    );
+    let raw;
+    if (useVision) {
+      // V12.280: Vision-Fallback — bis zu 4 Seiten als JPEG-base64 rendern.
+      setBtn('3/4 Scan erkannt – Bilder rendern …', true);
+      const pagesToRender = Math.min(numPages, 4);
+      const visionContent = [];
+      for (let p = 1; p <= pagesToRender; p++) {
+        setBtn('3/4 Bild ' + p + '/' + pagesToRender + ' …', true);
+        const page = await pdfJsDoc.getPage(p);
+        const viewport = page.getViewport({ scale: 1.4 });
+        const canvas = document.createElement('canvas');
+        canvas.width  = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const b64 = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+        visionContent.push({
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
+        });
+      }
+      visionContent.push({
+        type: 'text',
+        text: 'Das PDF enthält keinen extrahierbaren Text-Layer (vermutlich Scan). ' +
+              'Bitte lies die Seiten visuell aus und neutralisiere den Inhalt streng ' +
+              'nach den Vorgaben. Gib ausschließlich Plain-Text zurück.',
+      });
+      setBtn('3/4 KI analysiert Bilder …', true);
+      raw = await callClaude(
+        [{ role: 'user', content: visionContent }],
+        systemPrompt,
+        { maxTokens: 12000 },
+      );
+    } else {
+      setBtn('3/4 KI analysiert …', true);
+      const userMsg = 'Hier ist der extrahierte Text. Neutralisiere ihn streng nach den Vorgaben.\n\n' +
+        '```\n' + fullText.slice(0, 24000) + '\n```';
+      raw = await callClaude(
+        [{ role: 'user', content: userMsg }],
+        systemPrompt,
+        { maxTokens: 12000 },
+      );
+    }
 
     // V12.279: Plain-Text-Modus — KI-Output wird als Fließtext durchgereicht.
     // Vorrede/Markdown-Codeblöcke werden abgeschnitten, aber sonst nichts verändert.
