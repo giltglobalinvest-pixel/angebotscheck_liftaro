@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.278';
+const APP_VERSION = 'V12.279';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9571,11 +9571,13 @@ async function deleteVollmachtConfirm(recordId, name) {
 // V12.262: Default-System-Prompt für die Neutralisierung als Konstante.
 // Der User kann den Prompt im Dialog vor jedem Lauf anpassen — der zuletzt
 // genutzte Prompt wird in localStorage persistiert.
+// V12.279: Plain-Text-Modus statt JSON. Output wird direkt im Review-Modal als
+// editierbarer Fließtext angezeigt — der User kann alles manuell verfeinern.
 const DEFAULT_NEUTRALIZE_PROMPT =
   'Du bist ein Assistent, der Geschäfts-Dokumente (Wartungsverträge, Angebote, Rechnungen, ' +
   'Wartungsprotokolle, Prüfberichte etc.) für die Weiterleitung an Dritte ANONYMISIERT. ' +
-  'Du erhältst den extrahierten Text eines PDFs und gibst eine strukturierte, lesbare ' +
-  'Wiedergabe des Inhalts zurück — ohne identifizierende Informationen.\n\n' +
+  'Du erhältst den extrahierten Text eines PDFs und gibst eine sauber lesbare, neutralisierte ' +
+  'Wiedergabe als FLIESSTEXT zurück — ohne identifizierende Informationen.\n\n' +
   'ENTFERNEN bzw. durch Platzhalter ersetzen:\n' +
   '- Anbieter-/Firmennamen → "[Anbieter]"\n' +
   '- Kunden-/Hausverwaltungsnamen → "[Kunde]"\n' +
@@ -9597,22 +9599,28 @@ const DEFAULT_NEUTRALIZE_PROMPT =
   '  Zahlungsbedingungen-Beschreibung (ohne konkrete Beträge), Laufzeit, Kündigungsfristen\n' +
   '- Datumsangaben (Datum des Dokuments, Vertragsbeginn, Vertragsende)\n' +
   '- Sachliche Mengenangaben (Stückzahlen, Wartungs-Intervalle, Prüfumfänge)\n\n' +
-  'ANTWORT-FORMAT — ausschließlich valides JSON:\n' +
-  '{\n' +
-  '  "title": "Knappe neutrale Überschrift, z.B. \\"Wartungsvertrag Aufzugsanlage\\"",\n' +
-  '  "anlage": { "standort": "...", "fabriknummer": "...", "hersteller": "...", "weitere": "..." },\n' +
-  '  "sections": [\n' +
-  '    { "heading": "Abschnittstitel", "content": "Fließtext — verwende \\\\n für Absätze, * für Bullet-Punkte" }\n' +
-  '  ],\n' +
-  '  "notes": "Optionaler Hinweis"\n' +
-  '}\n\n' +
-  'Falls eine Anlage-Eigenschaft (Standort, Fabriknummer etc.) nicht im Dokument steht: ' +
-  'Feld leer lassen. Erfinde NICHTS.';
+  'ANTWORT-FORMAT — reiner Plain-Text (KEIN JSON, KEIN Markdown-Codeblock!):\n' +
+  '- Beginne direkt mit dem neutralisierten Inhalt — keine Vorrede, kein Meta-Kommentar\n' +
+  '- Nutze Absätze (Leerzeile dazwischen) für logische Blöcke\n' +
+  '- Nutze "* " (Sternchen + Leerzeichen) am Zeilenanfang für Bullet-Punkte\n' +
+  '- Wenn Standort, Fabriknummer, Hersteller etc. im Dokument stehen, nenne sie im Fließtext ' +
+  '  (z.B. "Standort: Musterstraße 12, 12345 Musterstadt"). Erfinde NICHTS — was nicht ' +
+  '  drinsteht, wird nicht erwähnt.\n' +
+  '- Falls der Input-Text leer/unverständlich ist: gib eine kurze Notiz dazu zurück ' +
+  '  (z.B. "Aus dem PDF konnte kein verwertbarer Text extrahiert werden.").';
 
 function getNeutralizePrompt() {
   try {
     const v = localStorage.getItem('liftaro_neutralize_prompt');
-    return (v && v.trim()) ? v : DEFAULT_NEUTRALIZE_PROMPT;
+    if (!v || !v.trim()) return DEFAULT_NEUTRALIZE_PROMPT;
+    // V12.279: Migration — alte JSON-basierte Prompts (vor V12.279) werden auto-resettet.
+    // Erkennung: enthält JSON-Schema-Marker UND keinen Plain-Text-Marker.
+    const looksLikeJsonPrompt = /"title"\s*:\s*"|"sections"\s*:\s*\[|"anlage"\s*:\s*\{/.test(v);
+    if (looksLikeJsonPrompt) {
+      try { localStorage.removeItem('liftaro_neutralize_prompt'); } catch (_) {}
+      return DEFAULT_NEUTRALIZE_PROMPT;
+    }
+    return v;
   } catch (_) { return DEFAULT_NEUTRALIZE_PROMPT; }
 }
 function setNeutralizePrompt(p) {
@@ -9770,68 +9778,33 @@ async function neutralizeEmailAttachment(emailId, attIdx, opts) {
       { maxTokens: 12000 },
     );
 
-    // Robuster JSON-Parser mit Auto-Repair
-    const parseJsonLoose = (txt) => {
-      let s = String(txt || '').trim()
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```\s*$/i, '');
-      const i = s.indexOf('{'), j = s.lastIndexOf('}');
-      if (i >= 0 && j > i) s = s.slice(i, j + 1);
-      try { return JSON.parse(s); } catch (_) {}
-      try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch (_) {}
-      let s2 = s;
-      const lastComma = s2.lastIndexOf(',');
-      if (lastComma > 0) s2 = s2.slice(0, lastComma);
-      const opens = { '{': 0, '[': 0 };
-      let inStr = false, esc = false;
-      for (const ch of s2) {
-        if (esc) { esc = false; continue; }
-        if (ch === '\\') { esc = true; continue; }
-        if (ch === '"') { inStr = !inStr; continue; }
-        if (inStr) continue;
-        if (ch === '{') opens['{']++; else if (ch === '}') opens['{']--;
-        else if (ch === '[') opens['[']++; else if (ch === ']') opens['[']--;
-      }
-      if (inStr) s2 += '"';
-      while (opens['['] > 0) { s2 += ']'; opens['[']--; }
-      while (opens['{'] > 0) { s2 += '}'; opens['{']--; }
-      try { return JSON.parse(s2.replace(/,(\s*[}\]])/g, '$1')); } catch (e) {
-        return {
-          title: 'Neutralisiertes Dokument',
-          anlage: {},
-          sections: [{ heading: 'Inhalt (KI-Rohtext)', content: String(txt || '').slice(0, 8000) }],
-          notes: 'Hinweis: JSON-Antwort war unvollständig (' + e.message + '). Bitte prüfen.',
-        };
-      }
-    };
+    // V12.279: Plain-Text-Modus — KI-Output wird als Fließtext durchgereicht.
+    // Vorrede/Markdown-Codeblöcke werden abgeschnitten, aber sonst nichts verändert.
+    let content = String(raw || '').trim()
+      .replace(/^```(?:[a-z]+)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+    // Falls KI mit "Hier ist..." / "Hier folgt..." einleitet → erste Zeile droppen
+    content = content.replace(/^(Hier (?:ist|folgt|kommt|ein)[^\n]*\n+)/i, '');
 
-    const parsed = parseJsonLoose(raw);
-    const title = String(parsed.title || 'Neutralisiertes Dokument');
-    const anlage = parsed.anlage || {};
-    const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
-    const notes = String(parsed.notes || '');
-
-    // V12.263: Statt direktem PDF-Build → Review-Modal mit editierbaren Feldern.
+    // V12.263: Statt direktem PDF-Build → Review-Modal mit editierbarem Inhalt.
     // PDF wird erst beim Klick auf "PDF erzeugen" gebaut + hochgeladen.
     setBtn('🕶 Neutralisieren', false);
     openNeutralizeReviewModal(emailId, attIdx, {
-      title,
-      anlage: {
-        standort:     String(anlage.standort     || ''),
-        fabriknummer: String(anlage.fabriknummer || ''),
-        hersteller:   String(anlage.hersteller   || ''),
-        weitere:      String(anlage.weitere      || ''),
-      },
-      sections: sections.map(s => ({
-        heading: String(s.heading || ''),
-        content: String(s.content || ''),
-      })),
-      notes,
+      title:          'Neutralisiertes Dokument',
+      content:        content || 'Aus dem PDF konnte kein verwertbarer Text extrahiert werden. Bitte manuell eingeben.',
       sourceFilename: a.filename || 'Anhang.pdf',
     });
     return;
     /* eslint-disable no-unreachable, no-unused-vars */
-    // ↓ Unreachable — Implementierungsreferenz, wurde in _buildNeutralizedPdfBytes verschoben.
+    // ↓ Unreachable — V12.279: gesamter alter PDF-Build-Block entfernt,
+    //   Logik komplett in _buildNeutralizedPdfBytes verschoben. Hier nur noch Stub.
+    // (Block-Ende mit /* eslint-enable */ siehe unten vor catch)
+    /* eslint-enable */
+    if (false) { // eslint-disable-line no-constant-condition
+      // platzhalter — nie ausgeführt
+    }
+    /* OLD-IMPL-START (gelöscht V12.279) — Implementierungsreferenz, wurde in _buildNeutralizedPdfBytes verschoben.
     setBtn('4/4 PDF erzeugen …', true);
     const PDFLibNS = window.PDFLib;
     if (!PDFLibNS) throw new Error('PDFLib (pdf-lib) nicht geladen');
@@ -10020,7 +9993,8 @@ async function neutralizeEmailAttachment(emailId, attIdx, opts) {
     } catch (_) {}
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
     if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
-    showToast('✓ „' + outName + '" angelegt · ' + sections.length + ' Abschnitte', 'success', 4500);
+    showToast('✓ „' + outName + '" angelegt', 'success', 4500);
+    OLD-IMPL-END (V12.279) */
   } catch (e) {
     console.error('[neutralizeEmailAttachment]', e);
     showToast('Neutralisierung fehlgeschlagen: ' + e.message, 'error', 6000);
@@ -10103,62 +10077,34 @@ async function _buildNeutralizedPdfBytes(data) {
   y -= 4;
   drawWrapped(
     'Anbieter, Kunde, Preise, Kontaktdaten und IDs wurden entfernt. ' +
-    'Standort und Fabriknummer der Anlage bleiben sichtbar.',
+    'Sachdaten der Anlage (Standort, Fabriknummer, technische Daten) bleiben sichtbar.',
     { size: 9.5, color: MUTE, lineH: 13 },
   );
-  y -= 10;
+  y -= 12;
 
-  // Anlagen-Block
-  const anlage = data.anlage || {};
-  const anlageEntries = [];
-  if (anlage.standort)     anlageEntries.push(['Standort',      String(anlage.standort)]);
-  if (anlage.fabriknummer) anlageEntries.push(['Fabriknummer',  String(anlage.fabriknummer)]);
-  if (anlage.hersteller)   anlageEntries.push(['Hersteller',    String(anlage.hersteller)]);
-  if (anlage.weitere)      anlageEntries.push(['Weitere Daten', String(anlage.weitere)]);
-  if (anlageEntries.length) {
-    ensure(28 + anlageEntries.length * 16);
-    const boxTop = y + 2;
-    const boxH = 16 + anlageEntries.length * 16;
-    page.drawRectangle({ x: MARGIN_L, y: boxTop - boxH, width: CONTENT_W, height: boxH, color: ACCENT_BG });
-    page.drawText('ANLAGE', { x: MARGIN_L + 12, y: boxTop - 14, size: 9, font: helvBold, color: NAVY });
-    let entryY = boxTop - 26;
-    for (const [k, v] of anlageEntries) {
-      page.drawText(k + ':', { x: MARGIN_L + 12, y: entryY, size: 10, font: helvBold, color: NAVY });
-      const valStr = v.length > 90 ? v.slice(0, 90) + '…' : v;
-      page.drawText(valStr, { x: MARGIN_L + 110, y: entryY, size: 10, font: helv, color: INK });
-      entryY -= 14;
-    }
-    y = boxTop - boxH - 14;
-  }
-
-  // Sections
-  const sections = Array.isArray(data.sections) ? data.sections : [];
-  for (const s of sections) {
-    const heading = String(s.heading || '').trim();
-    const content = String(s.content || '').trim();
-    if (!heading && !content) continue;
-    y -= 4;
-    ensure(28);
-    if (heading) {
-      drawWrapped(heading, { bold: true, size: 13, color: NAVY, lineH: 17 });
-      y -= 3;
-    }
+  // V12.279: Inhalt als Fließtext mit Bullet-Support — keine Sub-Sections mehr,
+  // alles editierbar im Review-Modal, kein JSON-Schema dazwischen.
+  const content = String(data.content || '').trim();
+  if (content) {
     const lines = content.split(/\r?\n/);
     for (const line of lines) {
       const t = line.trim();
-      if (!t) { y -= 6; continue; }
-      if (/^\*\s+/.test(t)) drawBullet(t.replace(/^\*\s+/, ''), { size: 10.5, lineH: 14 });
-      else drawWrapped(t, { size: 10.5, lineH: 14 });
+      if (!t) { y -= 7; continue; }
+      // "## Heading" → fette Zwischenüberschrift, sonst regulärer Fließtext
+      if (/^#{1,3}\s+/.test(t)) {
+        y -= 4;
+        drawWrapped(t.replace(/^#{1,3}\s+/, ''), { bold: true, size: 13, color: NAVY, lineH: 17 });
+        y -= 2;
+      } else if (/^\*\s+/.test(t)) {
+        drawBullet(t.replace(/^\*\s+/, ''), { size: 10.5, lineH: 14.5 });
+      } else if (/^-\s+/.test(t)) {
+        drawBullet(t.replace(/^-\s+/, ''), { size: 10.5, lineH: 14.5 });
+      } else {
+        drawWrapped(t, { size: 10.5, lineH: 14.5 });
+      }
     }
-    y -= 4;
-  }
-
-  // Notes
-  if (data.notes && String(data.notes).trim()) {
-    y -= 10;
-    ensure(40);
-    drawWrapped('Hinweis', { bold: true, size: 11, color: SOFT, lineH: 14 });
-    drawWrapped(String(data.notes), { size: 9.5, color: SOFT, lineH: 13 });
+  } else {
+    drawWrapped('— Kein Inhalt —', { size: 10.5, color: SOFT, lineH: 14 });
   }
 
   // Footer auf jeder Seite
@@ -10211,136 +10157,59 @@ function openNeutralizeReviewModal(emailId, attIdx, data) {
 }
 window.openNeutralizeReviewModal = openNeutralizeReviewModal;
 
+// V12.279: Schlankes Modal — nur Titel + großes Inhalt-Textarea. Alles editierbar.
 function _renderNeutralizeReviewModal() {
   const m = document.getElementById('neutralizeReviewModal');
   const st = window._neutralizeReviewState;
   if (!m || !st) return;
   const d = st.data;
-  const ta = (id, label, val, rows) => `
-    <div style="margin-bottom:12px">
-      <label for="${id}" style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px">${label}</label>
-      <textarea id="${id}" rows="${rows || 2}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:12.5px;line-height:1.5;font-family:inherit;background:#fff;outline:none;resize:vertical" spellcheck="false">${_esc(val || '')}</textarea>
-    </div>`;
-  const inp = (id, label, val) => `
-    <div style="flex:1;min-width:180px;margin-bottom:10px">
-      <label for="${id}" style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">${label}</label>
-      <input id="${id}" type="text" value="${_esc(val || '')}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:12.5px;font-family:inherit;background:#fff;outline:none">
-    </div>`;
-
-  const sectionsHtml = (Array.isArray(d.sections) ? d.sections : []).map((s, i) => {
-    const isFirst = i === 0;
-    const isLast  = i === d.sections.length - 1;
-    return `<div data-section="${i}" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
-        <span style="font-size:11px;font-weight:700;color:#0f172a;text-transform:uppercase;letter-spacing:.06em">Abschnitt ${i + 1}</span>
-        <div style="display:flex;gap:4px">
-          <button onclick="_neutMoveSection(${i},-1)" ${isFirst ? 'disabled' : ''} title="Nach oben" style="background:#fff;border:1px solid #cbd5e1;color:${isFirst ? '#cbd5e1' : '#475569'};border-radius:6px;width:28px;height:28px;cursor:${isFirst ? 'not-allowed' : 'pointer'};font-family:inherit;display:inline-flex;align-items:center;justify-content:center">↑</button>
-          <button onclick="_neutMoveSection(${i},1)"  ${isLast  ? 'disabled' : ''} title="Nach unten" style="background:#fff;border:1px solid #cbd5e1;color:${isLast ? '#cbd5e1' : '#475569'};border-radius:6px;width:28px;height:28px;cursor:${isLast ? 'not-allowed' : 'pointer'};font-family:inherit;display:inline-flex;align-items:center;justify-content:center">↓</button>
-          <button onclick="_neutDeleteSection(${i})" title="Löschen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:6px;width:28px;height:28px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff'">✕</button>
-        </div>
-      </div>
-      <input type="text" data-field="heading_${i}" value="${_esc(s.heading || '')}" placeholder="Überschrift" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:13px;font-weight:600;font-family:inherit;background:#fff;outline:none;margin-bottom:6px">
-      <textarea data-field="content_${i}" rows="4" placeholder="Inhalt — \\n für Absätze, *<space> für Bullet-Punkte" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:12.5px;line-height:1.55;font-family:inherit;background:#fff;outline:none;resize:vertical" spellcheck="false">${_esc(s.content || '')}</textarea>
-    </div>`;
-  }).join('');
-
-  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(920px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(820px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
     <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
       <div style="min-width:0">
-        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">📝 Neutralisierung prüfen & PDF erzeugen</div>
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">📝 Neutralisierung prüfen &amp; PDF erzeugen</div>
         <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Quelle: ${_esc(d.sourceFilename || 'Anhang.pdf')}</div>
       </div>
       <button onclick="_neutCloseReview()" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
     </div>
     <div style="padding:11px 22px;background:#fef3c7;border-bottom:1px solid #fcd34d;color:#78350f;font-size:12px;line-height:1.5">
-      💡 Die KI-Ausgabe ist editierbar. Passe Titel, Anlagen-Daten und Abschnitte an, bevor du das PDF erzeugst. Das Original-PDF bleibt unangetastet.
+      💡 Die KI hat den Inhalt extrahiert und anonymisiert. Passe Titel und Inhalt an, bevor du das PDF erzeugst. Das Original-PDF bleibt unangetastet.
     </div>
-    <div style="flex:1;overflow-y:auto;padding:16px 22px;background:#f8fafc">
-      ${ta('_neutTitle', 'Titel', d.title, 1)}
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Anlagen-Daten (bleiben im PDF sichtbar)</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px">
-          ${inp('_neutAnlStandort',     'Standort',      (d.anlage||{}).standort)}
-          ${inp('_neutAnlFabriknummer', 'Fabriknummer',  (d.anlage||{}).fabriknummer)}
-          ${inp('_neutAnlHersteller',   'Hersteller',    (d.anlage||{}).hersteller)}
-          ${inp('_neutAnlWeitere',      'Weitere Daten', (d.anlage||{}).weitere)}
+    <div style="flex:1;overflow-y:auto;padding:16px 22px;background:#f8fafc;display:flex;flex-direction:column">
+      <div style="margin-bottom:12px">
+        <label for="_neutTitle" style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px">Titel</label>
+        <input id="_neutTitle" type="text" value="${_esc(d.title || 'Neutralisiertes Dokument')}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:13.5px;font-weight:600;font-family:inherit;background:#fff;outline:none">
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;min-height:380px">
+        <label for="_neutContent" style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px">Inhalt — frei editierbar</label>
+        <textarea id="_neutContent" style="flex:1;width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:12px 14px;font-size:13px;line-height:1.6;font-family:inherit;background:#fff;outline:none;resize:vertical;min-height:340px" spellcheck="false" placeholder="Inhalt …">${_esc(d.content || '')}</textarea>
+        <div style="font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.5">
+          Tipp: Leerzeile = neuer Absatz · <code style="background:#e2e8f0;padding:1px 4px;border-radius:3px">*&nbsp;Text</code> = Bullet-Punkt
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:700;color:#0f172a;text-transform:uppercase;letter-spacing:.06em">Abschnitte (${(d.sections||[]).length})</div>
-        <button onclick="_neutAddSection()" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Abschnitt</button>
-      </div>
-      ${sectionsHtml || '<div style="text-align:center;padding:24px;color:#94a3b8;font-size:13px;background:#fff;border:1px dashed #cbd5e1;border-radius:10px">Keine Abschnitte. Klicke „+ Abschnitt" zum Hinzufügen.</div>'}
-      ${ta('_neutNotes', 'Hinweis (optional)', d.notes, 2)}
     </div>
     <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <span style="font-size:11.5px;color:#64748b">Du kannst jederzeit den Prompt neu setzen und nochmal von vorn starten.</span>
       <div style="display:flex;gap:8px">
         <button onclick="_neutCloseReview()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
-        <button id="_neutPdfBtn" onclick="_neutGeneratePdf()" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">📄 PDF erzeugen & anhängen</button>
+        <button id="_neutPdfBtn" onclick="_neutGeneratePdf()" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">📄 PDF erzeugen &amp; anhängen</button>
       </div>
     </div>
   </div>`;
 }
 window._renderNeutralizeReviewModal = _renderNeutralizeReviewModal;
 
+// V12.279: Schlanke Form-Collection — nur title + content.
 function _neutCollectFormState() {
   const st = window._neutralizeReviewState;
   if (!st) return null;
   const g = (id) => (document.getElementById(id) || {}).value || '';
-  const sections = [];
-  document.querySelectorAll('#neutralizeReviewModal [data-section]').forEach((wrap) => {
-    const i = wrap.getAttribute('data-section');
-    const h = wrap.querySelector('[data-field="heading_' + i + '"]');
-    const c = wrap.querySelector('[data-field="content_' + i + '"]');
-    sections.push({
-      heading: (h && h.value) || '',
-      content: (c && c.value) || '',
-    });
-  });
   st.data = {
     ...st.data,
-    title:  g('_neutTitle'),
-    anlage: {
-      standort:     g('_neutAnlStandort'),
-      fabriknummer: g('_neutAnlFabriknummer'),
-      hersteller:   g('_neutAnlHersteller'),
-      weitere:      g('_neutAnlWeitere'),
-    },
-    sections: sections,
-    notes:    g('_neutNotes'),
+    title:   g('_neutTitle'),
+    content: g('_neutContent'),
   };
   return st;
 }
-
-function _neutAddSection() {
-  const st = _neutCollectFormState();
-  if (!st) return;
-  st.data.sections.push({ heading: 'Neuer Abschnitt', content: '' });
-  _renderNeutralizeReviewModal();
-}
-window._neutAddSection = _neutAddSection;
-
-function _neutDeleteSection(i) {
-  const st = _neutCollectFormState();
-  if (!st) return;
-  st.data.sections.splice(Number(i), 1);
-  _renderNeutralizeReviewModal();
-}
-window._neutDeleteSection = _neutDeleteSection;
-
-function _neutMoveSection(i, dir) {
-  const st = _neutCollectFormState();
-  if (!st) return;
-  const idx = Number(i);
-  const target = idx + Number(dir);
-  if (target < 0 || target >= st.data.sections.length) return;
-  const tmp = st.data.sections[idx];
-  st.data.sections[idx] = st.data.sections[target];
-  st.data.sections[target] = tmp;
-  _renderNeutralizeReviewModal();
-}
-window._neutMoveSection = _neutMoveSection;
 
 function _neutCloseReview() {
   const m = document.getElementById('neutralizeReviewModal');
