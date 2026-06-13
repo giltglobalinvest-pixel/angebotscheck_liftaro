@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.284';
+const APP_VERSION = 'V12.285';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -26577,32 +26577,6 @@ function onEmailRowClick(recId, ev) {
   selectEmailRow(recId);
 }
 
-// V12.284: Quick-Actions aus der Card. Öffnet die Email-Detail-View und
-// triggert dann die jeweilige Aktion. Detail braucht ~50ms zum Rendern,
-// daher kleiner setTimeout vor dem Trigger.
-function _eiQuickAction(recId, action, ev) {
-  if (ev && ev.stopPropagation) ev.stopPropagation();
-  if (ev && ev.preventDefault)  ev.preventDefault();
-  if (typeof selectEmailRow === 'function') selectEmailRow(recId);
-  setTimeout(() => {
-    try {
-      if (action === 'hv' && typeof assignHvToVorgang === 'function') {
-        assignHvToVorgang(recId, 0);
-      } else if (action === 'aufzug' && typeof runAiAufzugAnalysis === 'function') {
-        runAiAufzugAnalysis(recId);
-        const el = document.getElementById('ei_ai_aufzug_result');
-        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else if (action === 'split') {
-        // Split-Pfad: Aufzug-Analyse starten — bei mehreren erkannten Aufzügen
-        // schaltet die Karte automatisch den "X Aufzüge übernehmen + Email splitten"-Button frei.
-        if (typeof runAiAufzugAnalysis === 'function') runAiAufzugAnalysis(recId);
-        const el = document.getElementById('ei_ai_aufzug_result');
-        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    } catch (e) { console.warn('[V12.284] quick-action ' + action + ':', e.message); }
-  }, 120);
-}
-window._eiQuickAction = _eiQuickAction;
 
 function toggleEmailPick(recId) {
   if (!window._eiPickedSet) window._eiPickedSet = new Set();
@@ -27419,19 +27393,6 @@ function renderEmailInboxList() {
           🔀 ${_isCopy ? 'Kopie' : (_splitCnt >= 2 ? '1/' + _splitCnt : 'Split')}
         </span>`
       : '';
-    // V12.284: Quick-Action-Icons in der Card — nur sichtbar wenn der jeweilige
-    // Schritt offen ist. Klick → öffnet Detail-View und startet den passenden Flow.
-    const _vCount    = parseInt(r.ki_vorgaenge_count || 0, 10) || 0;
-    const _hasHv     = (hv && (hv.source === 'assigned' || hv.source === 'ai'));
-    const _hasAufzug = !!(String(r.aufzug_fabriknummer || '').trim() || String(r.aufzug_standort || '').trim());
-    const _canSplit  = _vCount >= 2 && !_isCopy && _splitCnt < 2;
-    const _qaShow    = !isOut && (!_hasHv || !_hasAufzug || _canSplit);
-    const _qaIconStyle = 'background:#fff;border:1px solid #e2e8f0;border-radius:7px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s,background .15s;padding:0;flex-shrink:0';
-    const _qaIcons = _qaShow ? `<div style="display:flex;gap:5px;margin-bottom:2px">
-      ${!_hasHv ? `<button onclick="_eiQuickAction('${r._id}','hv',event)" title="Hausverwaltung zuweisen" style="${_qaIconStyle};color:#15803d" onmouseover="this.style.background='#f0fdf4';this.style.borderColor='#86efac'" onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg></button>` : ''}
-      ${!_hasAufzug ? `<button onclick="_eiQuickAction('${r._id}','aufzug',event)" title="Aufzug zuweisen" style="${_qaIconStyle};color:#0e7490" onmouseover="this.style.background='#ecfeff';this.style.borderColor='#67e8f9'" onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01"/></svg></button>` : ''}
-      ${_canSplit ? `<button onclick="_eiQuickAction('${r._id}','split',event)" title="${_vCount} Vorgänge erkannt — Email splitten" style="${_qaIconStyle};color:#5b21b6" onmouseover="this.style.background='#ede9fe';this.style.borderColor='#c4b5fd'" onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>` : ''}
-    </div>` : '';
     // V12.228: Chat-Antwort-Indikator — eingehende Antworten von Chat-Partnern im Cache
     const _hasChatReply = (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
     const chatReplyChip = _hasChatReply
@@ -27618,7 +27579,7 @@ function renderEmailInboxList() {
         ${pillRow}
         ${attRow}
       </div>
-      <div class="ei-row-actions">${_qaIcons}${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
+      <div class="ei-row-actions">${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
     </div>`;
   }).join('');
 }
