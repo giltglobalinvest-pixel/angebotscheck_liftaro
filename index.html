@@ -4238,6 +4238,11 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <!-- V12.277: Schnell-Check-Button — sichtbar nur bei Check-Typ-klassifizierter Email -->
+      <button id="emailDetailOverlaySchnellCheckBtn" onclick="openSchnellCheck()" title="⚡ Schnell-Check generieren — KI erzeugt Ergebnis aus Email + Anhang + Chats" style="display:none;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#fff;border-radius:8px;padding:0 14px;height:36px;cursor:pointer;font-size:12.5px;font-weight:700;align-items:center;gap:6px;font-family:inherit;box-shadow:0 1px 3px rgba(217,119,6,.35)" onmouseover="this.style.opacity='.92'" onmouseout="this.style.opacity='1'">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        Schnell-Check
+      </button>
       <button id="emailDetailOverlayPrevBtn" onclick="navigateEmailDetail(-1)" title="Vorherige Email" style="background:#fff;border:1px solid #e2e8f0;color:#475569;border-radius:8px;width:36px;height:36px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#fff'">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
@@ -6328,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.276';
+const APP_VERSION = 'V12.277';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29869,6 +29874,472 @@ function adoptEmailReplyAi(emailId) {
 }
 window.adoptEmailReplyAi = adoptEmailReplyAi;
 
+// ═══════════════════════════════════════════════════════════════════
+// V12.277: SCHNELL-CHECK — Einheitlicher KI-Flow für alle Check-Typen
+// Reparaturcheck · Modernisierungscheck · Vertragscheck · Rechnungscheck
+//
+// Phase A (Auswahl): Quellen-Dropdowns + Custom-Prompt + Generieren-Btn
+// Phase B (Editor):  KI-Felder + Email-Body-Vorschlag + Re-Generieren
+//                    Buttons für PDF/Senden folgen in V12.278+
+// ═══════════════════════════════════════════════════════════════════
+
+const SCHNELL_CHECK_TYP_MAP = {
+  'Vertragscheck':       'wartung',
+  'Reparaturcheck':      'reparatur',
+  'Modernisierungscheck':'modernisierung',
+  'Rechnungscheck':      'rechnung',
+};
+const SCHNELL_CHECK_TYP_META = {
+  wartung:        { label: '🔄 Vertrag',        accent: '#0e6655' },
+  reparatur:      { label: '🔧 Reparatur',      accent: '#1a3a5c' },
+  modernisierung: { label: '🔄 Modernisierung', accent: '#7c3aed' },
+  rechnung:       { label: '🧾 Rechnung',       accent: '#6366f1' },
+};
+
+function _schnellCheckResolveTyp(r) {
+  const t = (typeof _eiResolveEmailTyp === 'function') ? _eiResolveEmailTyp(r) : '';
+  return SCHNELL_CHECK_TYP_MAP[t] || null;
+}
+
+// Default-Auswahl: bestes PDF (größtes mit "angebot/offer/rechnung/vertrag" im Namen bevorzugt)
+function _schnellCheckPickBestPdf(atts) {
+  const pdfs = (atts || []).filter(a => /\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf');
+  if (!pdfs.length) return -1;
+  const score = (a) => {
+    const n = String(a.filename || '').toLowerCase();
+    let s = a.size || 0;
+    if (/angebot|offer|angbot|reparatur|moderni|vertrag|rechnung|invoice/.test(n)) s += 1e6;
+    return s;
+  };
+  let bestIdx = 0, bestScore = -1;
+  pdfs.forEach((a, i) => {
+    const idx = atts.indexOf(a);
+    const sc = score(a);
+    if (sc > bestScore) { bestScore = sc; bestIdx = idx; }
+  });
+  return bestIdx;
+}
+
+// Default-Chat: jüngste Antwort vom Partner, sonst meiste Nachrichten
+function _schnellCheckPickBestChatPartner(emailId, r) {
+  const items = (window._eiWnChatCache && window._eiWnChatCache[emailId]) || [];
+  const partnerStats = new Map(); // partnerId → { lastIncoming, count, label }
+  for (const it of items) {
+    const pid = String(it.servicebetrieb_id || it.wartungsnehmer_id || '');
+    if (!pid) continue;
+    const label = String(it.chat_partner_firma || pid);
+    const dir   = String(it.direction || 'out');
+    const when  = String(it.created_at || it.received_at || '');
+    if (!partnerStats.has(pid)) partnerStats.set(pid, { lastIncoming: '', count: 0, label: label, typ: it.partner_typ || '' });
+    const s = partnerStats.get(pid);
+    s.count++;
+    if (dir === 'in' && when > s.lastIncoming) s.lastIncoming = when;
+  }
+  const list = Array.from(partnerStats.entries()).map(([id, s]) => ({ id, ...s }));
+  if (!list.length) return null;
+  list.sort((a, b) => {
+    if (a.lastIncoming && !b.lastIncoming) return -1;
+    if (!a.lastIncoming && b.lastIncoming) return  1;
+    if (a.lastIncoming && b.lastIncoming) return b.lastIncoming.localeCompare(a.lastIncoming);
+    return b.count - a.count;
+  });
+  return list[0].id;
+}
+
+async function _schnellCheckExtractPdfText(att) {
+  if (!att || !att.url) return '';
+  try {
+    const r = await fetch(att.url);
+    if (!r.ok) return '';
+    const ab = await r.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+    let txt = '';
+    const max = Math.min(pdf.numPages, 12);
+    for (let p = 1; p <= max; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      txt += '\n\n--- Seite ' + p + ' ---\n' + (tc.items || []).map(it => it.str).join(' ');
+    }
+    return txt.slice(0, 22000);
+  } catch (e) {
+    console.warn('[schnellcheck] pdf-text fehlgeschlagen:', e.message);
+    return '';
+  }
+}
+
+function _schnellCheckCollectChatTranscript(emailId, partnerId) {
+  const items = (window._eiWnChatCache && window._eiWnChatCache[emailId]) || [];
+  const lines = [];
+  for (const it of items) {
+    const pid = String(it.servicebetrieb_id || it.wartungsnehmer_id || '');
+    if (partnerId && pid !== String(partnerId)) continue;
+    const who = String(it.direction || 'out') === 'in' ? (it.chat_partner_firma || 'Partner') : 'Liftaro';
+    const when = String(it.created_at || it.received_at || '').slice(0, 16).replace('T', ' ');
+    const body = String(it.body || it.body_text || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+    if (!body) continue;
+    lines.push('[' + when + '] ' + who + ': ' + body);
+  }
+  return lines.join('\n').slice(0, 12000);
+}
+
+async function openSchnellCheck(emailId) {
+  const id = emailId || _eiSelectedId;
+  const r = (_eiAllRecords || []).find(x => x._id === id);
+  if (!r) { showToast('Email nicht gefunden', 'warning', 2500); return; }
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic API-Key fehlt — Einstellungen prüfen', 'error', 4000); return; }
+  const checkTyp = _schnellCheckResolveTyp(r) || 'reparatur';
+  const atts = Array.isArray(r.attachments) ? r.attachments : [];
+  const pdfIdx = _schnellCheckPickBestPdf(atts);
+  const partnerId = _schnellCheckPickBestChatPartner(id, r);
+
+  window._schnellCheckState = {
+    emailId:    id,
+    checkTyp:   checkTyp,
+    pdfIdx:     pdfIdx,
+    partnerId:  partnerId,
+    customPrompt: '',
+    result:     null,   // { anlage, vorliegend, alternative, ersparnis, empfehlung, emailBody }
+    loading:    false,
+    error:      '',
+  };
+
+  let m = document.getElementById('schnellCheckModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'schnellCheckModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6400;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+    m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  }
+  m.style.display = 'flex';
+  _renderSchnellCheckModal();
+}
+window.openSchnellCheck = openSchnellCheck;
+
+function _renderSchnellCheckModal() {
+  const m = document.getElementById('schnellCheckModal');
+  const st = window._schnellCheckState;
+  if (!m || !st) return;
+  const r = (_eiAllRecords || []).find(x => x._id === st.emailId);
+  if (!r) { m.style.display = 'none'; return; }
+  const atts = Array.isArray(r.attachments) ? r.attachments : [];
+  const pdfs = atts.map((a, i) => ({ ...a, _idx: i })).filter(a => /\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf');
+  const chatItems = (window._eiWnChatCache && window._eiWnChatCache[st.emailId]) || [];
+  const partnerSet = new Map();
+  for (const it of chatItems) {
+    const pid = String(it.servicebetrieb_id || it.wartungsnehmer_id || '');
+    if (!pid) continue;
+    const label = String(it.chat_partner_firma || pid);
+    if (!partnerSet.has(pid)) partnerSet.set(pid, { id: pid, label: label, count: 0, lastIn: '' });
+    const s = partnerSet.get(pid);
+    s.count++;
+    if (String(it.direction || 'out') === 'in') {
+      const w = String(it.created_at || it.received_at || '');
+      if (w > s.lastIn) s.lastIn = w;
+    }
+  }
+  const partners = Array.from(partnerSet.values());
+
+  const typMeta = SCHNELL_CHECK_TYP_META[st.checkTyp];
+  const hvName = r.real_hv_firma || r.from_name || 'HV';
+  const subject = r.ai_subject || r.subject || '(kein Betreff)';
+
+  // Phase A: Auswahl
+  const phaseA = `
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Check-Typ</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${['reparatur','modernisierung','wartung','rechnung'].map(t => {
+          const meta = SCHNELL_CHECK_TYP_META[t];
+          const on = (t === st.checkTyp);
+          return '<button onclick="_schnellCheckSetTyp(\'' + t + '\')" style="background:' + (on ? meta.accent : '#fff') + ';color:' + (on ? '#fff' : '#475569') + ';border:1px solid ' + (on ? meta.accent : '#cbd5e1') + ';border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' + meta.label + '</button>';
+        }).join('')}
+      </div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Quellen aus dieser Email</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>
+          <label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;margin-bottom:4px">📄 Vorliegendes Angebot (PDF-Anhang)</label>
+          ${pdfs.length
+            ? '<select onchange="_schnellCheckSetPdfIdx(this.value)" style="width:100%;padding:8px 11px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;font-family:inherit;background:#fff">'
+                + '<option value="-1"' + (st.pdfIdx < 0 ? ' selected' : '') + '>— ohne PDF —</option>'
+                + pdfs.map(a => '<option value="' + a._idx + '"' + (a._idx === st.pdfIdx ? ' selected' : '') + '>' + _esc(a.filename || 'Anhang') + (a.size ? ' (' + Math.round(a.size/1024) + ' KB)' : '') + '</option>').join('')
+              + '</select>'
+            : '<div style="font-size:11.5px;color:#a16207;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:7px 10px">Keine PDF-Anhänge in der Email.</div>'
+          }
+        </div>
+        ${st.checkTyp !== 'rechnung' ? `<div>
+          <label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;margin-bottom:4px">💬 Alternative (Chat-Partner)</label>
+          ${partners.length
+            ? '<select onchange="_schnellCheckSetPartner(this.value)" style="width:100%;padding:8px 11px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;font-family:inherit;background:#fff">'
+                + '<option value=""' + (!st.partnerId ? ' selected' : '') + '>— ohne Alternative —</option>'
+                + partners.map(p => '<option value="' + _esc(p.id) + '"' + (p.id === st.partnerId ? ' selected' : '') + '>' + _esc(p.label) + ' (' + p.count + ' Nachr.' + (p.lastIn ? ', letzte Antwort ' + p.lastIn.slice(0,10) : ', keine Antwort') + ')</option>').join('')
+              + '</select>'
+            : '<div style="font-size:11.5px;color:#a16207;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:7px 10px">Noch keine Chats mit Servicebetrieben für diese Email.</div>'
+          }
+        </div>` : ''}
+      </div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px">🤖 Zusätzliche Anweisung an die KI <span style="color:#94a3b8;font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <textarea id="_schnellCheckPrompt" rows="3" placeholder="z. B. „Errechne die Ersparnis und empfehle die günstigere Alternative" oder leer lassen → Default-Logik" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;resize:vertical">${_esc(st.customPrompt || '')}</textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button id="_schnellCheckGenBtn" onclick="_schnellCheckGenerate()" ${st.loading ? 'disabled' : ''} style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:13.5px;font-weight:700;cursor:${st.loading ? 'wait' : 'pointer'};font-family:inherit;display:inline-flex;align-items:center;gap:7px;opacity:${st.loading ? '.7' : '1'}">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        ${st.loading ? 'KI generiert …' : (st.result ? '↻ Neu generieren' : 'Schnell-Check generieren')}
+      </button>
+    </div>
+  `;
+
+  // Phase B: Editor (nur wenn result da)
+  let phaseB = '';
+  if (st.error) {
+    phaseB = `<div style="margin-top:18px;background:#fee2e2;border:1px solid #fca5a5;color:#9F1B1F;border-radius:8px;padding:11px 13px;font-size:12.5px;line-height:1.5"><strong>Generierung fehlgeschlagen:</strong> ${_esc(st.error)}</div>`;
+  }
+  if (st.result) {
+    const res = st.result;
+    const a = res.anlage || {};
+    const v = res.vorliegend || {};
+    const al = res.alternative || {};
+    const er = res.ersparnis || {};
+    const lbl = (s) => '<label style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px">' + s + '</label>';
+    const inp = (key, val, ph) => '<input type="text" data-scfield="' + key + '" value="' + _esc(val || '') + '" placeholder="' + (ph || '') + '" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:7px 10px;font-size:12.5px;font-family:inherit;outline:none;background:#fff">';
+    const ta  = (key, val, rows, ph) => '<textarea data-scfield="' + key + '" rows="' + (rows || 3) + '" placeholder="' + (ph || '') + '" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:8px 11px;font-size:12.5px;font-family:inherit;line-height:1.5;outline:none;resize:vertical;background:#fff">' + _esc(val || '') + '</textarea>';
+
+    // Anlage-Box (alle Typen)
+    const anlageBox = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Anlage</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>${lbl('Standort')}${inp('anlage.standort', a.standort)}</div>
+        <div>${lbl('Fabriknummer')}${inp('anlage.fabriknummer', a.fabriknummer)}</div>
+      </div>
+    </div>`;
+
+    // Angebots-Vergleich (alle außer Rechnung)
+    let angebotsBox = '';
+    if (st.checkTyp !== 'rechnung') {
+      angebotsBox = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Vorliegendes Angebot</div>
+          ${lbl('Anbieter')}${inp('vorliegend.anbieter', v.anbieter)}
+          <div style="height:6px"></div>${lbl('Preis netto (€)')}${inp('vorliegend.preis_netto', v.preis_netto)}
+          <div style="height:6px"></div>${lbl('Lieferzeit')}${inp('vorliegend.lieferzeit', v.lieferzeit)}
+          <div style="height:6px"></div>${lbl('Gewährleistung')}${inp('vorliegend.gewaehrleistung', v.gewaehrleistung)}
+        </div>
+        <div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Alternative</div>
+          ${lbl('Anbieter')}${inp('alternative.anbieter', al.anbieter)}
+          <div style="height:6px"></div>${lbl('Preis netto (€)')}${inp('alternative.preis_netto', al.preis_netto)}
+          <div style="height:6px"></div>${lbl('Lieferzeit')}${inp('alternative.lieferzeit', al.lieferzeit)}
+          <div style="height:6px"></div>${lbl('Gewährleistung')}${inp('alternative.gewaehrleistung', al.gewaehrleistung)}
+        </div>
+      </div>
+      <div style="background:#0f172a;color:#fff;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;opacity:.7">Ersparnis</div>
+          <div style="display:flex;align-items:baseline;gap:14px;margin-top:4px">
+            <input type="text" data-scfield="ersparnis.betrag_netto" value="${_esc(er.betrag_netto || '')}" style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.3);color:#fff;font-size:20px;font-weight:700;outline:none;width:120px;font-family:inherit"> €
+            <input type="text" data-scfield="ersparnis.prozent" value="${_esc(er.prozent || '')}" style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.3);color:#fbbf24;font-size:16px;font-weight:700;outline:none;width:60px;font-family:inherit"> %
+          </div>
+        </div>
+      </div>`;
+    } else {
+      // Rechnungscheck-Felder
+      const re = res.rechnung || {};
+      angebotsBox = `<div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Rechnung</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>${lbl('Rechnungsnr.')}${inp('rechnung.rechnungsnr', re.rechnungsnr)}</div>
+          <div>${lbl('Datum')}${inp('rechnung.datum', re.datum)}</div>
+          <div>${lbl('Betrag netto (€)')}${inp('rechnung.betrag_netto', re.betrag_netto)}</div>
+          <div>${lbl('Anbieter')}${inp('rechnung.anbieter', re.anbieter)}</div>
+        </div>
+        <div style="height:8px"></div>
+        ${lbl('Plausibilität / Auffälligkeiten')}${ta('rechnung.plausibilitaet', re.plausibilitaet, 3, 'z. B. „Stundensatz überdurchschnittlich, Position 3 unklar"')}
+      </div>`;
+    }
+
+    phaseB = `<div style="margin-top:18px;padding-top:16px;border-top:2px dashed #cbd5e1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="background:${typMeta.accent};color:#fff;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700">${typMeta.label}-Ergebnis</span>
+        <span style="font-size:11.5px;color:#64748b">Alle Felder editierbar — KI-Vorschlag</span>
+      </div>
+      ${anlageBox}
+      ${angebotsBox}
+      <div style="margin-bottom:12px">${lbl('📝 Empfehlung (für PDF)')}${ta('empfehlung', res.empfehlung, 4, 'Welche Variante empfiehlt Liftaro und warum?')}</div>
+      <div style="margin-bottom:6px">${lbl('✉️ Email-Text an Hausverwaltung')}${ta('emailBody', res.emailBody, 8, 'Anschreiben an die HV — wird beim Senden als Mail-Body verwendet')}</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:14px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:7px">💡 Schritt 1 abgeschlossen — PDF-Erzeugung und Senden folgen in V12.278/279. Vorerst nur Sichtprüfung der KI-Qualität.</div>
+    </div>`;
+  }
+
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(900px,96vw);max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+          Schnell-Check
+        </div>
+        <div style="font-size:11.5px;opacity:.92;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvName)} · ${_esc(subject)}</div>
+      </div>
+      <button onclick="document.getElementById('schnellCheckModal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;flex:1">
+      ${phaseA}
+      ${phaseB}
+    </div>
+  </div>`;
+}
+window._renderSchnellCheckModal = _renderSchnellCheckModal;
+
+function _schnellCheckSetTyp(t) {
+  const st = window._schnellCheckState; if (!st) return;
+  st.checkTyp = t;
+  // Bei Rechnung Chat resetten (nicht relevant)
+  if (t === 'rechnung') st.partnerId = null;
+  st.result = null; st.error = '';
+  _schnellCheckCaptureForm();
+  _renderSchnellCheckModal();
+}
+window._schnellCheckSetTyp = _schnellCheckSetTyp;
+
+function _schnellCheckSetPdfIdx(v) {
+  const st = window._schnellCheckState; if (!st) return;
+  st.pdfIdx = parseInt(v, 10);
+  if (isNaN(st.pdfIdx)) st.pdfIdx = -1;
+}
+window._schnellCheckSetPdfIdx = _schnellCheckSetPdfIdx;
+
+function _schnellCheckSetPartner(v) {
+  const st = window._schnellCheckState; if (!st) return;
+  st.partnerId = String(v || '') || null;
+}
+window._schnellCheckSetPartner = _schnellCheckSetPartner;
+
+// Capture: User-Edits im Editor sammeln, bevor wir neu rendern (verhindert Datenverlust beim Re-Render)
+function _schnellCheckCaptureForm() {
+  const st = window._schnellCheckState; if (!st) return;
+  // Prompt-Feld
+  const p = document.getElementById('_schnellCheckPrompt');
+  if (p) st.customPrompt = p.value || '';
+  // Editor-Felder
+  if (!st.result) return;
+  document.querySelectorAll('#schnellCheckModal [data-scfield]').forEach((el) => {
+    const path = el.getAttribute('data-scfield');
+    const val = el.value;
+    const parts = path.split('.');
+    let cur = st.result;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (typeof cur[parts[i]] !== 'object' || cur[parts[i]] === null) cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = val;
+  });
+}
+window._schnellCheckCaptureForm = _schnellCheckCaptureForm;
+
+async function _schnellCheckGenerate() {
+  const st = window._schnellCheckState; if (!st) return;
+  const r = (_eiAllRecords || []).find(x => x._id === st.emailId);
+  if (!r) return;
+  // Vorher Form capture (für Prompt-Edits)
+  _schnellCheckCaptureForm();
+  st.loading = true; st.error = '';
+  _renderSchnellCheckModal();
+
+  try {
+    const atts = Array.isArray(r.attachments) ? r.attachments : [];
+    const pdfAtt = (st.pdfIdx >= 0 && atts[st.pdfIdx]) ? atts[st.pdfIdx] : null;
+    const [pdfText, chatTxt] = await Promise.all([
+      pdfAtt ? _schnellCheckExtractPdfText(pdfAtt) : Promise.resolve(''),
+      Promise.resolve(_schnellCheckCollectChatTranscript(st.emailId, st.partnerId)),
+    ]);
+
+    const subject = (r.ai_subject && r.ai_subject.trim()) || r.subject || '';
+    const bodyRaw = (r.body_text && r.body_text.trim())
+      || (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || '') : '')
+      || r.body || '';
+    const bodySnippet = String(bodyRaw).replace(/\s+/g, ' ').trim().slice(0, 4000);
+    const fromName = String(r.from_name || r.real_hv_firma || r.real_from_name || 'Hausverwaltung').trim();
+
+    const isRechnung = (st.checkTyp === 'rechnung');
+    const schemaPart = isRechnung
+      ? '{\n' +
+        '  "anlage":      { "standort": "...", "fabriknummer": "..." },\n' +
+        '  "rechnung":    { "rechnungsnr": "...", "datum": "TT.MM.JJJJ", "betrag_netto": "Zahl (nur Wert, ohne €)", "anbieter": "...", "plausibilitaet": "Auffälligkeiten kurz beschreiben, sonst \'plausibel\'" },\n' +
+        '  "empfehlung":  "kurze Empfehlung an die HV, 2-3 Sätze",\n' +
+        '  "emailBody":   "Anschreiben an die HV (ohne Anrede „Sehr geehrte" — die kommt automatisch — und ohne Signatur)"\n' +
+        '}'
+      : '{\n' +
+        '  "anlage":      { "standort": "...", "fabriknummer": "..." },\n' +
+        '  "vorliegend":  { "anbieter": "...", "preis_netto": "Zahl ohne €", "lieferzeit": "...", "gewaehrleistung": "..." },\n' +
+        '  "alternative": { "anbieter": "...", "preis_netto": "Zahl ohne €", "lieferzeit": "...", "gewaehrleistung": "..." },\n' +
+        '  "ersparnis":   { "betrag_netto": "Zahl ohne €", "prozent": "Zahl ohne %" },\n' +
+        '  "empfehlung":  "kurze Empfehlung an die HV, 2-3 Sätze (welche Variante und warum)",\n' +
+        '  "emailBody":   "Anschreiben an die HV (ohne Anrede „Sehr geehrte" — die kommt automatisch — und ohne Signatur; verweise auf das PDF im Anhang)"\n' +
+        '}';
+    const typLabel = { wartung: 'Vertragscheck (Wartungsvertrag)', reparatur: 'Reparaturcheck', modernisierung: 'Modernisierungscheck', rechnung: 'Rechnungscheck' }[st.checkTyp];
+
+    const sys =
+      'Du erstellst kompakt einen ' + typLabel + ' für die Liftaro GmbH (Aufzugs-Vertragsmanagement). ' +
+      'Du bekommst die Original-Email der Hausverwaltung, optional den Text eines PDF-Anhangs (vorliegendes Angebot/Rechnung/Vertrag) und optional einen Chat-Verlauf mit einem alternativen Servicebetrieb.\n\n' +
+      'Aufgabe:\n' +
+      '- Extrahiere die Anlagen-Daten (Standort, Fabriknummer) wenn erkennbar\n' +
+      '- Extrahiere die Konditionen aus PDF und Chat\n' +
+      (isRechnung
+        ? '- Prüfe die Rechnung auf Plausibilität (Preise, Positionen)\n'
+        : '- Berechne die Ersparnis (Vorliegend minus Alternative)\n') +
+      '- Formuliere eine sachliche Empfehlung\n' +
+      '- Schreibe einen kurzen, höflichen Email-Text an die Hausverwaltung (4-8 Sätze, sachlich, ohne Floskeln; verweise auf das PDF im Anhang)\n\n' +
+      'Regeln:\n' +
+      '- Wenn Daten fehlen: Feld leer lassen oder "—" — NICHT erfinden\n' +
+      '- Preise als reine Zahl (z. B. "1300" oder "4587.50"), KEINE Währungssymbole, KEIN Tausenderpunkt\n' +
+      '- Ersparnis darf negativ sein (Alternative teurer)\n' +
+      '- Antworte AUSSCHLIESSLICH mit gültigem JSON nach dem folgenden Schema, kein Markdown:\n\n' +
+      schemaPart;
+
+    const userMsg =
+      'ORIGINAL-EMAIL DER HAUSVERWALTUNG:\n' +
+      '  Absender: ' + fromName + '\n' +
+      '  Betreff:  ' + subject + '\n' +
+      '  Inhalt:   ' + bodySnippet + '\n\n' +
+      (pdfText
+        ? 'TEXT DES PDF-ANHANGS „' + (pdfAtt && pdfAtt.filename || 'Anhang.pdf') + '":\n```\n' + pdfText + '\n```\n\n'
+        : '(KEIN PDF-Anhang ausgewählt)\n\n') +
+      (chatTxt
+        ? 'CHAT-VERLAUF MIT ALTERNATIVEM SERVICEBETRIEB:\n```\n' + chatTxt + '\n```\n\n'
+        : '(KEIN Chat-Verlauf mit Servicebetrieb)\n\n') +
+      (st.customPrompt
+        ? 'ZUSÄTZLICHE ANWEISUNG DES BEARBEITERS:\n' + st.customPrompt + '\n\n'
+        : '') +
+      'Antworte jetzt nur mit dem JSON.';
+
+    const raw = await callClaude([{ role: 'user', content: userMsg }], sys, { maxTokens: 4000 });
+
+    // Robust parse
+    let parsed = null;
+    try {
+      let s = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+      const i = s.indexOf('{'), j = s.lastIndexOf('}');
+      if (i >= 0 && j > i) s = s.slice(i, j + 1);
+      try { parsed = JSON.parse(s); }
+      catch (_) { parsed = JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); }
+    } catch (e) {
+      throw new Error('KI-Antwort konnte nicht geparst werden: ' + e.message);
+    }
+    if (!parsed) throw new Error('KI-Antwort leer');
+    st.result = parsed;
+  } catch (e) {
+    console.error('[schnellcheck]', e);
+    st.error = String(e.message || e);
+  } finally {
+    st.loading = false;
+    _renderSchnellCheckModal();
+  }
+}
+window._schnellCheckGenerate = _schnellCheckGenerate;
+
 // V12.236: Chat-Antworten als gelesen markieren (Timestamp). Pille verschwindet, Sidebar-Counter sinkt.
 async function markChatRepliesAsSeen(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -31224,6 +31695,14 @@ function _eiUpdateOverlayNavButtons() {
   if (next) next.disabled = (idx < 0 || idx >= filt.length - 1);
   if (prev) prev.style.opacity = prev.disabled ? '.4' : '1';
   if (next) next.style.opacity = next.disabled ? '.4' : '1';
+  // V12.277: Schnell-Check-Button nur sichtbar bei Check-Typ-klassifizierter Email
+  const scBtn = document.getElementById('emailDetailOverlaySchnellCheckBtn');
+  if (scBtn) {
+    const r = (_eiAllRecords || []).find(x => x._id === _eiSelectedId);
+    const typ = (r && typeof _eiResolveEmailTyp === 'function') ? _eiResolveEmailTyp(r) : '';
+    const isCheckType = ['Vertragscheck', 'Reparaturcheck', 'Modernisierungscheck', 'Rechnungscheck'].includes(typ);
+    scBtn.style.display = isCheckType ? 'inline-flex' : 'none';
+  }
 }
 
 function renderEmailInboxDetail() {
