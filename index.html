@@ -5528,6 +5528,8 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
         <input type="search" id="aufzuegeSearch" oninput="filterAufzuege()" placeholder="Suchen nach Fabriknummer, Standort, HV, Hersteller, ID …" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--dr-border-strong);border-radius:var(--dr-r-md);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--dr-surface-alt);color:var(--dr-ink);outline:none;transition:all .15s" onfocus="this.style.borderColor='var(--dr-blue)';this.style.background='var(--dr-surface)';this.style.boxShadow='var(--dr-elev-blue)'" onblur="this.style.borderColor='var(--dr-border-strong)';this.style.background='var(--dr-surface-alt)';this.style.boxShadow='none'">
       </div>
       <div id="aufzuegeSearchInfo" style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-top:8px;min-height:14px;letter-spacing:.04em"></div>
+      <!-- V12.287: Filter-Pillen -->
+      <div id="aufzuegeFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
     </div>
     <div id="aufzuegeList" style="flex:1;overflow-y:auto;padding:14px 24px 18px;display:flex;flex-direction:column;gap:8px;background:var(--dr-bg-soft)">
       <div style="color:var(--dr-ink-mute);font-size:13px;text-align:center;padding:32px 20px;background:var(--dr-surface);border:1px dashed var(--dr-border-strong);border-radius:var(--dr-r-md)">Noch keine Aufzüge erfasst.</div>
@@ -5578,6 +5580,28 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
       </div>
       <div class="field-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:6px">
         <div class="field"><label>Notiz</label><textarea id="az_notiz" rows="3" placeholder="Freitext, optional" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%;resize:vertical"></textarea></div>
+      </div>
+
+      <!-- V12.287: Nächstes Kündigungsdatum des Wartungsvertrags -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">⏰ Wartungsvertrag — Kündigung <span style="font-weight:400;text-transform:none;color:#94a3b8;letter-spacing:0">(optional)</span></div>
+      <div class="field-row" style="grid-template-columns:200px 1fr;gap:12px;margin-bottom:6px">
+        <div class="field"><label>Nächstes Kündigungsdatum</label>
+          <input type="date" id="az_kuendigung_naechste_datum" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
+        </div>
+        <div class="field"><label>Notiz zur Kündigung</label>
+          <input type="text" id="az_kuendigung_notiz" placeholder="z. B. „Schriftlich 3 Mon. vor Ablauf"" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
+        </div>
+      </div>
+
+      <!-- V12.287: Anhänge zum Aufzug -->
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>📎 Anhänge <span id="az_anhaenge_count" style="font-weight:400;text-transform:none;color:#94a3b8;letter-spacing:0"></span></span>
+        <span style="font-weight:400;text-transform:none;color:#94a3b8;letter-spacing:0;font-size:10.5px">erst nach „Speichern" möglich</span>
+      </div>
+      <div id="az_anhaenge_section">
+        <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:18px;text-align:center;color:#94a3b8;font-size:12.5px;line-height:1.5">
+          Neuen Aufzug zuerst speichern — danach kannst du Dateien anhängen.
+        </div>
       </div>
 
       <!-- V12.201: Wartungsnehmer (optional) -->
@@ -6333,7 +6357,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.286';
+const APP_VERSION = 'V12.287';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7735,6 +7759,15 @@ async function setupTables() {
     ]);
     console.log('[V12.141] ensureFields(Aufzuege: jahreskosten_alt_eur) OK');
   } catch(e) { console.warn('[V12.141] ensureFields(Aufzuege) failed:', e.message); }
+  // V12.287: Anhänge, Kündigungs-Termin
+  try {
+    await ensureFields('Aufzuege', [
+      { name: 'aufzug_anhaenge',           type: 'multipleAttachments' },
+      { name: 'kuendigung_naechste_datum', type: 'singleLineText' }, // YYYY-MM-DD
+      { name: 'kuendigung_notiz',          type: 'singleLineText' },
+    ]);
+    console.log('[V12.287] ensureFields(Aufzuege: kuendigung + anhaenge) OK');
+  } catch(e) { console.warn('[V12.287] ensureFields(Aufzuege) failed:', e.message); }
   // Verträge-Tabelle
   try {
     await ensureTable('Vertraege', [
@@ -22157,6 +22190,29 @@ async function deleteLightWegCurrent() {
 // ═══════════════════════════════════════════════════════════════════
 window._aufzuegeCache = [];
 
+// V12.287: Vollmacht-Lookup-Cache (HV-Pipedrive-Org-IDs mit hinterlegter Vollmacht).
+// Beim Öffnen der Aufzüge-Liste einmal füllen.
+window._vollmachtOrgIdSet = window._vollmachtOrgIdSet || null;
+async function _ensureVollmachtOrgIdSet(force) {
+  if (window._vollmachtOrgIdSet && !force) return window._vollmachtOrgIdSet;
+  try {
+    const recs = await atRead('Vollmachten', null, { sort: false });
+    const set = new Set();
+    for (const r of recs || []) {
+      const oid = String((r.fields && r.fields.pipedrive_org_id) || '').trim();
+      if (oid) set.add(oid);
+    }
+    window._vollmachtOrgIdSet = set;
+  } catch (e) {
+    console.warn('[V12.287] Vollmachten-Cache fehlgeschlagen:', e.message);
+    window._vollmachtOrgIdSet = new Set();
+  }
+  return window._vollmachtOrgIdSet;
+}
+
+// V12.287: Aktive Filter für die Aufzüge-Liste
+window._aufzuegeFilter = window._aufzuegeFilter || 'alle';
+
 async function openAufzuegeModal() {
   document.getElementById('aufzuegeModal').style.display = 'flex';
   const listEl = document.getElementById('aufzuegeList');
@@ -22169,7 +22225,10 @@ async function openAufzuegeModal() {
     window._aufzuegeCache = items;
     const searchEl = document.getElementById('aufzuegeSearch');
     if (searchEl) searchEl.value = '';
+    // V12.287: Vollmacht-Set parallel füllen, Filter-Bar rendern
+    _ensureVollmachtOrgIdSet(true).then(() => renderAufzuegeList(items, ''));
     renderAufzuegeList(items, '');
+    if (typeof _renderAufzuegeFilterBar === 'function') _renderAufzuegeFilterBar();
     _updateAufzuegeBadge(items.length);
   } catch (e) {
     listEl.innerHTML = '<p style="color:#a8312f;font-size:13px;text-align:center;padding:20px">Laden fehlgeschlagen: ' + e.message + '</p>';
@@ -22183,17 +22242,91 @@ function _updateAufzuegeBadge(n) {
   else b.style.display = 'none';
 }
 
+// V12.287: Hilfs-Funktion — Tage bis Datum (negativ = vergangen).
+function _aufzugDaysUntil(isoDate) {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}/.test(String(isoDate))) return null;
+  const target = new Date(isoDate + 'T00:00:00');
+  if (isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / (24 * 3600 * 1000));
+}
+
 function filterAufzuege() {
   const q = (document.getElementById('aufzuegeSearch')?.value || '').trim().toLowerCase();
   const all = window._aufzuegeCache || [];
-  if (!q) { renderAufzuegeList(all, ''); return; }
-  const hits = all.filter(a => {
-    const hay = [a.id, a.fabriknummer, a.standort, a.hv_name, a.hersteller, a.weg_id, a.notiz]
-      .filter(Boolean).join(' ').toLowerCase();
-    return hay.includes(q);
-  });
+  const f = String(window._aufzuegeFilter || 'alle');
+  const vmSet = window._vollmachtOrgIdSet || new Set();
+  let hits = all;
+  // Status-Filter
+  if (f === 'vollmacht') {
+    hits = hits.filter(a => vmSet.has(String(a.hv_pipedrive_org_id || '').trim()));
+  } else if (f === 'euc') {
+    hits = hits.filter(a => a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true);
+  } else if (f === 'kuend3') {
+    hits = hits.filter(a => {
+      const d = _aufzugDaysUntil(a.kuendigung_naechste_datum);
+      return d !== null && d <= 90;
+    });
+  } else if (f === 'kuend12') {
+    hits = hits.filter(a => {
+      const d = _aufzugDaysUntil(a.kuendigung_naechste_datum);
+      return d !== null && d <= 365;
+    });
+  }
+  // Such-Filter
+  if (q) {
+    hits = hits.filter(a => {
+      const hay = [a.id, a.fabriknummer, a.standort, a.hv_name, a.hersteller, a.weg_id, a.notiz, a.wartungsnehmer_firma]
+        .filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
   renderAufzuegeList(hits, q);
 }
+
+// V12.287: Filter-Pillen-Bar — wird in den vorhandenen Filter-Slot gerendert.
+function _renderAufzuegeFilterBar() {
+  const host = document.getElementById('aufzuegeFilterBar');
+  if (!host) return;
+  const cur = String(window._aufzuegeFilter || 'alle');
+  const all = window._aufzuegeCache || [];
+  const vmSet = window._vollmachtOrgIdSet || new Set();
+  const cnt = {
+    alle:     all.length,
+    vollmacht: all.filter(a => vmSet.has(String(a.hv_pipedrive_org_id || '').trim())).length,
+    euc:      all.filter(a => a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true).length,
+    kuend3:   all.filter(a => { const d = _aufzugDaysUntil(a.kuendigung_naechste_datum); return d !== null && d <= 90; }).length,
+    kuend12:  all.filter(a => { const d = _aufzugDaysUntil(a.kuendigung_naechste_datum); return d !== null && d <= 365; }).length,
+  };
+  const pills = [
+    { key: 'alle',      label: 'Alle',                 icon: '' },
+    { key: 'vollmacht', label: 'Mit Vollmacht',        icon: '🛡' },
+    { key: 'euc',       label: 'EuC aktiv',            icon: '🔒' },
+    { key: 'kuend3',    label: 'Kündigung ≤ 3 Monate', icon: '⏰' },
+    { key: 'kuend12',   label: 'Kündigung ≤ 12 Monate',icon: '📅' },
+  ];
+  host.innerHTML = pills.map(p => {
+    const active = (cur === p.key);
+    const c = cnt[p.key] || 0;
+    const bg = active ? '#0f172a' : '#fff';
+    const fg = active ? '#fff'    : '#475569';
+    const bd = active ? '#0f172a' : '#cbd5e1';
+    return `<button onclick="setAufzuegeFilter('${p.key}')" style="background:${bg};color:${fg};border:1px solid ${bd};border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;transition:all .15s">
+      ${p.icon ? `<span>${p.icon}</span>` : ''}
+      <span>${p.label}</span>
+      <span style="background:${active ? 'rgba(255,255,255,.18)' : '#f1f5f9'};color:${active ? '#fff' : '#475569'};border-radius:999px;padding:0 7px;font-size:10.5px;font-weight:700;min-width:18px;text-align:center">${c}</span>
+    </button>`;
+  }).join('');
+}
+window._renderAufzuegeFilterBar = _renderAufzuegeFilterBar;
+
+function setAufzuegeFilter(key) {
+  window._aufzuegeFilter = String(key || 'alle');
+  _renderAufzuegeFilterBar();
+  filterAufzuege();
+}
+window.setAufzuegeFilter = setAufzuegeFilter;
 
 function renderAufzuegeList(items, query) {
   const listEl = document.getElementById('aufzuegeList');
@@ -22210,14 +22343,40 @@ function renderAufzuegeList(items, query) {
   }
   // Mappe Cache-Indizes über Original-Cache
   const cache = window._aufzuegeCache || [];
+  // V12.287: Vollmacht-Set für Marker
+  const _vmSet = window._vollmachtOrgIdSet || new Set();
   listEl.innerHTML = items.map(a => {
     const cacheIdx = cache.indexOf(a);
     const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
     // V12.250: Feature-Toggle "euc_im_check" — bei aus: Badges (EuC / Frei) komplett weglassen
     const _eucHidden = (typeof isFeatureHidden === 'function') && isFeatureHidden('euc_im_check');
     const eucBadge = _eucHidden ? '' : (eucActive
-      ? '<span style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🛡 EuC' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '</span>'
-      : '<span style="background:#e5e7eb;color:#6b7280;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase">Frei</span>');
+      ? '<span title="EuC-Vereinbarung aktiv' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '" style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🔒 EuC</span>'
+      : '');
+    // V12.287: Vollmacht-Badge
+    const hasVollmacht = _vmSet.has(String(a.hv_pipedrive_org_id || '').trim());
+    const vollmachtBadge = hasVollmacht
+      ? '<span title="Vollmacht der Hausverwaltung liegt vor" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🛡 Vollmacht</span>'
+      : '';
+    // V12.287: Kündigungs-Pille (farbcodiert nach Restzeit)
+    const _kdays = _aufzugDaysUntil(a.kuendigung_naechste_datum);
+    let kuendBadge = '';
+    if (_kdays !== null) {
+      const d = new Date(a.kuendigung_naechste_datum + 'T00:00:00');
+      const dStr = String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear();
+      let bg = '#f1f5f9', fg = '#475569', bd = '#cbd5e1', ico = '📅';
+      if (_kdays < 0)        { bg = '#fee2e2'; fg = '#991b1b'; bd = '#fca5a5'; ico = '⚠'; }
+      else if (_kdays <= 90) { bg = '#fee2e2'; fg = '#991b1b'; bd = '#fca5a5'; ico = '⏰'; }
+      else if (_kdays <= 180){ bg = '#fef3c7'; fg = '#92400e'; bd = '#fcd34d'; ico = '⏰'; }
+      else if (_kdays <= 365){ bg = '#fef3c7'; fg = '#92400e'; bd = '#fcd34d'; ico = '📅'; }
+      const tip = _kdays < 0 ? ('Frist verstrichen seit ' + Math.abs(_kdays) + ' Tagen') : ('Kündigung in ' + _kdays + ' Tagen');
+      kuendBadge = '<span title="' + tip + '" style="background:' + bg + ';color:' + fg + ';border:1px solid ' + bd + ';font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.2px;display:inline-flex;align-items:center;gap:3px">' + ico + ' ' + dStr + '</span>';
+    }
+    // V12.287: Anhang-Pille
+    const _attCnt = Array.isArray(a.aufzug_anhaenge) ? a.aufzug_anhaenge.length : 0;
+    const attBadge = _attCnt > 0
+      ? '<span title="' + _attCnt + ' Anhang' + (_attCnt === 1 ? '' : '/-änge') + '" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:8px;display:inline-flex;align-items:center;gap:3px">📎 ' + _attCnt + '</span>'
+      : '';
     const hvLine = a.hv_name ? escapeHtml(a.hv_name) : '<span style="color:#a8312f">⚠ ohne HV</span>';
     const standortLine = a.standort ? escapeHtml(a.standort) : '–';
     const hersteller = a.hersteller ? ' · ' + escapeHtml(a.hersteller) : '';
@@ -22228,13 +22387,17 @@ function renderAufzuegeList(items, query) {
           + '<span style="font-family:var(--dr-f-mono);color:var(--dr-blue);font-size:12px">' + escapeHtml(a.id || '—') + '</span>'
           + '<span style="font-weight:600">Fabr.-Nr. ' + (a.fabriknummer ? escapeHtml(a.fabriknummer) : '<span style="color:#a8312f">fehlt</span>') + '</span>'
           + hersteller
-          + eucBadge
         + '</div>'
         + '<div style="font-size:12px;color:var(--dr-ink-mute);margin-top:3px">' + standortLine + wegPart + '</div>'
         + '<div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:2px">HV: <strong style="color:var(--dr-ink)">' + hvLine + '</strong></div>'
-        // V12.201: Wartungsnehmer-Pille wenn vorhanden
-        + (a.wartungsnehmer_firma || a.wartungsnehmer_id
-            ? '<div style="margin-top:5px"><span style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">🔧 ' + escapeHtml(a.wartungsnehmer_firma || a.wartungsnehmer_id) + '</span></div>'
+        // V12.287: Statuszeile mit Vollmacht / EuC / Kündigung / Anhänge / Wartungsnehmer
+        + ((vollmachtBadge || eucBadge || kuendBadge || attBadge || a.wartungsnehmer_firma || a.wartungsnehmer_id)
+            ? '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;align-items:center">'
+                + vollmachtBadge + eucBadge + kuendBadge + attBadge
+                + (a.wartungsnehmer_firma || a.wartungsnehmer_id
+                    ? '<span title="Wartungsnehmer" style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:8px;padding:2px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px">🔧 ' + escapeHtml(a.wartungsnehmer_firma || a.wartungsnehmer_id) + '</span>'
+                    : '')
+              + '</div>'
             : '')
       + '</div>'
       // V12.135: Lösch-Button direkt aus der Liste
@@ -22299,13 +22462,16 @@ function closeAufzugEditor() {
 
 function clearAufzugForm() {
   ['az_recordId','az_id','az_hv_pipedrive_org_id','az_im_euc','az_euc_vertrag_id',
-   'az_firma','az_fabriknummer','az_hersteller','az_standort','az_weg_id','az_notiz','az_wartungsnehmer_id']
+   'az_firma','az_fabriknummer','az_hersteller','az_standort','az_weg_id','az_notiz','az_wartungsnehmer_id',
+   'az_kuendigung_naechste_datum','az_kuendigung_notiz']
    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const sug = document.getElementById('az_firma_sug');
   if (sug) sug.style.display = 'none';
   // V12.201: Wartungsnehmer-Anzeige zurücksetzen
   const wnPicked = document.getElementById('az_wn_picked'); if (wnPicked) wnPicked.style.display = 'none';
   const wnPicker = document.getElementById('az_wn_picker'); if (wnPicker) wnPicker.style.display = 'flex';
+  // V12.287: Anhänge-Section zurücksetzen
+  if (typeof _renderAufzugAnhaengeSection === 'function') _renderAufzugAnhaengeSection(null);
 }
 
 function setAufzugForm(d) {
@@ -22321,6 +22487,11 @@ function setAufzugForm(d) {
   set('az_notiz', d.notiz);
   set('az_im_euc', d.im_euc);
   set('az_euc_vertrag_id', d.euc_vertrag_id);
+  // V12.287: Kündigung
+  set('az_kuendigung_naechste_datum', d.kuendigung_naechste_datum);
+  set('az_kuendigung_notiz', d.kuendigung_notiz);
+  // V12.287: Anhänge-Section rendern
+  if (typeof _renderAufzugAnhaengeSection === 'function') _renderAufzugAnhaengeSection(d);
   // V12.201: Wartungsnehmer laden + anzeigen
   set('az_wartungsnehmer_id', d.wartungsnehmer_id);
   if (d.wartungsnehmer_id) {
@@ -22361,6 +22532,9 @@ function getAufzugForm() {
     // V12.201: Wartungsnehmer-Bezug
     wartungsnehmer_id: g('az_wartungsnehmer_id'),
     wartungsnehmer_firma: document.getElementById('az_wn_picked_firma')?.textContent || '',
+    // V12.287: Kündigungs-Termin
+    kuendigung_naechste_datum: g('az_kuendigung_naechste_datum'),
+    kuendigung_notiz:          g('az_kuendigung_notiz'),
   };
 }
 
@@ -22405,6 +22579,9 @@ async function saveAufzug() {
     // V12.201: Wartungsnehmer-Bezug mitschreiben
     wartungsnehmer_id:    d.wartungsnehmer_id || '',
     wartungsnehmer_firma: d.wartungsnehmer_firma || '',
+    // V12.287: Kündigungs-Termin
+    kuendigung_naechste_datum: d.kuendigung_naechste_datum || '',
+    kuendigung_notiz:          d.kuendigung_notiz || '',
     savedAt: now,
   };
   try {
@@ -22718,6 +22895,119 @@ async function _saveAufzugJahreskosten(recId, val) {
   }
 }
 window._saveAufzugJahreskosten = _saveAufzugJahreskosten;
+
+// ───────────────────────────────────────────────────────────────────
+// V12.287: Anhänge zu einem Aufzug (Upload / Liste / Löschen)
+// ───────────────────────────────────────────────────────────────────
+function _renderAufzugAnhaengeSection(d) {
+  const host = document.getElementById('az_anhaenge_section');
+  const cnt  = document.getElementById('az_anhaenge_count');
+  if (!host) return;
+  const recordId = d && d._recordId;
+  const atts = (d && Array.isArray(d.aufzug_anhaenge)) ? d.aufzug_anhaenge : [];
+  if (cnt) cnt.textContent = atts.length ? '(' + atts.length + ')' : '';
+  if (!recordId) {
+    host.innerHTML = `<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:18px;text-align:center;color:#94a3b8;font-size:12.5px;line-height:1.5">
+      Neuen Aufzug zuerst speichern — danach kannst du Dateien anhängen.
+    </div>`;
+    return;
+  }
+  const inputId = 'azAttFile_' + recordId;
+  let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <input type="file" id="${inputId}" multiple style="display:none" onchange="uploadAufzugAttachments('${recordId}', this.files); this.value='';">
+    <button id="azAttUploadBtn_${recordId}" onclick="document.getElementById('${inputId}').click()" title="Dateien anhängen (max. 25 MB pro Datei)" style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Hinzufügen
+    </button>
+  </div>`;
+  if (!atts.length) {
+    html += `<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:14px;text-align:center;color:#94a3b8;font-size:12px">Noch keine Anhänge. Klicke „Hinzufügen".</div>`;
+  } else {
+    html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+    atts.forEach((a, idx) => {
+      const fname = a.filename || a.name || 'Anhang';
+      const url   = a.url || '';
+      const size  = a.size ? (Math.round(a.size / 1024) + ' KB') : '';
+      html += `<div style="display:flex;align-items:center;gap:6px">
+        <a href="${escapeHtml(url)}" target="_blank" style="flex:1;min-width:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:9px 12px;font-size:12.5px;color:#0f172a;text-decoration:none;display:inline-flex;align-items:center;gap:8px" onmouseover="this.style.borderColor='#2456E5'" onmouseout="this.style.borderColor='#e2e8f0'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:#2456E5;flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(fname)}</span>
+          ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:#94a3b8">${size}</span>` : ''}
+        </a>
+        <button onclick="deleteAufzugAttachment('${recordId}',${idx})" title="Anhang löschen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:7px 9px;cursor:pointer" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff'">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  host.innerHTML = html;
+}
+window._renderAufzugAnhaengeSection = _renderAufzugAnhaengeSection;
+
+async function _reloadAufzugIntoEditor(recordId) {
+  try {
+    const recs = await atRead('Aufzuege', "RECORD_ID()='" + recordId + "'", { sort: false });
+    if (!recs.length) return null;
+    const fresh = { ...recs[0].fields, _recordId: recs[0].id };
+    // Cache-Eintrag in der Liste aktualisieren
+    const cache = window._aufzuegeCache || [];
+    const cIdx = cache.findIndex(x => x._recordId === recordId);
+    if (cIdx >= 0) cache[cIdx] = fresh;
+    return fresh;
+  } catch (e) { console.warn('[V12.287] reload Aufzug:', e.message); return null; }
+}
+
+async function uploadAufzugAttachments(recordId, fileList) {
+  const files = Array.from(fileList || []).filter(f => f && f.name);
+  if (!files.length) return;
+  const MAX = 25 * 1024 * 1024;
+  for (const f of files) {
+    if (f.size > MAX) { showToast('„' + f.name + '" ist zu groß (max. 25 MB)', 'warning', 4500); return; }
+  }
+  const btn = document.getElementById('azAttUploadBtn_' + recordId);
+  if (btn) { btn.disabled = true; btn.style.opacity = '.7'; }
+  showToast('Lade ' + files.length + ' Datei' + (files.length === 1 ? '' : 'en') + ' …', 'info', 2500);
+  let ok = 0, fail = 0;
+  for (const f of files) {
+    try {
+      await uploadAirtableAttachment('Aufzuege', recordId, 'aufzug_anhaenge', f);
+      ok++;
+    } catch (e) {
+      console.warn('[V12.287] upload ' + f.name + ':', e.message);
+      fail++;
+    }
+  }
+  const fresh = await _reloadAufzugIntoEditor(recordId);
+  if (fresh) _renderAufzugAnhaengeSection(fresh);
+  if (typeof renderAufzuegeList === 'function') filterAufzuege();
+  if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  if (fail === 0) showToast('✓ ' + ok + ' Anhang' + (ok === 1 ? '' : '/-änge') + ' hinzugefügt', 'success', 3200);
+  else if (ok === 0) showToast('Upload fehlgeschlagen', 'error', 5000);
+  else showToast(ok + ' ok, ' + fail + ' fehlgeschlagen', 'warning', 5000);
+}
+window.uploadAufzugAttachments = uploadAufzugAttachments;
+
+async function deleteAufzugAttachment(recordId, attIdx) {
+  const cache = window._aufzuegeCache || [];
+  const cur = cache.find(x => x._recordId === recordId);
+  if (!cur) return;
+  const arr = Array.isArray(cur.aufzug_anhaenge) ? cur.aufzug_anhaenge : [];
+  const a = arr[attIdx];
+  if (!a) return;
+  if (!confirm('Anhang „' + (a.filename || 'Anhang') + '" wirklich löschen?')) return;
+  try {
+    const kept = arr.filter((_, i) => i !== attIdx).map(x => ({ url: x.url, filename: x.filename }));
+    await atUpdate('Aufzuege', recordId, { aufzug_anhaenge: kept });
+    const fresh = await _reloadAufzugIntoEditor(recordId);
+    if (fresh) _renderAufzugAnhaengeSection(fresh);
+    if (typeof renderAufzuegeList === 'function') filterAufzuege();
+    showToast('✓ Anhang gelöscht', 'success', 2500);
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+window.deleteAufzugAttachment = deleteAufzugAttachment;
 
 async function _unlinkAufzugFromEuC(recId, azId) {
   if (!confirm('Aufzug ' + azId + ' aus diesem EuC-Vertrag entfernen?\n(Aufzug bleibt im System, wird nur entkoppelt.)')) return;
