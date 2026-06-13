@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.285';
+const APP_VERSION = 'V12.286';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -10320,6 +10320,81 @@ async function deleteNeutralizedAttachment(emailId, attIdx) {
   }
 }
 window.deleteNeutralizedAttachment = deleteNeutralizedAttachment;
+
+// V12.286: Manueller Anhang-Upload zu einer Email.
+// Mehrere Files erlaubt, max. 25 MB pro File, append (kein Replace).
+async function uploadEmailAttachments(emailId, fileList) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden — bitte Seite neu laden', 'warning', 3500); return; }
+  const files = Array.from(fileList || []).filter(f => f && f.name);
+  if (!files.length) return;
+  const MAX = 25 * 1024 * 1024;
+  for (const f of files) {
+    if (f.size > MAX) {
+      showToast('„' + f.name + '" ist zu groß (max. 25 MB)', 'warning', 4500);
+      return;
+    }
+  }
+  const btnIds = ['emailAttUploadBtn_' + emailId, 'emailAttUploadEmptyBtn_' + emailId];
+  const btns = btnIds.map(id => document.getElementById(id)).filter(Boolean);
+  for (const b of btns) { b.disabled = true; b.style.opacity = '.7'; b.dataset._oldText = b.textContent; b.textContent = '… lädt'; }
+  showToast('Lade ' + files.length + ' Datei' + (files.length === 1 ? '' : 'en') + ' …', 'info', 2500);
+  let ok = 0, fail = 0;
+  for (const f of files) {
+    try {
+      await uploadAirtableAttachment('Emails', emailId, 'attachments', f);
+      ok++;
+    } catch (e) {
+      console.warn('[uploadEmailAttachments] ' + f.name + ':', e.message);
+      fail++;
+    }
+  }
+  // Email-Record refresh
+  try {
+    const recs = await atRead('Emails', "RECORD_ID()='" + emailId + "'", { sort: false });
+    if (recs.length) {
+      const fresh = { _id: recs[0].id, ...recs[0].fields };
+      const idx = _eiAllRecords.findIndex(x => x._id === emailId);
+      if (idx >= 0) _eiAllRecords[idx] = fresh;
+    }
+  } catch (_) {}
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  for (const b of btns) { b.disabled = false; b.style.opacity = ''; if (b.dataset._oldText) b.textContent = b.dataset._oldText; }
+  if (fail === 0) {
+    showToast('✓ ' + ok + ' Anhang' + (ok === 1 ? '' : '/-änge') + ' hinzugefügt', 'success', 3200);
+  } else if (ok === 0) {
+    showToast('Upload fehlgeschlagen (' + fail + '/' + files.length + ')', 'error', 5000);
+  } else {
+    showToast(ok + ' ok, ' + fail + ' fehlgeschlagen', 'warning', 5000);
+  }
+}
+window.uploadEmailAttachments = uploadEmailAttachments;
+
+// V12.286: Originalen Anhang einer Email löschen
+async function deleteEmailAttachment(emailId, attIdx) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const arr = Array.isArray(r.attachments) ? r.attachments : [];
+  const a = arr[attIdx];
+  if (!a) return;
+  if (!confirm('Anhang „' + (a.filename || 'Anhang') + '" wirklich löschen?')) return;
+  try {
+    const kept = arr
+      .filter((_, i) => i !== attIdx)
+      .map(x => ({ url: x.url, filename: x.filename }));
+    await atUpdate('Emails', emailId, { attachments: kept });
+    if (Array.isArray(r.attachments)) {
+      r.attachments = r.attachments.filter((_, i) => i !== attIdx);
+    }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    showToast('✓ Anhang gelöscht', 'success', 2500);
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+window.deleteEmailAttachment = deleteEmailAttachment;
 
 // V12.252: Email-Anhänge an den Chat-Composer übergeben.
 // Workflow:
@@ -31880,37 +31955,55 @@ function renderEmailInboxDetail() {
 
   // V12.187: Anhänge prominent direkt unter dem Body
   // V12.253: pro PDF-Anhang ein "🕶 Neutralisieren"-Button
-  if (Array.isArray(r.attachments) && r.attachments.length) {
+  // V12.286: Sektion IMMER rendern + Upload-Button im Header, auch bei 0 Anhängen.
+  {
+    const _attList = Array.isArray(r.attachments) ? r.attachments : [];
+    const _inputId = 'emailAttFile_' + r._id;
+    const _uploadBtn = `<input type="file" id="${_inputId}" multiple style="display:none" onchange="uploadEmailAttachments('${r._id}', this.files); this.value='';">
+      <button id="emailAttUploadBtn_${r._id}" onclick="document.getElementById('${_inputId}').click()" title="Eine oder mehrere Dateien hochladen (max. 25 MB pro Datei)" style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Hinzufügen
+      </button>`;
     html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
-      <div class="dr-section-head" style="margin-bottom:10px">
-        <div class="dr-section-title">📎 Anhänge<span class="dr-section-title__count">${r.attachments.length}</span></div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">`;
-    r.attachments.forEach((a, idx) => {
-      const fname = a.filename || a.name || 'Anhang';
-      const url = a.url || '';
-      const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
-      const isPdf = /\.pdf$/i.test(fname) || a.type === 'application/pdf';
-      // V12.278: ignorierte Anhänge ausgrauen + 🚫-Badge
-      const ignored = isAttachmentIgnored(r, fname);
-      const linkBg = ignored ? '#fef2f2' : 'var(--dr-surface-alt)';
-      const linkBorder = ignored ? '#fecaca' : 'var(--dr-border)';
-      const linkColor = ignored ? '#9F1B1F' : 'var(--dr-ink)';
-      const linkExtra = ignored ? 'text-decoration:line-through;opacity:.75;' : '';
-      html += `<div style="display:flex;align-items:center;gap:8px">
-        <a href="${_esc(url)}" target="_blank" style="flex:1;min-width:0;background:${linkBg};border:1px solid ${linkBorder};border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:${linkColor};text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s;${linkExtra}" onmouseover="this.style.borderColor='#a8312f'" onmouseout="this.style.borderColor='${linkBorder}'">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:${ignored ? '#9F1B1F' : 'var(--dr-blue)'};flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
-          ${ignored ? `<span style="background:#fee2e2;color:#9F1B1F;border:1px solid #fca5a5;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700;flex-shrink:0">🚫 IGNORIERT</span>` : ''}
-          ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
-        </a>
-        <button onclick="toggleAttachmentIgnore('${r._id}','${_esc(fname).replace(/'/g, '&#39;')}')" title="${ignored ? 'Wieder aktivieren — KI darf den Anhang nutzen' : 'Ignorieren — KI überspringt diesen Anhang im Schnell-Check & Chat-Picker'}" style="background:#fff;border:1px solid ${ignored ? '#86efac' : '#fca5a5'};color:${ignored ? '#166534' : '#9F1B1F'};border-radius:7px;padding:8px 10px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='${ignored ? '#dcfce7' : '#fee2e2'}'" onmouseout="this.style.background='#fff'">
-          ${ignored ? '✓' : '🚫'}
-        </button>
-        ${isPdf && !ignored ? `<button id="neutralizeBtn_${idx}" onclick="openNeutralizePromptDialog('${r._id}',${idx})" title="PDF KI-anonymisieren — Prompt vor dem Start anpassbar" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🕶 Neutralisieren</button>` : ''}
+      <div class="dr-section-head" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div class="dr-section-title">📎 Anhänge${_attList.length ? `<span class="dr-section-title__count">${_attList.length}</span>` : ''}</div>
+        ${_uploadBtn}
       </div>`;
-    });
-    html += `</div></div>`;
+    if (!_attList.length) {
+      html += `<div style="background:var(--dr-surface-alt);border:1px dashed var(--dr-border);border-radius:var(--dr-r-sm);padding:18px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px;line-height:1.5">
+        Diese Email hat keine Anhänge. Klicke <strong>„Hinzufügen"</strong>, um manuell Dateien hochzuladen.
+      </div></div>`;
+    } else {
+      html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+      _attList.forEach((a, idx) => {
+        const fname = a.filename || a.name || 'Anhang';
+        const url = a.url || '';
+        const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
+        const isPdf = /\.pdf$/i.test(fname) || a.type === 'application/pdf';
+        // V12.278: ignorierte Anhänge ausgrauen + 🚫-Badge
+        const ignored = isAttachmentIgnored(r, fname);
+        const linkBg = ignored ? '#fef2f2' : 'var(--dr-surface-alt)';
+        const linkBorder = ignored ? '#fecaca' : 'var(--dr-border)';
+        const linkColor = ignored ? '#9F1B1F' : 'var(--dr-ink)';
+        const linkExtra = ignored ? 'text-decoration:line-through;opacity:.75;' : '';
+        html += `<div style="display:flex;align-items:center;gap:8px">
+          <a href="${_esc(url)}" target="_blank" style="flex:1;min-width:0;background:${linkBg};border:1px solid ${linkBorder};border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:${linkColor};text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s;${linkExtra}" onmouseover="this.style.borderColor='#a8312f'" onmouseout="this.style.borderColor='${linkBorder}'">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:${ignored ? '#9F1B1F' : 'var(--dr-blue)'};flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
+            ${ignored ? `<span style="background:#fee2e2;color:#9F1B1F;border:1px solid #fca5a5;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700;flex-shrink:0">🚫 IGNORIERT</span>` : ''}
+            ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
+          </a>
+          <button onclick="toggleAttachmentIgnore('${r._id}','${_esc(fname).replace(/'/g, '&#39;')}')" title="${ignored ? 'Wieder aktivieren — KI darf den Anhang nutzen' : 'Ignorieren — KI überspringt diesen Anhang im Schnell-Check & Chat-Picker'}" style="background:#fff;border:1px solid ${ignored ? '#86efac' : '#fca5a5'};color:${ignored ? '#166534' : '#9F1B1F'};border-radius:7px;padding:8px 10px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='${ignored ? '#dcfce7' : '#fee2e2'}'" onmouseout="this.style.background='#fff'">
+            ${ignored ? '✓' : '🚫'}
+          </button>
+          ${isPdf && !ignored ? `<button id="neutralizeBtn_${idx}" onclick="openNeutralizePromptDialog('${r._id}',${idx})" title="PDF KI-anonymisieren — Prompt vor dem Start anpassbar" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🕶 Neutralisieren</button>` : ''}
+          <button onclick="deleteEmailAttachment('${r._id}',${idx})" title="Anhang löschen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:8px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff'">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
   }
   // V12.253: Neutralisierte Anhänge — separater Bereich nach den Originalen
   if (Array.isArray(r.neutralized_attachments) && r.neutralized_attachments.length) {
