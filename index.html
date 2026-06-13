@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.281';
+const APP_VERSION = 'V12.282';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7922,6 +7922,12 @@ async function showApp() {
 
   // Nach Login direkt das Dashboard zeigen (das Form bleibt im Hintergrund schon befüllt)
   setTimeout(() => { try { if (typeof showDashboardView === 'function') showDashboardView(); } catch(e) { console.warn('showDashboardView Init:', e); } }, 50);
+  // V12.282: Nach dem Dashboard-Render direkt das Email-Postfach öffnen.
+  // Per User-Wunsch: App startet immer im Posteingang.
+  setTimeout(() => {
+    try { if (typeof openEmailInboxModal === 'function') openEmailInboxModal(); }
+    catch (e) { console.warn('Inbox auto-open Init:', e); }
+  }, 250);
   // Check connections
   checkAllConnections();
   // Run existing init
