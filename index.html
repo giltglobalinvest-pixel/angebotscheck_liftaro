@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.280';
+const APP_VERSION = 'V12.281';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28039,20 +28039,27 @@ async function quickReplyToEmail(recId, bodyText) {
   const replySubject = /^re:/i.test(origSubj) ? origSubj : 'Re: ' + origSubj;
   // V12.223: ASCII-sanitisieren — verhindert kaputtes utf-8-encoded-word im Mail-Header
   const replySubjectSafe = _eiSanitizeSubjectForEmail(replySubject);
-  // V12.193: Signatur ans Ende der Antwort anhängen
-  const sig = _eiGetSignature();
-  const finalBody = sig ? bodyText + '\n\n' + sig : bodyText;
+  // V12.281: HTML-Bearbeiter-Signatur einbinden (Plain-Text-Fallback bleibt erhalten).
+  // _eiResolveSignatureForSend liefert { textSig, htmlBody }:
+  //   • textSig  → an Plain-Text-Body anhängen
+  //   • htmlBody → kompletter HTML-Body inkl. user-Text und HTML-Signatur (Multipart)
+  const _sig = (typeof _eiResolveSignatureForSend === 'function')
+    ? _eiResolveSignatureForSend(bodyText)
+    : { textSig: (typeof _eiGetSignature === 'function' ? _eiGetSignature() : ''), htmlBody: '' };
+  const finalBody = _sig.textSig ? bodyText + '\n\n' + _sig.textSig : bodyText;
   try {
+    const replyPayload = {
+      to:        toAddr,
+      subject:   replySubjectSafe,
+      text:      finalBody,
+      replyTo:   'check@liftaro.de',
+      inReplyTo: r.message_id || undefined,
+    };
+    if (_sig.htmlBody) replyPayload.html = _sig.htmlBody;
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
-      body: JSON.stringify({
-        to:        toAddr,
-        subject:   replySubjectSafe,
-        text:      finalBody,
-        replyTo:   'check@liftaro.de',
-        inReplyTo: r.message_id || undefined,
-      }),
+      body: JSON.stringify(replyPayload),
     });
     if (!resp.ok) {
       let txt = ''; try { txt = await resp.text(); } catch (_) {}
@@ -28145,8 +28152,15 @@ async function forwardEmailTo(recId, toEmail, preMessage) {
     // V12.223: ASCII-sanitisieren für Mail-Header
     const fwdSubject = _eiSanitizeSubjectForEmail(fwdSubjectRaw);
     const pre = String(preMessage || '').trim();
-    // V12.193: Signatur an die Pre-Message anhängen (vor dem Forward-Header)
-    const sig = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
+    // V12.281: HTML-Bearbeiter-Signatur (Plain-Text-Fallback bleibt).
+    // textSig wird wie bisher an die Plain-Text-Pre-Message angehängt.
+    // htmlBody erzeugen wir manuell, weil der Forward-Header (Plain-Text) + Original-Body
+    // separat hinterher kommen — der HTML-Multipart-Teil bekommt nur Pre + Signatur,
+    // damit Mailclients den HTML-Anteil sauber neben dem zitierten Original anzeigen.
+    const _sig = (typeof _eiResolveSignatureForSend === 'function')
+      ? _eiResolveSignatureForSend(pre)
+      : { textSig: (typeof _eiGetSignature === 'function' ? _eiGetSignature() : ''), htmlBody: '' };
+    const sig = _sig.textSig || '';
     const preBlock = pre
       ? (pre + (sig ? '\n\n' + sig : '') + '\n\n')
       : (sig ? sig + '\n\n' : '');
@@ -28160,6 +28174,16 @@ async function forwardEmailTo(recId, toEmail, preMessage) {
       replyTo:   'check@liftaro.de',
       inReplyTo: r.message_id || undefined,
     };
+    if (_sig.htmlBody) {
+      // Forward-HTML-Body: Pre-Message + HTML-Sig + Plain-Forward-Header und Original-Body als <pre>
+      const escFn = (typeof _esc === 'function')
+        ? _esc
+        : (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      payload.html = _sig.htmlBody
+        + '<br><pre style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:#475569;white-space:pre-wrap;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:12px">'
+        + escFn(forwardHeader + origBody)
+        + '</pre>';
+    }
     if (attachments.length) payload.attachments = attachments;
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
