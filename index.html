@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.277';
+const APP_VERSION = 'V12.278';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7615,6 +7615,9 @@ async function setupTables() {
       { name: 'neutralized_attachments',       type: 'multipleAttachments' },
       // V12.265: Ticket-System — Check-Status (gecheckt/beauftragt/abgerechnet)
       { name: 'check_status',                  type: 'singleLineText' },
+      // V12.278: Ignorierte Anhänge — Filenames (newline-getrennt), die NICHT in KI-Flows
+      // (Schnell-Check, Neutralisierung) und nicht im Chat-Picker auftauchen sollen
+      { name: 'attachments_ignored',           type: 'multilineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
@@ -10409,8 +10412,11 @@ async function attachEmailFilesToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) { showToast('Email nicht gefunden — bitte Seite neu laden', 'warning', 3500); return; }
   // V12.253: Original + neutralisierte Anhänge zusammen anbieten (mit Markierung)
-  const origAtts = Array.isArray(r.attachments) ? r.attachments : [];
-  const neutAtts = Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [];
+  // V12.278: ignorierte Anhänge raus
+  const origAtts = (Array.isArray(r.attachments) ? r.attachments : [])
+    .filter(a => !isAttachmentIgnored(r, a.filename || a.name || ''));
+  const neutAtts = (Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [])
+    .filter(a => !isAttachmentIgnored(r, a.filename || a.name || ''));
   const atts = [
     ...origAtts.map(a => ({ ...a, _kind: 'orig' })),
     ...neutAtts.map(a => ({ ...a, _kind: 'neut' })),
@@ -27539,6 +27545,7 @@ function renderEmailInboxList() {
       ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${threadPill}${notesPill}</div>`
       : '';
     // V12.254: Anhänge-Pills direkt in der Karte (Download via Klick, ohne Email-Detail zu öffnen)
+    // V12.278: ignorierte Anhänge ausgrauen/durchgestrichen
     const origAtts = Array.isArray(r.attachments) ? r.attachments : [];
     const neutAtts = Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [];
     const attPills = [];
@@ -27548,7 +27555,12 @@ function renderEmailInboxList() {
       const kb = a.size ? Math.round(a.size / 1024) + ' KB' : '';
       const isPdf = /\.pdf$/i.test(fn) || a.type === 'application/pdf';
       const ico = isPdf ? '📄' : '📎';
-      attPills.push(`<a href="${_esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${_esc(fn)}${kb ? ' · ' + kb : ''} — herunterladen" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px;max-width:240px"><span style="flex-shrink:0">${ico}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fn)}</span></a>`);
+      const ign = isAttachmentIgnored(r, fn);
+      const pillStyle = ign
+        ? 'background:#fef2f2;border:1px solid #fecaca;color:#9F1B1F;text-decoration:line-through;opacity:.7;'
+        : 'background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;';
+      const tipPrefix = ign ? '🚫 Ignoriert · ' : '';
+      attPills.push(`<a href="${_esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${tipPrefix}${_esc(fn)}${kb ? ' · ' + kb : ''} — herunterladen" style="${pillStyle}border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;text-decoration:${ign ? 'line-through' : 'none'};display:inline-flex;align-items:center;gap:4px;max-width:240px"><span style="flex-shrink:0">${ign ? '🚫' : ico}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fn)}</span></a>`);
     }
     for (const a of neutAtts) {
       const fn = a.filename || a.name || 'Anhang';
@@ -29902,8 +29914,14 @@ function _schnellCheckResolveTyp(r) {
 }
 
 // Default-Auswahl: bestes PDF (größtes mit "angebot/offer/rechnung/vertrag" im Namen bevorzugt)
-function _schnellCheckPickBestPdf(atts) {
-  const pdfs = (atts || []).filter(a => /\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf');
+// V12.278: ignorierte Anhänge ausschließen
+function _schnellCheckPickBestPdf(atts, r) {
+  const pdfs = (atts || []).filter(a => {
+    const isPdf = /\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf';
+    if (!isPdf) return false;
+    if (r && isAttachmentIgnored(r, a.filename || a.name || '')) return false;
+    return true;
+  });
   if (!pdfs.length) return -1;
   const score = (a) => {
     const n = String(a.filename || '').toLowerCase();
@@ -29912,7 +29930,7 @@ function _schnellCheckPickBestPdf(atts) {
     return s;
   };
   let bestIdx = 0, bestScore = -1;
-  pdfs.forEach((a, i) => {
+  pdfs.forEach((a) => {
     const idx = atts.indexOf(a);
     const sc = score(a);
     if (sc > bestScore) { bestScore = sc; bestIdx = idx; }
@@ -29989,7 +30007,7 @@ async function openSchnellCheck(emailId) {
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic API-Key fehlt — Einstellungen prüfen', 'error', 4000); return; }
   const checkTyp = _schnellCheckResolveTyp(r) || 'reparatur';
   const atts = Array.isArray(r.attachments) ? r.attachments : [];
-  const pdfIdx = _schnellCheckPickBestPdf(atts);
+  const pdfIdx = _schnellCheckPickBestPdf(atts, r);
   const partnerId = _schnellCheckPickBestChatPartner(id, r);
 
   window._schnellCheckState = {
@@ -30023,7 +30041,10 @@ function _renderSchnellCheckModal() {
   const r = (_eiAllRecords || []).find(x => x._id === st.emailId);
   if (!r) { m.style.display = 'none'; return; }
   const atts = Array.isArray(r.attachments) ? r.attachments : [];
-  const pdfs = atts.map((a, i) => ({ ...a, _idx: i })).filter(a => /\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf');
+  // V12.278: ignorierte Anhänge raus
+  const pdfs = atts.map((a, i) => ({ ...a, _idx: i }))
+    .filter(a => (/\.pdf$/i.test(a.filename || '') || a.type === 'application/pdf')
+              && !isAttachmentIgnored(r, a.filename || a.name || ''));
   const chatItems = (window._eiWnChatCache && window._eiWnChatCache[st.emailId]) || [];
   const partnerSet = new Map();
   for (const it of chatItems) {
@@ -31850,13 +31871,23 @@ function renderEmailInboxDetail() {
       const url = a.url || '';
       const size = a.size ? (Math.round(a.size/1024) + ' KB') : '';
       const isPdf = /\.pdf$/i.test(fname) || a.type === 'application/pdf';
+      // V12.278: ignorierte Anhänge ausgrauen + 🚫-Badge
+      const ignored = isAttachmentIgnored(r, fname);
+      const linkBg = ignored ? '#fef2f2' : 'var(--dr-surface-alt)';
+      const linkBorder = ignored ? '#fecaca' : 'var(--dr-border)';
+      const linkColor = ignored ? '#9F1B1F' : 'var(--dr-ink)';
+      const linkExtra = ignored ? 'text-decoration:line-through;opacity:.75;' : '';
       html += `<div style="display:flex;align-items:center;gap:8px">
-        <a href="${_esc(url)}" target="_blank" style="flex:1;min-width:0;background:var(--dr-surface-alt);border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:var(--dr-ink);text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--dr-blue-soft)';this.style.borderColor='var(--dr-blue-light)'" onmouseout="this.style.background='var(--dr-surface-alt)';this.style.borderColor='var(--dr-border)'">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--dr-blue);flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <a href="${_esc(url)}" target="_blank" style="flex:1;min-width:0;background:${linkBg};border:1px solid ${linkBorder};border-radius:var(--dr-r-sm);padding:10px 14px;font-size:12.5px;color:${linkColor};text-decoration:none;display:inline-flex;align-items:center;gap:10px;transition:all .15s;${linkExtra}" onmouseover="this.style.borderColor='#a8312f'" onmouseout="this.style.borderColor='${linkBorder}'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:${ignored ? '#9F1B1F' : 'var(--dr-blue)'};flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fname)}</span>
+          ${ignored ? `<span style="background:#fee2e2;color:#9F1B1F;border:1px solid #fca5a5;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700;flex-shrink:0">🚫 IGNORIERT</span>` : ''}
           ${size ? `<span style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);letter-spacing:.04em;flex-shrink:0">${size}</span>` : ''}
         </a>
-        ${isPdf ? `<button id="neutralizeBtn_${idx}" onclick="openNeutralizePromptDialog('${r._id}',${idx})" title="PDF KI-anonymisieren — Prompt vor dem Start anpassbar" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🕶 Neutralisieren</button>` : ''}
+        <button onclick="toggleAttachmentIgnore('${r._id}','${_esc(fname).replace(/'/g, '&#39;')}')" title="${ignored ? 'Wieder aktivieren — KI darf den Anhang nutzen' : 'Ignorieren — KI überspringt diesen Anhang im Schnell-Check & Chat-Picker'}" style="background:#fff;border:1px solid ${ignored ? '#86efac' : '#fca5a5'};color:${ignored ? '#166534' : '#9F1B1F'};border-radius:7px;padding:8px 10px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='${ignored ? '#dcfce7' : '#fee2e2'}'" onmouseout="this.style.background='#fff'">
+          ${ignored ? '✓' : '🚫'}
+        </button>
+        ${isPdf && !ignored ? `<button id="neutralizeBtn_${idx}" onclick="openNeutralizePromptDialog('${r._id}',${idx})" title="PDF KI-anonymisieren — Prompt vor dem Start anpassbar" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🕶 Neutralisieren</button>` : ''}
       </div>`;
     });
     html += `</div></div>`;
@@ -32523,6 +32554,42 @@ async function setEmailCheckStatus(recId, val) {
   }
 }
 window.setEmailCheckStatus = setEmailCheckStatus;
+
+// V12.278: Anhänge gezielt ignorieren — Filenames werden als newline-getrennte Liste
+// im `attachments_ignored`-Feld der Email persistiert. Ignorierte Anhänge tauchen in
+// KI-Flows (Schnell-Check, Neutralisierung), Chat-Picker und der Anhang-Pill-Zeile
+// nicht mehr auf, bleiben aber im Detail sichtbar und manuell entferbar.
+function _getIgnoredAttachments(r) {
+  if (!r) return new Set();
+  const raw = String(r.attachments_ignored || '').trim();
+  if (!raw) return new Set();
+  return new Set(raw.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean));
+}
+function isAttachmentIgnored(r, filename) {
+  return _getIgnoredAttachments(r).has(String(filename || '').trim());
+}
+window.isAttachmentIgnored = isAttachmentIgnored;
+
+async function toggleAttachmentIgnore(emailId, filename) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const fn = String(filename || '').trim();
+  if (!fn) return;
+  const set = _getIgnoredAttachments(r);
+  if (set.has(fn)) set.delete(fn);
+  else set.add(fn);
+  const value = Array.from(set).join('\n');
+  try {
+    await atUpdate('Emails', emailId, { attachments_ignored: value });
+    r.attachments_ignored = value;
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    showToast(set.has(fn) ? '🚫 „' + fn + '" wird ignoriert' : '✓ „' + fn + '" ist wieder aktiv', 'success', 2400);
+  } catch (e) {
+    showToast('Fehler beim Speichern: ' + e.message, 'error', 4000);
+  }
+}
+window.toggleAttachmentIgnore = toggleAttachmentIgnore;
 
 // Dropdown-Handler — fängt das Wert "__manage__" ab und öffnet stattdessen den Editor
 function _eiBearbeiterDropdownHandler(emailId, selectEl) {
