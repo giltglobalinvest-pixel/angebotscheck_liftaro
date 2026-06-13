@@ -6333,7 +6333,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.283';
+const APP_VERSION = 'V12.284';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -26322,6 +26322,46 @@ function closeEmailInboxModal() {
   document.getElementById('emailInboxModal').style.display = 'none';
 }
 
+// V12.284: Linked-Check-Cache für Ersparnis-Anzeige in den Inbox-Cards.
+// Wird beim Inbox-Load gefüllt, hält {id → {ersparnis, status, checkType}}.
+async function _eiBuildLinkedCheckCache(records) {
+  window._eiCheckCache = window._eiCheckCache || {};
+  const allIds = new Set();
+  for (const r of records || []) {
+    const ids = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    for (const id of ids) allIds.add(id);
+  }
+  if (!allIds.size) return;
+  const need = [...allIds].filter(id => !(id in window._eiCheckCache));
+  if (!need.length) return;
+  const CHUNK = 25;
+  for (let i = 0; i < need.length; i += CHUNK) {
+    const chunk = need.slice(i, i + CHUNK);
+    const formula = 'OR(' + chunk.map(id => "{id}='" + String(id).replace(/'/g, "\\'") + "'").join(',') + ')';
+    try {
+      const recs = await atRead('Checks', formula, { sort: false });
+      for (const rec of recs) {
+        const f = rec.fields || {};
+        if (f.id) {
+          window._eiCheckCache[String(f.id)] = {
+            ersparnis: String(f.ersparnis || '').trim(),
+            status:    String(f.status || ''),
+            checkType: String(f.checkType || ''),
+          };
+        }
+      }
+      // Negativ-Cache für IDs ohne Treffer, damit wir sie nicht erneut suchen
+      for (const id of chunk) {
+        if (!(id in window._eiCheckCache)) {
+          window._eiCheckCache[id] = { ersparnis: '', status: '', checkType: '' };
+        }
+      }
+    } catch (e) {
+      console.warn('[V12.284] linked-check cache chunk failed:', e.message);
+    }
+  }
+}
+
 async function loadEmailInbox(silent) {
   const listEl = document.getElementById('emailInboxList');
   if (!silent) listEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dr-ink-mute);font-size:13px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid var(--dr-border-strong);border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Lade Emails …</div>';
@@ -26341,7 +26381,11 @@ async function loadEmailInbox(silent) {
     const recs = await atRead('Emails', null, { sort: false });
     _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+    // V12.284: Erst rendern, dann Ersparnis-Pillen nachreichen (kein zusätzlicher Spin).
     renderEmailInboxList();
+    _eiBuildLinkedCheckCache(_eiAllRecords)
+      .then(() => { if (typeof renderEmailInboxList === 'function') renderEmailInboxList(); })
+      .catch(e => console.warn('[V12.284] linked-check cache:', e.message));
     _refreshEmailInboxBadge();
     // Mindestens 400ms Spin sichtbar lassen (sonst wirkt's wie kein Feedback bei schnellem Load)
     const elapsed = Date.now() - tStart;
@@ -26532,6 +26576,33 @@ function onEmailRowClick(recId, ev) {
   }
   selectEmailRow(recId);
 }
+
+// V12.284: Quick-Actions aus der Card. Öffnet die Email-Detail-View und
+// triggert dann die jeweilige Aktion. Detail braucht ~50ms zum Rendern,
+// daher kleiner setTimeout vor dem Trigger.
+function _eiQuickAction(recId, action, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (ev && ev.preventDefault)  ev.preventDefault();
+  if (typeof selectEmailRow === 'function') selectEmailRow(recId);
+  setTimeout(() => {
+    try {
+      if (action === 'hv' && typeof assignHvToVorgang === 'function') {
+        assignHvToVorgang(recId, 0);
+      } else if (action === 'aufzug' && typeof runAiAufzugAnalysis === 'function') {
+        runAiAufzugAnalysis(recId);
+        const el = document.getElementById('ei_ai_aufzug_result');
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (action === 'split') {
+        // Split-Pfad: Aufzug-Analyse starten — bei mehreren erkannten Aufzügen
+        // schaltet die Karte automatisch den "X Aufzüge übernehmen + Email splitten"-Button frei.
+        if (typeof runAiAufzugAnalysis === 'function') runAiAufzugAnalysis(recId);
+        const el = document.getElementById('ei_ai_aufzug_result');
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } catch (e) { console.warn('[V12.284] quick-action ' + action + ':', e.message); }
+  }, 120);
+}
+window._eiQuickAction = _eiQuickAction;
 
 function toggleEmailPick(recId) {
   if (!window._eiPickedSet) window._eiPickedSet = new Set();
@@ -27348,6 +27419,19 @@ function renderEmailInboxList() {
           🔀 ${_isCopy ? 'Kopie' : (_splitCnt >= 2 ? '1/' + _splitCnt : 'Split')}
         </span>`
       : '';
+    // V12.284: Quick-Action-Icons in der Card — nur sichtbar wenn der jeweilige
+    // Schritt offen ist. Klick → öffnet Detail-View und startet den passenden Flow.
+    const _vCount    = parseInt(r.ki_vorgaenge_count || 0, 10) || 0;
+    const _hasHv     = (hv && (hv.source === 'assigned' || hv.source === 'ai'));
+    const _hasAufzug = !!(String(r.aufzug_fabriknummer || '').trim() || String(r.aufzug_standort || '').trim());
+    const _canSplit  = _vCount >= 2 && !_isCopy && _splitCnt < 2;
+    const _qaShow    = !isOut && (!_hasHv || !_hasAufzug || _canSplit);
+    const _qaIconStyle = 'background:#fff;border:1px solid #e2e8f0;border-radius:7px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s,background .15s;padding:0;flex-shrink:0';
+    const _qaIcons = _qaShow ? `<div style="display:flex;gap:5px;margin-bottom:2px">
+      ${!_hasHv ? `<button onclick="_eiQuickAction('${r._id}','hv',event)" title="Hausverwaltung zuweisen" style="${_qaIconStyle};color:#15803d" onmouseover="this.style.background='#f0fdf4';this.style.borderColor='#86efac'" onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg></button>` : ''}
+      ${!_hasAufzug ? `<button onclick="_eiQuickAction('${r._id}','aufzug',event)" title="Aufzug zuweisen" style="${_qaIconStyle};color:#0e7490" onmouseover="this.style.background='#ecfeff';this.style.borderColor='#67e8f9'" onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01"/></svg></button>` : ''}
+      ${_canSplit ? `<button onclick="_eiQuickAction('${r._id}','split',event)" title="${_vCount} Vorgänge erkannt — Email splitten" style="${_qaIconStyle};color:#5b21b6" onmouseover="this.style.background='#ede9fe';this.style.borderColor='#c4b5fd'" onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0'"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>` : ''}
+    </div>` : '';
     // V12.228: Chat-Antwort-Indikator — eingehende Antworten von Chat-Partnern im Cache
     const _hasChatReply = (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
     const chatReplyChip = _hasChatReply
@@ -27459,8 +27543,27 @@ function renderEmailInboxList() {
         threadPill = `<span title="${threadCnt} Antwort${threadCnt === 1 ? '' : 'en'} im Thread (alle gesichtet)" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">↶ ${threadCnt} Antwort${threadCnt === 1 ? '' : 'en'}</span>`;
       }
     }
-    const pillRow = (hvPill || azPill || notesPill || threadPill)
-      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${hvPill}${azPill}${threadPill}${notesPill}</div>`
+    // V12.284: Ersparnis-Pille — Summe aus allen verknüpften Checks.
+    // Cache wird beim Inbox-Load gefüllt (_eiBuildLinkedCheckCache).
+    let ersparnisPill = '';
+    const _linkedIds = String(r.linked_check_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (_linkedIds.length && window._eiCheckCache) {
+      let _sumEur = 0, _anyFound = false;
+      for (const _cid of _linkedIds) {
+        const _c = window._eiCheckCache[_cid];
+        if (!_c || !_c.ersparnis) continue;
+        // ersparnis ist String wie "1.234,56 €" → Zahl extrahieren
+        const _raw = String(_c.ersparnis).replace(/[.\s]/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+        const _n = parseFloat(_raw);
+        if (!Number.isNaN(_n)) { _sumEur += _n; _anyFound = true; }
+      }
+      if (_anyFound && _sumEur > 0) {
+        const _fmt = _sumEur.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €';
+        ersparnisPill = `<span title="Erzielte Ersparnis aus ${_linkedIds.length} verknüpft${_linkedIds.length === 1 ? 'em' : 'en'} Check${_linkedIds.length === 1 ? '' : 's'}" style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px"><span style="font-size:13px">💶</span>${_fmt}</span>`;
+      }
+    }
+    const pillRow = (hvPill || azPill || notesPill || threadPill || ersparnisPill)
+      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${ersparnisPill}${hvPill}${azPill}${threadPill}${notesPill}</div>`
       : '';
     // V12.254: Anhänge-Pills direkt in der Karte (Download via Klick, ohne Email-Detail zu öffnen)
     // V12.278: ignorierte Anhänge ausgrauen/durchgestrichen
@@ -27515,7 +27618,7 @@ function renderEmailInboxList() {
         ${pillRow}
         ${attRow}
       </div>
-      <div class="ei-row-actions">${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
+      <div class="ei-row-actions">${_qaIcons}${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
     </div>`;
   }).join('');
 }
