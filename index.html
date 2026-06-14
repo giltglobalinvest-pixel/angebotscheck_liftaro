@@ -6388,7 +6388,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.302';
+const APP_VERSION = 'V12.303';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23265,7 +23265,20 @@ async function importAufzuegeForLightVertrag() {
       }
       return;
     }
-    const preview = free.slice(0, 8).map(a => '• Fn ' + (a.fabriknummer || '?') + (a.standort ? ' — ' + a.standort : '')).join('\n');
+    // V12.303: Quelle/Notiz mit anzeigen — User sieht woher der Aufzug stammt
+    const preview = free.slice(0, 8).map(a => {
+      const fn = a.fabriknummer || '?';
+      const st = a.standort ? ' — ' + a.standort : '';
+      const nz = String(a.notiz || '').trim();
+      let src = '';
+      if (nz) {
+        const short = nz.length > 60 ? nz.slice(0, 60) + '…' : nz;
+        src = '\n     Quelle: ' + short;
+      } else {
+        src = '\n     Quelle: unbekannt (keine Notiz)';
+      }
+      return '• Fn ' + fn + st + src;
+    }).join('\n');
     let msg = (free.length === 1 ? '1 freier Aufzug' : free.length + ' freie Aufzüge')
       + ' dieser HV (' + (firma || 'HV') + ') gefunden:\n\n' + preview
       + (free.length > 8 ? '\n• … und ' + (free.length - 8) + ' weitere' : '');
@@ -23327,10 +23340,26 @@ async function renderAufzuegeInEuCEditor(lvId) {
       total += kosten;
       const idEsc = (a.id || '').replace(/'/g, "\\'");
       const recIdEsc = (a._recordId || '').replace(/'/g, "\\'");
+      // V12.303: Quelle/Herkunft sichtbar machen — pro Aufzug-Notiz dokumentiert
+      // welcher Workflow den Aufzug ursprünglich angelegt hat (z. B. „KI-Schnell-Anlage
+      // aus Email …" oder manuelle Eingabe). Macht den Import-Pfad nachvollziehbar.
+      const notizRaw = String(a.notiz || '').trim();
+      let quellePill = '';
+      if (notizRaw) {
+        const isEmail = /aus email/i.test(notizRaw);
+        const isKi    = /ki-/i.test(notizRaw);
+        const ico = isEmail ? '📥' : (isKi ? '✨' : '✏');
+        const lbl = isEmail ? 'aus Email' : (isKi ? 'KI' : 'manuell');
+        const short = notizRaw.length > 80 ? notizRaw.slice(0, 80) + '…' : notizRaw;
+        quellePill = '<span title="' + escapeHtml(short) + '" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;flex-shrink:0">' + ico + ' ' + lbl + '</span>';
+      } else {
+        quellePill = '<span title="Keine Quellen-Notiz hinterlegt" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;flex-shrink:0">? unbekannt</span>';
+      }
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:6px;flex-wrap:wrap">'
         + '<span style="font-family:var(--dr-f-mono);color:var(--blue-mid);font-size:11.5px;font-weight:700;flex-shrink:0">' + escapeHtml(a.id || '–') + '</span>'
         + '<span style="font-weight:600;font-size:12.5px;flex-shrink:0">Fabr.-Nr. ' + escapeHtml(a.fabriknummer || '?') + '</span>'
         + '<span style="flex:1;min-width:0;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(a.standort || '–') + '</span>'
+        + quellePill
         + '<label style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:600">€/Jahr:</label>'
         + '<input type="number" value="' + (kosten || '') + '" placeholder="0" min="0" onchange="_saveAufzugJahreskosten(\'' + recIdEsc + '\', this.value)" style="width:90px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;font-family:\'DM Mono\',monospace">'
         + '<button type="button" onclick="_unlinkAufzugFromEuC(\'' + recIdEsc + '\', \'' + idEsc + '\')" title="Aufzug aus diesem EuC entfernen" style="background:transparent;border:1.5px solid #e0a09a;color:#a8312f;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;line-height:1;font-weight:700">×</button>'
