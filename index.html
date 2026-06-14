@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.293';
+const APP_VERSION = 'V12.294';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -18454,13 +18454,18 @@ async function renderKundenList() {
       ? filtered.filter(o => has(o.org_id))
       : filtered.filter(o => !has(o.org_id));
   }
-  // V12.289: EuC-Filter anwenden (kombinierbar mit Vollmacht-Filter)
+  // V12.289/V12.294: EuC-Filter — „mit" zählt nur HVs mit hochgeladener,
+  // unterschriebener Vereinbarung (vertrag_signed_pdf). Reine Entwurf-Records
+  // (Vertrag angelegt, aber noch nicht zurückbekommen) zählen NICHT als "mit EuC".
   const eucFilter = window._kundenEucFilter || 'all';
+  const _hasSignedEuC = (oid) => {
+    const v = eucMap[String(oid)];
+    return !!(v && Array.isArray(v.vertrag_signed_pdf) && v.vertrag_signed_pdf.length > 0);
+  };
   if (eucFilter !== 'all') {
-    const hasE = (oid) => !!eucMap[String(oid)];
     filtered = eucFilter === 'with'
-      ? filtered.filter(o => hasE(o.org_id))
-      : filtered.filter(o => !hasE(o.org_id));
+      ? filtered.filter(o => _hasSignedEuC(o.org_id))
+      : filtered.filter(o => !_hasSignedEuC(o.org_id));
   }
   // V12.291/V12.293: Wenn ein Light-Vertrag eine pipedrive_org_id hat, die NICHT in
   // der _pipedriveOrgsCache-Liste auftaucht (z. B. weil die HV außerhalb der ersten
@@ -18497,7 +18502,13 @@ async function renderKundenList() {
         ? virtFiltered.filter(o => _hasV(o.org_id))
         : virtFiltered.filter(o => !_hasV(o.org_id));
     }
-    if (eucFilter === 'without') virtFiltered = []; // EuC liegt ja vor → 'ohne EuC' bedeutet ausschließen
+    // V12.294: EuC-Filter konsistent — „mit" nur HVs mit signed PDF; „ohne" raus,
+    // weil eine Virtual-Org per Definition einen Vertrags-Record hat (≠ ohne EuC).
+    if (eucFilter === 'with') {
+      virtFiltered = virtFiltered.filter(o => _hasSignedEuC(o.org_id));
+    } else if (eucFilter === 'without') {
+      virtFiltered = [];
+    }
     filtered = filtered.concat(virtFiltered);
     filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }
@@ -18540,13 +18551,19 @@ async function renderKundenList() {
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
         ${vmBtn}
         ${(() => {
-          // V12.289: EuC-Status-Button — existiert bereits ein Vertrag, öffnen statt neu anlegen
+          // V12.289/V12.294: EuC-Status-Button — dreistufig:
+          //   1) signed PDF da → grün gefüllt "🛡 EuC ✓" (öffnet bestehenden)
+          //   2) Record da, aber ohne signed PDF → gelb "🛡 EuC Entwurf" (öffnet bestehenden)
+          //   3) Nichts → Outline "🛡 + EuC" (legt neuen an)
           const ev = eucMap[oid];
           if (ev && ev._recordId) {
             const lvId = String(ev.id || '');
             const lvIdEsc = lvId.replace(/'/g, '\\\'');
-            const tipExtra = lvId ? ' · ' + lvId : '';
-            return '<button onclick="openExistingLightVertrag(\'' + lvIdEsc + '\')" title="EuC-Vertrag öffnen' + tipExtra + '" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">🛡 EuC ✓</button>';
+            const hasSigned = Array.isArray(ev.vertrag_signed_pdf) && ev.vertrag_signed_pdf.length > 0;
+            if (hasSigned) {
+              return '<button onclick="openExistingLightVertrag(\'' + lvIdEsc + '\')" title="EuC-Vertrag öffnen' + (lvId ? ' · ' + lvId : '') + '" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">🛡 EuC ✓</button>';
+            }
+            return '<button onclick="openExistingLightVertrag(\'' + lvIdEsc + '\')" title="EuC-Vertrag in Bearbeitung — unterschriebene Vereinbarung fehlt noch' + (lvId ? ' · ' + lvId : '') + '" style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">🛡 EuC ✎</button>';
           }
           return '<button onclick="openLightVertragForOrg(' + oid + ')" title="Neue EuC-Vereinbarung mit dieser HV anlegen" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">🛡 + EuC</button>';
         })()}
