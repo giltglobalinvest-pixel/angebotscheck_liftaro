@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.313';
+const APP_VERSION = 'V12.314';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33467,6 +33467,10 @@ function renderEmailInboxDetail() {
     <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
     <span>Zurück zur Liste</span>
   </button>`;
+  // V12.314: Slot für den (weiter unten zusammengebauten) „Zuordnungen ..."-Details-Block.
+  // Wir bauen ihn unten in seiner ursprünglichen Reihenfolge und verschieben am Ende
+  // den ganzen <details>...</details>-Block per String-Marker hierher hoch.
+  html += `<!--EI_DETAILS_SLOT-->`;
 
   // Email-Header-Block
   const isForwarded = !!r.is_forwarded;
@@ -33686,9 +33690,10 @@ function renderEmailInboxDetail() {
 
   // V12.187: Alles Weitere in einen einklappbaren Container
   // V12.206: Open-State pro Email merken, sodass KI-Re-Renders die Sektion nicht wieder zuklappen
+  // V12.314: Marker um den Details-Block → wird am Ende nach oben in den EI_DETAILS_SLOT verschoben
   window._eiExtraDetailsOpen = window._eiExtraDetailsOpen || {};
   const _extraOpen = window._eiExtraDetailsOpen[r._id] === true;
-  html += `<details id="emailExtraDetails" ${_extraOpen ? 'open' : ''} ontoggle="window._eiExtraDetailsOpen=window._eiExtraDetailsOpen||{};window._eiExtraDetailsOpen['${r._id}']=this.open" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
+  html += `<!--EI_DETAILS_START--><details id="emailExtraDetails" ${_extraOpen ? 'open' : ''} ontoggle="window._eiExtraDetailsOpen=window._eiExtraDetailsOpen||{};window._eiExtraDetailsOpen['${r._id}']=this.open" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
     <summary style="cursor:pointer;padding:12px 16px;font-size:12.5px;font-weight:700;color:#475569;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;outline:none">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .15s ease" id="emailExtraDetailsCaret"><polyline points="9 18 15 12 9 6"/></svg>
       <span>Zuordnungen, KI-Analyse, Vorgänge &amp; Aktionen</span>
@@ -33949,12 +33954,29 @@ function renderEmailInboxDetail() {
   </div>`;
 
   // V12.187: Toggle-Container schließen (Zuordnungen, KI, Vorgänge, Aktionen — eingeklappt)
-  html += `</div></details>`;
+  html += `</div></details><!--EI_DETAILS_END-->`;
 
   // V12.187: Verlauf — Notizen + ausgehende Antworten chronologisch (Ticketsystem-Stil)
   html += _renderEmailTimeline(r);
 
   html += `</div>`;
+  // V12.314: Den „Zuordnungen ..."-Details-Block aus seiner Original-Position rausschneiden
+  // und in den EI_DETAILS_SLOT (direkt unter dem Zurück-Button) einsetzen, sodass er
+  // ganz oben im Email-Detail steht.
+  try {
+    const _sM = '<!--EI_DETAILS_START-->';
+    const _eM = '<!--EI_DETAILS_END-->';
+    const _sl = '<!--EI_DETAILS_SLOT-->';
+    const _si = html.indexOf(_sM);
+    const _ei = html.indexOf(_eM);
+    if (_si !== -1 && _ei !== -1 && _ei > _si) {
+      const _block = html.slice(_si + _sM.length, _ei);
+      html = html.slice(0, _si) + html.slice(_ei + _eM.length);
+      html = html.replace(_sl, _block);
+    } else {
+      html = html.replace(_sl, '');
+    }
+  } catch (_) { html = html.replace('<!--EI_DETAILS_SLOT-->', ''); }
   detEl.innerHTML = html;
   // V12.259: HTML-Bodies sofort hydratisieren (statt lazy beim Toggle), damit
   // das Original-HTML standardmäßig sichtbar ist.
