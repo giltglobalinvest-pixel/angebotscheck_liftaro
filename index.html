@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.291';
+const APP_VERSION = 'V12.292';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -18329,6 +18329,11 @@ async function openKundenModal() {
   if (m) m.style.display = 'flex';
   const list = document.getElementById('kundenList');
   list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Lade Hausverwaltungen aus Pipedrive …</div>';
+  // V12.292: Vollmacht- und EuC-Cache beim Öffnen immer invalidieren — sonst zeigt
+  // das Modal mit TTL-Cache (60s) noch alte Daten, wenn der User direkt vom
+  // EuC- oder Vollmacht-Editor zurückkommt.
+  window._vmByOrgIdCacheInvalid  = true;
+  window._eucByOrgIdCacheInvalid = true;
   // Aus Pipedrive holen (via val.town Proxy)
   const proxyUrl = APP_KEYS.vorabcheckProxyUrl || '';
   if (!proxyUrl) {
@@ -22187,6 +22192,10 @@ async function saveLightVertrag() {
     if (d._recordId) rec = await atUpdate('Light-Vertraege', d._recordId, fields);
     else rec = await atWrite('Light-Vertraege', fields);
     console.log('[V12.142] saveLightVertrag OK — rec.id=' + (rec?.id || '?'));
+    // V12.292: EuC-Cache immer invalidieren — auch ohne PDF-Upload — damit
+    // ein neu gespeicherter Vertrag (z. B. nach org_id-Resolve in V12.291) sofort
+    // im HV-Filter „mit EuC" auftaucht. Bisher nur bei PDF-Upload invalidiert.
+    window._eucByOrgIdCacheInvalid = true;
     showToast('EuC-Vereinbarung gespeichert', 'success', 2500);
     // Defensive: alle DOM-Updates in eigenen try/catch damit ein null-Element
     // den Toast-Erfolg nicht in einen Fehler-Toast verwandelt
