@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.290';
+const APP_VERSION = 'V12.291';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -18437,6 +18437,59 @@ async function renderKundenList() {
       window._eucByOrgIdCacheInvalid = false;
     } catch (_) { window._eucByOrgIdCache = window._eucByOrgIdCache || {}; }
   }
+  // V12.291: Wenn ein Light-Vertrag eine pipedrive_org_id hat, die NICHT in der
+  // _pipedriveOrgsCache-Liste auftaucht (z. B. weil die HV außerhalb der ersten 500
+  // Orgs liegt) — virtuellen HV-Eintrag aus den Vertrag-Daten anlegen, damit die
+  // HV im „mit EuC"-Filter trotzdem sichtbar wird.
+  const _orgIdsKnown = new Set(orgs.map(o => String(o.org_id)));
+  const _virtualOrgs = [];
+  for (const oid of Object.keys(window._eucByOrgIdCache || {})) {
+    if (_orgIdsKnown.has(String(oid))) continue;
+    const v = window._eucByOrgIdCache[oid];
+    if (!v) continue;
+    _virtualOrgs.push({
+      org_id:       Number(oid) || oid,
+      name:         v.firma || '(unbekannte HV)',
+      address:      [v.strasse, [v.plz, v.ort].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+      email:        v.email || '',
+      person_count: 0,
+      _virtualFromEuC: true,
+    });
+  }
+  if (_virtualOrgs.length) {
+    // Vor dem Suchfilter-Pfad hatte filtered noch alle orgs; aber wir haben den
+    // Filter schon angewandt. Daher prüfen wir: wenn EuC-Filter aktiv ist oder
+    // 'Alle', sollen die virtuellen Orgs auch im 'mit Vollmacht'-Pfad sichtbar
+    // sein, sofern sie zum Such-Term passen.
+    let virtFiltered = q
+      ? _virtualOrgs.filter(o =>
+          (o.name || '').toLowerCase().includes(q) ||
+          (o.address || '').toLowerCase().includes(q))
+      : _virtualOrgs.slice();
+    if (vmFilter !== 'all') {
+      // Virtuelle Orgs haben (in der Regel) keine Vollmacht → bei „with" filtern raus,
+      // bei „without" durchlassen.
+      const hasV = (oid) => {
+        const v = vmMap[String(oid)];
+        return !!(v && Array.isArray(v.vollmacht_pdf) && v.vollmacht_pdf.length > 0);
+      };
+      virtFiltered = vmFilter === 'with'
+        ? virtFiltered.filter(o => hasV(o.org_id))
+        : virtFiltered.filter(o => !hasV(o.org_id));
+    }
+    if (eucFilter === 'without') virtFiltered = []; // EuC liegt ja vor → 'ohne EuC' bedeutet ausschließen
+    filtered = filtered.concat(virtFiltered);
+    filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    // Stats anpassen, wenn aktiv
+    if (stats && (vmFilter !== 'all' || eucFilter !== 'all')) {
+      const total = orgs.length + _virtualOrgs.length;
+      const shown = filtered.length;
+      const parts = [];
+      if (vmFilter  !== 'all') parts.push(vmFilter  === 'with' ? 'mit Vollmacht' : 'ohne Vollmacht');
+      if (eucFilter !== 'all') parts.push(eucFilter === 'with' ? 'mit EuC'       : 'ohne EuC');
+      stats.textContent = shown + ' von ' + total + ' HVs · Filter: ' + parts.join(' + ');
+    }
+  }
   const eucMap = window._eucByOrgIdCache || {};
   // V12.244: Vollmacht-Filter anwenden (Alle / mit / ohne)
   const vmFilter = window._kundenVmFilter || 'all';
@@ -22075,7 +22128,40 @@ async function saveLightVertrag() {
   let lvId = d.id || (d._recordId ? '' : await generateLightVertragId());
   if (!lvId && !d._recordId) lvId = await generateLightVertragId();
   // V12.269: Org-ID aus Hidden-Field mitspeichern (für Vollmacht-Extraktion + Spätere Lookups)
-  const lvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
+  let lvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
+  // V12.291: Wenn Org-ID leer (Bestandsvertrag oder HV ohne Picker gewählt) — versuchen
+  // sie automatisch via Pipedrive-Search aus dem Firmennamen zu ermitteln und zu persistieren.
+  // Gleiche Match-Logik wie V12.288 beim Vollmacht-Extrahieren.
+  if (!lvOrgId.trim() && d.firma && APP_KEYS.vorabcheckProxyUrl) {
+    try {
+      const _norm = (s) => {
+        let x = String(s || '').toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+        const suffixes = ['gmbh co kg','gmbh co','gmbh','gbr','kg','ohg','ug','ag','co kg','cie','partner'];
+        for (const sfx of suffixes) x = x.replace(new RegExp('\\b' + sfx + '\\b', 'g'), ' ').trim().replace(/\s+/g, ' ');
+        return x;
+      };
+      const rl = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'find_property_manager', query: d.firma.trim() }),
+      });
+      const dd = await rl.json();
+      if (dd.ok && Array.isArray(dd.results)) {
+        const hits = dd.results;
+        const exactKey = d.firma.trim().toLowerCase();
+        let match = hits.find(o => String(o.name || '').trim().toLowerCase() === exactKey);
+        if (!match) { const tgt = _norm(d.firma); if (tgt) match = hits.find(o => _norm(o.name) === tgt); }
+        if (!match && hits.length === 1) match = hits[0];
+        if (match && match.org_id) {
+          lvOrgId = String(match.org_id);
+          const h = document.getElementById('lv_hv_pipedrive_org_id');
+          if (h) h.value = lvOrgId;
+          console.log('[V12.291] saveLightVertrag: org_id resolved →', lvOrgId, 'für', d.firma);
+        }
+      }
+    } catch (e) { console.warn('[V12.291] org_id resolve failed:', e.message); }
+  }
   const fields = {
     id: lvId,
     pipedrive_org_id: lvOrgId,
