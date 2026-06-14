@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.324';
+const APP_VERSION = 'V12.325';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33056,6 +33056,217 @@ function _eiClassifyChatItem(it, r, sbList) {
   };
 }
 
+// V12.325: Threading-Helper für Chat-Sends. Schaut sich die bisherigen Chat-Items
+// dieses Threads an und liefert:
+//   • subject: das jüngste Subject aus dem Thread (mit „Re: "-Prefix falls noch nicht da),
+//              fällt auf fallback zurück wenn der Thread noch leer ist. So bleibt der
+//              Ticket-Suffix von Ticket-Systemen (z.B. Aszendio „[#2211]") erhalten und
+//              jede Antwort landet im gleichen Ticket statt als neues Ticket.
+//   • inReplyTo: message_id der jüngsten Item mit gesetzter message_id
+//   • references: alle message_ids des Threads in zeitlicher Reihenfolge — entscheidend
+//                 für vollständige Threading-Header bei Mehr-Runden-Konversationen.
+function _eiBuildThreadHeaders(items, fallbackSubject) {
+  const sorted = (items || []).slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  // Subject: jüngstes Item, dessen Subject nicht leer ist
+  let subject = String(fallbackSubject || '').trim() || 'Anfrage';
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const s = String(sorted[i].subject || '').trim();
+    if (s) { subject = /^(re|aw|antw|antwort|fwd|fw|wg)\s*:/i.test(s) ? s : 'Re: ' + s; break; }
+  }
+  // References: alle message_ids in Reihenfolge
+  const references = sorted.map(it => String(it.message_id || '').trim()).filter(Boolean);
+  const inReplyTo = references.length ? references[references.length - 1] : '';
+  return { subject, inReplyTo, references };
+}
+window._eiBuildThreadHeaders = _eiBuildThreadHeaders;
+
+// V12.325: Chat-Vorlagen-System. Speichert benutzerdefinierte Nachrichten-Vorlagen
+// mit Platzhaltern wie {{hv_name}}, {{standort}}, {{fabriknummer}}, {{kontakt}},
+// {{kontakt_email}}, {{ansprechperson_partner}}. Beim Einfügen werden die Platzhalter
+// aus dem aktuellen Email-Record und dem Bearbeiter-Kontext ersetzt.
+function _eiGetChatTemplates() {
+  try {
+    const raw = localStorage.getItem('liftaro_chat_templates');
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr) && arr.length) return arr;
+  } catch (_) {}
+  // Default — genau das Szenario aus dem User-Wunsch (Alternativangebot bei Aszendio & Co.)
+  return [{
+    id: 'tpl_alt_angebot',
+    name: 'Alternativangebot anfordern',
+    body: 'Sehr geehrte Damen und Herren,\n\n'
+        + 'für die folgende Aufzugsanlage bitten wir um ein Alternativangebot:\n\n'
+        + '• Hausverwaltung: {{hv_name}}\n'
+        + '• Standort: {{standort}}\n'
+        + '• Fabriknummer: {{fabriknummer}}\n\n'
+        + 'Rückfragen bitte an:\n'
+        + '{{kontakt}}\n'
+        + 'E-Mail: {{kontakt_email}}\n\n'
+        + 'Wir bitten um zeitnahe Rückmeldung.\n\n'
+        + 'Mit freundlichen Grüßen',
+  }];
+}
+function _eiSaveChatTemplates(arr) {
+  try { localStorage.setItem('liftaro_chat_templates', JSON.stringify(arr || [])); } catch (_) {}
+}
+window._eiGetChatTemplates  = _eiGetChatTemplates;
+window._eiSaveChatTemplates = _eiSaveChatTemplates;
+
+function _eiResolveTemplatePlaceholders(text, emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId) || {};
+  const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
+  const hvName = (hv && hv.primary) || r.real_hv_firma || r.from_name || '';
+  const standort = String(r.aufzug_standort || '').trim();
+  const fabri    = String(r.aufzug_fabriknummer || '').trim();
+  const kontakt  = String(r.bearbeiter_name || (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || '').trim();
+  // Eingehender Chat-Partner (z.B. Aszendio-Ansprechperson) — beste Quelle: letztes 'in'-Item
+  let partnerAnsprech = '';
+  const items = (window._eiWnChatCache && window._eiWnChatCache[emailId]) || [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (String(items[i].direction || '') === 'in') {
+      partnerAnsprech = String(items[i].from_name || items[i].chat_partner_ansprechperson || '').trim();
+      if (partnerAnsprech) break;
+    }
+  }
+  const map = {
+    '{{hv_name}}':                hvName || '(Hausverwaltung)',
+    '{{standort}}':               standort || '(Standort)',
+    '{{fabriknummer}}':           fabri || '(Fabriknummer)',
+    '{{kontakt}}':                kontakt || '(Bearbeiter)',
+    '{{kontakt_email}}':          'check@liftaro.de',
+    '{{ansprechperson_partner}}': partnerAnsprech || '',
+  };
+  let out = String(text || '');
+  for (const k of Object.keys(map)) out = out.split(k).join(map[k]);
+  return out;
+}
+window._eiResolveTemplatePlaceholders = _eiResolveTemplatePlaceholders;
+
+function openChatTemplatePicker(emailId) {
+  let m = document.getElementById('chatTemplatePickerModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'chatTemplatePickerModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.62);z-index:6500;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+    m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  }
+  _eiRenderChatTemplatePicker(emailId);
+  m.style.display = 'flex';
+}
+window.openChatTemplatePicker = openChatTemplatePicker;
+
+function _eiRenderChatTemplatePicker(emailId) {
+  const m = document.getElementById('chatTemplatePickerModal');
+  if (!m) return;
+  const tpls = _eiGetChatTemplates();
+  const list = tpls.map(t => {
+    const previewResolved = _eiResolveTemplatePlaceholders(t.body || '', emailId);
+    const shortPreview = previewResolved.replace(/\s+/g, ' ').trim().slice(0, 180);
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+        <div style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(t.name || 'Vorlage')}</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="_eiUseChatTemplate('${_esc(emailId)}','${_esc(t.id)}')" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">→ Einfügen</button>
+          <button onclick="_eiEditChatTemplate('${_esc(emailId)}','${_esc(t.id)}')" title="Bearbeiten" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:5px 10px;font-size:11.5px;cursor:pointer;font-family:inherit">✎</button>
+          <button onclick="_eiDeleteChatTemplate('${_esc(emailId)}','${_esc(t.id)}')" title="Löschen" style="background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:6px;padding:5px 10px;font-size:11.5px;cursor:pointer;font-family:inherit">✕</button>
+        </div>
+      </div>
+      <div style="font-size:11.5px;color:#64748b;line-height:1.5;white-space:pre-wrap">${_esc(shortPreview)}${previewResolved.length > 180 ? '…' : ''}</div>
+    </div>`;
+  }).join('') || '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Noch keine Vorlagen. Klick „+ Neue Vorlage", um anzufangen.</div>';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(640px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">📋 Chat-Vorlagen</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">Platzhalter: <code>{{hv_name}}</code> · <code>{{standort}}</code> · <code>{{fabriknummer}}</code> · <code>{{kontakt}}</code> · <code>{{kontakt_email}}</code></div>
+      </div>
+      <button onclick="document.getElementById('chatTemplatePickerModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:12px 18px 8px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end">
+      <button onclick="_eiEditChatTemplate('${_esc(emailId)}','')" style="background:#2456E5;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">+ Neue Vorlage</button>
+    </div>
+    <div style="flex:1;overflow:auto;padding:12px 16px;background:#f8fafc">${list}</div>
+  </div>`;
+}
+window._eiRenderChatTemplatePicker = _eiRenderChatTemplatePicker;
+
+function _eiUseChatTemplate(emailId, tplId) {
+  const tpls = _eiGetChatTemplates();
+  const t = tpls.find(x => String(x.id) === String(tplId));
+  if (!t) return;
+  const resolved = _eiResolveTemplatePlaceholders(t.body || '', emailId);
+  const ta = document.getElementById('wnChatInput_' + emailId);
+  if (ta) {
+    ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + '\n\n' : '') + resolved;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+  const m = document.getElementById('chatTemplatePickerModal');
+  if (m) m.style.display = 'none';
+  showToast('✓ Vorlage eingefügt', 'success', 2000);
+}
+window._eiUseChatTemplate = _eiUseChatTemplate;
+
+function _eiEditChatTemplate(emailId, tplId) {
+  const tpls = _eiGetChatTemplates();
+  const existing = tplId ? tpls.find(x => String(x.id) === String(tplId)) : null;
+  const m = document.getElementById('chatTemplatePickerModal');
+  if (!m) return;
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(640px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700">📝 ${existing ? 'Vorlage bearbeiten' : 'Neue Vorlage'}</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">Verfügbare Platzhalter: <code>{{hv_name}}</code> <code>{{standort}}</code> <code>{{fabriknummer}}</code> <code>{{kontakt}}</code> <code>{{kontakt_email}}</code> <code>{{ansprechperson_partner}}</code></div>
+      </div>
+      <button onclick="document.getElementById('chatTemplatePickerModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;background:#f8fafc;overflow:auto;flex:1">
+      <div style="margin-bottom:14px">
+        <label style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Name</label>
+        <input id="tplName" type="text" value="${_esc(existing ? existing.name : '')}" placeholder="z.B. Alternativangebot Aszendio" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:13.5px;font-family:inherit;outline:none;background:#fff">
+      </div>
+      <div>
+        <label style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Text</label>
+        <textarea id="tplBody" rows="14" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:10px 12px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;background:#fff;resize:vertical">${_esc(existing ? existing.body : 'Sehr geehrte Damen und Herren,\n\nfür die folgende Aufzugsanlage bitten wir um ein Alternativangebot:\n\n• Hausverwaltung: {{hv_name}}\n• Standort: {{standort}}\n• Fabriknummer: {{fabriknummer}}\n\nRückfragen bitte an:\n{{kontakt}}\nE-Mail: {{kontakt_email}}\n\nMit freundlichen Grüßen')}</textarea>
+      </div>
+    </div>
+    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="_eiRenderChatTemplatePicker('${_esc(emailId)}')" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">← Zurück</button>
+      <button onclick="_eiSaveChatTemplateFromEditor('${_esc(emailId)}','${_esc(tplId || '')}')" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>
+    </div>
+  </div>`;
+}
+window._eiEditChatTemplate = _eiEditChatTemplate;
+
+function _eiSaveChatTemplateFromEditor(emailId, tplId) {
+  const name = (document.getElementById('tplName') || {}).value || '';
+  const body = (document.getElementById('tplBody') || {}).value || '';
+  if (!name.trim()) { showToast('Name darf nicht leer sein', 'warning', 2500); return; }
+  if (!body.trim()) { showToast('Text darf nicht leer sein', 'warning', 2500); return; }
+  const tpls = _eiGetChatTemplates();
+  if (tplId) {
+    const idx = tpls.findIndex(x => String(x.id) === String(tplId));
+    if (idx >= 0) tpls[idx] = { id: tplId, name: name.trim(), body: body };
+    else tpls.push({ id: 'tpl_' + Date.now().toString(36), name: name.trim(), body: body });
+  } else {
+    tpls.push({ id: 'tpl_' + Date.now().toString(36), name: name.trim(), body: body });
+  }
+  _eiSaveChatTemplates(tpls);
+  showToast('✓ Vorlage gespeichert', 'success', 2500);
+  _eiRenderChatTemplatePicker(emailId);
+}
+window._eiSaveChatTemplateFromEditor = _eiSaveChatTemplateFromEditor;
+
+function _eiDeleteChatTemplate(emailId, tplId) {
+  if (!confirm('Diese Vorlage wirklich löschen?')) return;
+  const tpls = _eiGetChatTemplates().filter(x => String(x.id) !== String(tplId));
+  _eiSaveChatTemplates(tpls);
+  _eiRenderChatTemplatePicker(emailId);
+  showToast('✓ Vorlage gelöscht', 'success', 2000);
+}
+window._eiDeleteChatTemplate = _eiDeleteChatTemplate;
+
 // Chat-Nachricht an Wartungsnehmer senden
 async function sendWartungsnehmerMessage(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -33074,18 +33285,21 @@ async function sendWartungsnehmerMessage(emailId) {
     sendBtn.disabled = true; sendBtn.style.opacity = '0.7'; sendBtn.style.cursor = 'wait';
     sendBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Sende …';
   }
-  const subjBase = String((r.ai_subject && r.ai_subject.trim()) || r.subject || 'Anfrage').trim();
+  // V12.325: Subject/Threading aus dem Chat-Thread ableiten (siehe sendServicebetriebMessage)
+  const _wnItems = window._eiWnChatCache[emailId] || [];
+  const _sameWn = _wnItems.filter(it => String(it.partner_typ || '') === 'wartungsnehmer');
   const fabri = String(r.aufzug_fabriknummer || '').trim();
   const standort = String(r.aufzug_standort || '').trim();
-  const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
-  // V12.223: ASCII-sanitisieren für Mail-Header
+  const _wnSubjBaseOrig = String((r.ai_subject && r.ai_subject.trim()) || r.subject || 'Anfrage').trim();
+  const _wnSubjFallback = _wnSubjBaseOrig + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
+  const _wnThread = _eiBuildThreadHeaders(_sameWn, _wnSubjFallback);
+  const subject     = _wnThread.subject;
   const subjectSafe = _eiSanitizeSubjectForEmail(subject);
+  const inReplyTo   = _wnThread.inReplyTo;
+  const references  = _wnThread.references;
   // V12.268/V12.301: HTML-Signatur des Bearbeiters (aus Email-Dropdown) statt des Login-Users
   const _sigWn = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, r.bearbeiter_name) : { textSig: '', htmlBody: '' };
   const finalBody = _sigWn.textSig ? body + '\n\n' + _sigWn.textSig : body;
-  // Vorherige Out-Nachricht aus diesem Chat → in_reply_to-Kette
-  const prev = (window._eiWnChatCache[emailId] || []).slice().reverse().find(x => String(x.message_id || '').trim());
-  const inReplyTo = prev ? prev.message_id : '';
   try {
     // V12.228: Anhänge mitschicken
     const sendPayload = {
@@ -33094,6 +33308,7 @@ async function sendWartungsnehmerMessage(emailId) {
       text:      finalBody,
       replyTo:   'check@liftaro.de',
       inReplyTo: inReplyTo || undefined,
+      references: references && references.length ? references : undefined,
     };
     if (_sigWn.htmlBody) sendPayload.html = _sigWn.htmlBody;
     const pendingAttsWn = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
@@ -33495,6 +33710,10 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         <button onclick="attachVollmachtToChat('${emailId}')" title="Vollmacht der HV anhängen" ${canSend ? '' : 'disabled'} style="background:#16a34a;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
         </button>
+        <!-- V12.325: Vorlagen-Button — gespeicherte Snippets mit {{platzhalter}} -->
+        <button onclick="openChatTemplatePicker('${emailId}')" title="Vorlage einfügen — Platzhalter wie {{hv_name}}, {{standort}}, {{fabriknummer}} werden automatisch ersetzt" ${canSend ? '' : 'disabled'} style="background:#d97706;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+        </button>
         <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
         <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;align-self:flex-end">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -33567,26 +33786,31 @@ async function sendServicebetriebMessage(emailId, sbId) {
     sendBtn.disabled = true; sendBtn.style.opacity = '0.7'; sendBtn.style.cursor = 'wait';
     sendBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Sende …';
   }
-  const subjBase = String((r.ai_subject && r.ai_subject.trim()) || r.subject || 'Anfrage').trim();
-  const fabri = String(r.aufzug_fabriknummer || '').trim();
+  // V12.325: Subject/Threading aus dem Chat-Thread ableiten — wenn der Partner schon
+  // geantwortet hat (mit Ticket-Suffix wie „[#2212]"), übernehmen wir SEIN Subject
+  // mit „Re: "-Prefix. Verhindert dass jede Antwort beim Aszendio-Ticketsystem als
+  // neues Ticket landet, weil Ticket-Suffix verloren ging.
+  const items = window._eiWnChatCache[emailId] || [];
+  const sameSb = items.filter(it => String(it.partner_typ || '') === 'servicebetrieb' && String(it.servicebetrieb_id || '') === sbId);
+  const fabri    = String(r.aufzug_fabriknummer || '').trim();
   const standort = String(r.aufzug_standort || '').trim();
-  const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
-  // V12.223: ASCII-sanitisieren für Mail-Header
+  const subjBaseOrig = String((r.ai_subject && r.ai_subject.trim()) || r.subject || 'Anfrage').trim();
+  const subjFallback = subjBaseOrig + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
+  const threadInfo = _eiBuildThreadHeaders(sameSb, subjFallback);
+  const subject     = threadInfo.subject;
   const subjectSafe = _eiSanitizeSubjectForEmail(subject);
+  const inReplyTo   = threadInfo.inReplyTo;
+  const references  = threadInfo.references;
   // V12.268: HTML-Signatur des aktuellen Bearbeiters einbinden
   const _sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body) : { textSig: '', htmlBody: '' };
   const finalBody = _sig.textSig ? body + '\n\n' + _sig.textSig : body;
-  // in_reply_to-Kette aus diesem Chat-Thread
-  const items = window._eiWnChatCache[emailId] || [];
-  const sameSb = items.filter(it => String(it.partner_typ || '') === 'servicebetrieb' && String(it.servicebetrieb_id || '') === sbId);
-  const prev = sameSb.slice().reverse().find(x => String(x.message_id || '').trim());
-  const inReplyTo = prev ? prev.message_id : '';
   try {
     // V12.228: Anhänge aus dem Composer mitschicken
     const sendPayload = {
       to: toAddr, subject: subjectSafe, text: finalBody,
       replyTo: 'check@liftaro.de',
       inReplyTo: inReplyTo || undefined,
+      references: references && references.length ? references : undefined,
     };
     if (_sig.htmlBody) sendPayload.html = _sig.htmlBody;
     const pendingAtts = (window._eiChatAttachments && window._eiChatAttachments[emailId]) || [];
@@ -34846,22 +35070,43 @@ async function fixEmailUmlauts(recId) {
   }
   const fixedTotal = (newText.match(/�/g) || []).length + (newHtml.match(/�/g) || []).length;
   const repaired   = totalBad - fixedTotal;
-  // Schreiben (nur Felder updaten, die sich auch geändert haben)
+  // V12.325: nur Felder updaten, die sich auch geändert haben. body_preview wird
+  // bewusst weggelassen — das Feld existiert in vielen Bases nicht (422 „Unknown
+  // field name"). Beim nächsten Inbox-Refresh leitet die Liste den Preview eh aus
+  // body_text ab.
   const patch = {};
-  if (newText !== origText) patch.body_text    = newText;
-  if (newHtml !== origHtml) patch.body_html    = newHtml;
-  if (newPrev !== origPrev) patch.body_preview = newPrev;
-  if (newBody !== origBody) patch.body         = newBody;
+  if (newText !== origText) patch.body_text = newText;
+  if (newHtml !== origHtml) patch.body_html = newHtml;
+  if (newBody !== origBody) patch.body      = newBody;
   if (!Object.keys(patch).length) { showToast('Keine Änderung erforderlich', 'info', 2500); return; }
+  // Helper: schreiben mit 422-Retry — beim ersten 422 die unbekannten Felder rauswerfen
+  const tryWrite = async (p) => {
+    try {
+      await atUpdate('Emails', recId, p);
+      return p;
+    } catch (e) {
+      const msg = String((e && e.message) || '');
+      const m = msg.match(/Unknown field name:\s*"([^"]+)"/i);
+      if (m && Object.prototype.hasOwnProperty.call(p, m[1])) {
+        const reduced = Object.assign({}, p);
+        delete reduced[m[1]];
+        console.warn('[V12.325] Field „' + m[1] + '" existiert nicht — Retry ohne dieses Feld');
+        if (Object.keys(reduced).length) return tryWrite(reduced);
+      }
+      throw e;
+    }
+  };
   try {
-    await atUpdate('Emails', recId, patch);
-    Object.assign(r, patch);
+    const finalPatch = await tryWrite(patch);
+    Object.assign(r, finalPatch);
+    // V12.325: Preview im Speicher mit aktualisieren (Liste rendert ihn aus body_text ab)
+    if (finalPatch.body_text) r.body_preview = String(finalPatch.body_text).slice(0, 240);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
     if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
     const restMsg = fixedTotal > 0 ? ' · noch ' + fixedTotal + ' offen' : '';
     showToast('✓ ' + repaired + ' kaputte Zeichen repariert' + restMsg, 'success', 4500);
   } catch (e) {
-    console.error('[V12.323] Speichern fehlgeschlagen:', e);
+    console.error('[V12.325] Speichern fehlgeschlagen:', e);
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
   }
 }
