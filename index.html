@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.320';
+const APP_VERSION = 'V12.321';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -20484,6 +20484,44 @@ function _trimCanvasToInk(canvas) {
 }
 window._trimCanvasToInk = _trimCanvasToInk;
 
+// V12.321: Rendert den Liftaro-Namen mit dem GLEICHEN System-Font-Stack wie die
+// Modal-Vorschau („Brush Script MT" / „Snell Roundhand" / „Lucida Handwriting"
+// / „Apple Chancery" / cursive) in ein hochaufgelöstes Canvas und gibt ein PNG
+// als Data-URL zurück. Wird vom PDF-Renderer eingebettet, sodass das PDF 1:1 wie
+// die Modal-Vorschau aussieht — keine Abhängigkeit vom Google-Fonts-CDN.
+function _renderScriptSignatureToPng(text) {
+  try {
+    const name = String(text || '').trim();
+    if (!name) return '';
+    const fontStack = "'Brush Script MT','Snell Roundhand','Lucida Handwriting','Apple Chancery',cursive";
+    const fontSize = 72; // groß rendern → scharf im PDF nach Skalierung
+    const dpr = Math.max(2, window.devicePixelRatio || 1);
+    // Vorab Textbreite messen
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font = fontSize + 'px ' + fontStack;
+    const measured = probe.measureText(name);
+    const ascent  = measured.actualBoundingBoxAscent  || fontSize * 0.85;
+    const descent = measured.actualBoundingBoxDescent || fontSize * 0.30;
+    const padX = 10, padY = 10;
+    const w = Math.ceil(measured.width) + padX * 2;
+    const h = Math.ceil(ascent + descent) + padY * 2;
+    const cnv = document.createElement('canvas');
+    cnv.width  = Math.max(1, Math.round(w * dpr));
+    cnv.height = Math.max(1, Math.round(h * dpr));
+    const ctx = cnv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = fontSize + 'px ' + fontStack;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(name, padX, padY + ascent);
+    return cnv.toDataURL('image/png');
+  } catch (e) {
+    console.warn('[V12.321] _renderScriptSignatureToPng failed:', e);
+    return '';
+  }
+}
+window._renderScriptSignatureToPng = _renderScriptSignatureToPng;
+
 // V12.272/V12.320: Skript-Font für die Liftaro-Unterschrift im PDF.
 // V12.320: Reihenfolge auf echte Handschrift-Schriften umgestellt — Sacramento und
 // HomemadeApple wirken deutlich mehr wie ein Federstrich als das vorherige Caveat-Bold.
@@ -20815,16 +20853,37 @@ async function buildLightVertragPDF() {
       console.log('[V12.320] handgemalte Liftaro-Signatur eingebettet (PNG/JPG), Höhe ' + Math.round(drawH) + 'pt');
     }
   } catch (e) { console.warn('[V12.319] Signatur-Image embed fehlgeschlagen:', e); }
-  // Fallback: Skript-Font oder Helvetica-Oblique
+  // V12.321: Canvas-Render mit Browser-Skript-Schriftart — Modal-Vorschau und
+  // PDF-Ausgabe nutzen damit DEN GLEICHEN System-Font. Damit ist garantiert dass
+  // das PDF aussieht wie das, was der User im Modal vor sich sieht. Kein CDN nötig.
+  if (!drewImage && typeof _renderScriptSignatureToPng === 'function') {
+    try {
+      const dataUrl = _renderScriptSignatureToPng(sigSettings.name);
+      if (dataUrl) {
+        const b64 = dataUrl.split(',')[1] || '';
+        const binStr = atob(b64);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+        const img = await doc.embedPng(bytes);
+        const maxH = 26, maxW = 180;
+        const ratio = img.width / img.height;
+        let drawH = maxH, drawW = drawH * ratio;
+        if (drawW > maxW) { drawW = maxW; drawH = drawW / ratio; }
+        const drawX = MARGIN_X + Math.max(0, (200 - drawW) / 2 - 6);
+        page.drawImage(img, { x: drawX, y: sigY + 3, width: drawW, height: drawH });
+        drewImage = true;
+        console.log('[V12.321] Skript-Signatur als Browser-Canvas-PNG eingebettet');
+      }
+    } catch (e) { console.warn('[V12.321] Canvas-Skript-Render failed:', e); }
+  }
+  // Fallback: Embedded Skript-Font oder Helvetica-Oblique
   if (!drewImage) {
-    // V12.320: 20pt mit Sacramento/HomemadeApple wirkt natürlicher als 24pt
-    // mit Caveat-Bold — kleinere Federführung sieht weniger nach „gedruckt" aus.
     const sigSize = 20;
     const useFont = scriptFont || helvObl || helvBold;
     const sigW = useFont.widthOfTextAtSize(_safeWinAnsi(sigSettings.name), sigSize);
     const sigX = MARGIN_X + Math.max(0, (200 - sigW) / 2 - 8);
     page.drawText(_safeWinAnsi(sigSettings.name), { x: sigX, y: sigY + 5, size: sigSize, font: useFont, color: COLOR });
-    console.log('[V12.320] Liftaro-Signatur als ' + (scriptFont ? 'Skript-Font (HomemadeApple/Sacramento)' : 'Helvetica-Oblique') + ' gerendert: „' + sigSettings.name + '"');
+    console.log('[V12.321] Liftaro-Signatur Fallback: ' + (scriptFont ? 'Skript-Font' : 'Helvetica-Oblique'));
   }
   // Linien unter den Signaturen
   page.drawLine({ start: { x: MARGIN_X, y: sigY }, end: { x: MARGIN_X + 200, y: sigY }, thickness: 0.5, color: COLOR });
