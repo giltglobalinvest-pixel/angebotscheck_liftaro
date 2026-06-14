@@ -6390,7 +6390,7 @@ body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: n
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.310';
+const APP_VERSION = 'V12.311';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7648,6 +7648,10 @@ async function setupTables() {
       { name: 'aufzug_split_from',    type: 'singleLineText' }, // Original-Email-ID bei Split-Kopien
       { name: 'aufzug_split_count',   type: 'singleLineText' }, // Anzahl Kopien in der Gruppe
       { name: 'ai_aufzug_at',         type: 'singleLineText' },
+      // V12.311: EuC-Vertrag-Status pro Email — synchron zum Aufzug-Datensatz, damit
+      // die Card sofort grün wird nach „Zu EuC pushen" (ohne Reload aus Aufzuege-Tabelle).
+      { name: 'aufzug_im_euc',        type: 'singleLineText' },  // '1' wenn Aufzug einem EuC-Vertrag zugewiesen ist
+      { name: 'aufzug_euc_vertrag_id', type: 'singleLineText' }, // ID des Light-Vertrags (EuC)
       // V12.180/181: KI-strukturierter Betreff. Bestandteile getrennt gespeichert,
       // ai_subject wird daraus + ID/external_check_id zusammengebaut.
       { name: 'ai_subject',           type: 'singleLineText' },
@@ -23510,8 +23514,38 @@ window._deleteAufzugBeleg = _deleteAufzugBeleg;
 async function pushAufzugToEuC(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) { showToast('Email nicht gefunden', 'warning', 3000); return; }
-  const aufzugRecId = String(r.aufzug_record_id || '').trim();
-  if (!aufzugRecId) { showToast('Aufzug nicht im Aufzüge-Modul registriert — erst „Auswählen" klicken', 'warning', 5000); return; }
+  let aufzugRecId = String(r.aufzug_record_id || '').trim();
+  // V12.311: Fallback — wenn nur Fabriknummer da ist (KI-Erkennung ohne Modul-Verlinkung),
+  // versuche den Aufzug per Fabriknummer in der Aufzuege-Tabelle zu finden.
+  if (!aufzugRecId) {
+    const fn = String(r.aufzug_fabriknummer || '').trim();
+    if (!fn) {
+      showToast('Aufzug nicht erkannt — bitte erst „🔍 Auswählen" oder „🤖 KI"', 'warning', 6000);
+      return;
+    }
+    try {
+      const fnEsc = fn.replace(/'/g, "\\'");
+      const azHits = await atRead('Aufzuege', "{fabriknummer}='" + fnEsc + "'", { sort: false });
+      if (!azHits.length) {
+        showToast('Fabriknummer „' + fn + '" nicht im Aufzüge-Modul — bitte erst „🔍 Auswählen" oder Aufzug anlegen', 'warning', 7000);
+        return;
+      }
+      const az = azHits[0];
+      aufzugRecId = String(az.id || '').trim();
+      const af = az.fields || {};
+      // ID rückspeichern, damit künftige Pushs sofort funktionieren
+      await atUpdate('Emails', emailId, {
+        aufzug_record_id: aufzugRecId,
+        aufzug_id:        String(af.id || r.aufzug_id || ''),
+      });
+      r.aufzug_record_id = aufzugRecId;
+      if (af.id) r.aufzug_id = String(af.id);
+    } catch (e) {
+      console.error('[V12.311] Fabriknummer-Lookup fehlgeschlagen:', e);
+      showToast('Aufzug-Lookup fehlgeschlagen: ' + e.message, 'error', 5000);
+      return;
+    }
+  }
   const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
   const orgId = String((hv && hv.orgId) || '').trim();
   if (!orgId) { showToast('HV-Pipedrive-ID fehlt — HV erst zuordnen (z. B. via „KI" im HV-Block)', 'warning', 5500); return; }
@@ -23527,15 +23561,19 @@ async function pushAufzugToEuC(emailId) {
     const lv = signed || recs[0];
     const lvId = String(lv.fields.id || '').trim();
     if (!lvId) { showToast('EuC-Vertrag hat keine ID', 'error', 4000); return; }
-    // Prüfung: ist Aufzug schon bei diesem (oder anderem) EuC?
-    const existingEuc = String(r.aufzug_id ? '' : '').trim(); // dummy
     await atUpdate('Aufzuege', aufzugRecId, { im_euc: '1', euc_vertrag_id: lvId });
+    // V12.311: Status auch in Email persistieren → Card wird sofort grün, kein Reload nötig
+    try { await atUpdate('Emails', emailId, { aufzug_im_euc: '1', aufzug_euc_vertrag_id: lvId }); } catch (_) {}
+    r.aufzug_im_euc = '1';
+    r.aufzug_euc_vertrag_id = lvId;
     showToast('✓ Aufzug zu EuC ' + lvId + ' („' + (lv.fields.firma || '?') + '") zugewiesen', 'success', 5000);
     // Caches invalidieren
     window._eucByOrgIdCacheInvalid = true;
     window._eiHvDocsCacheAt = 0;
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
   } catch (e) {
-    console.error('[V12.304] pushAufzugToEuC:', e);
+    console.error('[V12.311] pushAufzugToEuC:', e);
     showToast('Push fehlgeschlagen: ' + e.message, 'error', 5500);
   }
 }
@@ -29806,6 +29844,9 @@ function _renderEmailAssignmentCards(r) {
   const ahr = String(r.aufzug_hersteller || '').trim();
   const splitCnt = parseInt(r.aufzug_split_count || '0', 10);
   const hasAufzug = !!afn || !!ast;
+  // V12.311: Aufzug ist im EuC-Vertrag → grüne Card statt hellblau
+  const azInEuC = String(r.aufzug_im_euc || '') === '1';
+  const azEucId = String(r.aufzug_euc_vertrag_id || '').trim();
   // V12.307: HV-Kachel — bei KI-erkannt OHNE Pipedrive-Zuordnung Warn-Optik (orange),
   // bei zugeordnet (Pipedrive-ID da) grüne Bestätigung.
   const _hvAssigned = hvSource === 'assigned' && !!hvOrgId;
@@ -29851,22 +29892,28 @@ function _renderEmailAssignmentCards(r) {
         </div>
       </div>`;
   // Aufzug-Kachel
+  // V12.311: Grüne Variante wenn Aufzug bereits einem EuC-Vertrag zugewiesen ist
+  const _azBg = azInEuC ? '#f0fdf4' : '#ecfeff';
+  const _azBd = azInEuC ? '#86efac' : '#67e8f9';
+  const _azFg = azInEuC ? '#15803d' : '#0e7490';
   const azCard = hasAufzug
-    ? `<div style="background:#ecfeff;border:1px solid #67e8f9;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;min-width:0">
-        <svg width="22" height="22" fill="none" stroke="#0e7490" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01"/></svg>
+    ? `<div style="background:${_azBg};border:1px solid ${_azBd};border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;min-width:0">
+        <svg width="22" height="22" fill="none" stroke="${_azFg}" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01"/></svg>
         <div style="flex:1;min-width:0">
-          <div style="font-size:10.5px;font-weight:700;color:#0e7490;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px">
-            Aufzugsanlage
+          <div style="font-size:10.5px;font-weight:700;color:${_azFg};text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            Aufzugsanlage${azInEuC ? ' · IM EUC' : ''}
             ${splitCnt > 1 ? `<span style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:9px;padding:0 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">1/${splitCnt}</span>` : ''}
+            ${azInEuC && azEucId ? `<span title="In EuC-Vertrag ${_esc(azEucId)}" style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:9px;padding:0 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">🛡 ${_esc(azEucId)}</span>` : ''}
           </div>
           ${afn ? `<div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:3px;font-family:var(--dr-f-mono)">Fn ${_esc(afn)}</div>` : ''}
-          ${ast ? `<div style="font-size:12.5px;color:#0f172a;margin-top:${afn ? '3' : '3'}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(ast)}</div>` : ''}
+          ${ast ? `<div style="font-size:12.5px;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(ast)}</div>` : ''}
           ${ahr ? `<div style="font-size:11.5px;color:#475569;margin-top:2px">Hersteller: ${_esc(ahr)}</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-          <!-- V12.304: Aufzug an den EuC-Vertrag der HV pushen -->
-          <button onclick="pushAufzugToEuC('${r._id}')" title="Diesen Aufzug an den EuC-Vertrag der zugeordneten HV hängen" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🛡 Zu EuC pushen</button>
-          <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
+          ${azInEuC
+            ? `<button disabled title="Aufzug ist bereits Bestandteil des EuC-Vertrags" style="background:#bbf7d0;border:1px solid #86efac;color:#166534;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:default;font-family:'DM Sans',sans-serif;white-space:nowrap;opacity:.85">✓ Im EuC</button>`
+            : `<button onclick="pushAufzugToEuC('${r._id}')" title="Diesen Aufzug an den EuC-Vertrag der zugeordneten HV hängen" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🛡 Zu EuC pushen</button>`}
+          <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid ${_azBd};color:${_azFg};border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
           <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug per KI neu erkennen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🤖 KI ändern</button>
         </div>
       </div>`
