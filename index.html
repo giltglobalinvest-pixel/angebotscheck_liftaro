@@ -5393,10 +5393,17 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
       <!-- V12.141/V12.154: Bekannte Anlagen (intern, optional) — wird NICHT im Vertrags-PDF aufgeführt -->
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <span>📋 Bekannte Anlagen <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:10.5px">— intern, optional</span> <span id="lv_aufzugSum" style="color:var(--blue-mid);font-weight:600">(0 Aufzüge · 0 €/Jahr)</span></span>
-        <button id="lv_addAufzuege" onclick="openAufzugPickerForEuCVertrag()" style="background:#1e40af;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:0;display:inline-flex;align-items:center;gap:5px">
-          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Aufzüge zuordnen
-        </button>
+        <div style="display:inline-flex;gap:6px;flex-wrap:wrap">
+          <!-- V12.302: Auto-Import aller Aufzüge der HV in den EuC-Vertrag -->
+          <button id="lv_importAufzuegeBtn" onclick="importAufzuegeForLightVertrag()" title="Alle Aufzüge dieser Hausverwaltung automatisch übernehmen (Quelle: Aufzüge-Modul, gefiltert nach Pipedrive-Org-ID)" style="background:#7c3aed;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:0;display:inline-flex;align-items:center;gap:5px">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><polyline points="9 12 12 15 15 12"/><line x1="12" y1="15" x2="12" y2="9"/></svg>
+            Aufzüge aus HV übernehmen
+          </button>
+          <button id="lv_addAufzuege" onclick="openAufzugPickerForEuCVertrag()" style="background:#1e40af;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:0;display:inline-flex;align-items:center;gap:5px">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Einzeln auswählen
+          </button>
+        </div>
       </div>
       <div style="background:#fff7e6;border:1px solid #f0d4a8;border-radius:6px;padding:8px 12px;font-size:11.5px;color:#7a4d00;margin-bottom:10px;line-height:1.5">
         ℹ <strong>Wird NICHT im Vertrags-PDF aufgeführt.</strong> Die offizielle Anlagenliste schickt der Kunde uns nach Vertragsunterzeichnung in Textform (Standort, Fabriknummer, Wartungsnehmer). Hier nur für die interne Übersicht — pro Anlage optional die Jahreskosten als Status-quo-Kalibrierung.
@@ -6381,7 +6388,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.301';
+const APP_VERSION = 'V12.302';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23217,6 +23224,83 @@ async function openAufzugPickerForEuCVertrag() {
 }
 window.openAufzugPickerForEuCVertrag = openAufzugPickerForEuCVertrag;
 
+// V12.302: Auto-Import aller Aufzüge dieser HV in den aktuellen EuC-Vertrag.
+// Quelle: Aufzüge-Tabelle, gefiltert nach hv_pipedrive_org_id == HV des Vertrags.
+// Idempotent: Aufzüge die bereits zu DIESEM Vertrag gehören, werden übersprungen;
+// Aufzüge die zu ANDEREN EuC-Verträgen gehören, werden nicht angefasst.
+async function importAufzuegeForLightVertrag() {
+  const lvId  = (document.getElementById('lv_id') || {}).value || '';
+  const orgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
+  const firma = (document.getElementById('lv_firma') || {}).value || '';
+  if (!lvId) {
+    showToast('Vertrag erst speichern, dann Aufzüge importieren', 'warning', 3500);
+    return;
+  }
+  if (!orgId) {
+    showToast('Pipedrive-Org-ID fehlt — HV erneut auswählen oder Vertrag erneut speichern', 'warning', 5000);
+    return;
+  }
+  const btn = document.getElementById('lv_importAufzuegeBtn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.innerHTML = '⏳ Lade …'; }
+  try {
+    // Alle Aufzüge dieser HV holen (über Pipedrive-Org-ID)
+    const recs = await atRead('Aufzuege', "{hv_pipedrive_org_id}='" + String(orgId).replace(/'/g, "\\'") + "'", { sort: false });
+    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    if (!items.length) {
+      showToast('Keine Aufzüge im Aufzüge-Modul mit dieser HV gefunden', 'info', 4500);
+      return;
+    }
+    const alreadyHere = items.filter(a => String(a.euc_vertrag_id || '') === String(lvId));
+    const free        = items.filter(a => !String(a.euc_vertrag_id || '').trim());
+    const otherEuc    = items.filter(a => {
+      const ev = String(a.euc_vertrag_id || '').trim();
+      return ev && ev !== String(lvId);
+    });
+    if (!free.length) {
+      if (alreadyHere.length) {
+        showToast('Alle ' + alreadyHere.length + ' Aufzüge sind bereits diesem Vertrag zugeordnet', 'success', 4000);
+      } else {
+        showToast(otherEuc.length + ' Aufzüge sind anderen EuC-Verträgen zugeordnet — nichts zu importieren', 'warning', 5500);
+      }
+      return;
+    }
+    const preview = free.slice(0, 8).map(a => '• Fn ' + (a.fabriknummer || '?') + (a.standort ? ' — ' + a.standort : '')).join('\n');
+    let msg = (free.length === 1 ? '1 freier Aufzug' : free.length + ' freie Aufzüge')
+      + ' dieser HV (' + (firma || 'HV') + ') gefunden:\n\n' + preview
+      + (free.length > 8 ? '\n• … und ' + (free.length - 8) + ' weitere' : '');
+    if (otherEuc.length) msg += '\n\n⚠ ' + otherEuc.length + ' Aufzüge sind bereits anderen EuC-Verträgen zugeordnet — werden NICHT übernommen.';
+    if (alreadyHere.length) msg += '\n\n✓ ' + alreadyHere.length + ' Aufzüge sind bereits bei diesem Vertrag.';
+    msg += '\n\nAlle ' + free.length + ' freien Aufzüge diesem EuC-Vertrag (' + lvId + ') zuweisen?';
+    if (!confirm(msg)) return;
+    showToast('Übernehme ' + free.length + ' Aufzüge …', 'info', 2500);
+    let ok = 0, fail = 0;
+    for (const a of free) {
+      try {
+        await atUpdate('Aufzuege', a._recordId, { im_euc: '1', euc_vertrag_id: lvId });
+        ok++;
+      } catch (e) {
+        console.warn('[V12.302] import aufzug ' + (a.fabriknummer || a._recordId) + ':', e.message);
+        fail++;
+      }
+    }
+    if (fail === 0) {
+      showToast('✓ ' + ok + ' Aufzüge übernommen', 'success', 3500);
+    } else if (ok === 0) {
+      showToast('Import fehlgeschlagen (' + fail + '/' + free.length + ')', 'error', 5500);
+    } else {
+      showToast(ok + ' übernommen · ' + fail + ' fehlgeschlagen', 'warning', 5000);
+    }
+    await renderAufzuegeInEuCEditor(lvId);
+  } catch (e) {
+    console.error('[V12.302] importAufzuegeForLightVertrag:', e);
+    showToast('Import fehlgeschlagen: ' + e.message, 'error', 5500);
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.innerHTML = orig; }
+  }
+}
+window.importAufzuegeForLightVertrag = importAufzuegeForLightVertrag;
+
 // V12.141: Aufzug-Liste im EuC-Editor rendern (alle Aufzüge die diesem
 // EuC-Vertrag zugeordnet sind, mit Inline-Jahreskosten-Eingabe)
 async function renderAufzuegeInEuCEditor(lvId) {
@@ -30700,17 +30784,19 @@ async function generateChatAiSuggestion(emailId) {
         return who + ': ' + String(it.body || '').slice(0, 300);
       }).join('\n')
     : '';
-  // V12.301: Sie-Form strikt, KEIN "Mit freundlichen Grüßen + Name" am Ende —
-  // die Signatur wird beim Senden automatisch angehängt (analog Email-Reply-KI).
+  // V12.301/V12.302: Sie-Form strikt, KEIN "Mit freundlichen Grüßen + Name" am Ende.
+  // V12.302: Hinweis-Satz dass Angebot/Antwort als Reply auf diese Mail kommen soll,
+  // damit der Vorgang im Liftaro-Postfach gebündelt bleibt.
   const systemPrompt = `Du formulierst kurze, professionelle Email-Nachrichten im Namen von Liftaro GmbH (Aufzugs-Verwaltungsservice) an Service-Betriebe bzw. Wartungsnehmer.
 
 REGELN:
 - Anrede mit "Sehr geehrte Frau [Nachname]" / "Sehr geehrter Herr [Nachname]" wenn ableitbar, sonst "Sehr geehrte Damen und Herren".
 - KEIN „Hallo" oder „Hi" — wir bleiben strikt in der „Sie"-Form auf höflichem Niveau.
 - Ton: höflich, präzise, sachlich-freundlich. Keine Floskeln, kein Konjunktiv-Übermaß.
-- Maximal 130 Wörter.
+- Maximal 150 Wörter.
 - Nenne relevante Aufzug-Daten (Fabriknummer, Standort) nur, wenn sie für das Anliegen wichtig sind.
-- KEINE Grußformel ("Mit freundlichen Grüßen") und KEIN Name am Ende — die Signatur wird automatisch angehängt. Letzter Satz ist Teil des inhaltlichen Texts.
+- WICHTIG am Ende des Texts (vor der Signatur): ein eigener kurzer Satz, der höflich bittet, das Angebot bzw. die Rückantwort als Antwort auf DIESE Email zu schicken — keine neue Email erstellen. Begründung: damit der Vorgang im Liftaro-Postfach beim selben Aufzug bleibt. Formulierung knapp halten, z. B. „Bitte antworten Sie direkt auf diese Email, damit Ihr Angebot dem laufenden Vorgang automatisch zugeordnet wird."
+- KEINE Grußformel ("Mit freundlichen Grüßen") und KEIN Name am Ende — die Signatur wird automatisch angehängt. Der oben genannte Hinweis-Satz ist Teil des inhaltlichen Texts.
 - Keine Markdown-Formatierung, keine Sternchen, kein Fett. Reiner Plain-Text mit Absätzen (Leerzeilen zwischen Abschnitten).
 - „Sie"-Form, niemals „Du" oder „Ihr".
 - Konkrete Fragen oder Anweisungen klar formulieren.`;
@@ -30889,7 +30975,7 @@ async function generateEmailReplyAi(emailId) {
       || r.body || '';
     const bodySnippet = String(bodyRaw).replace(/\s+/g, ' ').trim().slice(0, 1500);
 
-    // V12.301: Strenges Sie + KEIN Grußformel-Block. Signatur wird automatisch angehängt.
+    // V12.301/V12.302: Strenges Sie + KEIN Grußformel-Block + Reply-Hinweis am Ende.
     const sysPrompt =
       'Du bist ein höflicher, sachlicher Kundenservice-Mitarbeiter der Liftaro GmbH (Aufzugs-Vertragsmanagement). ' +
       'Du formulierst basierend auf den Stichworten des Bearbeiters eine PROFESSIONELLE Antwort an einen Kunden ' +
@@ -30899,6 +30985,7 @@ async function generateEmailReplyAi(emailId) {
       '- KEIN „Hallo", „Hi", „Liebe/r" — wir bleiben strikt in der „Sie"-Form auf höflichem Niveau\n' +
       '- Sachlich, freundlich, kurz und klar — keine Floskeln\n' +
       '- Bezugnahme auf das Anliegen aus dem Betreff/Body wenn relevant\n' +
+      '- WICHTIG am Ende des Texts (vor der Signatur): ein eigener kurzer Satz mit der höflichen Bitte, künftige Rückmeldungen / Folge-Checks zu diesem Vorgang als Antwort auf DIESE Email zu schicken — keine neue Email erstellen. Begründung: damit alles im selben Vorgang im Liftaro-Postfach gebündelt bleibt. Formulierung knapp halten, z. B. „Bitte antworten Sie zu diesem Vorgang direkt auf diese Email, damit Ihre Rückmeldung automatisch zugeordnet werden kann."\n' +
       '- KEINE Grußformel ("Mit freundlichen Grüßen") und KEIN Name am Ende — die Signatur wird automatisch angehängt\n' +
       '- Plain-Text, keine HTML-Tags\n' +
       '- Wenn Stichworte auf Anhang verweisen, schreib „im Anhang finden Sie …"';
