@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.316';
+const APP_VERSION = 'V12.317';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23636,6 +23636,23 @@ async function pushAufzugToEuC(emailId) {
   }
 }
 window.pushAufzugToEuC = pushAufzugToEuC;
+// V12.317: Globaler Click-Delegator als Backstop für den „Zu EuC pushen"-Button.
+// Greift auch dann, wenn der inline-onclick aus irgendeinem Grund nicht zündet
+// (CSP-Restriction, DOM-Replace-Race, etc.). Idempotent dank Flag.
+if (!window._eiPushEucDelegateAttached) {
+  document.addEventListener('click', function(e) {
+    const btn = e.target && e.target.closest && e.target.closest('[data-action="push-euc-aufzug"]');
+    if (!btn) return;
+    const emailId = btn.dataset.emailId;
+    console.log('[V12.317] document-level delegate fired for', emailId);
+    if (btn.dataset.handled === '1') return; // inline-onclick hat schon übernommen
+    btn.dataset.handled = '1';
+    setTimeout(() => { delete btn.dataset.handled; }, 800);
+    if (typeof pushAufzugToEuC === 'function') pushAufzugToEuC(emailId);
+    else alert('pushAufzugToEuC ist nicht geladen — App neu laden');
+  }, true); // capture phase, schlägt Inline-onclick wenn dieses defekt ist
+  window._eiPushEucDelegateAttached = true;
+}
 
 // ───────────────────────────────────────────────────────────────────
 // V12.287: Anhänge zu einem Aufzug (Upload / Liste / Löschen)
@@ -29975,7 +29992,7 @@ function _renderEmailAssignmentCards(r) {
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
           ${azInEuC
             ? `<button disabled title="Aufzug ist bereits Bestandteil des EuC-Vertrags" style="background:#bbf7d0;border:1px solid #86efac;color:#166534;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:default;font-family:'DM Sans',sans-serif;white-space:nowrap;opacity:.85">✓ Im EuC</button>`
-            : `<button onclick="pushAufzugToEuC('${r._id}')" title="Diesen Aufzug an den EuC-Vertrag der zugeordneten HV hängen" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🛡 Zu EuC pushen</button>`}
+            : `<button type="button" data-action="push-euc-aufzug" data-email-id="${r._id}" onclick="(function(b){try{console.log('[V12.317] click handler',b.dataset.emailId);if(typeof pushAufzugToEuC==='function'){pushAufzugToEuC(b.dataset.emailId);}else if(typeof window.pushAufzugToEuC==='function'){window.pushAufzugToEuC(b.dataset.emailId);}else{console.error('[V12.317] pushAufzugToEuC nicht definiert');alert('Push-Funktion nicht geladen — bitte App neu laden');}}catch(e){console.error('[V12.317] click failed:',e);alert('Push-Fehler: '+e.message);}})(this)" title="Diesen Aufzug an den EuC-Vertrag der zugeordneten HV hängen" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🛡 Zu EuC pushen</button>`}
           <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid ${_azBd};color:${_azFg};border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
           <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug per KI neu erkennen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🤖 KI ändern</button>
         </div>
