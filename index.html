@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.296';
+const APP_VERSION = 'V12.297';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -22015,7 +22015,11 @@ function renderLightVertraegeList(items, query) {
     const aufzuegeSum = wegs.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
     const kostenAltSum = wegs.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
     const erfolgPct = Number(v.erfolgsbeteiligung_pct ?? LIGHT_DEFAULTS.erfolg_pct);
-    const status = String(v.status || 'entwurf').toLowerCase();
+    // V12.297: Wenn ein unterschriebener Vertrag hochgeladen ist (vertrag_signed_pdf),
+    // gilt der Vertrag als „Aktiv" — auch wenn der gespeicherte Status noch „entwurf" lautet.
+    const rawStatus = String(v.status || 'entwurf').toLowerCase();
+    const _hasSigned = Array.isArray(v.vertrag_signed_pdf) && v.vertrag_signed_pdf.length > 0;
+    const status = (rawStatus === 'gekuendigt') ? 'gekuendigt' : (_hasSigned ? 'aktiv' : rawStatus);
     const statusColor = status === 'aktiv' ? '#3d7a14' : status === 'gekuendigt' ? '#a8312f' : '#888';
     const statusLabel = status === 'aktiv' ? 'Aktiv' : status === 'gekuendigt' ? 'Gekündigt' : 'Entwurf';
     const date = v.savedAt ? new Date(v.savedAt) : null;
@@ -22126,7 +22130,12 @@ function setLightVertragForm(d) {
   set('lv_kuendigung', d.kuendigungsfrist_monate || LIGHT_DEFAULTS.kuendigung);
   set('lv_haftung', d.haftungsgrenze_eur || LIGHT_DEFAULTS.haftung);
   set('lv_gerichtsstand', d.gerichtsstand || LIGHT_DEFAULTS.gerichtsstand);
-  set('lv_status', d.status || 'entwurf');
+  // V12.297: Wenn unterschriebener Vertrag bereits hochgeladen → Status effektiv 'aktiv'
+  const _signedExists = Array.isArray(d.vertrag_signed_pdf) && d.vertrag_signed_pdf.length > 0;
+  const _displayStatus = (String(d.status || '').toLowerCase() === 'gekuendigt')
+    ? 'gekuendigt'
+    : (_signedExists ? 'aktiv' : (d.status || 'entwurf'));
+  set('lv_status', _displayStatus);
   set('lv_link_v', d.verknuepfter_rahmenvertrag_id);
   set('lv_kommentar', d.kommentar);
 }
@@ -22265,6 +22274,15 @@ async function saveLightVertrag() {
             sf.value = '';
             // EuC-Cache invalidieren — Filter „mit EuC" soll die HV sofort zeigen
             window._eucByOrgIdCacheInvalid = true;
+            // V12.297: Wenn der Vertrag noch als Entwurf gespeichert ist, automatisch
+            // auf „aktiv" wechseln — der unterschriebene Vertrag liegt jetzt vor.
+            if (d.status === 'entwurf') {
+              try {
+                await atUpdate('Light-Vertraege', rec.id, { status: 'aktiv' });
+                const statusEl = document.getElementById('lv_status');
+                if (statusEl) statusEl.value = 'aktiv';
+              } catch (stErr) { console.warn('[V12.297] Status-Auto-Aktivierung fehlgeschlagen:', stErr.message); }
+            }
             showToast('✓ Unterschriebene Vereinbarung hochgeladen', 'success', 3000);
           } catch (upErr) {
             console.error('[V12.290] vertrag_signed_pdf upload failed:', upErr);
@@ -25743,8 +25761,15 @@ function renderDashboard() {
   // ── Light-Verträge-Stats ──
   const lightAll = window._dashAllLightVertraege || [];
   const lightWegsAll = window._dashAllLightWegs || [];
-  const lightAktiv = lightAll.filter(l => (l.status || 'entwurf') === 'aktiv').length;
-  const lightEntwurf = lightAll.filter(l => (l.status || 'entwurf') === 'entwurf').length;
+  // V12.297: Effektiver Status — wenn signed PDF da → 'aktiv', sonst gespeicherter Status
+  const _lvStatus = (l) => {
+    const raw = String(l.status || 'entwurf').toLowerCase();
+    if (raw === 'gekuendigt') return 'gekuendigt';
+    if (Array.isArray(l.vertrag_signed_pdf) && l.vertrag_signed_pdf.length > 0) return 'aktiv';
+    return raw;
+  };
+  const lightAktiv = lightAll.filter(l => _lvStatus(l) === 'aktiv').length;
+  const lightEntwurf = lightAll.filter(l => _lvStatus(l) === 'entwurf').length;
   const lightAufzSum = lightWegsAll.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
   // V12.63: Erfolgsbasis statt Pauschalen-Jahresvolumen.
   // Status-quo-Volumen = Summe der dokumentierten Jahreskosten (alt) aller WEGs.
