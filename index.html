@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.317';
+const APP_VERSION = 'V12.318';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23611,31 +23611,153 @@ async function pushAufzugToEuC(emailId) {
       }
     }
     if (!recs.length) {
-      showToast('Keine EuC-Vereinbarung für „' + (hv && hv.primary || 'HV') + '" gefunden — bitte erst Light-Vertrag anlegen (Equipment under Control → Neu)', 'warning', 8000);
+      // V12.318: Kein EuC-Vertrag für die HV → User-Wunsch: Auswahl-Modal mit
+      // allen vorhandenen Light-Verträgen + Anlegen-Button öffnen, statt nur Toast.
+      console.log('[V12.318] Kein Light-Vertrag für „' + (hv && hv.primary) + '" gefunden — öffne Picker');
+      _eiOpenEucPushPicker(emailId, aufzugRecId, hv && hv.primary, orgId);
       return;
     }
     // Bevorzugt einen Vertrag mit signed PDF, sonst den ersten (Entwurf reicht — User-Wunsch V12.316)
     const signed = recs.find(rec => Array.isArray(rec.fields.vertrag_signed_pdf) && rec.fields.vertrag_signed_pdf.length > 0);
     const lv = signed || recs[0];
-    const lvId = String(lv.fields.id || '').trim();
-    if (!lvId) { showToast('EuC-Vertrag hat keine ID', 'error', 4000); return; }
-    await atUpdate('Aufzuege', aufzugRecId, { im_euc: '1', euc_vertrag_id: lvId });
-    // V12.311: Status auch in Email persistieren → Card wird sofort grün, kein Reload nötig
-    try { await atUpdate('Emails', emailId, { aufzug_im_euc: '1', aufzug_euc_vertrag_id: lvId }); } catch (_) {}
-    r.aufzug_im_euc = '1';
-    r.aufzug_euc_vertrag_id = lvId;
-    showToast('✓ Aufzug zu EuC ' + lvId + ' („' + (lv.fields.firma || '?') + '") zugewiesen', 'success', 5000);
-    // Caches invalidieren
-    window._eucByOrgIdCacheInvalid = true;
-    window._eiHvDocsCacheAt = 0;
-    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    await _eiAttachAufzugToLv(emailId, aufzugRecId, lv, hv && hv.primary);
   } catch (e) {
     console.error('[V12.311] pushAufzugToEuC:', e);
     showToast('Push fehlgeschlagen: ' + e.message, 'error', 5500);
   }
 }
 window.pushAufzugToEuC = pushAufzugToEuC;
+
+// V12.318: Worker — schreibt die EuC-Zuordnung in Aufzug + Email und re-rendert.
+async function _eiAttachAufzugToLv(emailId, aufzugRecId, lv, hvName) {
+  const f = (lv && lv.fields) || {};
+  const lvId = String(f.id || '').trim();
+  if (!lvId) { showToast('EuC-Vertrag hat keine ID — bitte erst speichern', 'error', 4000); return false; }
+  try {
+    await atUpdate('Aufzuege', aufzugRecId, { im_euc: '1', euc_vertrag_id: lvId });
+    try { await atUpdate('Emails', emailId, { aufzug_im_euc: '1', aufzug_euc_vertrag_id: lvId }); } catch (_) {}
+    const r = (_eiAllRecords || []).find(x => x._id === emailId);
+    if (r) { r.aufzug_im_euc = '1'; r.aufzug_euc_vertrag_id = lvId; }
+    showToast('✓ Aufzug zu EuC ' + lvId + ' („' + (f.firma || hvName || '?') + '") zugewiesen', 'success', 5000);
+    window._eucByOrgIdCacheInvalid = true;
+    window._eiHvDocsCacheAt = 0;
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    return true;
+  } catch (e) {
+    console.error('[V12.318] _eiAttachAufzugToLv:', e);
+    showToast('Push fehlgeschlagen: ' + e.message, 'error', 5500);
+    return false;
+  }
+}
+window._eiAttachAufzugToLv = _eiAttachAufzugToLv;
+
+// V12.318: Modal — wenn pushAufzugToEuC keinen Light-Vertrag für die HV findet,
+// öffnen wir ein Picker-Modal mit ALLEN Light-Verträgen plus „Neu anlegen"-Button.
+// Vorteil: User sieht sofort, ob es einen Vertrag gibt (anderer Name, andere HV …)
+// oder ob er einen neu anlegen muss.
+async function _eiOpenEucPushPicker(emailId, aufzugRecId, hvName, hvOrgId) {
+  let mo = document.getElementById('eiEucPushPickerModal');
+  if (!mo) {
+    mo = document.createElement('div');
+    mo.id = 'eiEucPushPickerModal';
+    mo.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.62);z-index:6300;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(mo);
+    mo.onclick = (e) => { if (e.target === mo) mo.style.display = 'none'; };
+  }
+  mo.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(720px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">🛡 EuC-Vertrag auswählen</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">Kein Vertrag für <strong style="color:#fff">${_esc(hvName || 'diese HV')}</strong> gefunden. Wähle einen vorhandenen oder lege einen neuen an.</div>
+      </div>
+      <button onclick="document.getElementById('eiEucPushPickerModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:12px 18px 8px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+      <input id="eiEucPickerSearch" type="text" placeholder="🔍 Filtern nach Firma …" style="flex:1;padding:7px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;outline:none;font-family:inherit" oninput="_eiFilterEucPicker(this.value)">
+      ${hvOrgId ? `<button onclick="(function(){document.getElementById('eiEucPushPickerModal').style.display='none';if(typeof openLightVertragForOrg==='function')openLightVertragForOrg('${hvOrgId}');else if(typeof openLightVertragEditor==='function')openLightVertragEditor();})()" style="background:#16a34a;border:none;color:#fff;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:5px">+ Neu für ${_esc(hvName || 'HV')}</button>` : ''}
+    </div>
+    <div id="eiEucPickerList" style="flex:1;overflow:auto;padding:10px 16px 16px"><div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">Lade Light-Verträge …</div></div>
+  </div>`;
+  mo.style.display = 'flex';
+  // Liste laden
+  let all = [];
+  try {
+    all = (typeof loadLightVertraege === 'function') ? await loadLightVertraege() : [];
+  } catch (e) { console.warn('[V12.318] loadLightVertraege failed:', e); }
+  window._eiEucPickerAll = all;
+  window._eiEucPickerContext = { emailId, aufzugRecId, hvName, hvOrgId };
+  _eiRenderEucPicker(all);
+}
+window._eiOpenEucPushPicker = _eiOpenEucPushPicker;
+
+function _eiRenderEucPicker(list) {
+  const cont = document.getElementById('eiEucPickerList');
+  if (!cont) return;
+  if (!list || !list.length) {
+    cont.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;line-height:1.6">Keine EuC-Verträge vorhanden.<br><strong style="color:#0f172a">Lege einen über den grünen „+ Neu"-Button oben an.</strong></div>';
+    return;
+  }
+  const ctx = window._eiEucPickerContext || {};
+  const tgtNorm = String(ctx.hvName || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+  cont.innerHTML = list.map((v, i) => {
+    const id        = String(v.id || '').trim();
+    const firma     = String(v.firma || '(ohne Firma)').trim();
+    const orgIdLv   = String(v.pipedrive_org_id || '').trim();
+    const status    = String(v.status || 'entwurf').trim();
+    const signed    = !!(v.vertrag_signed_pdf && v.vertrag_signed_pdf.length);
+    const firmaN    = firma.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+    const isHvMatch = tgtNorm && (firmaN === tgtNorm || (firmaN.length >= 4 && (firmaN.includes(tgtNorm) || tgtNorm.includes(firmaN))));
+    const isOrgMatch = ctx.hvOrgId && orgIdLv === String(ctx.hvOrgId);
+    const recommend = isHvMatch || isOrgMatch;
+    return `<div style="background:${recommend ? '#f0fdf4' : '#fff'};border:1px solid ${recommend ? '#86efac' : '#e2e8f0'};border-radius:10px;padding:11px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:700;color:#0f172a">${_esc(firma)}</span>
+          ${recommend ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700">▸ passt zur HV</span>' : ''}
+          <span style="background:${status === 'aktiv' ? '#dbeafe' : '#fef3c7'};color:${status === 'aktiv' ? '#1e3a8a' : '#854d0e'};border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;text-transform:uppercase">${_esc(status)}</span>
+          ${signed ? '<span style="background:#f0fdf4;color:#166534;border:1px solid #86efac;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700">✓ unterschrieben</span>' : '<span style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700">Entwurf</span>'}
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px;font-family:var(--dr-f-mono)">${_esc(id)}${orgIdLv ? ' · Pipedrive-ID ' + _esc(orgIdLv) : ''}</div>
+      </div>
+      <button onclick="_eiPushAufzugToPickedLv(${i})" style="background:${recommend ? '#16a34a' : '#0f172a'};color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">→ Hier pushen</button>
+    </div>`;
+  }).join('');
+}
+window._eiRenderEucPicker = _eiRenderEucPicker;
+
+function _eiFilterEucPicker(q) {
+  const all = window._eiEucPickerAll || [];
+  const needle = String(q || '').toLowerCase().trim();
+  const filtered = needle
+    ? all.filter(v => String(v.firma || '').toLowerCase().includes(needle) || String(v.id || '').toLowerCase().includes(needle))
+    : all;
+  _eiRenderEucPicker(filtered);
+}
+window._eiFilterEucPicker = _eiFilterEucPicker;
+
+async function _eiPushAufzugToPickedLv(idx) {
+  const ctx = window._eiEucPickerContext || {};
+  const all = window._eiEucPickerAll || [];
+  const v = all[idx];
+  if (!v) { showToast('Eintrag nicht mehr verfügbar — bitte Picker neu öffnen', 'warning', 4000); return; }
+  // _eiAttachAufzugToLv erwartet ein Record-Objekt mit .fields; loadLightVertraege flatten't
+  // schon — wir wrappen es zurück in das erwartete Format.
+  const lvRec = { id: v._recordId, fields: v };
+  const ok = await _eiAttachAufzugToLv(ctx.emailId, ctx.aufzugRecId, lvRec, ctx.hvName);
+  if (ok) {
+    const mo = document.getElementById('eiEucPushPickerModal');
+    if (mo) mo.style.display = 'none';
+    // Self-heal: pipedrive_org_id im gewählten Vertrag setzen, wenn noch leer
+    try {
+      if (ctx.hvOrgId && !String(v.pipedrive_org_id || '').trim() && v._recordId) {
+        await atUpdate('Light-Vertraege', v._recordId, { pipedrive_org_id: ctx.hvOrgId });
+      }
+    } catch (_) {}
+  }
+}
+window._eiPushAufzugToPickedLv = _eiPushAufzugToPickedLv;
+
 // V12.317: Globaler Click-Delegator als Backstop für den „Zu EuC pushen"-Button.
 // Greift auch dann, wenn der inline-onclick aus irgendeinem Grund nicht zündet
 // (CSP-Restriction, DOM-Replace-Race, etc.). Idempotent dank Flag.
