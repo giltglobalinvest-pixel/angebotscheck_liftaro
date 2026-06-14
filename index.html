@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.329';
+const APP_VERSION = 'V12.330';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35135,6 +35135,8 @@ function renderEmailInboxDetail() {
   html += `<button class="dr-pill" onclick="setEmailStatus('${r._id}','gesichtet')">Als gesichtet markieren</button>
     <button class="dr-pill" onclick="setEmailStatus('${r._id}','in_bearbeitung')">In Bearbeitung</button>
     <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')" title="Email archivieren (aus der Liste ausblenden)">📦 Archivieren</button>
+    <!-- V12.330: Demo-Check zum Testen des Workflows ohne echte Eingaben -->
+    <button class="dr-pill" onclick="simulateCheckFromEmail('${r._id}')" title="Erstellt einen echten Check mit Demo-Werten (alter Partner, Vergleichsangebote, Erfolgsbeteiligung) — perfekt um zu sehen wie das fertige Ergebnis-PDF aussieht. Im Subject mit „🧪 SIM" markiert." style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;font-weight:700">🧪 Sim-Check (Demo)</button>
     </div>
   </div>`;
 
@@ -37052,6 +37054,147 @@ async function createCheckFromVorgang(recId, vIdx) {
     showToast('Check-Erstellung fehlgeschlagen: ' + e.message, 'error');
   }
 }
+
+// V12.330: Sim-Check — erstellt einen echten Check aus der aktuellen Email,
+// ergänzt aber alle Result-Felder mit realistischen Demo-Werten. So lässt sich
+// der komplette Workflow + das Ergebnis-PDF anschauen, ohne dass man selbst
+// alle Felder ausfüllen muss. Im Subject mit „🧪 SIM" markiert, damit klar ist:
+// kein echter Check. Kann jederzeit manuell gelöscht werden.
+async function simulateCheckFromEmail(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden', 'error', 3000); return; }
+  if (!confirm('Demo-Check anlegen?\n\nEin echter Check wird in Airtable angelegt — gefüllt mit Beispiel-Werten für alten Vertrag, zwei Vergleichsangebote, Erfolgsbeteiligung etc. Du kannst dich durchklicken und siehst das fertige Ergebnis-PDF. Im Subject mit „🧪 SIM" markiert, damit klar ist: Test-Datensatz.\n\nFortfahren?')) return;
+  showToast('🧪 Demo-Check wird erstellt …', 'info', 2000);
+  try {
+    const newCheckId   = await generateCheckId();
+    const newAnfrageNr = await generateEmailAnfrageNr();
+    const today        = new Date().toISOString().split('T')[0];
+    const apiKey       = APP_KEYS.user?.api_key || 'unknown';
+    // Vorgang/HV aus der Email ableiten — fallback auf KI-Schnell-Analyse oder Email-Header
+    let vorgaenge = [];
+    try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+    const v = (Array.isArray(vorgaenge) && vorgaenge[0]) || {};
+    const hvFirma     = String(v.assigned_org_name || r.real_hv_firma || v.kunde_firma || r.from_name || 'Demo-Hausverwaltung GmbH').trim();
+    const hvEmail     = String(v.assigned_org_email || r.real_hv_email || r.from_email || 'demo@hausverwaltung.de').trim();
+    const hvTel       = String(v.assigned_org_tel || '0711 12345678').trim();
+    const hvAnsprech  = String(v.assigned_org_gf || r.real_absender_name || 'Demo-Ansprechperson').trim();
+    const hvAnschrift = String(v.assigned_org_addr || 'Demostraße 1, 70173 Stuttgart').trim();
+    const standort    = String(r.aufzug_standort || v.objekt_adresse || 'Demoweg 5, 70182 Stuttgart').trim();
+    const fabriknr    = String(r.aufzug_fabriknummer || 'DEMO-' + (10000 + Math.floor(Math.random()*89999))).trim();
+    const hersteller  = String(r.aufzug_hersteller || 'Schindler').trim();
+    // Vorgang-Typ — fallback Vertragscheck
+    const checkType = (v.typ === 'rechnung') ? 'rechnung' : (v.typ === 'reparatur' ? 'reparatur' : 'wartung');
+    // Demo-Subject im KI-Subject-Feld
+    const demoSubject = '🧪 SIM · Vertragscheck ' + newCheckId + ' · ' + hvFirma + ' (Fn ' + fabriknr + ')';
+    // ─────────────────────────────────────────────────────────
+    // Demo-Werte für die typischen Result-Felder
+    // ─────────────────────────────────────────────────────────
+    const jahreskosten_alt    = 6480;  // €
+    const jahreskosten_neu_1  = 4290;  // €
+    const jahreskosten_neu_2  = 4880;  // €
+    const ersparnis_jahr      = jahreskosten_alt - jahreskosten_neu_1;
+    const ersparnis_5y        = ersparnis_jahr * 5;
+    const formData = {
+      id:                 newCheckId,
+      requestId:          newCheckId,
+      anfrageNr:          newAnfrageNr,
+      datum:              today,
+      checkType:          checkType,
+      status:             '1',
+      // HV-Daten
+      firma:              hvFirma,
+      name:               hvAnsprech,
+      tel:                hvTel,
+      email:              hvEmail,
+      f_hv_anschrift:     hvAnschrift,
+      // Anlage
+      standort:           standort,
+      fabrik:             fabriknr,
+      hersteller:         hersteller,
+      // Liftaro-Sachbearbeiter
+      ap:                 'Samet Battal',
+      tl:                 '015888634515',
+      // Demo: Alter Vertrag / aktueller Anbieter
+      alter_partner:                'Aszendio Aufzugservice GmbH',
+      alter_partner_anschrift:      'Boschstr. 10, 73734 Esslingen',
+      alter_partner_email:          'service@aszendio.com',
+      alter_partner_tel:            '0711 96882348',
+      alter_vertrag_beginn:         '2021-04-01',
+      alter_vertrag_mindestlaufzeit: '60',  // Monate
+      alter_vertrag_kuendigungsfrist: '12', // Monate
+      alter_vertrag_jahreskosten:   String(jahreskosten_alt),
+      alter_vertrag_leistungsumfang: 'Vollwartung inkl. Notrufanlage · 4 Wartungen/Jahr · Ersatzteile bis 80 € pro Vorfall',
+      // Demo: Vergleichsangebot 1 (Empfehlung)
+      neuer_partner:                'Demo-Service GmbH',
+      neuer_partner_anschrift:      'Industriestr. 42, 70435 Stuttgart',
+      neuer_partner_email:          'angebot@demo-service.de',
+      neuer_partner_tel:            '0711 88776655',
+      neuer_vertrag_jahreskosten:   String(jahreskosten_neu_1),
+      neuer_vertrag_leistungsumfang: 'Vollwartung inkl. Notrufanlage · 4 Wartungen/Jahr · Ersatzteile bis 150 € pro Vorfall · 24/7-Service',
+      // Demo: Vergleichsangebot 2
+      partner2:                     'Demo-Wartung KG',
+      partner2_anschrift:           'Heilbronner Str. 12, 70191 Stuttgart',
+      partner2_email:               'kontakt@demo-wartung.de',
+      partner2_tel:                 '0711 33445566',
+      partner2_jahreskosten:        String(jahreskosten_neu_2),
+      partner2_leistungsumfang:     'Vollwartung · 4 Wartungen/Jahr · Ersatzteile bis 100 €',
+      // Ergebnis-Daten
+      ersparnis:                    String(ersparnis_jahr) + ',00 €',
+      ersparnis_5_jahre:            String(ersparnis_5y) + ',00 €',
+      empfehlung:                   'Wechsel zu Demo-Service GmbH empfohlen — bei gleichem Leistungsumfang ' + ersparnis_jahr + ' € jährliche Ersparnis (≈ ' + Math.round((ersparnis_jahr/jahreskosten_alt)*100) + ' %). Auf 5 Jahre hochgerechnet ' + ersparnis_5y + ' € Gesamteinsparung. Bei der Kündigung des bestehenden Vertrags muss die Frist von 12 Monaten zum Vertragsende eingehalten werden.',
+      // Vergütungs-Modus
+      verguetungs_modus:            'erfolg', // Erfolgsbeteiligung
+      erfolgsbeteiligung_pct:       '25',
+      erfolgsbeteiligung_dauer_jahre: '3',
+      // KI-Zusammenfassung
+      ki_summary: 'Demo-Check zur Workflow-Vorschau. Der bestehende Vollwartungsvertrag mit Aszendio Aufzugservice GmbH (Jahreskosten ' + jahreskosten_alt + ' €) ist marktüblich. Zwei Vergleichsangebote eingeholt — Demo-Service GmbH bietet zu ' + jahreskosten_neu_1 + ' € bei gleichem Leistungsumfang plus 24/7-Service. Ersparnis ≈ ' + ersparnis_jahr + ' € p.a.',
+      // Source / Verknüpfung
+      email_source_id:    emailId,
+      email_from:         r.from_email || '',
+      email_subject:      r.subject || '',
+      source:             'email_sim',
+      source_type:        'email_sim',
+      pipedrive_org_id:   v.assigned_org_id || '',
+      pipedrive_kundennr: v.assigned_kundennr || '',
+      is_simulation:      '1',
+    };
+    const fields = {
+      id:                 newCheckId,
+      api_key:            apiKey,
+      savedAt:            new Date().toISOString(),
+      requestId:          newCheckId,
+      anfrageNr:          newAnfrageNr,
+      datum:              today,
+      checkType:          checkType,
+      standort:           standort,
+      firma:              hvFirma,
+      status:             '1',
+      formData:           JSON.stringify(formData),
+      email_source_id:    emailId,
+      email_from:         r.from_email || '',
+      email_subject:      demoSubject,
+      source:             'email_sim',
+      pipedrive_org_id:   v.assigned_org_id || '',
+      pipedrive_kundennr: v.assigned_kundennr || '',
+    };
+    const writeResult = await atWrite('Checks', fields);
+    const recordId = writeResult?.id;
+    if (!recordId) throw new Error('Airtable hat keine Record-ID zurückgegeben');
+    showToast('✓ Demo-Check ' + newCheckId + ' angelegt — wird geöffnet …', 'success', 3000);
+    // V12.330: Check öffnen — gleicher Pfad wie createCheckFromVorgang
+    setTimeout(() => {
+      if (typeof loadCheck === 'function') {
+        loadCheck({ id: recordId, fields });
+      } else {
+        showToast('loadCheck nicht verfügbar — Demo-Check manuell aus der Check-Liste öffnen', 'warning', 5000);
+      }
+    }, 300);
+  } catch (e) {
+    console.error('[V12.330] simulateCheckFromEmail:', e);
+    showToast('Demo-Check fehlgeschlagen: ' + e.message, 'error', 6000);
+  }
+}
+window.simulateCheckFromEmail = simulateCheckFromEmail;
 
 // ════════════════════════════════════════════════════════════════
 //  EMAIL-REPLY (Phase 3) — "Antwort senden" via val.town /v1/email
