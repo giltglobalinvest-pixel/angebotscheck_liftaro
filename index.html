@@ -6381,7 +6381,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.300';
+const APP_VERSION = 'V12.301';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29124,8 +29124,9 @@ async function quickReplyToEmail(recId, bodyText) {
   // _eiResolveSignatureForSend liefert { textSig, htmlBody }:
   //   • textSig  → an Plain-Text-Body anhängen
   //   • htmlBody → kompletter HTML-Body inkl. user-Text und HTML-Signatur (Multipart)
+  // V12.301: Bearbeiter-Signatur (aus dem Email-Dropdown) bevorzugen
   const _sig = (typeof _eiResolveSignatureForSend === 'function')
-    ? _eiResolveSignatureForSend(bodyText)
+    ? _eiResolveSignatureForSend(bodyText, r.bearbeiter_name)
     : { textSig: (typeof _eiGetSignature === 'function' ? _eiGetSignature() : ''), htmlBody: '' };
   const finalBody = _sig.textSig ? bodyText + '\n\n' + _sig.textSig : bodyText;
   try {
@@ -29238,8 +29239,9 @@ async function forwardEmailTo(recId, toEmail, preMessage) {
     // htmlBody erzeugen wir manuell, weil der Forward-Header (Plain-Text) + Original-Body
     // separat hinterher kommen — der HTML-Multipart-Teil bekommt nur Pre + Signatur,
     // damit Mailclients den HTML-Anteil sauber neben dem zitierten Original anzeigen.
+    // V12.301: Bearbeiter-Signatur statt Login-User
     const _sig = (typeof _eiResolveSignatureForSend === 'function')
-      ? _eiResolveSignatureForSend(pre)
+      ? _eiResolveSignatureForSend(pre, r.bearbeiter_name)
       : { textSig: (typeof _eiGetSignature === 'function' ? _eiGetSignature() : ''), htmlBody: '' };
     const sig = _sig.textSig || '';
     const preBlock = pre
@@ -30641,6 +30643,8 @@ function openChatAiHelper(emailId) {
         <div style="font-size:11px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">📝 KI-Vorschlag</div>
         <textarea id="chatAiText_${emailId}" rows="9" style="width:100%;background:#faf5ff;border:1px solid #c4b5fd;border-radius:10px;padding:14px;font-size:13.5px;color:#0f172a;line-height:1.55;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
         <div style="font-size:11px;color:#94a3b8;margin-top:4px">Du kannst den Vorschlag direkt bearbeiten, bevor du ihn übernimmst.</div>
+        <!-- V12.301: Signatur-Vorschau — wird beim Senden automatisch angehängt -->
+        <div id="chatAiSigPreview_${emailId}" style="display:none;margin-top:12px"></div>
         <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <button onclick="generateChatAiSuggestion('${emailId}')" style="background:#fff;border:1px solid #c4b5fd;color:#5b21b6;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">↻ Neu generieren</button>
           <button onclick="adoptChatAiSuggestion('${emailId}')" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">
@@ -30682,7 +30686,12 @@ async function generateChatAiSuggestion(emailId) {
   const standort   = String(r.aufzug_standort || '').trim();
   const hersteller = String(r.aufzug_hersteller || '').trim();
   const origSubj   = String((r.ai_subject || r.subject || '')).trim();
-  const userName   = (typeof _eiCurrentUserName === 'function' && _eiCurrentUserName()) || 'Liftaro GmbH';
+  // V12.301: Bearbeiter-Name aus dem Email-Dropdown bevorzugen (z. B. Robert Hoier),
+  // fallback auf den eingeloggten User. Damit ist die Signatur konsistent mit dem
+  // was bei Email-Replies erscheint.
+  const userName   = String(r.bearbeiter_name || '').trim()
+    || (typeof _eiCurrentUserName === 'function' && _eiCurrentUserName())
+    || 'Liftaro GmbH';
   // Bisherige Chat-Items für Kontext (max. 4 letzte)
   const chatItems = (window._eiWnChatCache[emailId] || []).filter(it => String(it.body || '').trim()).slice(-4);
   const chatContext = chatItems.length
@@ -30691,16 +30700,19 @@ async function generateChatAiSuggestion(emailId) {
         return who + ': ' + String(it.body || '').slice(0, 300);
       }).join('\n')
     : '';
+  // V12.301: Sie-Form strikt, KEIN "Mit freundlichen Grüßen + Name" am Ende —
+  // die Signatur wird beim Senden automatisch angehängt (analog Email-Reply-KI).
   const systemPrompt = `Du formulierst kurze, professionelle Email-Nachrichten im Namen von Liftaro GmbH (Aufzugs-Verwaltungsservice) an Service-Betriebe bzw. Wartungsnehmer.
 
 REGELN:
-- Anrede: "Hallo [Vorname]" wenn ein Vorname bekannt ist, sonst "Sehr geehrte Damen und Herren".
+- Anrede mit "Sehr geehrte Frau [Nachname]" / "Sehr geehrter Herr [Nachname]" wenn ableitbar, sonst "Sehr geehrte Damen und Herren".
+- KEIN „Hallo" oder „Hi" — wir bleiben strikt in der „Sie"-Form auf höflichem Niveau.
 - Ton: höflich, präzise, sachlich-freundlich. Keine Floskeln, kein Konjunktiv-Übermaß.
 - Maximal 130 Wörter.
 - Nenne relevante Aufzug-Daten (Fabriknummer, Standort) nur, wenn sie für das Anliegen wichtig sind.
-- Schließe mit einer einzigen Zeile "Mit freundlichen Grüßen" + Name in der Folgezeile.
+- KEINE Grußformel ("Mit freundlichen Grüßen") und KEIN Name am Ende — die Signatur wird automatisch angehängt. Letzter Satz ist Teil des inhaltlichen Texts.
 - Keine Markdown-Formatierung, keine Sternchen, kein Fett. Reiner Plain-Text mit Absätzen (Leerzeilen zwischen Abschnitten).
-- "Sie"-Form, niemals "Du".
+- „Sie"-Form, niemals „Du" oder „Ihr".
 - Konkrete Fragen oder Anweisungen klar formulieren.`;
   const userMsg = `Empfänger: ${partner.ansprechperson || '(Name unbekannt)'}${partner.firma ? ' — Firma: ' + partner.firma : ''}
 ${fabri ? 'Aufzug Fabriknummer: ' + fabri : ''}
@@ -30737,12 +30749,39 @@ Formuliere die fertige Nachricht jetzt — direkt, kein Vortext.`;
     if (!text) throw new Error('Leere KI-Antwort');
     // Sicher dass keine Markdown-Sternchen drin sind
     text = text.replace(/\*\*/g, '').replace(/^\s*\*\s+/gm, '- ');
+    // V12.301: Falls die KI trotz Vorgabe „Mit freundlichen Grüßen" + Name schreibt — abschneiden.
+    // Pattern: am Ende eine Grußformel-Zeile + bis zu 3 Folgezeilen (Name, Firma, Telefon).
+    text = text.replace(/\n*\s*(mit freundlichen grü(?:ß|ss)en|freundliche grü(?:ß|ss)e|beste grü(?:ß|ss)e|viele grü(?:ß|ss)e|liebe grü(?:ß|ss)e)\s*[,.]?\s*(\n[^\n]{0,80}){0,4}\s*$/i, '').trim();
     const resultBox = document.getElementById('chatAiResult_' + emailId);
     const textBox   = document.getElementById('chatAiText_' + emailId);
     if (resultBox) resultBox.style.display = 'block';
     if (textBox)   textBox.value = text;
     window._eiChatAiCurrent = window._eiChatAiCurrent || {};
     window._eiChatAiCurrent[emailId] = text;
+    // V12.301: Signatur-Vorschau anzeigen — gleich wie im Email-Reply-KI (V12.299).
+    // Bearbeiter-Signatur (aus Email-Dropdown) bevorzugen.
+    try {
+      const sigResolve = (typeof _eiResolveSignatureForSend === 'function')
+        ? _eiResolveSignatureForSend('', r.bearbeiter_name)
+        : null;
+      const sigText = (sigResolve && sigResolve.textSig)
+        || (typeof _eiGetSignature === 'function' ? _eiGetSignature() : '')
+        || '';
+      const sigBox = document.getElementById('chatAiSigPreview_' + emailId);
+      if (sigBox) {
+        if (sigText && sigText.trim()) {
+          sigBox.style.display = 'block';
+          sigBox.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;gap:6px">'
+            + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>'
+            + 'Signatur — wird beim Senden automatisch angehängt'
+            + '</div>'
+            + '<div style="background:#f5f3ff;border:1px dashed #c4b5fd;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#475569;line-height:1.6;white-space:pre-wrap;font-family:inherit">' + _esc(sigText.trim()) + '</div>';
+        } else {
+          sigBox.style.display = 'block';
+          sigBox.innerHTML = '<div style="background:#fff7ed;border:1px dashed #fdba74;border-radius:8px;padding:9px 12px;font-size:11.5px;color:#9a3412;line-height:1.5">⚠ Keine Signatur hinterlegt — die Email geht ohne Absender-Block raus.</div>';
+        }
+      }
+    } catch (e) { console.warn('[V12.301] chat sig-preview failed:', e.message); }
   } catch (e) {
     showToast('KI-Fehler: ' + e.message, 'error', 5500);
   } finally {
@@ -30850,16 +30889,17 @@ async function generateEmailReplyAi(emailId) {
       || r.body || '';
     const bodySnippet = String(bodyRaw).replace(/\s+/g, ' ').trim().slice(0, 1500);
 
+    // V12.301: Strenges Sie + KEIN Grußformel-Block. Signatur wird automatisch angehängt.
     const sysPrompt =
       'Du bist ein höflicher, sachlicher Kundenservice-Mitarbeiter der Liftaro GmbH (Aufzugs-Vertragsmanagement). ' +
       'Du formulierst basierend auf den Stichworten des Bearbeiters eine PROFESSIONELLE Antwort an einen Kunden ' +
       '(Hausverwaltung, WEG oder Eigentümer). ' +
       'Regeln:\n' +
-      '- Begrüßung "Sehr geehrte Damen und Herren," oder mit Namen wenn aus dem Kontext ableitbar\n' +
+      '- Begrüßung "Sehr geehrte Frau/Herr [Nachname]," wenn ableitbar, sonst "Sehr geehrte Damen und Herren,"\n' +
+      '- KEIN „Hallo", „Hi", „Liebe/r" — wir bleiben strikt in der „Sie"-Form auf höflichem Niveau\n' +
       '- Sachlich, freundlich, kurz und klar — keine Floskeln\n' +
       '- Bezugnahme auf das Anliegen aus dem Betreff/Body wenn relevant\n' +
-      '- Keine Signatur am Ende (wird automatisch angehängt)\n' +
-      '- Keine Anrede mit „Liebe/r …"\n' +
+      '- KEINE Grußformel ("Mit freundlichen Grüßen") und KEIN Name am Ende — die Signatur wird automatisch angehängt\n' +
       '- Plain-Text, keine HTML-Tags\n' +
       '- Wenn Stichworte auf Anhang verweisen, schreib „im Anhang finden Sie …"';
     const userMsg =
@@ -30875,8 +30915,11 @@ async function generateEmailReplyAi(emailId) {
       sysPrompt,
       { maxTokens: 1200 },
     );
-    const txt = String(raw || '').trim();
+    let txt = String(raw || '').trim();
     if (!txt) throw new Error('Leere Antwort von der KI');
+    // V12.301: Trailing-Cleanup — falls die KI trotz Prompt-Vorgabe „Mit freundlichen Grüßen + Name"
+    // generiert, schneiden wir das ab. Pattern: Grußformel + bis zu 4 kurze Folgezeilen (Name/Firma/Tel).
+    txt = txt.replace(/\n*\s*(mit freundlichen grü(?:ß|ss)en|freundliche grü(?:ß|ss)e|beste grü(?:ß|ss)e|viele grü(?:ß|ss)e|liebe grü(?:ß|ss)e)\s*[,.]?\s*(\n[^\n]{0,80}){0,4}\s*$/i, '').trim();
 
     const resultBox = document.getElementById('emailReplyAiResult_' + emailId);
     const textArea  = document.getElementById('emailReplyAiText_' + emailId);
@@ -30884,12 +30927,13 @@ async function generateEmailReplyAi(emailId) {
     if (resultBox) resultBox.style.display = 'block';
     window._emailReplyAiCurrent = window._emailReplyAiCurrent || {};
     window._emailReplyAiCurrent[emailId] = txt;
-    // V12.299: Signatur-Vorschau anzeigen (read-only), damit man sieht was tatsächlich
+    // V12.299/V12.301: Signatur-Vorschau anzeigen (read-only), damit man sieht was tatsächlich
     // rausgeht. Beim Adopt wandert NUR der editierbare Text in den Composer — die
     // Signatur wird beim Senden via _eiResolveSignatureForSend automatisch angehängt.
+    // Bearbeiter-Signatur (aus Email-Dropdown) bevorzugen.
     try {
       const sigResolve = (typeof _eiResolveSignatureForSend === 'function')
-        ? _eiResolveSignatureForSend('')
+        ? _eiResolveSignatureForSend('', r.bearbeiter_name)
         : null;
       const sigText = (sigResolve && sigResolve.textSig)
         || (typeof _eiGetSignature === 'function' ? _eiGetSignature() : '')
@@ -31791,8 +31835,8 @@ async function sendWartungsnehmerMessage(emailId) {
   const subject = subjBase + (fabri ? ' (Fn ' + fabri + ')' : (standort ? ' (' + standort.slice(0, 50) + ')' : ''));
   // V12.223: ASCII-sanitisieren für Mail-Header
   const subjectSafe = _eiSanitizeSubjectForEmail(subject);
-  // V12.268: HTML-Signatur des aktuellen Bearbeiters einbinden
-  const _sigWn = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body) : { textSig: '', htmlBody: '' };
+  // V12.268/V12.301: HTML-Signatur des Bearbeiters (aus Email-Dropdown) statt des Login-Users
+  const _sigWn = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, r.bearbeiter_name) : { textSig: '', htmlBody: '' };
   const finalBody = _sigWn.textSig ? body + '\n\n' + _sigWn.textSig : body;
   // Vorherige Out-Nachricht aus diesem Chat → in_reply_to-Kette
   const prev = (window._eiWnChatCache[emailId] || []).slice().reverse().find(x => String(x.message_id || '').trim());
@@ -33578,8 +33622,13 @@ window.getCurrentUserSignatureHtml = getCurrentUserSignatureHtml;
 //   { textSig, htmlBody }
 //   textSig  → wird wie bisher an den Text-Body angehängt
 //   htmlBody → wenn nicht leer, in payload.html setzen (Backend versendet Multipart)
-function _eiResolveSignatureForSend(userBody) {
-  const htmlSig = getCurrentUserSignatureHtml();
+function _eiResolveSignatureForSend(userBody, forName) {
+  // V12.301: Wenn ein Bearbeiter-Name übergeben wird (z. B. r.bearbeiter_name aus dem
+  // Email-Dropdown), nimmt die Signatur diesen Eintrag — sonst den eingeloggten User.
+  const explicit = String(forName || '').trim();
+  const htmlSig = explicit && typeof getBearbeiterSignatureHtml === 'function'
+    ? (getBearbeiterSignatureHtml(explicit) || getCurrentUserSignatureHtml())
+    : getCurrentUserSignatureHtml();
   if (!htmlSig || !htmlSig.trim()) {
     // Kein HTML — alte Plain-Text-Signatur als Fallback
     const legacy = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
