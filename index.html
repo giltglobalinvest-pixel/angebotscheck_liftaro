@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.312';
+const APP_VERSION = 'V12.313';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29964,6 +29964,54 @@ function _renderEmailAssignmentCards(r) {
   </div>`;
 }
 
+// V12.313: Lazy-Sync — wenn der Aufzug in der Aufzuege-Tabelle bereits einem
+// EuC-Vertrag angehört (z. B. weil er direkt im EuC-Editor hinzugefügt wurde),
+// die Email aber noch aufzug_im_euc='' hat, holen wir den Status nach. Damit
+// wird die Card auch ohne expliziten Push-Klick grün. Cache pro Mail, damit
+// jede Mail nur einmal pro Session geladen wird.
+async function _eiSyncAufzugEucStatus(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  let aufzugRecId = String(r.aufzug_record_id || '').trim();
+  const fn = String(r.aufzug_fabriknummer || '').trim();
+  if (!aufzugRecId && !fn) return; // nichts zum Nachschlagen
+  if (String(r.aufzug_im_euc || '') === '1') return; // schon grün
+  window._eiAzEucChecked = window._eiAzEucChecked || new Set();
+  if (window._eiAzEucChecked.has(recId)) return;
+  window._eiAzEucChecked.add(recId);
+  try {
+    let recs;
+    if (aufzugRecId) {
+      recs = await atRead('Aufzuege', "RECORD_ID()='" + aufzugRecId + "'", { sort: false });
+    } else {
+      // Fallback: per Fabriknummer suchen (KI hat erkannt, aber Modul-Verlinkung fehlt)
+      const fnEsc = fn.replace(/'/g, "\\'");
+      recs = await atRead('Aufzuege', "{fabriknummer}='" + fnEsc + "'", { sort: false });
+      if (recs && recs[0]) aufzugRecId = String(recs[0].id || '');
+    }
+    const f = recs && recs[0] && recs[0].fields || {};
+    const inEuc = f.im_euc === '1' || f.im_euc === 'true' || f.im_euc === true;
+    if (!inEuc) return; // Aufzug ist nicht im EuC — alles korrekt
+    const lvId = String(f.euc_vertrag_id || '').trim();
+    // Email-Record synchronisieren — persistent + im Speicher
+    const patch = { aufzug_im_euc: '1' };
+    if (lvId) patch.aufzug_euc_vertrag_id = lvId;
+    // Auch aufzug_record_id zurückspeichern, wenn wir den per Fabriknummer-Fallback
+    // gefunden haben — damit künftige Aktionen (Push, Sync) sofort funktionieren.
+    if (aufzugRecId && !r.aufzug_record_id) patch.aufzug_record_id = aufzugRecId;
+    try { await atUpdate('Emails', recId, patch); } catch (_) {}
+    r.aufzug_im_euc = '1';
+    if (lvId) r.aufzug_euc_vertrag_id = lvId;
+    if (aufzugRecId && !r.aufzug_record_id) r.aufzug_record_id = aufzugRecId;
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  } catch (e) {
+    console.warn('[V12.313] Aufzug-EuC-Sync fehlgeschlagen:', e.message);
+    // Cache-Eintrag nicht entfernen, damit wir nicht in Endlosschleife laufen
+  }
+}
+window._eiSyncAufzugEucStatus = _eiSyncAufzugEucStatus;
+
 // V12.171: KI-Schnell-Button — Step 1: analysieren + anzeigen
 // Schickt den Body (inkl. Forward-Inhalt) an Claude und parst die echten
 // Absender-/HV-Daten heraus. Step 2 wird sein, das Ergebnis automatisch
@@ -33651,6 +33699,9 @@ function renderEmailInboxDetail() {
   // V12.179: Zuordnung-Sektion — Verwaltung & Aufzug als zwei eigene Kacheln
   `;
   html += _renderEmailAssignmentCards(r);
+  // V12.313: Lazy-Sync — frischen EuC-Stand aus der Aufzuege-Tabelle nachholen,
+  // damit die Card grün wird wenn der Aufzug bereits im EuC-Vertrag drin ist.
+  setTimeout(() => { try { _eiSyncAufzugEucStatus(r._id); } catch (_) {} }, 80);
 
   // V12.171: KI-Schnell-Button — analysiert den Body (auch Forward-Inhalt) und schlägt
   // echten Absender, HV und Vorgang vor. Step 1: nur Anzeige, kein Auto-Speichern.
