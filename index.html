@@ -6369,7 +6369,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.298';
+const APP_VERSION = 'V12.299';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -22050,7 +22050,7 @@ function renderLightVertraegeList(items, query) {
         + '</div>'
         + '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (adr || '–') + (v.gf ? ' · ' + v.gf : '') + '</div>'
         + '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px">'
-          + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px"><strong>${wegs.length}</strong> WEG${wegs.length === 1 ? '' : 's'}</span>`
+          // V12.299: WEGs-Pille entfernt — entscheidend sind die Aufzüge (Fabriknummern)
           + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px"><strong>${aufzuegeSum}</strong> Aufzüge</span>`
           + `<span style="background:#fff;border:1px solid var(--border);border-radius:5px;padding:2px 8px" title="Status quo: dokumentierte Jahreskosten alt — Basis für Erfolgsbeteiligung">Status quo: <strong>€ ${kostenAltSum.toLocaleString('de-DE')}</strong>/Jahr</span>`
           + `<span style="background:#7c3aed;color:#fff;border-radius:5px;padding:2px 8px;font-weight:600" title="Erfolgsbeteiligung % auf nachweisbare Einsparung">🎯 ${erfolgPct}% Erfolg</span>`
@@ -30620,6 +30620,8 @@ function openEmailReplyAiHelper(emailId) {
         <div style="font-size:11px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">📝 KI-Vorschlag</div>
         <textarea id="emailReplyAiText_${emailId}" rows="11" style="width:100%;background:#faf5ff;border:1px solid #c4b5fd;border-radius:10px;padding:14px;font-size:13.5px;color:#0f172a;line-height:1.55;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
         <div style="font-size:11px;color:#94a3b8;margin-top:4px">Du kannst den Vorschlag direkt bearbeiten, bevor du ihn übernimmst.</div>
+        <!-- V12.299: Signatur-Vorschau — read-only, wird beim Senden automatisch angehängt -->
+        <div id="emailReplyAiSigPreview_${emailId}" style="display:none;margin-top:12px"></div>
         <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <button onclick="generateEmailReplyAi('${emailId}')" style="background:#fff;border:1px solid #c4b5fd;color:#5b21b6;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">↻ Neu generieren</button>
           <button onclick="adoptEmailReplyAi('${emailId}')" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">
@@ -30692,6 +30694,31 @@ async function generateEmailReplyAi(emailId) {
     if (resultBox) resultBox.style.display = 'block';
     window._emailReplyAiCurrent = window._emailReplyAiCurrent || {};
     window._emailReplyAiCurrent[emailId] = txt;
+    // V12.299: Signatur-Vorschau anzeigen (read-only), damit man sieht was tatsächlich
+    // rausgeht. Beim Adopt wandert NUR der editierbare Text in den Composer — die
+    // Signatur wird beim Senden via _eiResolveSignatureForSend automatisch angehängt.
+    try {
+      const sigResolve = (typeof _eiResolveSignatureForSend === 'function')
+        ? _eiResolveSignatureForSend('')
+        : null;
+      const sigText = (sigResolve && sigResolve.textSig)
+        || (typeof _eiGetSignature === 'function' ? _eiGetSignature() : '')
+        || '';
+      const sigBox = document.getElementById('emailReplyAiSigPreview_' + emailId);
+      if (sigBox) {
+        if (sigText && sigText.trim()) {
+          sigBox.style.display = 'block';
+          sigBox.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;gap:6px">'
+            + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>'
+            + 'Signatur — wird beim Senden automatisch angehängt'
+            + '</div>'
+            + '<div style="background:#f5f3ff;border:1px dashed #c4b5fd;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#475569;line-height:1.6;white-space:pre-wrap;font-family:inherit">' + _esc(sigText.trim()) + '</div>';
+        } else {
+          sigBox.style.display = 'block';
+          sigBox.innerHTML = '<div style="background:#fff7ed;border:1px dashed #fdba74;border-radius:8px;padding:9px 12px;font-size:11.5px;color:#9a3412;line-height:1.5">⚠ Keine Signatur hinterlegt — die Email geht ohne Absender-Block raus. <a href="#" onclick="document.getElementById(\'emailReplyAiModal\').style.display=\'none\';openBearbeiterEditor();return false;" style="color:#9a3412;font-weight:700;text-decoration:underline">Jetzt einrichten</a></div>';
+        }
+      }
+    } catch (e) { console.warn('[V12.299] sig-preview failed:', e.message); }
     setBtn('<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg> KI-Vorschlag generieren', false);
   } catch (e) {
     console.error('[emailReplyAi]', e);
