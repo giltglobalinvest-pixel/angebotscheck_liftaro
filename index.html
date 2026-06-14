@@ -6390,7 +6390,7 @@ body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: n
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.307';
+const APP_VERSION = 'V12.308';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34599,6 +34599,15 @@ async function _saveVorgangAssignment(recId, vIdx, patchObj) {
   if (!r) return false;
   let vorgaenge = [];
   try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  // V12.308: Wenn vIdx=0 und kein Vorgang existiert → Initial-Vorgang aus KI-Daten anlegen
+  if (vIdx === 0 && vorgaenge.length === 0) {
+    vorgaenge[0] = {
+      typ: '',
+      kunde_firma: String(r.real_hv_firma || '').trim(),
+      kunde_name:  String(r.real_absender_name || '').trim(),
+      kunde_email: String(r.real_hv_email || r.real_absender_email || '').trim(),
+    };
+  }
   if (vIdx < 0 || vIdx >= vorgaenge.length) return false;
   Object.assign(vorgaenge[vIdx], patchObj, {
     assigned_at: new Date().toISOString(),
@@ -34620,11 +34629,22 @@ async function assignHvToVorgang(recId, vIdx) {
   if (!r) return;
   let vorgaenge = [];
   try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+  // V12.308: Wenn vIdx=0 und noch kein Vorgang existiert (z. B. KI-Schnell-Analyse hat
+  // nur real_hv_firma gesetzt, aber kein Vorgang ist angelegt) → leeren Initial-Vorgang
+  // aus KI-Daten erzeugen, damit der Suchen-Button überhaupt was zu zuweisen hat.
+  if (vIdx === 0 && !vorgaenge[0]) {
+    vorgaenge[0] = {
+      typ: '',
+      kunde_firma: String(r.real_hv_firma || '').trim(),
+      kunde_name:  String(r.real_absender_name || '').trim(),
+      kunde_email: String(r.real_hv_email || r.real_absender_email || '').trim(),
+    };
+  }
   const v = vorgaenge[vIdx];
   if (!v) return;
 
   // Initial-Query: Firma aus KI-Extraktion bevorzugt, sonst Name
-  const initialQuery = (v.kunde_firma || v.kunde_name || '').trim();
+  const initialQuery = (v.kunde_firma || v.kunde_name || r.real_hv_firma || '').trim();
   if (!APP_KEYS.vorabcheckProxyUrl) {
     showToast('Pipedrive-Proxy nicht konfiguriert (Vorabcheck-Hub → Setup)', 'error');
     return;
