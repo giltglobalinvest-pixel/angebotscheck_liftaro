@@ -4755,6 +4755,8 @@ const pdfWorkerReady = Promise.resolve();</script>
 body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !important; }
 /* V12.250: EuC im Vertragscheck & an Anlagen ausblenden */
 body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !important; }
+/* V12.306: „Externer Verweis"-Block im Email-Detail ausblenden */
+body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: none !important; }
 /* V12.247: Karten-Layout für die Email-Liste — überschreibt das Tabellen-Look */
 #emailInboxList .ei-row {
   background:#fff;
@@ -6388,7 +6390,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.305';
+const APP_VERSION = 'V12.306';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6410,6 +6412,13 @@ const FEATURE_REGISTRY = [
     label:  'EuC im Vertragscheck & an Anlagen',
     desc:   'Versteckt den 🛡 Equipment-under-Control-Modus-Schalter im Vertragscheck, die EuC-Zusatzklausel im Beratervertrag und den EuC-Status-Banner an Aufzügen. Das eigenständige EuC-Modul (Nav-Pille) bleibt erhalten.',
     icon:   '🛡',
+  },
+  {
+    // V12.306: Externer Verweis (Check-ID aus anderem System) im Email-Detail ausblenden
+    key:    'externer_verweis',
+    label:  'Externer Verweis im Email-Detail',
+    desc:   'Versteckt die orange „🔗 Externer Verweis"-Sektion (Check-ID aus externem System für späteren Sync) im Email-Detail-View.',
+    icon:   '🔗',
   },
   // Erweiterbar: weitere Features hier ergänzen.
 ];
@@ -7800,12 +7809,14 @@ async function setupTables() {
     console.log('[V12.287] ensureFields(Aufzuege: kuendigung + anhaenge) OK');
   } catch(e) { console.warn('[V12.287] ensureFields(Aufzuege) failed:', e.message); }
   // V12.304: Prämie an Liftaro pro Aufzug — manuell befüllbarer Jahresbetrag
+  // V12.306: Plus Beleg-PDF (Auftragsbestätigung, Abrechnung etc.) als Anhang
   try {
     await ensureFields('Aufzuege', [
       { name: 'praemie_liftaro_eur', type: 'number', options: { precision: 0 } },
+      { name: 'praemie_beleg_pdf',   type: 'multipleAttachments' },
     ]);
-    console.log('[V12.304] ensureFields(Aufzuege: praemie_liftaro_eur) OK');
-  } catch(e) { console.warn('[V12.304] ensureFields(Aufzuege) failed:', e.message); }
+    console.log('[V12.304/306] ensureFields(Aufzuege: praemie_liftaro_eur + praemie_beleg_pdf) OK');
+  } catch(e) { console.warn('[V12.304/306] ensureFields(Aufzuege) failed:', e.message); }
   // Verträge-Tabelle
   try {
     await ensureTable('Vertraege', [
@@ -23399,6 +23410,20 @@ async function renderAufzuegeInEuCEditor(lvId) {
         + '<label title="Prämie pro Jahr, die Liftaro für die Vermittlung erhält" style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:600">Prämie an Liftaro:</label>'
         + '<input type="number" value="' + (hasPraemie ? praemie : '') + '" placeholder="–" min="0" step="1" onchange="_saveAufzugPraemieLiftaro(\'' + recIdEsc + '\', this.value)" title="Manuell befüllbar — z. B. aus Beauftragung" style="width:90px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;font-family:\'DM Mono\',monospace">'
         + '<span style="font-size:10.5px;color:var(--muted);font-family:\'DM Mono\',monospace">€/J.</span>'
+        // V12.306: Beleg-PDF zur Prämie hochladen (Auftragsbestätigung, Abrechnung etc.)
+        + (() => {
+            const belegArr = Array.isArray(a.praemie_beleg_pdf) ? a.praemie_beleg_pdf : [];
+            const inputId  = 'belegFile_' + recIdEsc;
+            if (belegArr.length) {
+              const first = belegArr[0];
+              const fname = String(first.filename || 'Beleg.pdf');
+              const url   = String(first.url || '');
+              return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="Beleg ansehen · ' + escapeHtml(fname) + (belegArr.length > 1 ? ' (+' + (belegArr.length - 1) + ')' : '') + '" style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">📄 Beleg' + (belegArr.length > 1 ? ' (' + belegArr.length + ')' : '') + '</a>'
+                + '<button type="button" onclick="_deleteAufzugBeleg(\'' + recIdEsc + '\')" title="Beleg(e) löschen" style="background:transparent;border:1px solid #fca5a5;color:#9F1B1F;border-radius:5px;padding:3px 6px;cursor:pointer;font-size:11px">🗑</button>';
+            }
+            return '<input type="file" id="' + inputId + '" accept=".pdf,image/*" style="display:none" onchange="_uploadAufzugBeleg(\'' + recIdEsc + '\', this.files); this.value=\'\';">'
+              + '<button type="button" onclick="document.getElementById(\'' + inputId + '\').click()" title="Beleg-PDF zur Prämie hochladen (z. B. Auftragsbestätigung)" style="background:#fff;border:1px dashed #cbd5e1;color:#475569;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">📎 Beleg</button>';
+          })()
         + '<button type="button" onclick="_unlinkAufzugFromEuC(\'' + recIdEsc + '\', \'' + idEsc + '\')" title="Aufzug aus diesem EuC entfernen" style="background:transparent;border:1.5px solid #e0a09a;color:#a8312f;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;line-height:1;font-weight:700">×</button>'
       + '</div>';
     }).join('');
@@ -23436,6 +23461,46 @@ async function _saveAufzugPraemieLiftaro(recId, val) {
   }
 }
 window._saveAufzugPraemieLiftaro = _saveAufzugPraemieLiftaro;
+
+// V12.306: Beleg-PDF zur Prämie hochladen (Auftragsbestätigung etc.)
+async function _uploadAufzugBeleg(recId, fileList) {
+  const files = Array.from(fileList || []).filter(f => f && f.name);
+  if (!files.length) return;
+  const MAX = 5 * 1024 * 1024;
+  for (const f of files) {
+    if (f.size > MAX) { showToast('„' + f.name + '" ist zu groß (max. 5 MB)', 'warning', 4500); return; }
+  }
+  showToast('Lade ' + files.length + ' Datei' + (files.length === 1 ? '' : 'en') + ' …', 'info', 2200);
+  let ok = 0, fail = 0;
+  for (const f of files) {
+    try {
+      await uploadAirtableAttachment('Aufzuege', recId, 'praemie_beleg_pdf', f);
+      ok++;
+    } catch (e) {
+      console.warn('[V12.306] beleg upload ' + f.name + ':', e.message);
+      fail++;
+    }
+  }
+  if (fail === 0) showToast('✓ Beleg hochgeladen', 'success', 2800);
+  else if (ok === 0) showToast('Upload fehlgeschlagen', 'error', 4500);
+  else showToast(ok + ' ok · ' + fail + ' fehlgeschlagen', 'warning', 4500);
+  const lvId = document.getElementById('lv_id').value;
+  if (lvId) renderAufzuegeInEuCEditor(lvId);
+}
+window._uploadAufzugBeleg = _uploadAufzugBeleg;
+
+async function _deleteAufzugBeleg(recId) {
+  if (!confirm('Beleg-Datei(en) wirklich löschen?')) return;
+  try {
+    await atUpdate('Aufzuege', recId, { praemie_beleg_pdf: [] });
+    showToast('✓ Beleg gelöscht', 'success', 2200);
+    const lvId = document.getElementById('lv_id').value;
+    if (lvId) renderAufzuegeInEuCEditor(lvId);
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+window._deleteAufzugBeleg = _deleteAufzugBeleg;
 
 // V12.304: Aufzug aus einer Email an den EuC-Vertrag der zugeordneten HV pushen.
 // Nutzt die Pipedrive-Org-ID der HV → sucht Light-Vertrag → markiert Aufzug als EuC.
@@ -29722,7 +29787,11 @@ function _renderEmailAssignmentCards(r) {
           ${hvEmail ? `<div style="font-size:12px;color:#475569;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvEmail)}</div>` : ''}
           ${hvOrgId ? `<div style="font-family:var(--dr-f-mono);font-size:10.5px;color:#64748b;margin-top:4px;letter-spacing:.04em">Pipedrive-ID ${_esc(hvOrgId)}</div>` : ''}
         </div>
-        <button onclick="runAiQuickAnalysis('${r._id}')" title="HV per KI neu bestimmen" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Ändern</button>
+        <!-- V12.306: Suchen-Button für manuelle HV-Auswahl (Pipedrive-Picker) -->
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button onclick="assignHvToVorgang('${r._id}', 0)" title="HV manuell aus Pipedrive auswählen" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔍 Suchen</button>
+          <button onclick="runAiQuickAnalysis('${r._id}')" title="HV per KI neu bestimmen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif">🤖 KI</button>
+        </div>
       </div>`
     : `<div style="background:#fff7ed;border:1px dashed #fdba74;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;min-width:0">
         <svg width="22" height="22" fill="none" stroke="#9a3412" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -29730,7 +29799,11 @@ function _renderEmailAssignmentCards(r) {
           <div style="font-size:10.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:.06em">Hausverwaltung</div>
           <div style="font-size:13px;color:#9a3412;margin-top:3px">Noch nicht zugeordnet</div>
         </div>
-        <button onclick="runAiQuickAnalysis('${r._id}')" title="HV automatisch per KI erkennen" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🤖 KI</button>
+        <!-- V12.306: Suchen-Button auch im leeren Zustand -->
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button onclick="assignHvToVorgang('${r._id}', 0)" title="HV manuell aus Pipedrive auswählen" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔍 Suchen</button>
+          <button onclick="runAiQuickAnalysis('${r._id}')" title="HV automatisch per KI erkennen" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🤖 KI</button>
+        </div>
       </div>`;
   // Aufzug-Kachel
   const azCard = hasAufzug
@@ -33390,9 +33463,9 @@ function renderEmailInboxDetail() {
     <div id="ei_ai_subject_result">${(r.ai_subject || r.ai_subject_typ) ? _renderAiSubjectResult(r) : ''}</div>
   </div>`;
 
-  // V12.168: Externer Verweis (Check-ID aus anderem System) — speicherbar
+  // V12.168/V12.306: Externer Verweis — per Feature-Toggle ausblendbar (data-feature)
   const extId = String(r.external_check_id || '').trim();
-  html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #f59e0b;background:#fffbeb">
+  html += `<div class="dr-section" data-feature="externer_verweis" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #f59e0b;background:#fffbeb">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <span style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">🔗 Externer Verweis</span>
       <span style="font-size:11px;color:#a16207;font-weight:500">Check-ID aus externem System — manuell eintragen für späteren Sync</span>
