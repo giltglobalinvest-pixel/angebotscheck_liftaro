@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.314';
+const APP_VERSION = 'V12.315';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28848,8 +28848,13 @@ function renderEmailInboxList() {
         eucDocPill = `<a href="${_urlEsc}" target="_blank" rel="noopener" download="${_fn}" onclick="event.stopPropagation()" title="Unterschriebenen EuC-Vertrag herunterladen · ${_fn}" style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">🛡 EuC ↓</a>`;
       }
     }
+    // V12.315: Aufzug-Pille grün wenn im EuC-Vertrag drin (sonst hellblau wie bisher)
+    const _azListInEuC = String(r.aufzug_im_euc || '') === '1';
+    const _azPillBg = _azListInEuC ? '#f0fdf4' : '#ecfeff';
+    const _azPillFg = _azListInEuC ? '#15803d' : '#0e7490';
+    const _azPillBd = _azListInEuC ? '#86efac' : '#67e8f9';
     const azPill = (afn || ast)
-      ? `<span title="${_esc(ast || 'Aufzug')}${afn ? ' · Fabrik-Nr. ' + _esc(afn) : ''}" style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px;font-family:var(--dr-f-mono)"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0;font-family:'DM Sans',sans-serif"><rect x="6" y="3" width="12" height="18" rx="2"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(afn ? 'Fn ' + afn : ast)}</span></span>`
+      ? `<span title="${_esc(ast || 'Aufzug')}${afn ? ' · Fabrik-Nr. ' + _esc(afn) : ''}${_azListInEuC ? ' · im EuC-Vertrag' : ''}" style="background:${_azPillBg};color:${_azPillFg};border:1px solid ${_azPillBd};border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px;font-family:var(--dr-f-mono)">${_azListInEuC ? '<span style="font-size:10px;font-weight:800;flex-shrink:0">✓</span>' : ''}<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0;font-family:'DM Sans',sans-serif"><rect x="6" y="3" width="12" height="18" rx="2"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(afn ? 'Fn ' + afn : ast)}</span></span>`
       : '';
     // V12.184: Notiz-Badge in der Listen-Karte zeigen
     let notesCount = 0;
@@ -32770,7 +32775,7 @@ function _eiRenderWartungsnehmerSection(r, wn) {
       <div id="chatAttachList_${emailId}" style="display:${pendingAtts.length ? 'flex' : 'none'};flex-wrap:wrap;gap:6px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #f1f5f9">${attListInitial}</div>
       <div style="display:flex;gap:8px;align-items:flex-end">
         <input type="file" id="chatAttach_${emailId}" multiple style="display:none" onchange="onChatFilePick('${emailId}',this.files)">
-        <button onclick="document.getElementById('chatAttach_${emailId}').click()" title="Anhang hinzufügen (max. 8 MB)" ${canSend ? '' : 'disabled'} style="background:transparent;border:1px solid #cbd5e1;color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end">
+        <button onclick="document.getElementById('chatAttach_${emailId}').click()" title="Anhang hinzufügen (max. 8 MB)" ${canSend ? '' : 'disabled'} style="background:transparent;border:1px solid #cbd5e1;color:${accentDeep};border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
         ${(() => {
@@ -32782,15 +32787,15 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           const _tip = _n
             ? 'Anhänge aus dieser Email in den Chat übernehmen — ' + _o + ' Original, ' + _n + ' neutralisiert (für Servicebetriebe empfohlen)'
             : 'Anhänge aus dieser Email in den Chat übernehmen (' + _o + ')';
-          return `<button onclick="attachEmailFilesToChat('${emailId}')" title="${_tip}" ${canSend ? '' : 'disabled'} style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;position:relative">
+          return `<button onclick="attachEmailFilesToChat('${emailId}')" title="${_tip}" ${canSend ? '' : 'disabled'} style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;position:relative">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><circle cx="18" cy="17" r="4" fill="#fff" stroke="${accentDeep}"/><line x1="18" y1="15" x2="18" y2="19" stroke="${accentDeep}"/><line x1="16" y1="17" x2="20" y2="17" stroke="${accentDeep}"/></svg>
             <span style="position:absolute;top:-5px;right:-5px;background:${_n ? '#16a34a' : accent};color:#fff;font-size:9px;font-weight:700;border-radius:9px;padding:1px 5px;font-family:'DM Sans',sans-serif;min-width:14px;text-align:center">${_total}</span>
           </button>`;
         })()}
-        <button onclick="openChatAiHelper('${emailId}')" title="✨ KI-Hilfe — Stichworte rein, formulierte Nachricht raus" ${canSend ? '' : 'disabled'} style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;gap:4px">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
+        <button onclick="openChatAiHelper('${emailId}')" title="✨ KI-Hilfe — Stichworte rein, formulierte Nachricht raus" ${canSend ? '' : 'disabled'} style="background:linear-gradient(135deg,#7c3aed,#5b21b6);border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>
         </button>
-        <button onclick="attachVollmachtToChat('${emailId}')" title="Vollmacht der HV anhängen" ${canSend ? '' : 'disabled'} style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:7px 9px;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;gap:4px">
+        <button onclick="attachVollmachtToChat('${emailId}')" title="Vollmacht der HV anhängen" ${canSend ? '' : 'disabled'} style="background:#16a34a;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
         </button>
         <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
@@ -33991,12 +33996,103 @@ function _eiHydrateHtmlBodies(container) {
   container.querySelectorAll('[data-html]').forEach(el => {
     if (el.dataset.rendered === '1') return;
     const raw = el.getAttribute('data-html') || '';
-    el.innerHTML = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(raw) : raw;
+    const fixed = (typeof _fixCorruptUmlauts === 'function') ? _fixCorruptUmlauts(raw) : raw;
+    el.innerHTML = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(fixed) : fixed;
     el.dataset.rendered = '1';
     el.removeAttribute('data-html');
   });
+  // V12.315: Alle Text-Nodes im Container nach „�" scannen und ersetzen — fängt
+  // Plain-Text-Bodies, Vorschau-Snippets und alles weitere ab. Sicher, weil Text-Nodes
+  // keine HTML-Struktur ändern können.
+  if (typeof _fixCorruptUmlauts === 'function') {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    const fixes = [];
+    let n;
+    while ((n = walker.nextNode())) {
+      if (n.nodeValue && n.nodeValue.indexOf('�') !== -1) fixes.push(n);
+    }
+    fixes.forEach(t => { t.nodeValue = _fixCorruptUmlauts(t.nodeValue); });
+  }
 }
 window._eiHydrateHtmlBodies = _eiHydrateHtmlBodies;
+
+// V12.315: Heuristik — Replacement-Character (U+FFFD / „�") in deutschen Texten
+// durch die wahrscheinlichsten Umlaute ersetzen. Konservativ: nur klare Wort-Pattern
+// werden geändert; einzelne stehende „�" bleiben (ggf. § wenn isoliert vor Zahl).
+// Ursache: Inbound-Mail wurde mit falschem Charset dekodiert (typisch Latin-1
+// → UTF-8 als UTF-8). Die Original-Bytes sind verloren — diese Heuristik holt
+// die ~80% der häufigsten Wörter zurück.
+function _fixCorruptUmlauts(s) {
+  s = String(s == null ? '' : s);
+  if (s.indexOf('�') === -1) return s;
+  const map = [
+    // Grußformeln (oft 2 Umlaute: üß / üs)
+    [/Mit freundlichen Gr[�]+(en|n)\b/g, 'Mit freundlichen Grüßen'],
+    [/Gr[�]{2,3}en\b/g, 'Grüßen'],
+    [/Gr[�]+en\b/g, 'Grüßen'],
+    [/Sch[�]ne Gr[�]+e/g, 'Schöne Grüße'],
+    // Häufige Wortstämme (case-sensitive, da Wort-Anfänge groß sind)
+    [/\bf[�]r\b/g, 'für'],
+    [/\bF[�]r\b/g, 'Für'],
+    [/\bf[�]hr/g, 'führ'],
+    [/\bF[�]hr/g, 'Führ'],
+    [/Verg[�]t/g, 'Vergüt'],
+    [/verg[�]t/g, 'vergüt'],
+    [/R[�]ck/g, 'Rück'],
+    [/r[�]ck/g, 'rück'],
+    [/M[�]glich/g, 'Möglich'],
+    [/m[�]glich/g, 'möglich'],
+    [/[�]bermittl/g, 'Übermittl'],
+    [/[�]bertrag/g, 'Übertrag'],
+    [/[�]bersicht/g, 'Übersicht'],
+    [/[�]bersend/g, 'Übersend'],
+    [/[�]berpr[�]f/g, 'Überprüf'],
+    [/K[�]nd/g, 'Künd'],
+    [/k[�]nd/g, 'künd'],
+    [/Pr[�]f/g, 'Prüf'],
+    [/pr[�]f/g, 'prüf'],
+    [/N[�]chst/g, 'Nächst'],
+    [/n[�]chst/g, 'nächst'],
+    [/T[�]glich/g, 'Täglich'],
+    [/t[�]glich/g, 'täglich'],
+    [/M[�]gl/g, 'Mögl'],
+    [/m[�]gl/g, 'mögl'],
+    [/L[�]ng/g, 'Läng'],
+    [/l[�]ng/g, 'läng'],
+    [/L[�]uf/g, 'Läuf'],
+    [/l[�]uf/g, 'läuf'],
+    [/Tr[�]g/g, 'Träg'],
+    [/tr[�]g/g, 'träg'],
+    [/Sp[�]t/g, 'Spät'],
+    [/sp[�]t/g, 'spät'],
+    [/zus[�]tzlich/g, 'zusätzlich'],
+    [/Zus[�]tzlich/g, 'Zusätzlich'],
+    [/W[�]hr/g, 'Währ'],
+    [/w[�]hr/g, 'währ'],
+    [/h[�]tt/g, 'hätt'],
+    [/H[�]tt/g, 'Hätt'],
+    [/k[�]nn/g, 'könn'],
+    [/K[�]nn/g, 'Könn'],
+    [/h[�]ng/g, 'häng'],
+    [/H[�]ng/g, 'Häng'],
+    [/ben[�]tig/g, 'benötig'],
+    [/Ben[�]tig/g, 'Benötig'],
+    [/erh[�]lt/g, 'erhält'],
+    [/Erh[�]lt/g, 'Erhält'],
+    [/W[�]nsch/g, 'Wünsch'],
+    [/w[�]nsch/g, 'wünsch'],
+    [/[�]ber\b/g, 'über'],
+    [/[�]bern/g, 'Übern'],
+    [/[�]\s*27\s*Abs/g, '§ 27 Abs'], // typische Paragraph-Referenz
+    [/[�]\s*\d+\s+Abs/g, m => m.replace(/[�]/, '§')],
+    // Eigenständige „�ß" → „üß" (z. B. Gru�e → Grüße)
+    [/u[�]/g, 'üß'],
+    [/U[�]/g, 'Üß'],
+  ];
+  for (const [re, rep] of map) s = s.replace(re, rep);
+  return s;
+}
+window._fixCorruptUmlauts = _fixCorruptUmlauts;
 
 function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
