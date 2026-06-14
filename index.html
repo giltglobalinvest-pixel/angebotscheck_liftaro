@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.328';
+const APP_VERSION = 'V12.329';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -31631,9 +31631,12 @@ window._eiWnChatCache = window._eiWnChatCache || {};
 function _eiCleanChatBody(s) {
   if (!s) return '';
   let text = String(s).replace(/\r\n/g, '\n');
-  // V12.324: Wenn der Text flach ist (keine Newlines), Block-Struktur per Heuristik
-  // wiederherstellen — typische Email-Pattern und Anrede/Grußformel-Bruchpunkte.
-  if (text.indexOf('\n') === -1 && text.length > 80) {
+  // V12.324/V12.329: Reinflate IMMER aufrufen wenn der Text Mehrfach-Spaces ODER
+  // gar keine Newlines hat — fängt sowohl flache Bodies als auch teilweise gebrochene
+  // (z.B. Newlines im Body aber flacher Footer mit Multi-Spaces).
+  const hasMultiSpace = /[ \t]{2,}/.test(text);
+  const hasNoNewline  = text.indexOf('\n') === -1;
+  if ((hasMultiSpace || hasNoNewline) && text.length > 60) {
     text = _eiReinflateFlatBody(text);
   }
   // Quoted reply abschneiden — verschiedene Sprachen / Mail-Clients
@@ -31681,17 +31684,17 @@ function _eiHtmlToTextWithBreaks(html) {
        .replace(/&Auml;/gi, 'Ä').replace(/&Ouml;/gi, 'Ö').replace(/&Uuml;/gi, 'Ü')
        .replace(/&szlig;/gi, 'ß').replace(/&euro;/gi, '€')
        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
-  // V12.326: Whitespace nur normalisieren wenn schon Newlines da sind — sonst
-  // verlieren wir die Mehrfach-Spaces, die _eiReinflateFlatBody als Bruchpunkt braucht.
-  if (h.indexOf('\n') !== -1) {
-    h = h.replace(/[ \t]+/g, ' ');
-    h = h.replace(/ *\n */g, '\n');
-    h = h.replace(/\n{3,}/g, '\n\n');
-    return h.trim();
-  }
-  // HTML war ein flacher Block — Reinflate-Heuristik auf das Tag-stripped Ergebnis
-  if (typeof _eiReinflateFlatBody === 'function' && h.trim().length > 60) {
-    return _eiReinflateFlatBody(h).trim();
+  // V12.326/V12.329: Multi-Spaces ZUERST zu Newlines verwandeln — damit verlieren
+  // wir die Bruchstellen nicht durch die nachfolgende Single-Space-Normalisierung.
+  // Danach Reinflate-Heuristik auf alle Texte (auch mit Newlines) — sie ist idempotent
+  // und fängt zusätzlich Single-Space-Marker (Tel.:, E-Mail:, Sitz: …).
+  h = h.replace(/[ \t]{2,}/g, '\n');
+  h = h.replace(/[ \t]+/g, ' ');
+  h = h.replace(/ *\n */g, '\n');
+  h = h.replace(/\n{3,}/g, '\n\n');
+  h = h.trim();
+  if (typeof _eiReinflateFlatBody === 'function' && h.length > 60) {
+    h = _eiReinflateFlatBody(h);
   }
   return h.trim();
 }
@@ -33697,7 +33700,12 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           // V12.228: Body bereinigen + Anhang-Chips für eingehende
           const rawBody = String(it.body || '');
           const cleanBody = isOut ? rawBody : _eiCleanChatBody(rawBody);
-          const bodyText = (cleanBody || rawBody).trim() || '(leere Nachricht)';
+          let bodyText = (cleanBody || rawBody).trim() || '(leere Nachricht)';
+          // V12.329: Letzter Backstop — wenn nach _eiCleanChatBody immer noch keine Newlines
+          // aber Multi-Spaces im Body sind, hier nochmal expliziert reinflate.
+          if (!isOut && bodyText.indexOf('\n') === -1 && /[ \t]{2,}/.test(bodyText) && typeof _eiReinflateFlatBody === 'function') {
+            bodyText = _eiReinflateFlatBody(bodyText);
+          }
           // V12.327: Diagnose-Log für eingehende Bubbles — zeigt warum Formatierung greift oder nicht
           if (!isOut && window._eiDiagOn) {
             console.log('[V12.327 BUBBLE-IN]', it.id || '(?)', {
