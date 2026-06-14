@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.295';
+const APP_VERSION = 'V12.296';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9272,17 +9272,45 @@ async function extractVollmachtFromSignedContract() {
   };
   const fileInput = document.getElementById('lv_signedFile');
   const file = fileInput && fileInput.files && fileInput.files[0];
+  const lvRecordId = (document.getElementById('lv_recordId') || {}).value || '';
   const hvName = (document.getElementById('lv_firma') || {}).value || '';
   let hvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
-  console.log('[vollmacht-extract] Input', { hasFile: !!file, fileName: file && file.name, hvName: hvName, hvOrgId: hvOrgId, hasKey: !!APP_KEYS.anthropicKey, hasPdfLib: !!window.PDFLib });
+  console.log('[vollmacht-extract] Input', { hasFile: !!file, fileName: file && file.name, lvRecordId: lvRecordId, hvName: hvName, hvOrgId: hvOrgId, hasKey: !!APP_KEYS.anthropicKey, hasPdfLib: !!window.PDFLib });
 
-  if (!file) {
-    setStatus('error', '<strong>Keine Datei gewählt</strong> · Bitte zuerst oben unter „Unterschriebene Vereinbarung" das PDF auswählen.');
-    showToast('Bitte erst die PDF auswählen', 'warning', 3500);
-    return;
+  // V12.296: PDF-Quelle bestimmen — bevorzugt das neu gewählte File aus dem File-Input,
+  // sonst die bereits hochgeladene Datei aus dem Light-Vertrag-Record (vertrag_signed_pdf).
+  // Das war bisher der Bug: hat man die PDF einmal gespeichert, verlangte „Vollmacht
+  // extrahieren" zwingend ein erneutes Auswählen — obwohl die Datei direkt darüber sichtbar war.
+  let pdfBuffer = null;
+  let pdfFilename = '';
+  if (file) {
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+      setStatus('error', '<strong>Nur PDF-Dateien</strong> können automatisch analysiert werden. Gewählt: ' + _esc(file.name));
+      return;
+    }
+    pdfFilename = file.name;
+    try { pdfBuffer = await file.arrayBuffer(); }
+    catch (e) { setStatus('error', '<strong>Datei nicht lesbar</strong> · ' + _esc(e.message)); return; }
+  } else if (lvRecordId) {
+    setStatus('working', '📥 Hochgeladene Datei wird aus Airtable nachgeladen …');
+    try {
+      const recs = await atRead('Light-Vertraege', "RECORD_ID()='" + lvRecordId + "'", { sort: false });
+      const atts = recs.length && Array.isArray(recs[0].fields.vertrag_signed_pdf) ? recs[0].fields.vertrag_signed_pdf : [];
+      const att = atts[0];
+      if (att && att.url) {
+        const resp = await fetch(att.url);
+        if (!resp.ok) throw new Error('Download HTTP ' + resp.status);
+        pdfBuffer = await resp.arrayBuffer();
+        pdfFilename = att.filename || 'Vereinbarung.pdf';
+        console.log('[vollmacht-extract] Fallback: nutze hochgeladene Datei →', pdfFilename, '(' + Math.round(pdfBuffer.byteLength / 1024) + ' KB)');
+      }
+    } catch (e) {
+      console.warn('[vollmacht-extract] Fallback-Download fehlgeschlagen:', e.message);
+    }
   }
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
-    setStatus('error', '<strong>Nur PDF-Dateien</strong> können automatisch analysiert werden. Gewählt: ' + _esc(file.name));
+  if (!pdfBuffer) {
+    setStatus('error', '<strong>Keine PDF gefunden</strong> · Lade oben unter „Unterschriebene Vereinbarung" ein PDF hoch und speichere — oder wähle direkt eine Datei aus.');
+    showToast('Keine PDF gefunden', 'warning', 3500);
     return;
   }
   if (!hvName.trim()) {
@@ -9378,9 +9406,10 @@ async function extractVollmachtFromSignedContract() {
   }
 
   try {
-    setStatus('working', '<strong>Start</strong> · PDF wird geladen für „' + _esc(hvName) + '" (Pipedrive ' + _esc(hvOrgId) + ')');
+    setStatus('working', '<strong>Start</strong> · PDF wird geladen für „' + _esc(hvName) + '" (Pipedrive ' + _esc(hvOrgId) + ')' + (pdfFilename ? ' · ' + _esc(pdfFilename) : ''));
     setBtn('PDF laden …', true);
-    const arrayBuffer = await file.arrayBuffer();
+    // V12.296: arrayBuffer kommt jetzt aus pdfBuffer (entweder frisch gewählte Datei oder Airtable-Fallback)
+    const arrayBuffer = pdfBuffer;
 
     setStatus('working', '<strong>PDF wird analysiert</strong> · Seiten zählen …');
     setBtn('PDF analysieren …', true);
