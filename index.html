@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.289';
+const APP_VERSION = 'V12.290';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -18389,13 +18389,45 @@ async function renderKundenList() {
     } catch (_) { window._vmByOrgIdCache = window._vmByOrgIdCache || {}; }
   }
   const vmMap = window._vmByOrgIdCache || {};
-  // V12.289: EuC-Vertrag-Cache pro Pipedrive-Org-ID — TTL 60s
+  // V12.289/V12.290: EuC-Vertrag-Cache pro Pipedrive-Org-ID — TTL 60s.
+  // V12.290: Für Bestandsverträge ohne pipedrive_org_id fallen wir auf einen
+  // Namens-Match über die Pipedrive-Orgs-Liste zurück (gleiche Normalisierung
+  // wie V12.288 beim Vollmacht-Extrahieren — tolerant gegenüber Rechtsform-
+  // Suffixen und Sonderzeichen).
   if (!window._eucByOrgIdCache || (window.performance && performance.now() - (window._eucByOrgIdCacheAt || 0) > 60000) || window._eucByOrgIdCacheInvalid) {
     try {
       const allE = await loadLightVertraege();
       const emap = {};
+      // Vorbereitung Namens-Index für Fallback (orgs ist die Pipedrive-Live-Liste aus oben)
+      const _norm = (s) => {
+        let x = String(s || '').toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+        const suffixes = ['gmbh co kg', 'gmbh co', 'gmbh', 'gbr', 'kg', 'ohg', 'ug', 'ag', 'co kg', 'cie', 'partner'];
+        for (const sfx of suffixes) x = x.replace(new RegExp('\\b' + sfx + '\\b', 'g'), ' ').trim().replace(/\s+/g, ' ');
+        return x;
+      };
+      const orgsByNorm = new Map();
+      for (const o of orgs) {
+        const key = _norm(o.name);
+        if (key && !orgsByNorm.has(key)) orgsByNorm.set(key, String(o.org_id));
+      }
       for (const v of allE || []) {
-        const oid = String(v.pipedrive_org_id || '').trim();
+        let oid = String(v.pipedrive_org_id || '').trim();
+        // V12.290: Fallback — Org-ID aus Firmenname herleiten
+        if (!oid) {
+          const tgt = _norm(v.firma);
+          if (tgt) {
+            // 1. direkter Match im normalisierten Raum
+            if (orgsByNorm.has(tgt)) oid = orgsByNorm.get(tgt);
+            // 2. bidirektionaler Substring (z. B. „Dr. Wahl & Cie GmbH" vs. „Dr Wahl Partner")
+            if (!oid && tgt.length >= 4) {
+              for (const [k, val] of orgsByNorm) {
+                if (k && (k.includes(tgt) || tgt.includes(k))) { oid = val; break; }
+              }
+            }
+          }
+        }
         if (!oid) continue;
         // Falls mehrere Verträge zur HV existieren: jüngsten behalten (savedAt-Sort beim Lader bereits abwärts)
         if (!emap[oid]) emap[oid] = v;
@@ -22081,6 +22113,40 @@ async function saveLightVertrag() {
       const addBtn = document.getElementById('lv_addAufzuege');
       if (addBtn) { addBtn.disabled = false; addBtn.style.opacity = '1'; }
     } catch (uiErr) { console.warn('[V12.142] Post-Save UI-Update Warnung:', uiErr.message); }
+    // V12.290: Unterschriebene Datei aus lv_signedFile in Airtable hochladen (Bug-Fix:
+    // bisher wurde der File-Picker im Save komplett ignoriert — Datei landete nie im Record).
+    try {
+      const sf = document.getElementById('lv_signedFile');
+      const f  = sf?.files?.[0];
+      const sigInfo = document.getElementById('lv_signedInfo');
+      if (f) {
+        if (f.size > 5 * 1024 * 1024) {
+          if (sigInfo) sigInfo.innerHTML = '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:9px 12px;font-size:12px;font-weight:600">⚠ Datei „' + _esc(f.name) + '" ist größer als 5 MB — Airtable-Limit. Bitte verkleinern.</div>';
+          showToast('Datei zu groß (max 5 MB)', 'warning', 4500);
+        } else {
+          // Progress-UI während des Uploads
+          if (sigInfo) sigInfo.innerHTML = '<div style="background:#dbeafe;border:1px solid #93c5fd;color:#1e40af;border-radius:7px;padding:9px 12px;font-size:12px;display:flex;align-items:center;gap:8px">'
+            + '<span style="display:inline-block;width:14px;height:14px;border:2px solid #93c5fd;border-top-color:#1e40af;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></span>'
+            + '<span><strong>📤 Datei wird hochgeladen …</strong> ' + _esc(f.name) + ' · ' + Math.round(f.size / 1024) + ' KB</span>'
+            + '</div>';
+          try {
+            await atUploadAttachment(rec.id, 'vertrag_signed_pdf', f, f.name);
+            if (sigInfo) sigInfo.innerHTML = '<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:7px;padding:9px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px">'
+              + '<span>✓</span><span><strong>Datei hochgeladen:</strong> ' + _esc(f.name) + ' · ' + Math.round(f.size / 1024) + ' KB</span>'
+              + '</div>';
+            // Datei-Input zurücksetzen, damit nicht beim nächsten Save erneut hochgeladen wird
+            sf.value = '';
+            // EuC-Cache invalidieren — Filter „mit EuC" soll die HV sofort zeigen
+            window._eucByOrgIdCacheInvalid = true;
+            showToast('✓ Unterschriebene Vereinbarung hochgeladen', 'success', 3000);
+          } catch (upErr) {
+            console.error('[V12.290] vertrag_signed_pdf upload failed:', upErr);
+            if (sigInfo) sigInfo.innerHTML = '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:9px 12px;font-size:12px;font-weight:600">⚠ Upload fehlgeschlagen: ' + _esc(upErr.message) + '</div>';
+            showToast('Upload fehlgeschlagen: ' + upErr.message, 'error', 5000);
+          }
+        }
+      }
+    } catch (sigErr) { console.warn('[V12.290] signed-file handling:', sigErr.message); }
     await renderAufzuegeInEuCEditor(lvId);
     // Hintergrund: Liste neu laden
     loadLightVertraege().then(items => {
