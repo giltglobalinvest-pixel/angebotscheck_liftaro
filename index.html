@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.318';
+const APP_VERSION = 'V12.319';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -20252,6 +20252,21 @@ function setLiftaroSignatureSettings(o) {
 window.getLiftaroSignatureSettings = getLiftaroSignatureSettings;
 window.setLiftaroSignatureSettings = setLiftaroSignatureSettings;
 
+// V12.319: Optionale handgezeichnete Unterschrift als PNG (Data-URL) im localStorage.
+// Wenn gesetzt, hat das Bild Vorrang vor dem Skript-Font im PDF.
+function getLiftaroSignatureImage() {
+  try { return localStorage.getItem('liftaro_eoc_signature_image') || ''; }
+  catch (_) { return ''; }
+}
+function setLiftaroSignatureImage(dataUrl) {
+  try {
+    if (!dataUrl) localStorage.removeItem('liftaro_eoc_signature_image');
+    else          localStorage.setItem('liftaro_eoc_signature_image', String(dataUrl));
+  } catch (_) {}
+}
+window.getLiftaroSignatureImage = getLiftaroSignatureImage;
+window.setLiftaroSignatureImage = setLiftaroSignatureImage;
+
 // V12.272: Modal zum Konfigurieren der Liftaro-Signatur
 function openLiftaroSignatureSettings() {
   const cur = getLiftaroSignatureSettings();
@@ -20262,7 +20277,8 @@ function openLiftaroSignatureSettings() {
     m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:5800;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
     document.body.appendChild(m);
   }
-  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(480px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+  const curImg = (typeof getLiftaroSignatureImage === 'function') ? getLiftaroSignatureImage() : '';
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(560px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
     <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-size:15px;font-weight:700">✍ Liftaro-Unterschrift für EuC-Verträge</div>
@@ -20270,7 +20286,7 @@ function openLiftaroSignatureSettings() {
       </div>
       <button onclick="document.getElementById('liftaroSigSettingsModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
     </div>
-    <div style="padding:18px 22px;background:#f8fafc">
+    <div style="padding:18px 22px;background:#f8fafc;overflow:auto">
       <div style="margin-bottom:14px">
         <label for="liftaroSigName" style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Name (wird im Skript-Font dargestellt)</label>
         <input id="liftaroSigName" type="text" value="${_esc(cur.name)}" placeholder="Francesco Ricioppo" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff">
@@ -20279,7 +20295,21 @@ function openLiftaroSignatureSettings() {
         <label for="liftaroSigOrt" style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Ort (wird vor dem Datum eingefügt)</label>
         <input id="liftaroSigOrt" type="text" value="${_esc(cur.ort)}" placeholder="Mainz" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff">
       </div>
-      <div style="background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#64748b;line-height:1.5">
+      <!-- V12.319: Handgemalte Signatur per Canvas oder PNG-Upload -->
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid #e2e8f0">
+        <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Echte Unterschrift (optional, übersteuert den Skript-Font)</div>
+        <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;line-height:1.5">Mit Maus/Finger unterschreiben — oder ein PNG mit transparentem Hintergrund hochladen.</div>
+        <div style="background:#fff;border:1.5px solid #cbd5e1;border-radius:8px;padding:6px;margin-bottom:8px">
+          <canvas id="liftaroSigCanvas" width="500" height="120" style="width:100%;height:120px;cursor:crosshair;background:#fff;display:block;border-radius:5px;touch-action:none"></canvas>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button id="liftaroSigClearBtn" type="button" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:6px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">🧹 Leeren</button>
+          <button id="liftaroSigUploadBtn" type="button" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:6px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">📎 PNG hochladen</button>
+          <input id="liftaroSigUploadFile" type="file" accept="image/png,image/jpeg" style="display:none">
+          ${curImg ? `<span style="font-size:11.5px;color:#15803d;font-weight:600">✓ Signatur gespeichert</span><button id="liftaroSigDeleteBtn" type="button" style="background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:6px;padding:6px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">✕ Entfernen</button>` : '<span style="font-size:11.5px;color:#94a3b8">Bisher nur Skript-Font</span>'}
+        </div>
+      </div>
+      <div style="background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:10px 12px;font-size:11.5px;color:#64748b;line-height:1.5;margin-top:14px">
         <strong>Vorschau im PDF:</strong><br>
         <span id="liftaroSigPreviewName" style="font-family:'Brush Script MT','Lucida Handwriting','Snell Roundhand',cursive;font-size:22px;color:#0f172a;display:inline-block;margin-top:6px">${_esc(cur.name)}</span><br>
         <span style="font-size:10.5px;color:#94a3b8" id="liftaroSigPreviewMeta">${_esc(cur.ort)}, [aktuelles Datum] · für Liftaro GmbH</span>
@@ -20303,6 +20333,85 @@ function openLiftaroSignatureSettings() {
   };
   document.getElementById('liftaroSigName').addEventListener('input', sync);
   document.getElementById('liftaroSigOrt').addEventListener('input', sync);
+  // V12.319: Canvas-Pad für handgezeichnete Signatur
+  const canvas = document.getElementById('liftaroSigCanvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    // Hochauflösendes Drawing
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const cssW = canvas.clientWidth || 500;
+    const cssH = canvas.clientHeight || 120;
+    canvas.width  = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+    let drawing = false, last = null, hasInk = false;
+    const xy = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const p = e.touches ? e.touches[0] : e;
+      return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+    };
+    const start = (e) => { e.preventDefault(); drawing = true; last = xy(e); };
+    const move  = (e) => { if (!drawing) return; e.preventDefault(); const p = xy(e); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; hasInk = true; };
+    const stop  = () => { drawing = false; last = null; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+    canvas.addEventListener('touchstart', start);
+    canvas.addEventListener('touchmove', move);
+    canvas.addEventListener('touchend', stop);
+    canvas.dataset.hasInk = ''; // wird in _saveLiftaroSigAndClose abgefragt
+    Object.defineProperty(canvas, '_hasInk', { get: () => hasInk, configurable: true });
+    // Wenn schon eine Signatur gespeichert ist, sie ins Canvas einzeichnen als Startpunkt
+    const existing = (typeof getLiftaroSignatureImage === 'function') ? getLiftaroSignatureImage() : '';
+    if (existing && existing.startsWith('data:image/')) {
+      const img = new Image();
+      img.onload = () => { ctx.drawImage(img, 0, 0, cssW, cssH); hasInk = true; };
+      img.src = existing;
+    }
+    // Buttons
+    const clrBtn = document.getElementById('liftaroSigClearBtn');
+    if (clrBtn) clrBtn.onclick = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasInk = false; };
+    const upBtn = document.getElementById('liftaroSigUploadBtn');
+    const upFi  = document.getElementById('liftaroSigUploadFile');
+    if (upBtn && upFi) {
+      upBtn.onclick = () => upFi.click();
+      upFi.onchange = () => {
+        const f = upFi.files && upFi.files[0];
+        if (!f) return;
+        const rd = new FileReader();
+        rd.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // einpassen mit Aspect-Ratio
+            const r = img.width / img.height;
+            const cR = cssW / cssH;
+            let dw = cssW, dh = cssH, dx = 0, dy = 0;
+            if (r > cR) { dh = cssW / r; dy = (cssH - dh) / 2; }
+            else { dw = cssH * r; dx = (cssW - dw) / 2; }
+            ctx.drawImage(img, dx, dy, dw, dh);
+            hasInk = true;
+          };
+          img.src = rd.result;
+        };
+        rd.readAsDataURL(f);
+      };
+    }
+    const delBtn = document.getElementById('liftaroSigDeleteBtn');
+    if (delBtn) delBtn.onclick = () => {
+      if (typeof setLiftaroSignatureImage === 'function') setLiftaroSignatureImage('');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasInk = false;
+      showToast('Signatur entfernt — PDF nutzt wieder den Skript-Font', 'info', 3500);
+      // Modal neu rendern, damit der Status-Hinweis aktualisiert wird
+      const mo = document.getElementById('liftaroSigSettingsModal');
+      if (mo) mo.style.display = 'none';
+    };
+  }
 }
 window.openLiftaroSignatureSettings = openLiftaroSignatureSettings;
 
@@ -20310,11 +20419,70 @@ function _saveLiftaroSigAndClose() {
   const n = (document.getElementById('liftaroSigName') || {}).value || '';
   const o = (document.getElementById('liftaroSigOrt') || {}).value || '';
   setLiftaroSignatureSettings({ name: n.trim() || 'Francesco Ricioppo', ort: o.trim() || 'Mainz' });
+  // V12.319: Canvas-Bild speichern, wenn der User etwas gezeichnet/hochgeladen hat
+  try {
+    const cnv = document.getElementById('liftaroSigCanvas');
+    if (cnv && cnv._hasInk && typeof setLiftaroSignatureImage === 'function') {
+      // PNG mit transparentem Hintergrund — wir trimmen den weißen Rand bevor wir speichern
+      const trimmed = _trimCanvasToInk(cnv);
+      setLiftaroSignatureImage(trimmed || cnv.toDataURL('image/png'));
+      showToast('✓ Unterschrift gespeichert — wird ab jetzt im EuC-PDF eingebettet', 'success', 4000);
+    }
+  } catch (e) { console.warn('[V12.319] Canvas-Save fehlgeschlagen:', e); }
   const m = document.getElementById('liftaroSigSettingsModal');
   if (m) m.style.display = 'none';
   showToast('✓ Liftaro-Unterschrift gespeichert', 'success', 2000);
 }
 window._saveLiftaroSigAndClose = _saveLiftaroSigAndClose;
+
+// V12.319: Schneidet das Canvas auf die tatsächliche Tinte zu (Tight Crop) und
+// gibt ein transparentes PNG zurück — verhindert dass im PDF ein riesiger
+// leerer Rand um die Unterschrift steht.
+function _trimCanvasToInk(canvas) {
+  try {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+    // Wir suchen Pixel die weder weiß noch transparent sind
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        if (a === 0) continue;
+        // Pixel als „Tinte" wenn deutlich dunkler als weiß
+        if (r < 245 || g < 245 || b < 245) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+          found = true;
+        }
+      }
+    }
+    if (!found) return '';
+    const pad = 4;
+    minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+    maxX = Math.min(w - 1, maxX + pad); maxY = Math.min(h - 1, maxY + pad);
+    const cw = maxX - minX + 1, ch = maxY - minY + 1;
+    const out = document.createElement('canvas');
+    out.width = cw; out.height = ch;
+    const octx = out.getContext('2d');
+    // Trick: weißen Hintergrund transparent machen — wir kopieren nur Pixel die nicht
+    // (annähernd) reines Weiß sind. Damit das PDF-Embed mit Transparenz funktioniert.
+    const src = ctx.getImageData(minX, minY, cw, ch);
+    for (let i = 0; i < src.data.length; i += 4) {
+      const r = src.data[i], g = src.data[i + 1], b = src.data[i + 2];
+      if (r > 240 && g > 240 && b > 240) src.data[i + 3] = 0;
+    }
+    octx.putImageData(src, 0, 0);
+    return out.toDataURL('image/png');
+  } catch (e) {
+    console.warn('[V12.319] _trimCanvasToInk failed:', e);
+    return '';
+  }
+}
+window._trimCanvasToInk = _trimCanvasToInk;
 
 // V12.272: Skript-Font (Caveat-Bold) für die Liftaro-Unterschrift im PDF.
 // Erstes Laden via fetch — danach in window-Cache. Fallback: TimesBoldItalic.
@@ -20602,21 +20770,46 @@ async function buildLightVertragPDF() {
 
   // ── Unterschriften
   // V12.272: Liftaro-Seite wird vor-unterschrieben mit Skript-Font + heutigem Datum + Ort
-  spacer(20); ensure(140);
+  // V12.319: Wenn der User eine handgezeichnete Signatur als PNG hochgeladen hat (localStorage
+  // liftaro_eoc_signature_image), wird die statt des Skript-Fonts eingebettet. Sonst Skript-Font.
+  // Plus: Fallback auch ohne CDN — wenn Skript-Font fehlschlägt, Helvetica-Oblique in 18pt.
+  spacer(20); ensure(160);
   const sigSettings = (typeof getLiftaroSignatureSettings === 'function') ? getLiftaroSignatureSettings() : { name: 'Francesco Ricioppo', ort: 'Mainz' };
   let scriptFont = null;
-  try { scriptFont = await _embedScriptFont(doc); } catch (_) {}
+  try { scriptFont = await _embedScriptFont(doc); } catch (e) { console.warn('[V12.319] scriptFont embed failed:', e); }
+  const helvObl = await doc.embedFont(StandardFonts.HelveticaOblique).catch(() => null);
   const sigY = y;
-  // Skript-Unterschrift ÜBER der linken Linie zeichnen (so dass die Linie unten ist)
-  if (scriptFont) {
-    const sigSize = 22;
-    const sigW = scriptFont.widthOfTextAtSize(sigSettings.name, sigSize);
-    // Mittig auf der Linie, leicht nach links
+  let drewImage = false;
+  // Versuche zuerst eine hochgeladene PNG-Signatur einzubetten
+  try {
+    const dataUrl = (typeof getLiftaroSignatureImage === 'function') ? getLiftaroSignatureImage() : '';
+    if (dataUrl && dataUrl.startsWith('data:image/')) {
+      const isPng  = dataUrl.startsWith('data:image/png');
+      const b64    = dataUrl.split(',')[1] || '';
+      const binStr = atob(b64);
+      const bytes  = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+      const img    = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      const maxH   = 50;
+      const ratio  = img.width / img.height;
+      const drawH  = Math.min(maxH, img.height);
+      const drawW  = Math.min(200, drawH * ratio);
+      const drawX  = MARGIN_X + Math.max(0, (200 - drawW) / 2);
+      page.drawImage(img, { x: drawX, y: sigY + 2, width: drawW, height: drawH });
+      drewImage = true;
+      console.log('[V12.319] handgemalte Liftaro-Signatur eingebettet (PNG/JPG)');
+    }
+  } catch (e) { console.warn('[V12.319] Signatur-Image embed fehlgeschlagen:', e); }
+  // Fallback: Skript-Font oder Helvetica-Oblique
+  if (!drewImage) {
+    const sigSize = 24;
+    const useFont = scriptFont || helvObl || helvBold;
+    const sigW = useFont.widthOfTextAtSize(_safeWinAnsi(sigSettings.name), sigSize);
     const sigX = MARGIN_X + Math.max(0, (200 - sigW) / 2 - 8);
-    // Y so dass die Schrift gerade über der Linie liegt (Baseline ~3pt über sigY)
-    page.drawText(_safeWinAnsi(sigSettings.name), { x: sigX, y: sigY + 4, size: sigSize, font: scriptFont, color: COLOR });
+    page.drawText(_safeWinAnsi(sigSettings.name), { x: sigX, y: sigY + 6, size: sigSize, font: useFont, color: COLOR });
+    console.log('[V12.319] Liftaro-Signatur als ' + (scriptFont ? 'Skript-Font' : 'Helvetica-Oblique') + ' gerendert: „' + sigSettings.name + '"');
   }
-  // Linien
+  // Linien unter den Signaturen
   page.drawLine({ start: { x: MARGIN_X, y: sigY }, end: { x: MARGIN_X + 200, y: sigY }, thickness: 0.5, color: COLOR });
   page.drawLine({ start: { x: PAGE_W - MARGIN_X - 200, y: sigY }, end: { x: PAGE_W - MARGIN_X, y: sigY }, thickness: 0.5, color: COLOR });
   y = sigY - 14;
