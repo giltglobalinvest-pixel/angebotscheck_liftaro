@@ -6366,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.294';
+const APP_VERSION = 'V12.295';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -27021,6 +27021,69 @@ async function _eiBuildLinkedCheckCache(records) {
   }
 }
 
+// V12.295: HV-Dokumente-Cache pro Pipedrive-Org-ID.
+// Hält für jede HV, die in den Inbox-Emails als 'assigned' auftaucht:
+//   { vollmachtUrl, vollmachtFilename, eucSignedUrl, eucSignedFilename }
+// Quelle: Vollmachten-Tabelle + Light-Vertraege-Tabelle.
+async function _eiBuildHvDocsCache(records) {
+  window._eiHvDocsCache = window._eiHvDocsCache || {};
+  // Eindeutige Org-IDs sammeln
+  const orgIds = new Set();
+  for (const r of records || []) {
+    try {
+      const arr = JSON.parse(r.vorgaenge_json || '[]');
+      if (Array.isArray(arr)) {
+        for (const v of arr) {
+          const oid = String(v && v.assigned_org_id || '').trim();
+          if (oid) orgIds.add(oid);
+        }
+      }
+    } catch (_) {}
+  }
+  if (!orgIds.size) return;
+  // Vollmachten + Light-Vertraege parallel laden
+  let vollmachten = [], lightVertraege = [];
+  try {
+    [vollmachten, lightVertraege] = await Promise.all([
+      (typeof loadVollmachten === 'function' ? loadVollmachten() : Promise.resolve([])),
+      (typeof loadLightVertraege === 'function' ? loadLightVertraege() : Promise.resolve([])),
+    ]);
+  } catch (e) { console.warn('[V12.295] HV-docs sources failed:', e.message); }
+  // Maps pro Org-ID
+  const vmByOid = {};
+  for (const r of vollmachten || []) {
+    const f = (r && r.fields) || {};
+    const oid = String(f.pipedrive_org_id || '').trim();
+    if (!oid) continue;
+    const atts = Array.isArray(f.vollmacht_pdf) ? f.vollmacht_pdf : [];
+    if (atts.length && atts[0].url) {
+      vmByOid[oid] = { url: atts[0].url, filename: atts[0].filename || 'Vollmacht.pdf' };
+    }
+  }
+  const eucByOid = {};
+  // V12.291-Fuzzy-Match: auch Light-Vertraege ohne pipedrive_org_id über Firmenname auflösen
+  // wäre hier möglich, aber wir bleiben pragmatisch — die Email hat in der Regel
+  // die assigned_org_id, und V12.291 persistiert die org_id beim Save in Light-Vertraege.
+  for (const v of lightVertraege || []) {
+    const oid = String(v.pipedrive_org_id || '').trim();
+    if (!oid) continue;
+    const atts = Array.isArray(v.vertrag_signed_pdf) ? v.vertrag_signed_pdf : [];
+    if (atts.length && atts[0].url) {
+      // Jüngsten Vertrag pro HV behalten (savedAt-Sort ist absteigend)
+      if (!eucByOid[oid]) eucByOid[oid] = { url: atts[0].url, filename: atts[0].filename || 'EuC-Vertrag.pdf' };
+    }
+  }
+  // Cache füllen — auch leere Einträge, damit wir nicht nochmal nachladen
+  for (const oid of orgIds) {
+    window._eiHvDocsCache[oid] = {
+      vollmachtUrl:      (vmByOid[oid]  && vmByOid[oid].url)      || '',
+      vollmachtFilename: (vmByOid[oid]  && vmByOid[oid].filename) || '',
+      eucSignedUrl:      (eucByOid[oid] && eucByOid[oid].url)     || '',
+      eucSignedFilename: (eucByOid[oid] && eucByOid[oid].filename)|| '',
+    };
+  }
+}
+
 async function loadEmailInbox(silent) {
   const listEl = document.getElementById('emailInboxList');
   if (!silent) listEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--dr-ink-mute);font-size:13px"><div class="spin" style="display:inline-block;width:18px;height:18px;border:3px solid var(--dr-border-strong);border-top-color:var(--dr-blue);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px"></div>Lade Emails …</div>';
@@ -27045,6 +27108,10 @@ async function loadEmailInbox(silent) {
     _eiBuildLinkedCheckCache(_eiAllRecords)
       .then(() => { if (typeof renderEmailInboxList === 'function') renderEmailInboxList(); })
       .catch(e => console.warn('[V12.284] linked-check cache:', e.message));
+    // V12.295: HV-Dokumente-Cache (Vollmacht + signed EuC-Vertrag) im Hintergrund laden
+    _eiBuildHvDocsCache(_eiAllRecords)
+      .then(() => { if (typeof renderEmailInboxList === 'function') renderEmailInboxList(); })
+      .catch(e => console.warn('[V12.295] hv-docs cache:', e.message));
     _refreshEmailInboxBadge();
     // Mindestens 400ms Spin sichtbar lassen (sonst wirkt's wie kein Feedback bei schnellem Load)
     const elapsed = Date.now() - tStart;
@@ -28138,6 +28205,22 @@ function renderEmailInboxList() {
     const hvPill = hvShort && hvAssigned
       ? `<span title="${_esc(hvShort)}${hv.secondary ? ' · ' + _esc(hv.secondary) : ''}" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvShort)}</span></span>`
       : '';
+    // V12.295: HV-Dokumente-Pillen (Vollmacht + signed EuC-Vertrag) — Klick lädt Datei
+    let vmDocPill = '', eucDocPill = '';
+    const _hvOrgId = (hv && hv.source === 'assigned') ? String(hv.orgId || '').trim() : '';
+    if (_hvOrgId && window._eiHvDocsCache && window._eiHvDocsCache[_hvOrgId]) {
+      const _docs = window._eiHvDocsCache[_hvOrgId];
+      if (_docs.vollmachtUrl) {
+        const _urlEsc = _esc(_docs.vollmachtUrl);
+        const _fn     = _esc(_docs.vollmachtFilename || 'Vollmacht.pdf');
+        vmDocPill = `<a href="${_urlEsc}" target="_blank" rel="noopener" download="${_fn}" onclick="event.stopPropagation()" title="Vollmacht der HV herunterladen · ${_fn}" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">📜 Vollmacht ↓</a>`;
+      }
+      if (_docs.eucSignedUrl) {
+        const _urlEsc = _esc(_docs.eucSignedUrl);
+        const _fn     = _esc(_docs.eucSignedFilename || 'EuC-Vertrag.pdf');
+        eucDocPill = `<a href="${_urlEsc}" target="_blank" rel="noopener" download="${_fn}" onclick="event.stopPropagation()" title="Unterschriebenen EuC-Vertrag herunterladen · ${_fn}" style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px">🛡 EuC ↓</a>`;
+      }
+    }
     const azPill = (afn || ast)
       ? `<span title="${_esc(ast || 'Aufzug')}${afn ? ' · Fabrik-Nr. ' + _esc(afn) : ''}" style="background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px;font-family:var(--dr-f-mono)"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0;font-family:'DM Sans',sans-serif"><rect x="6" y="3" width="12" height="18" rx="2"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(afn ? 'Fn ' + afn : ast)}</span></span>`
       : '';
@@ -28182,8 +28265,8 @@ function renderEmailInboxList() {
         ersparnisPill = `<span title="Erzielte Ersparnis aus ${_linkedIds.length} verknüpft${_linkedIds.length === 1 ? 'em' : 'en'} Check${_linkedIds.length === 1 ? '' : 's'}" style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px"><span style="font-size:13px">💶</span>${_fmt}</span>`;
       }
     }
-    const pillRow = (hvPill || azPill || notesPill || threadPill || ersparnisPill)
-      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${ersparnisPill}${hvPill}${azPill}${threadPill}${notesPill}</div>`
+    const pillRow = (hvPill || azPill || notesPill || threadPill || ersparnisPill || vmDocPill || eucDocPill)
+      ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${ersparnisPill}${hvPill}${vmDocPill}${eucDocPill}${azPill}${threadPill}${notesPill}</div>`
       : '';
     // V12.254: Anhänge-Pills direkt in der Karte (Download via Klick, ohne Email-Detail zu öffnen)
     // V12.278: ignorierte Anhänge ausgrauen/durchgestrichen
