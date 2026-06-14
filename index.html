@@ -6388,7 +6388,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.303';
+const APP_VERSION = 'V12.304';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7799,6 +7799,13 @@ async function setupTables() {
     ]);
     console.log('[V12.287] ensureFields(Aufzuege: kuendigung + anhaenge) OK');
   } catch(e) { console.warn('[V12.287] ensureFields(Aufzuege) failed:', e.message); }
+  // V12.304: Prämie an Liftaro pro Aufzug — manuell befüllbarer Jahresbetrag
+  try {
+    await ensureFields('Aufzuege', [
+      { name: 'praemie_liftaro_eur', type: 'number', options: { precision: 0 } },
+    ]);
+    console.log('[V12.304] ensureFields(Aufzuege: praemie_liftaro_eur) OK');
+  } catch(e) { console.warn('[V12.304] ensureFields(Aufzuege) failed:', e.message); }
   // Verträge-Tabelle
   try {
     await ensureTable('Vertraege', [
@@ -22731,11 +22738,11 @@ function renderAufzuegeList(items, query) {
   listEl.innerHTML = items.map(a => {
     const cacheIdx = cache.indexOf(a);
     const eucActive = a.im_euc === '1' || a.im_euc === 'true' || a.im_euc === true;
-    // V12.250: Feature-Toggle "euc_im_check" — bei aus: Badges (EuC / Frei) komplett weglassen
-    const _eucHidden = (typeof isFeatureHidden === 'function') && isFeatureHidden('euc_im_check');
-    const eucBadge = _eucHidden ? '' : (eucActive
-      ? '<span title="EuC-Vereinbarung aktiv' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '" style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🔒 EuC</span>'
-      : '');
+    // V12.250/V12.304: EuC-Pille im Aufzüge-Modul immer anzeigen wenn aktiv —
+    // Feature-Toggle hatte sie versteckt, aber User braucht den Indikator hier.
+    const eucBadge = eucActive
+      ? '<span title="EuC-Vereinbarung aktiv' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '" style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.3px;text-transform:uppercase;display:inline-flex;align-items:center;gap:3px">🔒 EuC' + (a.euc_vertrag_id ? ' · ' + escapeHtml(a.euc_vertrag_id) : '') + '</span>'
+      : '';
     // V12.287: Vollmacht-Badge
     const hasVollmacht = _vmSet.has(String(a.hv_pipedrive_org_id || '').trim());
     const vollmachtBadge = hasVollmacht
@@ -23244,12 +23251,38 @@ async function importAufzuegeForLightVertrag() {
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.innerHTML = '⏳ Lade …'; }
   try {
-    // Alle Aufzüge dieser HV holen (über Pipedrive-Org-ID)
-    const recs = await atRead('Aufzuege', "{hv_pipedrive_org_id}='" + String(orgId).replace(/'/g, "\\'") + "'", { sort: false });
-    const items = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    // V12.304: Alle Aufzüge laden und clientseitig filtern — fängt HV-Duplikate ab
+    // (z. B. "Elke Folk" vs "Elke Koukal-Folk" mit unterschiedlichen Pipedrive-IDs).
+    const recs = await atRead('Aufzuege', null, { sort: false });
+    const allItems = (recs || []).map(r => ({ ...r.fields, _recordId: r.id }));
+    const _norm = (s) => {
+      let x = String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+      const suffixes = ['gmbh co kg', 'gmbh co', 'gmbh', 'gbr', 'kg', 'ohg', 'ug', 'ag', 'co kg', 'cie', 'partner', 'hausverwaltung', 'immobilien'];
+      for (const sfx of suffixes) x = x.replace(new RegExp('\\b' + sfx + '\\b', 'g'), ' ').trim().replace(/\s+/g, ' ');
+      return x;
+    };
+    const firmaTokens = _norm(firma).split(' ').filter(t => t.length >= 3);
+    const exactMatch = allItems.filter(a => String(a.hv_pipedrive_org_id || '').trim() === String(orgId));
+    const exactIds = new Set(exactMatch.map(a => a._recordId));
+    const fuzzyMatch = firmaTokens.length
+      ? allItems.filter(a => {
+          if (exactIds.has(a._recordId)) return false;
+          const name = _norm(a.hv_name);
+          return name && firmaTokens.every(t => name.includes(t));
+        })
+      : [];
+    const items = [...exactMatch, ...fuzzyMatch];
     if (!items.length) {
       showToast('Keine Aufzüge im Aufzüge-Modul mit dieser HV gefunden', 'info', 4500);
       return;
+    }
+    // Distinct HV-Schreibweisen sammeln (für Duplikat-Warnung)
+    const fuzzyHvNames = new Set();
+    for (const a of fuzzyMatch) {
+      const n = String(a.hv_name || '').trim();
+      if (n && n !== firma) fuzzyHvNames.add(n);
     }
     const alreadyHere = items.filter(a => String(a.euc_vertrag_id || '') === String(lvId));
     const free        = items.filter(a => !String(a.euc_vertrag_id || '').trim());
@@ -23265,23 +23298,26 @@ async function importAufzuegeForLightVertrag() {
       }
       return;
     }
-    // V12.303: Quelle/Notiz mit anzeigen — User sieht woher der Aufzug stammt
+    // V12.303/V12.304: Quelle/Notiz + abweichende HV-Schreibweise anzeigen
     const preview = free.slice(0, 8).map(a => {
       const fn = a.fabriknummer || '?';
       const st = a.standort ? ' — ' + a.standort : '';
+      const hv = String(a.hv_name || '').trim();
+      const hvNote = (hv && hv !== firma) ? '\n     ⚠ HV-Schreibweise: ' + hv : '';
       const nz = String(a.notiz || '').trim();
-      let src = '';
-      if (nz) {
-        const short = nz.length > 60 ? nz.slice(0, 60) + '…' : nz;
-        src = '\n     Quelle: ' + short;
-      } else {
-        src = '\n     Quelle: unbekannt (keine Notiz)';
-      }
-      return '• Fn ' + fn + st + src;
+      const src = nz
+        ? '\n     Quelle: ' + (nz.length > 60 ? nz.slice(0, 60) + '…' : nz)
+        : '\n     Quelle: unbekannt (keine Notiz)';
+      return '• Fn ' + fn + st + hvNote + src;
     }).join('\n');
     let msg = (free.length === 1 ? '1 freier Aufzug' : free.length + ' freie Aufzüge')
-      + ' dieser HV (' + (firma || 'HV') + ') gefunden:\n\n' + preview
+      + ' für „' + (firma || 'HV') + '" gefunden:\n\n' + preview
       + (free.length > 8 ? '\n• … und ' + (free.length - 8) + ' weitere' : '');
+    if (fuzzyHvNames.size > 0) {
+      msg += '\n\n⚠ ' + fuzzyHvNames.size + ' weitere HV-Schreibweise(n) mit eigener Pipedrive-ID gefunden:'
+        + '\n   ' + [...fuzzyHvNames].join('\n   ')
+        + '\n   Empfehlung: in Pipedrive zusammenführen. Aufzüge werden trotzdem mitgenommen.';
+    }
     if (otherEuc.length) msg += '\n\n⚠ ' + otherEuc.length + ' Aufzüge sind bereits anderen EuC-Verträgen zugeordnet — werden NICHT übernommen.';
     if (alreadyHere.length) msg += '\n\n✓ ' + alreadyHere.length + ' Aufzüge sind bereits bei diesem Vertrag.';
     msg += '\n\nAlle ' + free.length + ' freien Aufzüge diesem EuC-Vertrag (' + lvId + ') zuweisen?';
@@ -23336,13 +23372,15 @@ async function renderAufzuegeInEuCEditor(lvId) {
     }
     let total = 0;
     listEl.innerHTML = items.map(a => {
-      const kosten = parseInt(a.jahreskosten_alt_eur, 10) || 0;
-      total += kosten;
+      // V12.304: „Prämie an Liftaro" — neuer manuell befüllbarer Wert pro Aufzug.
+      // Wenn leer, leer lassen (kein 0-Default), Sum nur über tatsächlich gesetzte Beträge.
+      const praemieRaw = a.praemie_liftaro_eur;
+      const hasPraemie = praemieRaw !== '' && praemieRaw !== null && praemieRaw !== undefined && !Number.isNaN(Number(praemieRaw));
+      const praemie    = hasPraemie ? Number(praemieRaw) : null;
+      if (hasPraemie) total += praemie;
       const idEsc = (a.id || '').replace(/'/g, "\\'");
       const recIdEsc = (a._recordId || '').replace(/'/g, "\\'");
-      // V12.303: Quelle/Herkunft sichtbar machen — pro Aufzug-Notiz dokumentiert
-      // welcher Workflow den Aufzug ursprünglich angelegt hat (z. B. „KI-Schnell-Anlage
-      // aus Email …" oder manuelle Eingabe). Macht den Import-Pfad nachvollziehbar.
+      // V12.303/V12.304: Quelle-Pille nur wenn Notiz vorhanden (kein „? unbekannt"-Lärm mehr)
       const notizRaw = String(a.notiz || '').trim();
       let quellePill = '';
       if (notizRaw) {
@@ -23352,20 +23390,19 @@ async function renderAufzuegeInEuCEditor(lvId) {
         const lbl = isEmail ? 'aus Email' : (isKi ? 'KI' : 'manuell');
         const short = notizRaw.length > 80 ? notizRaw.slice(0, 80) + '…' : notizRaw;
         quellePill = '<span title="' + escapeHtml(short) + '" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;flex-shrink:0">' + ico + ' ' + lbl + '</span>';
-      } else {
-        quellePill = '<span title="Keine Quellen-Notiz hinterlegt" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;flex-shrink:0">? unbekannt</span>';
       }
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:6px;flex-wrap:wrap">'
         + '<span style="font-family:var(--dr-f-mono);color:var(--blue-mid);font-size:11.5px;font-weight:700;flex-shrink:0">' + escapeHtml(a.id || '–') + '</span>'
         + '<span style="font-weight:600;font-size:12.5px;flex-shrink:0">Fabr.-Nr. ' + escapeHtml(a.fabriknummer || '?') + '</span>'
         + '<span style="flex:1;min-width:0;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(a.standort || '–') + '</span>'
         + quellePill
-        + '<label style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:600">€/Jahr:</label>'
-        + '<input type="number" value="' + (kosten || '') + '" placeholder="0" min="0" onchange="_saveAufzugJahreskosten(\'' + recIdEsc + '\', this.value)" style="width:90px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;font-family:\'DM Mono\',monospace">'
+        + '<label title="Prämie pro Jahr, die Liftaro für die Vermittlung erhält" style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:600">Prämie an Liftaro:</label>'
+        + '<input type="number" value="' + (hasPraemie ? praemie : '') + '" placeholder="–" min="0" step="1" onchange="_saveAufzugPraemieLiftaro(\'' + recIdEsc + '\', this.value)" title="Manuell befüllbar — z. B. aus Beauftragung" style="width:90px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;font-family:\'DM Mono\',monospace">'
+        + '<span style="font-size:10.5px;color:var(--muted);font-family:\'DM Mono\',monospace">€/J.</span>'
         + '<button type="button" onclick="_unlinkAufzugFromEuC(\'' + recIdEsc + '\', \'' + idEsc + '\')" title="Aufzug aus diesem EuC entfernen" style="background:transparent;border:1.5px solid #e0a09a;color:#a8312f;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:13px;line-height:1;font-weight:700">×</button>'
       + '</div>';
     }).join('');
-    if (sumEl) sumEl.textContent = '(' + items.length + ' Aufzug' + (items.length === 1 ? '' : 'üge') + ' · ' + total.toLocaleString('de-DE') + ' €/Jahr)';
+    if (sumEl) sumEl.textContent = '(' + items.length + ' Aufzug' + (items.length === 1 ? '' : 'üge') + ' · ' + total.toLocaleString('de-DE') + ' €/Jahr Prämie)';
   } catch (e) {
     console.warn('[V12.141] renderAufzuegeInEuCEditor failed:', e.message);
   }
@@ -23384,6 +23421,57 @@ async function _saveAufzugJahreskosten(recId, val) {
   }
 }
 window._saveAufzugJahreskosten = _saveAufzugJahreskosten;
+
+// V12.304: Prämie an Liftaro pro Aufzug (manuell befüllt, leer = kein Wert)
+async function _saveAufzugPraemieLiftaro(recId, val) {
+  const trimmed = String(val || '').trim();
+  const payload = trimmed === '' ? { praemie_liftaro_eur: null } : { praemie_liftaro_eur: parseInt(trimmed, 10) || 0 };
+  try {
+    await atUpdate('Aufzuege', recId, payload);
+    showToast(trimmed === '' ? 'Prämie entfernt' : 'Prämie gespeichert', 'ok', 1500);
+    const lvId = document.getElementById('lv_id').value;
+    if (lvId) renderAufzuegeInEuCEditor(lvId);
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
+}
+window._saveAufzugPraemieLiftaro = _saveAufzugPraemieLiftaro;
+
+// V12.304: Aufzug aus einer Email an den EuC-Vertrag der zugeordneten HV pushen.
+// Nutzt die Pipedrive-Org-ID der HV → sucht Light-Vertrag → markiert Aufzug als EuC.
+async function pushAufzugToEuC(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden', 'warning', 3000); return; }
+  const aufzugRecId = String(r.aufzug_record_id || '').trim();
+  if (!aufzugRecId) { showToast('Aufzug nicht im Aufzüge-Modul registriert — erst „Auswählen" klicken', 'warning', 5000); return; }
+  const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
+  const orgId = String((hv && hv.orgId) || '').trim();
+  if (!orgId) { showToast('HV-Pipedrive-ID fehlt — HV erst zuordnen (z. B. via „KI" im HV-Block)', 'warning', 5500); return; }
+  showToast('🔎 Suche EuC-Vertrag für ' + (hv && hv.primary || 'HV') + ' …', 'info', 2000);
+  try {
+    const recs = await atRead('Light-Vertraege', "{pipedrive_org_id}='" + orgId.replace(/'/g, "\\'") + "'", { sort: false });
+    if (!recs.length) {
+      showToast('Keine EuC-Vereinbarung für „' + (hv && hv.primary || 'HV') + '" gefunden — erst Light-Vertrag anlegen', 'warning', 6500);
+      return;
+    }
+    // Bevorzugt einen Vertrag mit signed PDF, sonst den ersten
+    const signed = recs.find(rec => Array.isArray(rec.fields.vertrag_signed_pdf) && rec.fields.vertrag_signed_pdf.length > 0);
+    const lv = signed || recs[0];
+    const lvId = String(lv.fields.id || '').trim();
+    if (!lvId) { showToast('EuC-Vertrag hat keine ID', 'error', 4000); return; }
+    // Prüfung: ist Aufzug schon bei diesem (oder anderem) EuC?
+    const existingEuc = String(r.aufzug_id ? '' : '').trim(); // dummy
+    await atUpdate('Aufzuege', aufzugRecId, { im_euc: '1', euc_vertrag_id: lvId });
+    showToast('✓ Aufzug zu EuC ' + lvId + ' („' + (lv.fields.firma || '?') + '") zugewiesen', 'success', 5000);
+    // Caches invalidieren
+    window._eucByOrgIdCacheInvalid = true;
+    window._eiHvDocsCacheAt = 0;
+  } catch (e) {
+    console.error('[V12.304] pushAufzugToEuC:', e);
+    showToast('Push fehlgeschlagen: ' + e.message, 'error', 5500);
+  }
+}
+window.pushAufzugToEuC = pushAufzugToEuC;
 
 // ───────────────────────────────────────────────────────────────────
 // V12.287: Anhänge zu einem Aufzug (Upload / Liste / Löschen)
@@ -29658,6 +29746,8 @@ function _renderEmailAssignmentCards(r) {
           ${ahr ? `<div style="font-size:11.5px;color:#475569;margin-top:2px">Hersteller: ${_esc(ahr)}</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <!-- V12.304: Aufzug an den EuC-Vertrag der HV pushen -->
+          <button onclick="pushAufzugToEuC('${r._id}')" title="Diesen Aufzug an den EuC-Vertrag der zugeordneten HV hängen" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🛡 Zu EuC pushen</button>
           <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
           <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug per KI neu erkennen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🤖 KI ändern</button>
         </div>
