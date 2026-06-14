@@ -4162,6 +4162,18 @@ const pdfWorkerReady = Promise.resolve();</script>
               <span id="eiTypFilterLbl">Typ: Alle</span>
               <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
+            <!-- V12.300: HV-Filter (Dropdown) -->
+            <button id="eiHvFilterBtn" onclick="openEiHvFilterMenu(this)" title="Nach Hausverwaltung filtern" style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:999px;padding:5px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.borderColor='#15803d';this.style.color='#15803d'" onmouseout="if(!window._eiHvFilter){this.style.borderColor='#e2e8f0';this.style.color='#475569'}">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+              <span id="eiHvFilterLbl">HV: Alle</span>
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <!-- V12.300: Aufzug-Filter (Dropdown) -->
+            <button id="eiAufzugFilterBtn" onclick="openEiAufzugFilterMenu(this)" title="Nach Aufzug filtern (Fabriknummer)" style="background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:999px;padding:5px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.borderColor='#0e7490';this.style.color='#0e7490'" onmouseout="if(!window._eiAufzugFilter){this.style.borderColor='#e2e8f0';this.style.color='#475569'}">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h6"/></svg>
+              <span id="eiAufzugFilterLbl">Aufzug: Alle</span>
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <!-- V12.200: Auswahl-Modus Toggle -->
@@ -6369,7 +6381,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.299';
+const APP_VERSION = 'V12.300';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -27028,6 +27040,9 @@ function openEmailInboxModal() {
   setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
   // V12.215: persistierten Typ-Filter im Button-Label anzeigen
   if (typeof setEmailTypFilter === 'function') setEmailTypFilter(window._eiTypFilter || '');
+  // V12.300: HV- und Aufzug-Filter-Pillen mit gespeichertem Wert restoren
+  if (typeof setEiHvFilter     === 'function') setEiHvFilter(window._eiHvFilter || '');
+  if (typeof setEiAufzugFilter === 'function') setEiAufzugFilter(window._eiAufzugFilter || '');
   if (typeof _restoreEmailInboxListState === 'function') _restoreEmailInboxListState();
   loadEmailInbox();
   // V12.8 mobile: Start im Listen-Mode (Detail komplett ausgeblendet, kein leerer Platzhalter unten)
@@ -27783,12 +27798,170 @@ window._eiHvFilter    = window._eiHvFilter    || '';
 window._eiRangeFilter = window._eiRangeFilter || 'all';
 window._eiSortMode    = window._eiSortMode    || 'newest';
 
+// V12.300: Exakter Aufzug-Filter (Fabriknummer) — persistiert in localStorage
+window._eiAufzugFilter = (function() {
+  try { return localStorage.getItem('eiAufzugFilter') || ''; } catch (_) { return ''; }
+})();
+
 function setEiHvFilter(v) {
   window._eiHvFilter = String(v || '').trim();
+  try { localStorage.setItem('eiHvFilter', window._eiHvFilter); } catch (_) {}
   const inp = document.getElementById('eiFltHvInput');
   if (inp && inp.value !== window._eiHvFilter) inp.value = window._eiHvFilter;
+  // V12.300: Pillen-Label aktualisieren
+  const lbl = document.getElementById('eiHvFilterLbl');
+  const btn = document.getElementById('eiHvFilterBtn');
+  if (lbl) lbl.textContent = window._eiHvFilter ? 'HV: ' + (window._eiHvFilter.length > 22 ? window._eiHvFilter.slice(0,22) + '…' : window._eiHvFilter) : 'HV: Alle';
+  if (btn) {
+    if (window._eiHvFilter) { btn.style.background = '#f0fdf4'; btn.style.borderColor = '#86efac'; btn.style.color = '#15803d'; }
+    else                    { btn.style.background = '#f8fafc'; btn.style.borderColor = '#e2e8f0'; btn.style.color = '#475569'; }
+  }
   if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
 }
+
+// V12.300: Aufzug-Filter (Fabriknummer, leer = alle)
+function setEiAufzugFilter(v) {
+  window._eiAufzugFilter = String(v || '').trim();
+  try { localStorage.setItem('eiAufzugFilter', window._eiAufzugFilter); } catch (_) {}
+  const lbl = document.getElementById('eiAufzugFilterLbl');
+  const btn = document.getElementById('eiAufzugFilterBtn');
+  if (lbl) lbl.textContent = window._eiAufzugFilter ? 'Aufzug: Fn ' + window._eiAufzugFilter : 'Aufzug: Alle';
+  if (btn) {
+    if (window._eiAufzugFilter) { btn.style.background = '#ecfeff'; btn.style.borderColor = '#67e8f9'; btn.style.color = '#0e7490'; }
+    else                         { btn.style.background = '#f8fafc'; btn.style.borderColor = '#e2e8f0'; btn.style.color = '#475569'; }
+  }
+  if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+}
+window.setEiAufzugFilter = setEiAufzugFilter;
+
+// V12.300: Sammelt distinct (Fabriknummer + Standort) aus den Inbox-Records
+function _eiCollectAufzugChoices() {
+  const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+  const m = new Map();
+  for (const r of all) {
+    const fn = String(r.aufzug_fabriknummer || '').trim();
+    if (!fn) continue;
+    if (!m.has(fn)) m.set(fn, { fabri: fn, standort: String(r.aufzug_standort || '').trim(), count: 0 });
+    m.get(fn).count++;
+  }
+  return [...m.values()].sort((a, b) => a.fabri.localeCompare(b.fabri));
+}
+
+// V12.300: Sammelt distinct (HV-Name + Org-ID) aus den Inbox-Records über _eiDisplayHV
+function _eiCollectHvChoices() {
+  const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+  const m = new Map();
+  for (const r of all) {
+    const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
+    const name = hv && hv.primary && String(hv.primary).trim();
+    if (!name) continue;
+    if (!m.has(name)) m.set(name, { name: name, orgId: String(hv.orgId || ''), source: hv.source || '', count: 0 });
+    m.get(name).count++;
+  }
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function openEiAufzugFilterMenu(anchorEl) {
+  document.querySelectorAll('.ei-filter-popover').forEach(el => el.remove());
+  const choices = _eiCollectAufzugChoices();
+  const cntAll = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing').length;
+  const cntOhne = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && !String(r.aufzug_fabriknummer || '').trim()).length;
+  const pop = document.createElement('div');
+  pop.className = 'ei-filter-popover';
+  pop.style.cssText = 'position:absolute;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px;min-width:280px;max-height:60vh;overflow-y:auto;z-index:6300;font-family:"DM Sans",sans-serif';
+  const row = (val, label, sub, count, accent) => {
+    const isCurr = String(window._eiAufzugFilter || '') === String(val || '');
+    const bg = isCurr ? '#ecfeff' : '#fff';
+    const bd = isCurr ? '#67e8f9' : 'transparent';
+    return `<button onclick="setEiAufzugFilter('${_esc(String(val).replace(/'/g, '\\\''))}');document.querySelectorAll('.ei-filter-popover').forEach(e=>e.remove());event.stopPropagation()" style="display:flex;align-items:center;gap:8px;width:100%;background:${bg};border:1px solid ${bd};border-radius:7px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:13px;color:#0f172a;text-align:left;font-weight:${isCurr ? '700' : '500'};margin-bottom:2px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${bg}'">
+      <span style="flex:1;min-width:0">
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(label)}</div>
+        ${sub ? `<div style="font-size:11px;color:#64748b;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(sub)}</div>` : ''}
+      </span>
+      <span style="font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums">${count}</span>
+      ${isCurr ? '<span style="font-size:11px;color:#0e7490">✓</span>' : ''}
+    </button>`;
+  };
+  pop.innerHTML = row('', 'Alle Aufzüge', '', cntAll, '#0e7490')
+    + '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>'
+    + (choices.length
+        ? choices.map(c => row(c.fabri, 'Fn ' + c.fabri, c.standort, c.count, '#0e7490')).join('')
+        : '<div style="padding:10px;color:#94a3b8;font-size:12px;text-align:center">Keine Aufzüge zugeordnet</div>')
+    + (cntOhne > 0 ? '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>' + row('__none__', 'Ohne Aufzug', '', cntOhne, '#0e7490') : '');
+  document.body.appendChild(pop);
+  const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+  if (rect) {
+    pop.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    pop.style.left = (rect.left   + window.scrollX) + 'px';
+    const popRect = pop.getBoundingClientRect();
+    if (popRect.right > window.innerWidth - 10) {
+      pop.style.left = (window.innerWidth - popRect.width - 14) + 'px';
+    }
+  }
+  setTimeout(() => {
+    const closeFn = (e) => {
+      if (!pop.contains(e.target) && e.target !== anchorEl) {
+        pop.remove();
+        document.removeEventListener('click', closeFn, true);
+      }
+    };
+    document.addEventListener('click', closeFn, true);
+  }, 50);
+}
+window.openEiAufzugFilterMenu = openEiAufzugFilterMenu;
+
+function openEiHvFilterMenu(anchorEl) {
+  document.querySelectorAll('.ei-filter-popover').forEach(el => el.remove());
+  const choices = _eiCollectHvChoices();
+  const cntAll = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing').length;
+  const cntOhne = (_eiAllRecords || []).filter(r => {
+    if (!r || r.direction === 'outgoing') return false;
+    const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
+    return !(hv && hv.primary && String(hv.primary).trim());
+  }).length;
+  const pop = document.createElement('div');
+  pop.className = 'ei-filter-popover';
+  pop.style.cssText = 'position:absolute;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px;min-width:300px;max-height:60vh;overflow-y:auto;z-index:6300;font-family:"DM Sans",sans-serif';
+  const row = (val, label, sub, count) => {
+    const isCurr = String(window._eiHvFilter || '') === String(val || '');
+    const bg = isCurr ? '#f0fdf4' : '#fff';
+    const bd = isCurr ? '#86efac' : 'transparent';
+    return `<button onclick="setEiHvFilter('${_esc(String(val).replace(/'/g, '\\\''))}');document.querySelectorAll('.ei-filter-popover').forEach(e=>e.remove());event.stopPropagation()" style="display:flex;align-items:center;gap:8px;width:100%;background:${bg};border:1px solid ${bd};border-radius:7px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:13px;color:#0f172a;text-align:left;font-weight:${isCurr ? '700' : '500'};margin-bottom:2px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${bg}'">
+      <span style="flex:1;min-width:0">
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(label)}</div>
+        ${sub ? `<div style="font-size:11px;color:#64748b;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(sub)}</div>` : ''}
+      </span>
+      <span style="font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums">${count}</span>
+      ${isCurr ? '<span style="font-size:11px;color:#15803d">✓</span>' : ''}
+    </button>`;
+  };
+  pop.innerHTML = row('', 'Alle Hausverwaltungen', '', cntAll)
+    + '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>'
+    + (choices.length
+        ? choices.map(c => row(c.name, c.name, c.orgId ? 'Pipedrive-ID ' + c.orgId : (c.source === 'ai' ? 'KI-erkannt' : ''), c.count)).join('')
+        : '<div style="padding:10px;color:#94a3b8;font-size:12px;text-align:center">Keine HVs zugeordnet</div>')
+    + (cntOhne > 0 ? '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>' + row('__none__', 'Ohne HV-Zuordnung', '', cntOhne) : '');
+  document.body.appendChild(pop);
+  const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+  if (rect) {
+    pop.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    pop.style.left = (rect.left   + window.scrollX) + 'px';
+    const popRect = pop.getBoundingClientRect();
+    if (popRect.right > window.innerWidth - 10) {
+      pop.style.left = (window.innerWidth - popRect.width - 14) + 'px';
+    }
+  }
+  setTimeout(() => {
+    const closeFn = (e) => {
+      if (!pop.contains(e.target) && e.target !== anchorEl) {
+        pop.remove();
+        document.removeEventListener('click', closeFn, true);
+      }
+    };
+    document.addEventListener('click', closeFn, true);
+  }, 50);
+}
+window.openEiHvFilterMenu = openEiHvFilterMenu;
 function setEiRangeFilter(v) {
   window._eiRangeFilter = String(v || 'all');
   _eiUpdateFilterPaneActive();
@@ -27894,14 +28067,31 @@ function _eiFiltered() {
       base = base.filter(r => _eiResolveEmailTyp(r) === tf);
     }
   }
-  // V12.247: Hausverwaltungs-Filter
+  // V12.247/V12.300: Hausverwaltungs-Filter — '__none__' = nur Records OHNE HV-Zuordnung,
+  // sonst Substring-Match (greift auch bei exaktem Namen aus dem Dropdown).
   const hvQ = String(window._eiHvFilter || '').toLowerCase().trim();
   if (hvQ) {
-    base = base.filter(r => {
-      const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
-      const blob = [hv && hv.primary, hv && hv.secondary, r.real_hv_firma, r.from_name, r.from_email].filter(Boolean).join(' ').toLowerCase();
-      return blob.includes(hvQ);
-    });
+    if (hvQ === '__none__') {
+      base = base.filter(r => {
+        const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
+        return !(hv && hv.primary && String(hv.primary).trim());
+      });
+    } else {
+      base = base.filter(r => {
+        const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
+        const blob = [hv && hv.primary, hv && hv.secondary, r.real_hv_firma, r.from_name, r.from_email].filter(Boolean).join(' ').toLowerCase();
+        return blob.includes(hvQ);
+      });
+    }
+  }
+  // V12.300: Aufzug-Filter (Fabriknummer — exakter Match; '__none__' = ohne Aufzug)
+  const azQ = String(window._eiAufzugFilter || '').trim();
+  if (azQ) {
+    if (azQ === '__none__') {
+      base = base.filter(r => !String(r.aufzug_fabriknummer || '').trim());
+    } else {
+      base = base.filter(r => String(r.aufzug_fabriknummer || '').trim() === azQ);
+    }
   }
   // V12.247: Zeitraum-Filter
   const rng = String(window._eiRangeFilter || 'all');
