@@ -4757,6 +4757,11 @@ body.feat-hidden-rahmenvertrag [data-feature="rahmenvertrag"] { display: none !i
 body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !important; }
 /* V12.306: „Externer Verweis"-Block im Email-Detail ausblenden */
 body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: none !important; }
+/* V12.312: 4 Email-Detail-Kacheln einzeln ausblendbar */
+body.feat-hidden-ei_ki_schnellanalyse [data-feature="ei_ki_schnellanalyse"] { display: none !important; }
+body.feat-hidden-ei_ki_summary        [data-feature="ei_ki_summary"]        { display: none !important; }
+body.feat-hidden-ei_vorgaenge         [data-feature="ei_vorgaenge"]         { display: none !important; }
+body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { display: none !important; }
 /* V12.247: Karten-Layout für die Email-Liste — überschreibt das Tabellen-Look */
 #emailInboxList .ei-row {
   background:#fff;
@@ -6390,7 +6395,7 @@ body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: n
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.311';
+const APP_VERSION = 'V12.312';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6419,6 +6424,31 @@ const FEATURE_REGISTRY = [
     label:  'Externer Verweis im Email-Detail',
     desc:   'Versteckt die orange „🔗 Externer Verweis"-Sektion (Check-ID aus externem System für späteren Sync) im Email-Detail-View.',
     icon:   '🔗',
+  },
+  // V12.312: 4 Email-Detail-Kacheln einzeln ausblendbar
+  {
+    key:    'ei_ki_schnellanalyse',
+    label:  'KI-Schnell-Analyse im Email-Detail',
+    desc:   'Versteckt die violette Box mit „Absender erkennen / Aufzug erkennen / Betreff strukturieren". Für Bearbeiter die die Buttons nicht mehr brauchen.',
+    icon:   '🤖',
+  },
+  {
+    key:    'ei_ki_summary',
+    label:  'KI-Zusammenfassung im Email-Detail',
+    desc:   'Versteckt die blaue Kachel mit der KI-generierten Zusammenfassung der Email.',
+    icon:   '📝',
+  },
+  {
+    key:    'ei_vorgaenge',
+    label:  'Erkannte Vorgänge im Email-Detail',
+    desc:   'Versteckt die gesamte „Erkannte Vorgänge"-Sektion mit den Vorgangs-Karten (HV-Zuordnung, Anliegen, „Check daraus erstellen").',
+    icon:   '📋',
+  },
+  {
+    key:    'ei_aktionen',
+    label:  'Aktionen-Footer im Email-Detail',
+    desc:   'Versteckt die untere „Aktionen"-Kachel mit „Als gesichtet markieren / In Bearbeitung / Archivieren".',
+    icon:   '⚙️',
   },
   // Erweiterbar: weitere Features hier ergänzen.
 ];
@@ -33625,7 +33655,7 @@ function renderEmailInboxDetail() {
   // V12.171: KI-Schnell-Button — analysiert den Body (auch Forward-Inhalt) und schlägt
   // echten Absender, HV und Vorgang vor. Step 1: nur Anzeige, kein Auto-Speichern.
   const aiCached = window._eiAiQuickCache && window._eiAiQuickCache[r._id];
-  html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">
+  html += `<div class="dr-section" data-feature="ei_ki_schnellanalyse" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:${aiCached ? '10px' : '6px'};flex-wrap:wrap">
       <div>
         <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px">🤖 KI-Schnell-Analyse</div>
@@ -33670,7 +33700,7 @@ function renderEmailInboxDetail() {
 
   // KI-Summary
   if (r.ki_summary) {
-    html += `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid var(--dr-blue)">
+    html += `<div class="dr-section" data-feature="ei_ki_summary" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid var(--dr-blue)">
       <div class="dr-section-title" style="margin-bottom:6px">KI-Zusammenfassung</div>
       <div style="font-size:13px;line-height:1.55;color:var(--dr-ink)">${_esc(r.ki_summary)}</div>
     </div>`;
@@ -33678,6 +33708,8 @@ function renderEmailInboxDetail() {
 
   // Vorgangs-Karten
   if (vorgaenge.length > 0) {
+    // V12.312: Wrapper für Toggle „Erkannte Vorgänge ausblenden"
+    html += `<div data-feature="ei_vorgaenge">`;
     html += `<div class="dr-section-title" style="margin:20px 0 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:8px">
         <span>Erkannte Vorgänge</span><span class="dr-section-title__count">${vorgaenge.length}</span>
@@ -33800,6 +33832,8 @@ function renderEmailInboxDetail() {
         </div>
       </div>`;
     });
+    // V12.312: Wrapper für „Erkannte Vorgänge"-Toggle schließen
+    html += `</div>`;
   } else {
     // V12.10: Auch wenn KI keinen Vorgang erkannt hat (z.B. korrespondenz),
     // soll der Bearbeiter manuell einen Check starten können.
@@ -33845,7 +33879,7 @@ function renderEmailInboxDetail() {
 
   // Status- & Aktions-Buttons
   const canReply = (r.from_email && (r.linked_check_ids || r.reply_draft || vorgaenge.length === 0));
-  html += `<div class="dr-section" style="padding:14px 18px">
+  html += `<div class="dr-section" data-feature="ei_aktionen" style="padding:14px 18px">
     <div class="dr-section-title" style="margin-bottom:12px">Aktionen</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">`;
   if (canReply && r.status !== 'geantwortet') {
