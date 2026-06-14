@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.319';
+const APP_VERSION = 'V12.320';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -20484,17 +20484,29 @@ function _trimCanvasToInk(canvas) {
 }
 window._trimCanvasToInk = _trimCanvasToInk;
 
-// V12.272: Skript-Font (Caveat-Bold) für die Liftaro-Unterschrift im PDF.
-// Erstes Laden via fetch — danach in window-Cache. Fallback: TimesBoldItalic.
+// V12.272/V12.320: Skript-Font für die Liftaro-Unterschrift im PDF.
+// V12.320: Reihenfolge auf echte Handschrift-Schriften umgestellt — Sacramento und
+// HomemadeApple wirken deutlich mehr wie ein Federstrich als das vorherige Caveat-Bold.
+// Erstes Laden via fetch — danach in window-Cache. Fallback: HelveticaOblique.
 async function _embedScriptFont(doc) {
   const PDFLibNS = window.PDFLib;
   try {
     if (window.fontkit && doc.registerFontkit) doc.registerFontkit(window.fontkit);
+    // V12.320: Cache an die neue Font-Reihenfolge binden — falls vorher Caveat-Bold
+    // gecached war, neu laden. Tag identifiziert die aktuelle Schrift-Auswahl.
+    const FONT_TAG = 'v12320-handwritten';
+    if (window._scriptFontTag !== FONT_TAG) {
+      window._scriptFontBytes = null;
+      window._scriptFontTag = FONT_TAG;
+    }
     if (!window._scriptFontBytes) {
       const candidates = [
-        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/caveat/Caveat-Bold.ttf',
-        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/dancingscript/static/DancingScript-Bold.ttf',
+        // Handgeschriebene Federzug-Optik
+        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/homemadeapple/HomemadeApple-Regular.ttf',
         'https://cdn.jsdelivr.net/gh/google/fonts/ofl/sacramento/Sacramento-Regular.ttf',
+        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/dancingscript/static/DancingScript-Regular.ttf',
+        // Caveat als Fallback (etwas „gedruckter")
+        'https://cdn.jsdelivr.net/gh/google/fonts/ofl/caveat/Caveat-Regular.ttf',
       ];
       for (const url of candidates) {
         try {
@@ -20790,24 +20802,29 @@ async function buildLightVertragPDF() {
       const bytes  = new Uint8Array(binStr.length);
       for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
       const img    = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      const maxH   = 50;
+      // V12.320: kleiner einbetten — vorher 50pt Höhe wirkte zu dominant
+      const maxH   = 32;
+      const maxW   = 150;
       const ratio  = img.width / img.height;
-      const drawH  = Math.min(maxH, img.height);
-      const drawW  = Math.min(200, drawH * ratio);
+      let drawH    = Math.min(maxH, img.height);
+      let drawW    = drawH * ratio;
+      if (drawW > maxW) { drawW = maxW; drawH = drawW / ratio; }
       const drawX  = MARGIN_X + Math.max(0, (200 - drawW) / 2);
       page.drawImage(img, { x: drawX, y: sigY + 2, width: drawW, height: drawH });
       drewImage = true;
-      console.log('[V12.319] handgemalte Liftaro-Signatur eingebettet (PNG/JPG)');
+      console.log('[V12.320] handgemalte Liftaro-Signatur eingebettet (PNG/JPG), Höhe ' + Math.round(drawH) + 'pt');
     }
   } catch (e) { console.warn('[V12.319] Signatur-Image embed fehlgeschlagen:', e); }
   // Fallback: Skript-Font oder Helvetica-Oblique
   if (!drewImage) {
-    const sigSize = 24;
+    // V12.320: 20pt mit Sacramento/HomemadeApple wirkt natürlicher als 24pt
+    // mit Caveat-Bold — kleinere Federführung sieht weniger nach „gedruckt" aus.
+    const sigSize = 20;
     const useFont = scriptFont || helvObl || helvBold;
     const sigW = useFont.widthOfTextAtSize(_safeWinAnsi(sigSettings.name), sigSize);
     const sigX = MARGIN_X + Math.max(0, (200 - sigW) / 2 - 8);
-    page.drawText(_safeWinAnsi(sigSettings.name), { x: sigX, y: sigY + 6, size: sigSize, font: useFont, color: COLOR });
-    console.log('[V12.319] Liftaro-Signatur als ' + (scriptFont ? 'Skript-Font' : 'Helvetica-Oblique') + ' gerendert: „' + sigSettings.name + '"');
+    page.drawText(_safeWinAnsi(sigSettings.name), { x: sigX, y: sigY + 5, size: sigSize, font: useFont, color: COLOR });
+    console.log('[V12.320] Liftaro-Signatur als ' + (scriptFont ? 'Skript-Font (HomemadeApple/Sacramento)' : 'Helvetica-Oblique') + ' gerendert: „' + sigSettings.name + '"');
   }
   // Linien unter den Signaturen
   page.drawLine({ start: { x: MARGIN_X, y: sigY }, end: { x: MARGIN_X + 200, y: sigY }, thickness: 0.5, color: COLOR });
