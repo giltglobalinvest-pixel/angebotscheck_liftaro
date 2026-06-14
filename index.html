@@ -6390,7 +6390,7 @@ body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: n
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.306';
+const APP_VERSION = 'V12.307';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28188,23 +28188,34 @@ function openEiHvFilterMenu(anchorEl) {
   const pop = document.createElement('div');
   pop.className = 'ei-filter-popover';
   pop.style.cssText = 'position:absolute;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px;min-width:300px;max-height:60vh;overflow-y:auto;z-index:6300;font-family:"DM Sans",sans-serif';
-  const row = (val, label, sub, count) => {
+  // V12.307: KI-erkannte HVs (ohne Pipedrive-Zuordnung) orange darstellen — sie brauchen manuelles Picking
+  const row = (val, label, sub, count, opts) => {
+    opts = opts || {};
     const isCurr = String(window._eiHvFilter || '') === String(val || '');
-    const bg = isCurr ? '#f0fdf4' : '#fff';
-    const bd = isCurr ? '#86efac' : 'transparent';
-    return `<button onclick="setEiHvFilter('${_esc(String(val).replace(/'/g, '\\\''))}');document.querySelectorAll('.ei-filter-popover').forEach(e=>e.remove());event.stopPropagation()" style="display:flex;align-items:center;gap:8px;width:100%;background:${bg};border:1px solid ${bd};border-radius:7px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:13px;color:#0f172a;text-align:left;font-weight:${isCurr ? '700' : '500'};margin-bottom:2px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${bg}'">
+    const isKiOnly = !!opts.kiOnly;
+    const bg = isCurr ? (isKiOnly ? '#fff7ed' : '#f0fdf4') : '#fff';
+    const bd = isCurr ? (isKiOnly ? '#fdba74' : '#86efac') : 'transparent';
+    const labelColor = isKiOnly ? '#9a3412' : '#0f172a';
+    return `<button onclick="setEiHvFilter('${_esc(String(val).replace(/'/g, '\\\''))}');document.querySelectorAll('.ei-filter-popover').forEach(e=>e.remove());event.stopPropagation()" style="display:flex;align-items:center;gap:8px;width:100%;background:${bg};border:1px solid ${bd};border-radius:7px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:13px;color:${labelColor};text-align:left;font-weight:${isCurr ? '700' : '500'};margin-bottom:2px" onmouseover="this.style.background='${isKiOnly ? '#ffedd5' : '#f1f5f9'}'" onmouseout="this.style.background='${bg}'">
+      ${isKiOnly ? '<span title="KI-erkannt — nicht in Pipedrive zugeordnet" style="font-size:13px;flex-shrink:0">⚠</span>' : ''}
       <span style="flex:1;min-width:0">
         <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(label)}</div>
-        ${sub ? `<div style="font-size:11px;color:#64748b;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(sub)}</div>` : ''}
+        ${sub ? `<div style="font-size:11px;color:${isKiOnly ? '#9a3412' : '#64748b'};margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(sub)}</div>` : ''}
       </span>
-      <span style="font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums">${count}</span>
-      ${isCurr ? '<span style="font-size:11px;color:#15803d">✓</span>' : ''}
+      <span style="font-size:11px;color:${isKiOnly ? '#c2410c' : '#94a3b8'};font-variant-numeric:tabular-nums">${count}</span>
+      ${isCurr ? `<span style="font-size:11px;color:${isKiOnly ? '#9a3412' : '#15803d'}">✓</span>` : ''}
     </button>`;
   };
   pop.innerHTML = row('', 'Alle Hausverwaltungen', '', cntAll)
     + '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>'
     + (choices.length
-        ? choices.map(c => row(c.name, c.name, c.orgId ? 'Pipedrive-ID ' + c.orgId : (c.source === 'ai' ? 'KI-erkannt' : ''), c.count)).join('')
+        ? choices.map(c => row(
+            c.name,
+            c.name,
+            c.orgId ? 'Pipedrive-ID ' + c.orgId : (c.source === 'ai' ? 'KI-erkannt · nicht in Pipedrive' : ''),
+            c.count,
+            { kiOnly: !c.orgId && c.source === 'ai' }
+          )).join('')
         : '<div style="padding:10px;color:#94a3b8;font-size:12px;text-align:center">Keine HVs zugeordnet</div>')
     + (cntOhne > 0 ? '<div style="border-top:1px solid #e2e8f0;margin:4px 0"></div>' + row('__none__', 'Ohne HV-Zuordnung', '', cntOhne) : '');
   document.body.appendChild(pop);
@@ -29777,9 +29788,26 @@ function _renderEmailAssignmentCards(r) {
   const ahr = String(r.aufzug_hersteller || '').trim();
   const splitCnt = parseInt(r.aufzug_split_count || '0', 10);
   const hasAufzug = !!afn || !!ast;
-  // HV-Kachel
+  // V12.307: HV-Kachel — bei KI-erkannt OHNE Pipedrive-Zuordnung Warn-Optik (orange),
+  // bei zugeordnet (Pipedrive-ID da) grüne Bestätigung.
+  const _hvAssigned = hvSource === 'assigned' && !!hvOrgId;
+  const _hvKiOnly   = hvSource === 'ai' && !hvOrgId;
   const hvCard = hvFirma
-    ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;min-width:0">
+    ? (_hvKiOnly
+      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;min-width:0">
+        <svg width="22" height="22" fill="none" stroke="#9a3412" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:.06em">Hausverwaltung · KI-Vorschlag</div>
+          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvFirma)}</div>
+          ${hvEmail ? `<div style="font-size:12px;color:#475569;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvEmail)}</div>` : ''}
+          <div style="font-size:11px;color:#9a3412;margin-top:4px;font-weight:600">⚠ Nicht in Pipedrive zugeordnet — bitte manuell auswählen</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button onclick="assignHvToVorgang('${r._id}', 0)" title="HV aus Pipedrive zuordnen" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔍 Suchen</button>
+          <button onclick="runAiQuickAnalysis('${r._id}')" title="HV per KI neu bestimmen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif">🤖 KI</button>
+        </div>
+      </div>`
+      : `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;min-width:0">
         <svg width="22" height="22" fill="none" stroke="#15803d" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
         <div style="flex:1;min-width:0">
           <div style="font-size:10.5px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.06em">Hausverwaltung${hvSource === 'ai' ? ' · KI' : ''}</div>
@@ -29787,12 +29815,11 @@ function _renderEmailAssignmentCards(r) {
           ${hvEmail ? `<div style="font-size:12px;color:#475569;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvEmail)}</div>` : ''}
           ${hvOrgId ? `<div style="font-family:var(--dr-f-mono);font-size:10.5px;color:#64748b;margin-top:4px;letter-spacing:.04em">Pipedrive-ID ${_esc(hvOrgId)}</div>` : ''}
         </div>
-        <!-- V12.306: Suchen-Button für manuelle HV-Auswahl (Pipedrive-Picker) -->
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
           <button onclick="assignHvToVorgang('${r._id}', 0)" title="HV manuell aus Pipedrive auswählen" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🔍 Suchen</button>
           <button onclick="runAiQuickAnalysis('${r._id}')" title="HV per KI neu bestimmen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif">🤖 KI</button>
         </div>
-      </div>`
+      </div>`)
     : `<div style="background:#fff7ed;border:1px dashed #fdba74;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;min-width:0">
         <svg width="22" height="22" fill="none" stroke="#9a3412" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <div style="flex:1;min-width:0">
@@ -29846,6 +29873,83 @@ function _renderEmailAssignmentCards(r) {
 // Schickt den Body (inkl. Forward-Inhalt) an Claude und parst die echten
 // Absender-/HV-Daten heraus. Step 2 wird sein, das Ergebnis automatisch
 // in einen Vorgang / eine HV-Zuordnung zu schreiben.
+// V12.307: Nach jeder KI-HV-Erkennung Pipedrive-Lookup. Auto-Assign bei eindeutigem
+// Match, sonst Warn-Toast — User muss manuell die richtige HV picken (oder neu
+// in Pipedrive anlegen). Verhindert das „KI-erkannt"-Wildwuchs-Problem (Duplikate,
+// fehlende Pipedrive-Zuordnung).
+async function _autoMatchHvFromPipedrive(recId, firma) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  if (!APP_KEYS.vorabcheckProxyUrl) return;
+  const cleanFirma = String(firma || '').trim();
+  if (!cleanFirma) return;
+  const _norm = (s) => {
+    let x = String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+    const suffixes = ['gmbh co kg', 'gmbh co', 'gmbh', 'gbr', 'kg', 'ohg', 'ug', 'ag', 'co kg', 'cie', 'partner', 'hausverwaltung', 'immobilien'];
+    for (const sfx of suffixes) x = x.replace(new RegExp('\\b' + sfx + '\\b', 'g'), ' ').trim().replace(/\s+/g, ' ');
+    return x;
+  };
+  try {
+    const resp = await fetch(APP_KEYS.vorabcheckProxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'find_property_manager', query: cleanFirma }),
+    });
+    const data = await resp.json();
+    if (!data.ok) return;
+    const hits = Array.isArray(data.results) ? data.results : [];
+    // 3-stufiger Match: exact → normalisiert → einziger Treffer
+    let match = null;
+    const exactKey = cleanFirma.toLowerCase();
+    match = hits.find(o => String(o.name || '').trim().toLowerCase() === exactKey);
+    if (!match) {
+      const tgt = _norm(cleanFirma);
+      if (tgt) match = hits.find(o => _norm(o.name) === tgt);
+    }
+    if (!match && hits.length === 1) match = hits[0];
+    if (match && match.org_id) {
+      // Auto-Assign: HV-Daten aus Pipedrive in den ersten Vorgang schreiben
+      let details = null;
+      try { if (typeof _fetchOrgDetails === 'function') details = await _fetchOrgDetails(match.org_id); } catch (_) {}
+      const orgId   = String(match.org_id);
+      const orgName = String((details && details.firma) || match.name || cleanFirma);
+      const orgEmail= String((details && details.email) || match.email || '');
+      const orgTel  = String((details && details.tel)   || '');
+      const addr    = (details && [details.strasse, [details.plz, details.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')) || '';
+      const gf      = String((details && details.gf) || '');
+      let vorgaenge = [];
+      try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
+      if (!Array.isArray(vorgaenge) || !vorgaenge.length) vorgaenge = [{}];
+      Object.assign(vorgaenge[0], {
+        assigned_org_id:    orgId,
+        assigned_org_name:  orgName,
+        assigned_org_email: orgEmail,
+        assigned_org_tel:   orgTel,
+        assigned_org_addr:  addr,
+        assigned_org_gf:    gf,
+        assigned_as_private:false,
+        assigned_at:        new Date().toISOString(),
+        assigned_by:        'KI-Auto',
+        assigned_auto:      true,
+      });
+      const json = JSON.stringify(vorgaenge, null, 2);
+      await atUpdate('Emails', recId, { vorgaenge_json: json });
+      r.vorgaenge_json = json;
+      showToast('✓ Pipedrive-Match: „' + orgName + '" (ID ' + orgId + ') zugewiesen', 'success', 4000);
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    } else if (hits.length === 0) {
+      showToast('⚠ „' + cleanFirma + '" nicht in Pipedrive gefunden — bitte HV-Card → „🔍 Suchen" manuell auswählen oder neu in Pipedrive anlegen', 'warning', 8000);
+    } else {
+      showToast('⚠ ' + hits.length + ' mögliche Pipedrive-Treffer für „' + cleanFirma + '" — bitte HV-Card → „🔍 Suchen" manuell wählen', 'warning', 7500);
+    }
+  } catch (e) {
+    console.warn('[V12.307] _autoMatchHvFromPipedrive:', e.message);
+  }
+}
+window._autoMatchHvFromPipedrive = _autoMatchHvFromPipedrive;
+
 async function runAiQuickAnalysis(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
@@ -29942,6 +30046,13 @@ Setze leere Strings für nicht erkennbare Felder. ERFINDE NICHTS — nur was im 
       r.real_kategorie  = realKategorie;
       r.ai_quick_at     = aiAt;
       showToast('✓ KI-Analyse gespeichert — Absender aktualisiert', 'success', 2200);
+      // V12.307: KI-Erkennung soll keine „freien" HVs erzeugen — jede erkannte HV
+      // muss aus Pipedrive sein. Auto-Match versucht das automatisch; bei
+      // Mehrdeutigkeit oder Miss zeigen wir eine Warnung und der User picked manuell.
+      if (realHvFirma && typeof _autoMatchHvFromPipedrive === 'function') {
+        try { await _autoMatchHvFromPipedrive(recId, realHvFirma); }
+        catch (e) { console.warn('[V12.307] auto-match failed:', e.message); }
+      }
     } catch (saveErr) {
       console.warn('[V12.172] Speichern fehlgeschlagen:', saveErr);
       showToast('KI-Analyse erkannt — Speichern fehlgeschlagen: ' + saveErr.message, 'warning', 4000);
