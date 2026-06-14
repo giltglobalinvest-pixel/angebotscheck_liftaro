@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.325';
+const APP_VERSION = 'V12.326';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -31653,9 +31653,11 @@ function _eiCleanChatBody(s) {
   return text.trim();
 }
 
-// V12.324: HTML → Plain-Text mit erhaltener Block-Struktur. Block-Tags werden zu
-// echten Newlines, statt im Text-Extract zu Spaces zu kollabieren. Wird vom
-// Synthetic-Chat-Builder genutzt, wenn body_html vorhanden und body_text flach ist.
+// V12.324/V12.326: HTML → Plain-Text mit erhaltener Block-Struktur. Block-Tags
+// werden zu echten Newlines. V12.326: Wenn die Ausgabe trotz HTML keine
+// Newlines enthält (HTML war ein einziger Block ohne <br>/<p>), wird zusätzlich
+// die Flat-Body-Reinflate-Heuristik angewendet, damit Mehrfach-Spaces und
+// typische Email-Marker als Absatz-Bruch erkannt werden.
 function _eiHtmlToTextWithBreaks(html) {
   if (!html) return '';
   let h = String(html);
@@ -31679,32 +31681,60 @@ function _eiHtmlToTextWithBreaks(html) {
        .replace(/&Auml;/gi, 'Ä').replace(/&Ouml;/gi, 'Ö').replace(/&Uuml;/gi, 'Ü')
        .replace(/&szlig;/gi, 'ß').replace(/&euro;/gi, '€')
        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
-  // Whitespace normalisieren: Tabs → Space; mehrfache Spaces zu einem; aber Newlines erhalten
-  h = h.replace(/[ \t]+/g, ' ');
-  h = h.replace(/ *\n */g, '\n');
-  h = h.replace(/\n{3,}/g, '\n\n');
+  // V12.326: Whitespace nur normalisieren wenn schon Newlines da sind — sonst
+  // verlieren wir die Mehrfach-Spaces, die _eiReinflateFlatBody als Bruchpunkt braucht.
+  if (h.indexOf('\n') !== -1) {
+    h = h.replace(/[ \t]+/g, ' ');
+    h = h.replace(/ *\n */g, '\n');
+    h = h.replace(/\n{3,}/g, '\n\n');
+    return h.trim();
+  }
+  // HTML war ein flacher Block — Reinflate-Heuristik auf das Tag-stripped Ergebnis
+  if (typeof _eiReinflateFlatBody === 'function' && h.trim().length > 60) {
+    return _eiReinflateFlatBody(h).trim();
+  }
   return h.trim();
 }
 window._eiHtmlToTextWithBreaks = _eiHtmlToTextWithBreaks;
 
-// V12.324: „Reinflate" — bei flachen Bodies (keine Newlines, Mehrfach-Spaces aus
+// V12.324/V12.326: „Reinflate" — bei flachen Bodies (keine Newlines aus
 // kollabiertem HTML) typische Email-Strukturpunkte als Newlines wiederherstellen.
+// V12.326: Aggressivere Trigger — auch single-spaces vor Email/Telefon/Standard-
+// Disclaimern werden zum Newline. Robusterer Marker-Match mit Lookbehind statt \b
+// (verhindert Probleme mit Umlauten als Wortgrenzen).
 function _eiReinflateFlatBody(text) {
   let s = String(text);
-  // 2+ Leerzeichen → wahrscheinlicher Newline-Ersatz
+  // Stufe 1: 2+ Leerzeichen → klarer Newline-Ersatz (kollabierter HTML-Bruch)
   s = s.replace(/[ \t]{2,}/g, '\n');
-  // Typische Anrede/Grußformel-Marker → Newline davor wenn nicht schon Zeilenanfang
-  const markers = [
-    /\b(Sehr geehrte[r]?\b)/g,
-    /\b(Guten Tag|Guten Morgen|Hallo|Liebe[r]?\b)/g,
-    /\b(Mit freundlichen Grüßen|Freundliche Grüße|Beste Grüße|Viele Grüße)\b/g,
-    /\b(Im Anhang|Anbei|Bitte beachten Sie|Vielen Dank|Wir freuen uns)\b/g,
+  // Stufe 2: Single-Space vor typischen Email-Pattern → Newline (greift wenn
+  // Aszendio's Mail-Backend Mehrfach-Spaces schon kollabiert hat)
+  const breakBefore = [
+    // Anreden
+    'Sehr geehrte[rn]?', 'Guten Tag', 'Guten Morgen', 'Hallo', 'Liebe[rn]?',
+    // Grußformeln
+    'Mit freundlichen Grüßen', 'Freundliche Grüße', 'Beste Grüße', 'Viele Grüße',
+    'Mit besten Grüßen', 'Mit kollegialen Grüßen',
+    // Body-Anker
+    'Im Anhang', 'Anbei', 'Bitte beachten Sie', 'Vielen Dank', 'Wir freuen uns',
+    'Wir bitten', 'Bei Rückfragen',
+    // Kontakt/Footer-Marker
+    'Tel\\.?:', 'Telefon:', 'Mobil:', 'Fax:', 'E-Mail:', 'EMail:', 'Email:', 'Mail:',
+    'Web:', 'www\\.',
+    // Adress-Marker
+    'Sitz:', 'Amtsgericht', 'HRB', 'Geschäftsführer:', 'Geschäftsführung:', 'USt-Id',
+    // Disclaimer
+    'Diese E-Mail', 'Sollten Sie nicht', 'This e-mail',
+    // Signatur-Roles
+    'Dipl\\.[-]?Ing\\.', 'Mitglied der',
   ];
-  for (const re of markers) s = s.replace(re, '\n$1');
-  // Punkt + Großbuchstabe → neuer Absatz (vorsichtig: nur nach typischen Schluss-Worten)
-  s = s.replace(/\.\s+([A-ZÄÖÜ][a-zäöüß]{2,})/g, '. $1');
+  const breakRe = new RegExp('(\\s)(' + breakBefore.join('|') + ')', 'g');
+  s = s.replace(breakRe, '\n$2');
+  // Stufe 3: Trennstrich · zwischen Adressteilen → Bewusster Bruch
+  s = s.replace(/\s·\s/g, ' · ');
   // Mehrfach-Newlines normalisieren
   s = s.replace(/\n{3,}/g, '\n\n');
+  // Leading whitespace pro Zeile entfernen
+  s = s.split('\n').map(line => line.replace(/^[ \t]+/, '')).join('\n');
   return s.trim();
 }
 window._eiReinflateFlatBody = _eiReinflateFlatBody;
@@ -33300,6 +33330,11 @@ async function sendWartungsnehmerMessage(emailId) {
   // V12.268/V12.301: HTML-Signatur des Bearbeiters (aus Email-Dropdown) statt des Login-Users
   const _sigWn = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, r.bearbeiter_name) : { textSig: '', htmlBody: '' };
   const finalBody = _sigWn.textSig ? body + '\n\n' + _sigWn.textSig : body;
+  // V12.326: Eigene Message-ID generieren — siehe sendServicebetriebMessage
+  const ourMsgId = '<liftaro-' + (typeof generateRandomToken === 'function'
+    ? generateRandomToken(16)
+    : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))
+    + '@check.liftaro.de>';
   try {
     // V12.228: Anhänge mitschicken
     const sendPayload = {
@@ -33307,6 +33342,7 @@ async function sendWartungsnehmerMessage(emailId) {
       subject:   subjectSafe,
       text:      finalBody,
       replyTo:   'check@liftaro.de',
+      messageId: ourMsgId,
       inReplyTo: inReplyTo || undefined,
       references: references && references.length ? references : undefined,
     };
@@ -33347,6 +33383,8 @@ async function sendWartungsnehmerMessage(emailId) {
       subject:           subject,
       body:              finalBody,
       created_at:        sentAt,
+      // V12.326: Eigene Message-ID persistieren
+      message_id:        ourMsgId,
       in_reply_to:       inReplyTo || '',
       bearbeiter_name:   (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
     };
@@ -33359,7 +33397,8 @@ async function sendWartungsnehmerMessage(emailId) {
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
-    // V12.230/231: Zusätzlich als outgoing Emails-Record sichern (Persistenz + Thread-Verknüpfung)
+    // V12.230/231/326: Zusätzlich als outgoing Emails-Record sichern. message_id ist
+    // wichtig, damit die nächste eingehende Antwort über In-Reply-To unsere Mail findet.
     try {
       await atWrite('Emails', {
         direction:        'outgoing',
@@ -33368,6 +33407,7 @@ async function sendWartungsnehmerMessage(emailId) {
         subject:          subject,
         body:             finalBody,
         sent_at:          sentAt,
+        message_id:       ourMsgId,
         in_reply_to:      inReplyTo || '',
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
         // V12.231: Eindeutige Thread-Zuordnung — diese outgoing-Mail gehört zu DIESER Email
@@ -33804,11 +33844,20 @@ async function sendServicebetriebMessage(emailId, sbId) {
   // V12.268: HTML-Signatur des aktuellen Bearbeiters einbinden
   const _sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body) : { textSig: '', htmlBody: '' };
   const finalBody = _sig.textSig ? body + '\n\n' + _sig.textSig : body;
+  // V12.326: Eigene Message-ID generieren und an email-sender mitgeben, damit
+  // unsere outgoing Mails eine stabile ID haben. Aszendio's Ticket-System (und
+  // generell IMAP-Threading) referenziert diese ID via In-Reply-To, damit Folge-
+  // Antworten im gleichen Ticket landen statt als neuer Thread.
+  const ourMsgId = '<liftaro-' + (typeof generateRandomToken === 'function'
+    ? generateRandomToken(16)
+    : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))
+    + '@check.liftaro.de>';
   try {
     // V12.228: Anhänge aus dem Composer mitschicken
     const sendPayload = {
       to: toAddr, subject: subjectSafe, text: finalBody,
       replyTo: 'check@liftaro.de',
+      messageId: ourMsgId,
       inReplyTo: inReplyTo || undefined,
       references: references && references.length ? references : undefined,
     };
@@ -33847,6 +33896,8 @@ async function sendServicebetriebMessage(emailId, sbId) {
       subject:                       subject,
       body:                          finalBody,
       created_at:                    sentAt,
+      // V12.326: Eigene Message-ID + in_reply_to-Kette persistieren — Helper liest sie
+      message_id:                    ourMsgId,
       in_reply_to:                   inReplyTo || '',
       bearbeiter_name:               (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
     };
@@ -33859,21 +33910,25 @@ async function sendServicebetriebMessage(emailId, sbId) {
       // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
       showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
     }
-    // V12.230/231: Zusätzlich als outgoing Emails-Record sichern (Persistenz + Thread-Verknüpfung)
+    // V12.230/231/326: Zusätzlich als outgoing Emails-Record sichern (Persistenz +
+    // Thread-Verknüpfung). message_id ist wichtig — die nächste eingehende Aszendio-
+    // Antwort referenziert sie im In-Reply-To-Header, und unser Threading-Helper
+    // baut darüber die References-Kette für künftige Antworten.
     try {
-      await atWrite('Emails', {
+      const emailsPayload = {
         direction:        'outgoing',
         from_email:       'check@liftaro.de',
         to_email:         toAddr,
         subject:          subject,
         body:             finalBody,
         sent_at:          sentAt,
+        message_id:       ourMsgId,
         in_reply_to:      inReplyTo || '',
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
-        // V12.231: Eindeutige Thread-Zuordnung — diese outgoing-Mail gehört zu DIESER Email
         chat_email_id:    emailId,
-      });
-    } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
+      };
+      await atWrite('Emails', emailsPayload);
+    } catch (eEmails) { console.warn('[V12.326] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
     if (ta) ta.value = '';
     // V12.228: Anhänge nach erfolgreichem Send leeren
     if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
