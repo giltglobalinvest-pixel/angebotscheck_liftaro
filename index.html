@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.326';
+const APP_VERSION = 'V12.327';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33110,6 +33110,91 @@ function _eiBuildThreadHeaders(items, fallbackSubject) {
 }
 window._eiBuildThreadHeaders = _eiBuildThreadHeaders;
 
+// V12.327: Diagnose-Modus standardmässig AN — wir wollen sehen warum Threading/
+// Formatierung nicht greift. Per Konsole abschaltbar: window._eiDiagOn = false.
+if (typeof window._eiDiagOn === 'undefined') window._eiDiagOn = true;
+window.toggleEiDiag = function() {
+  window._eiDiagOn = !window._eiDiagOn;
+  showToast('Diagnose ' + (window._eiDiagOn ? 'AN' : 'AUS'), 'info', 2000);
+  return window._eiDiagOn;
+};
+
+// V12.327: Diagnose-Modal — dumpt alle relevanten Daten zum aktuellen Chat-Thread
+// (eingehende und ausgehende Items mit message_id / in_reply_to / subject + ein
+// Body-Snippet) plus den letzten Send/Receive aus dem Diagnose-Log. So sehen wir
+// auf einen Blick warum Aszendio uns nicht als Folge-Mail erkennt.
+function openEiChatDiag(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  const items = (window._eiWnChatCache && window._eiWnChatCache[emailId]) || [];
+  const outgoingInbox = (_eiAllRecords || []).filter(x => x.direction === 'outgoing' && String(x.chat_email_id || '').trim() === emailId);
+  // Eingehende Mails von Chat-Partnern (Aszendio)
+  const partnerEmails = new Set();
+  for (const o of outgoingInbox) {
+    const to = String(o.to_email || '').toLowerCase().trim();
+    if (to) partnerEmails.add(to);
+  }
+  const inbound = (_eiAllRecords || []).filter(x => {
+    if (x.direction === 'outgoing') return false;
+    const fr = String(x.from_email || '').toLowerCase().trim();
+    return partnerEmails.has(fr);
+  });
+  let m = document.getElementById('eiChatDiagModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'eiChatDiagModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6600;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);font-family:monospace';
+    document.body.appendChild(m);
+    m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  }
+  const fmt = (it) => {
+    const dir = String(it.direction || '').toUpperCase().padEnd(3);
+    const when = String(it.created_at || it.sent_at || it.received_at || '').slice(0, 19).replace('T', ' ');
+    const msgId = String(it.message_id || '(leer)').replace(/[<>]/g, '').slice(0, 70);
+    const inRT  = String(it.in_reply_to || '(leer)').replace(/[<>]/g, '').slice(0, 70);
+    const subj  = String(it.subject || '').slice(0, 90);
+    const body  = String(it.body || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    return `<div style="background:${dir.trim()==='OUT'?'#dbeafe':'#fef3c7'};border:1px solid #cbd5e1;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:11px;line-height:1.5">
+      <div><strong>${dir}</strong> · ${_esc(when)} · ${dir.trim()==='OUT' ? 'an ' + _esc(it.to_email||'?') : 'von ' + _esc(it.from_email||'?')}</div>
+      <div><strong>Subject:</strong> ${_esc(subj)}</div>
+      <div><strong>Message-ID:</strong> ${_esc(msgId)}</div>
+      <div><strong>In-Reply-To:</strong> ${_esc(inRT)}</div>
+      <div style="color:#64748b"><em>Body:</em> ${_esc(body)}…</div>
+    </div>`;
+  };
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;width:min(900px,98vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5)">
+    <div style="background:#0f172a;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-family:'DM Sans',sans-serif">
+      <div style="font-size:14px;font-weight:700">🔍 Chat-Diagnose — Email ${_esc(emailId)}</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="copyTextToClipboard(JSON.stringify({items: window._eiWnChatCache?.[' + JSON.stringify(emailId) + '] || [], outgoingInbox: (_eiAllRecords||[]).filter(x=>x.direction===\'outgoing\' && x.chat_email_id===' + JSON.stringify(emailId) + ')}, null, 2)); showToast('JSON in Zwischenablage','success',2500)" style="background:#2456E5;border:none;color:#fff;border-radius:6px;padding:6px 10px;font-size:11.5px;cursor:pointer">📋 JSON kopieren</button>
+        <button onclick="document.getElementById('eiChatDiagModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+      </div>
+    </div>
+    <div style="padding:14px 18px;overflow:auto;background:#f8fafc;flex:1">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-family:'DM Sans',sans-serif;font-size:12.5px">
+        <div><strong>Parent-Email:</strong> ${_esc((r && (r.subject || r.ai_subject)) || '?')}</div>
+        <div><strong>Original-message_id der Parent-Email:</strong> ${_esc(String(r && r.message_id || '(leer)'))}</div>
+        <div><strong>WartungsnehmerChat-Cache:</strong> ${items.length} Items</div>
+        <div><strong>Outgoing-Records in Emails-Tabelle (chat_email_id matched):</strong> ${outgoingInbox.length}</div>
+        <div><strong>Erkannte Chat-Partner-Emails:</strong> ${[...partnerEmails].map(_esc).join(', ') || '(keine)'}</div>
+        <div><strong>Inbound-Mails von Chat-Partnern in _eiAllRecords:</strong> ${inbound.length}</div>
+      </div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">A) WartungsnehmerChat-Cache (chronologisch)</div>
+      ${items.slice().sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))).map(fmt).join('') || '<div style="color:#94a3b8;padding:10px">Cache leer — öffne die Mail nochmal, dann nochmal Diagnose</div>'}
+      <div style="font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;color:#475569;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em">B) Outgoing-Records (Emails-Tabelle, chat_email_id = ${_esc(emailId)})</div>
+      ${outgoingInbox.slice().sort((a,b)=>String(a.sent_at||'').localeCompare(String(b.sent_at||''))).map(fmt).join('') || '<div style="color:#94a3b8;padding:10px">Keine</div>'}
+      <div style="font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;color:#475569;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em">C) Eingehende Mails von Chat-Partnern in _eiAllRecords</div>
+      ${inbound.slice().sort((a,b)=>String(a.received_at||'').localeCompare(String(b.received_at||''))).map(fmt).join('') || '<div style="color:#94a3b8;padding:10px">Keine</div>'}
+    </div>
+    <div style="background:#0f172a;color:#94a3b8;padding:10px 18px;font-size:11px;font-family:monospace">
+      Tipp: F12 → Console öffnen. Beim nächsten Senden / Antworten erscheinen <code>[V12.327 SEND-*]</code>, <code>[V12.327 RESPONSE-*]</code> und <code>[V12.327 BUBBLE-IN]</code>-Logs.
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+}
+window.openEiChatDiag = openEiChatDiag;
+function copyTextToClipboard(t) { try { navigator.clipboard.writeText(String(t)); } catch (_) {} }
+window.copyTextToClipboard = copyTextToClipboard;
+
 // V12.325: Chat-Vorlagen-System. Speichert benutzerdefinierte Nachrichten-Vorlagen
 // mit Platzhaltern wie {{hv_name}}, {{standort}}, {{fabriknummer}}, {{kontakt}},
 // {{kontakt_email}}, {{ansprechperson_partner}}. Beim Einfügen werden die Platzhalter
@@ -33353,14 +33438,35 @@ async function sendWartungsnehmerMessage(emailId) {
         filename: a.filename, contentType: a.contentType, contentBase64: a.contentBase64
       }));
     }
+    // V12.327: Diagnose vor Send
+    if (window._eiDiagOn) {
+      console.log('[V12.327 SEND-WN]', {
+        emailId, toAddr,
+        subject: subjectSafe,
+        ourMsgId,
+        inReplyTo: inReplyTo || '(leer)',
+        references: references || [],
+        threadItems_count: _sameWn.length,
+        threadItems: _sameWn.map(it => ({
+          dir: it.direction, msgId: it.message_id || '(leer)',
+          subj: (it.subject || '').slice(0, 80),
+          inRT: (it.in_reply_to || '').slice(0, 80),
+        })),
+        payload: JSON.parse(JSON.stringify(sendPayload)),
+      });
+    }
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
       body: JSON.stringify(sendPayload),
     });
+    let respBody = '';
+    try { respBody = await resp.text(); } catch (_) {}
+    if (window._eiDiagOn) {
+      console.log('[V12.327 RESPONSE-WN]', resp.status, respBody.slice(0, 800));
+    }
     if (!resp.ok) {
-      let txt = ''; try { txt = await resp.text(); } catch (_) {}
-      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + respBody.slice(0, 200));
     }
     const sentAt = new Date().toISOString();
     const newId  = 'wnc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
@@ -33556,6 +33662,20 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           const rawBody = String(it.body || '');
           const cleanBody = isOut ? rawBody : _eiCleanChatBody(rawBody);
           const bodyText = (cleanBody || rawBody).trim() || '(leere Nachricht)';
+          // V12.327: Diagnose-Log für eingehende Bubbles — zeigt warum Formatierung greift oder nicht
+          if (!isOut && window._eiDiagOn) {
+            console.log('[V12.327 BUBBLE-IN]', it.id || '(?)', {
+              raw_len: rawBody.length,
+              raw_nl_count: (rawBody.match(/\n/g) || []).length,
+              raw_multispace: (rawBody.match(/[ \t]{2,}/g) || []).length,
+              clean_len: (cleanBody || '').length,
+              clean_nl_count: ((cleanBody || '').match(/\n/g) || []).length,
+              final_len: bodyText.length,
+              final_nl_count: (bodyText.match(/\n/g) || []).length,
+              raw_first200: rawBody.slice(0, 200),
+              clean_first200: (cleanBody || '').slice(0, 200),
+            });
+          }
           const showOriginal = !isOut && cleanBody && cleanBody !== rawBody.trim();
           let attsHtml = '';
           if (it._synthetic && it._source_email_id) {
@@ -33772,6 +33892,8 @@ function _eiRenderWartungsnehmerSection(r, wn) {
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${_hasUnseenChatReply ? `<button onclick="markChatRepliesAsSeen('${emailId}')" title="Markiert alle Chat-Antworten als gelesen — Pille in der Übersicht verschwindet" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px">✓ Gelesen, nichts weiter</button>` : ''}
+        <!-- V12.327: Diagnose-Modal — zeigt alle Threading-Header und letzten Sende-Vorgänge -->
+        <button onclick="openEiChatDiag('${emailId}')" title="Diagnose-Modal — zeigt alle Message-IDs, In-Reply-To-Header und Bodies des Threads" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🔍 Diagnose</button>
         <button onclick="loadWartungsnehmerChat('${emailId}').then(()=>renderEmailInboxDetail())" title="Chats aktualisieren" style="background:#fff;border:1px solid ${accentLight};color:${accentDeep};border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Aktualisieren</button>
       </div>
     </div>
@@ -33868,14 +33990,36 @@ async function sendServicebetriebMessage(emailId, sbId) {
         filename: a.filename, contentType: a.contentType, contentBase64: a.contentBase64
       }));
     }
+    // V12.327: Diagnose vor Send — Threading-Header und Cache-Snapshot
+    if (window._eiDiagOn) {
+      console.log('[V12.327 SEND-SB]', {
+        emailId, sbId, toAddr,
+        subject: subjectSafe,
+        ourMsgId,
+        inReplyTo: inReplyTo || '(leer)',
+        references: references || [],
+        threadItems_count: sameSb.length,
+        threadItems: sameSb.map(it => ({
+          dir: it.direction, msgId: it.message_id || '(leer)',
+          subj: (it.subject || '').slice(0, 80),
+          inRT: (it.in_reply_to || '').slice(0, 80),
+        })),
+        payload: JSON.parse(JSON.stringify(sendPayload)),
+      });
+    }
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
       body: JSON.stringify(sendPayload),
     });
+    // V12.327: Response-Body unbedingt lesen — auch bei 200 — damit wir sehen, was val.town zurückgibt
+    let respBody = '';
+    try { respBody = await resp.text(); } catch (_) {}
+    if (window._eiDiagOn) {
+      console.log('[V12.327 RESPONSE-SB]', resp.status, respBody.slice(0, 800));
+    }
     if (!resp.ok) {
-      let txt = ''; try { txt = await resp.text(); } catch (_) {}
-      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + respBody.slice(0, 200));
     }
     const sentAt = new Date().toISOString();
     const newId  = 'sbc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
