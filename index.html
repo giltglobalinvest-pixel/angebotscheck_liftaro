@@ -6395,7 +6395,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.315';
+const APP_VERSION = 'V12.316';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23579,14 +23579,42 @@ async function pushAufzugToEuC(emailId) {
   const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
   const orgId = String((hv && hv.orgId) || '').trim();
   if (!orgId) { showToast('HV-Pipedrive-ID fehlt — HV erst zuordnen (z. B. via „KI" im HV-Block)', 'warning', 5500); return; }
+  console.log('[V12.316] pushAufzugToEuC: HV="' + (hv && hv.primary) + '" orgId=' + orgId + ' aufzug=' + aufzugRecId);
   showToast('🔎 Suche EuC-Vertrag für ' + (hv && hv.primary || 'HV') + ' …', 'info', 2000);
   try {
-    const recs = await atRead('Light-Vertraege', "{pipedrive_org_id}='" + orgId.replace(/'/g, "\\'") + "'", { sort: false });
+    let recs = await atRead('Light-Vertraege', "{pipedrive_org_id}='" + orgId.replace(/'/g, "\\'") + "'", { sort: false });
+    console.log('[V12.316] Light-Vertraege per orgId:', recs.length);
+    // V12.316: Fallback — Bestands-Light-Verträge (vor V12.269 angelegt) haben kein
+    // pipedrive_org_id-Feld gesetzt. Wenn die orgId-Suche leer ist, fallen wir auf
+    // Firmenname-Match zurück (gleiche Normalisierung wie V12.290 im Kunden-Modul).
+    if (!recs.length && hv && hv.primary) {
+      const allLv = await atRead('Light-Vertraege', '', { sort: false });
+      const _norm = (s) => {
+        let x = String(s || '').toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+        const sfxs = ['gmbh co kg', 'gmbh co', 'gmbh', 'gbr', 'kg', 'ohg', 'ug', 'ag', 'cie', 'partner', 'hausverwaltung', 'immobilien'];
+        for (const s of sfxs) x = x.replace(new RegExp('\\b' + s + '\\b', 'g'), ' ').trim().replace(/\s+/g, ' ');
+        return x;
+      };
+      const tgt = _norm(hv.primary);
+      if (tgt) {
+        recs = (allLv || []).filter(v => {
+          const k = _norm((v.fields && v.fields.firma) || '');
+          return k && (k === tgt || (k.length >= 4 && tgt.length >= 4 && (k.includes(tgt) || tgt.includes(k))));
+        });
+        console.log('[V12.316] Light-Vertraege per Namens-Match („' + hv.primary + '"):', recs.length);
+        // orgId rückspeichern, damit künftige Suchen sofort treffen
+        if (recs.length) {
+          try { await atUpdate('Light-Vertraege', recs[0].id, { pipedrive_org_id: orgId }); } catch (_) {}
+        }
+      }
+    }
     if (!recs.length) {
-      showToast('Keine EuC-Vereinbarung für „' + (hv && hv.primary || 'HV') + '" gefunden — erst Light-Vertrag anlegen', 'warning', 6500);
+      showToast('Keine EuC-Vereinbarung für „' + (hv && hv.primary || 'HV') + '" gefunden — bitte erst Light-Vertrag anlegen (Equipment under Control → Neu)', 'warning', 8000);
       return;
     }
-    // Bevorzugt einen Vertrag mit signed PDF, sonst den ersten
+    // Bevorzugt einen Vertrag mit signed PDF, sonst den ersten (Entwurf reicht — User-Wunsch V12.316)
     const signed = recs.find(rec => Array.isArray(rec.fields.vertrag_signed_pdf) && rec.fields.vertrag_signed_pdf.length > 0);
     const lv = signed || recs[0];
     const lvId = String(lv.fields.id || '').trim();
