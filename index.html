@@ -5365,7 +5365,9 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
           <label>Status</label>
           <select id="lv_status" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--sky);outline:none;width:100%">
             <option value="entwurf">Entwurf</option>
-            <option value="aktiv">Aktiv</option>
+            <option value="ausstehend">Ausstehend — auf Rücklauf warten</option>
+            <option value="abgelehnt">Abgelehnt — HV will nicht</option>
+            <option value="aktiv">Aktiv — unterschrieben zurück</option>
             <option value="gekuendigt">Gekündigt</option>
           </select>
         </div>
@@ -5400,8 +5402,9 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
         <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Unterschriebene Vereinbarung</div>
         <div id="lv_signedInfo" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
         <input type="file" id="lv_signedFile" accept=".pdf,image/*" style="font-size:12px">
-        <!-- V12.269: KI-Vollmacht-Extraktion aus dem zurückgesendeten Gesamt-PDF -->
-        <div style="margin-top:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <!-- V12.269/V12.298: KI-Vollmacht-Extraktion — Panel wird ausgeblendet, sobald
+             eine Vollmacht bereits hinterlegt ist (verhindert versehentliches Re-Extrahieren). -->
+        <div id="lv_extractVollmachtPanel" style="margin-top:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <div style="flex:1;min-width:200px">
             <div style="font-size:12.5px;font-weight:700;color:#15803d">📜 Vollmacht automatisch extrahieren</div>
             <div style="font-size:11px;color:#166534;margin-top:2px;line-height:1.4">Bei zurückgesendetem Komplett-PDF (Datenschutz + Rahmenvertrag + Vollmacht) erkennt die KI die Vollmacht-Seite(n) und legt sie als Vollmacht der HV im Modul ab.</div>
@@ -6366,7 +6369,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.297';
+const APP_VERSION = 'V12.298';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9603,8 +9606,12 @@ window.extractVollmachtFromSignedContract = extractVollmachtFromSignedContract;
 // V12.271: Status-Box-Helper — zeigt die im EuC-Editor zur HV gehörende
 // extrahierte Vollmacht mit Download- und Löschen-Button.
 async function _renderExtractedVollmachtInLvEditor() {
-  const statusEl = document.getElementById('lv_extractStatus');
+  const statusEl  = document.getElementById('lv_extractStatus');
+  const extractPanel = document.getElementById('lv_extractVollmachtPanel');
   if (!statusEl) return;
+  // V12.298: Panel-Sichtbarkeit zurücksetzen — sichtbar wenn keine Vollmacht da ist
+  const _showExtractPanel = (show) => { if (extractPanel) extractPanel.style.display = show ? 'flex' : 'none'; };
+  _showExtractPanel(true);
   const hvOrgId = (document.getElementById('lv_hv_pipedrive_org_id') || {}).value || '';
   if (!hvOrgId.trim()) { statusEl.style.display = 'none'; return; }
   let v = null;
@@ -9619,6 +9626,10 @@ async function _renderExtractedVollmachtInLvEditor() {
     statusEl.innerHTML = '<strong>⚠ Vollmacht-Record vorhanden, aber kein PDF.</strong> Bitte erneut extrahieren oder im Vollmachten-Modul Datei hochladen.';
     return;
   }
+  // V12.298: Vollmacht ist hinterlegt → Extrahier-Panel komplett ausblenden,
+  // damit der grüne Button nicht erneut angefasst werden kann. User muss erst
+  // über die Status-Box (unten) auf „🗑 Löschen" klicken.
+  _showExtractPanel(false);
   const a = atts[0];
   const hvName = (document.getElementById('lv_firma') || {}).value || 'HV';
   statusEl.style.display = 'block';
@@ -22015,13 +22026,21 @@ function renderLightVertraegeList(items, query) {
     const aufzuegeSum = wegs.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
     const kostenAltSum = wegs.reduce((s, w) => s + (Number(w.aktuelle_jahreskosten_eur) || 0), 0);
     const erfolgPct = Number(v.erfolgsbeteiligung_pct ?? LIGHT_DEFAULTS.erfolg_pct);
-    // V12.297: Wenn ein unterschriebener Vertrag hochgeladen ist (vertrag_signed_pdf),
-    // gilt der Vertrag als „Aktiv" — auch wenn der gespeicherte Status noch „entwurf" lautet.
+    // V12.297/V12.298: Effektiver Status — End-Zustände (gekuendigt, abgelehnt) gewinnen
+    // immer; sonst überschreibt ein hochgeladener signed PDF den Entwurf-/Ausstehend-Status zu 'aktiv'.
     const rawStatus = String(v.status || 'entwurf').toLowerCase();
     const _hasSigned = Array.isArray(v.vertrag_signed_pdf) && v.vertrag_signed_pdf.length > 0;
-    const status = (rawStatus === 'gekuendigt') ? 'gekuendigt' : (_hasSigned ? 'aktiv' : rawStatus);
-    const statusColor = status === 'aktiv' ? '#3d7a14' : status === 'gekuendigt' ? '#a8312f' : '#888';
-    const statusLabel = status === 'aktiv' ? 'Aktiv' : status === 'gekuendigt' ? 'Gekündigt' : 'Entwurf';
+    const _endStates = ['gekuendigt', 'abgelehnt'];
+    const status = _endStates.includes(rawStatus) ? rawStatus : (_hasSigned ? 'aktiv' : rawStatus);
+    const _statusMeta = {
+      entwurf:    { color: '#888',    label: 'Entwurf' },
+      ausstehend: { color: '#b45309', label: 'Ausstehend' },
+      abgelehnt:  { color: '#9F1B1F', label: 'Abgelehnt' },
+      aktiv:      { color: '#3d7a14', label: 'Aktiv' },
+      gekuendigt: { color: '#a8312f', label: 'Gekündigt' },
+    };
+    const statusColor = (_statusMeta[status] || _statusMeta.entwurf).color;
+    const statusLabel = (_statusMeta[status] || _statusMeta.entwurf).label;
     const date = v.savedAt ? new Date(v.savedAt) : null;
     return '<div style="background:var(--sky);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;cursor:pointer" onclick="openLightVertragByIndex(' + i + ')">'
       + '<div style="flex:1">'
@@ -22130,10 +22149,12 @@ function setLightVertragForm(d) {
   set('lv_kuendigung', d.kuendigungsfrist_monate || LIGHT_DEFAULTS.kuendigung);
   set('lv_haftung', d.haftungsgrenze_eur || LIGHT_DEFAULTS.haftung);
   set('lv_gerichtsstand', d.gerichtsstand || LIGHT_DEFAULTS.gerichtsstand);
-  // V12.297: Wenn unterschriebener Vertrag bereits hochgeladen → Status effektiv 'aktiv'
+  // V12.297/V12.298: Effektiver Status — End-Zustände (gekuendigt, abgelehnt) gewinnen;
+  // sonst überschreibt eine bereits hochgeladene unterschriebene Datei den Status zu 'aktiv'.
   const _signedExists = Array.isArray(d.vertrag_signed_pdf) && d.vertrag_signed_pdf.length > 0;
-  const _displayStatus = (String(d.status || '').toLowerCase() === 'gekuendigt')
-    ? 'gekuendigt'
+  const _rawStatus = String(d.status || '').toLowerCase();
+  const _displayStatus = ['gekuendigt', 'abgelehnt'].includes(_rawStatus)
+    ? _rawStatus
     : (_signedExists ? 'aktiv' : (d.status || 'entwurf'));
   set('lv_status', _displayStatus);
   set('lv_link_v', d.verknuepfter_rahmenvertrag_id);
@@ -22274,9 +22295,11 @@ async function saveLightVertrag() {
             sf.value = '';
             // EuC-Cache invalidieren — Filter „mit EuC" soll die HV sofort zeigen
             window._eucByOrgIdCacheInvalid = true;
-            // V12.297: Wenn der Vertrag noch als Entwurf gespeichert ist, automatisch
-            // auf „aktiv" wechseln — der unterschriebene Vertrag liegt jetzt vor.
-            if (d.status === 'entwurf') {
+            // V12.297/V12.298: Wenn der Vertrag noch in einer Vorbereitungs-Phase ist
+            // (entwurf oder ausstehend), automatisch auf „aktiv" wechseln — der
+            // unterschriebene Vertrag liegt jetzt vor. End-Zustände (gekuendigt, abgelehnt)
+            // werden NICHT überschrieben.
+            if (d.status === 'entwurf' || d.status === 'ausstehend') {
               try {
                 await atUpdate('Light-Vertraege', rec.id, { status: 'aktiv' });
                 const statusEl = document.getElementById('lv_status');
@@ -25761,15 +25784,17 @@ function renderDashboard() {
   // ── Light-Verträge-Stats ──
   const lightAll = window._dashAllLightVertraege || [];
   const lightWegsAll = window._dashAllLightWegs || [];
-  // V12.297: Effektiver Status — wenn signed PDF da → 'aktiv', sonst gespeicherter Status
+  // V12.297/V12.298: Effektiver Status — End-Zustände (gekuendigt, abgelehnt) gewinnen,
+  // sonst überschreibt signed PDF → 'aktiv', sonst gespeicherter Status.
   const _lvStatus = (l) => {
     const raw = String(l.status || 'entwurf').toLowerCase();
-    if (raw === 'gekuendigt') return 'gekuendigt';
+    if (raw === 'gekuendigt' || raw === 'abgelehnt') return raw;
     if (Array.isArray(l.vertrag_signed_pdf) && l.vertrag_signed_pdf.length > 0) return 'aktiv';
     return raw;
   };
   const lightAktiv = lightAll.filter(l => _lvStatus(l) === 'aktiv').length;
-  const lightEntwurf = lightAll.filter(l => _lvStatus(l) === 'entwurf').length;
+  // V12.298: „Entwurf" zählt jetzt sowohl reine Entwürfe als auch ausstehende — beides Vorbereitung
+  const lightEntwurf = lightAll.filter(l => { const s = _lvStatus(l); return s === 'entwurf' || s === 'ausstehend'; }).length;
   const lightAufzSum = lightWegsAll.reduce((s, w) => s + (Number(w.anzahl_aufzuege) || 0), 0);
   // V12.63: Erfolgsbasis statt Pauschalen-Jahresvolumen.
   // Status-quo-Volumen = Summe der dokumentierten Jahreskosten (alt) aller WEGs.
