@@ -6390,7 +6390,7 @@ body.feat-hidden-externer_verweis [data-feature="externer_verweis"] { display: n
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.309';
+const APP_VERSION = 'V12.310';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7636,6 +7636,9 @@ async function setupTables() {
       { name: 'real_anliegen',        type: 'singleLineText' },
       { name: 'real_kategorie',       type: 'singleLineText' },
       { name: 'ai_quick_at',          type: 'singleLineText' },
+      // V12.310: Pipedrive-Match-Status für die KI-erkannte HV — 'matched' | 'not_found' | 'ambiguous'
+      // Wird von _autoMatchHvFromPipedrive gesetzt. Steuert Farbe der HV-Pille in der Liste.
+      { name: 'hv_pipedrive_status',  type: 'singleLineText' },
       // V12.174: Aufzug-Zuordnung pro Email (eine Email = ein Aufzug; Multi-Splits)
       { name: 'aufzug_id',            type: 'singleLineText' },
       { name: 'aufzug_record_id',     type: 'singleLineText' },
@@ -28748,8 +28751,18 @@ function renderEmailInboxList() {
     const ast = String(r.aufzug_standort || '').trim();
     const hvShort = (hv && hv.primary) ? String(hv.primary).trim() : '';
     const hvAssigned = hv && (hv.source === 'assigned' || hv.source === 'ai');
+    // V12.310: 3-Stufen-Ampel — Grün = Pipedrive-Match, Orange = KI-Vorschlag (ungeprüft/mehrdeutig), Rot = nicht in Pipedrive
+    let _hvBg = '#f0fdf4', _hvFg = '#15803d', _hvBd = '#86efac', _hvIcon = '✓', _hvTitleSuffix = ' · in Pipedrive';
+    if (hv && hv.source === 'ai') {
+      if (hv.pdStatus === 'not_found') {
+        _hvBg = '#fef2f2'; _hvFg = '#b91c1c'; _hvBd = '#fca5a5'; _hvIcon = '✕'; _hvTitleSuffix = ' · NICHT in Pipedrive — bitte manuell anlegen';
+      } else {
+        _hvBg = '#fff7ed'; _hvFg = '#9a3412'; _hvBd = '#fdba74'; _hvIcon = '⚠';
+        _hvTitleSuffix = hv.pdStatus === 'ambiguous' ? ' · mehrere Pipedrive-Treffer — bitte wählen' : ' · KI-Vorschlag, Pipedrive noch nicht geprüft';
+      }
+    }
     const hvPill = hvShort && hvAssigned
-      ? `<span title="${_esc(hvShort)}${hv.secondary ? ' · ' + _esc(hv.secondary) : ''}" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvShort)}</span></span>`
+      ? `<span title="${_esc(hvShort)}${hv.secondary ? ' · ' + _esc(hv.secondary) : ''}${_hvTitleSuffix}" style="background:${_hvBg};color:${_hvFg};border:1px solid ${_hvBd};border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px;max-width:200px"><span style="font-size:10px;font-weight:800;flex-shrink:0">${_hvIcon}</span><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvShort)}</span></span>`
       : '';
     // V12.295: HV-Dokumente-Pillen (Vollmacht + signed EuC-Vertrag) — Klick lädt Datei
     let vmDocPill = '', eucDocPill = '';
@@ -29939,14 +29952,24 @@ async function _autoMatchHvFromPipedrive(recId, firma) {
         assigned_auto:      true,
       });
       const json = JSON.stringify(vorgaenge, null, 2);
-      await atUpdate('Emails', recId, { vorgaenge_json: json });
+      // V12.310: zusätzlich Pipedrive-Status persistieren (für Listen-Pille-Farbe)
+      await atUpdate('Emails', recId, { vorgaenge_json: json, hv_pipedrive_status: 'matched' });
       r.vorgaenge_json = json;
+      r.hv_pipedrive_status = 'matched';
       showToast('✓ Pipedrive-Match: „' + orgName + '" (ID ' + orgId + ') zugewiesen', 'success', 4000);
       if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
       if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
     } else if (hits.length === 0) {
+      // V12.310: kein Pipedrive-Treffer → rot in der Listen-Pille
+      try { await atUpdate('Emails', recId, { hv_pipedrive_status: 'not_found' }); } catch (_) {}
+      r.hv_pipedrive_status = 'not_found';
+      if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
       showToast('⚠ „' + cleanFirma + '" nicht in Pipedrive gefunden — bitte HV-Card → „🔍 Suchen" manuell auswählen oder neu in Pipedrive anlegen', 'warning', 8000);
     } else {
+      // V12.310: mehrdeutiger Treffer → orange/Warnung
+      try { await atUpdate('Emails', recId, { hv_pipedrive_status: 'ambiguous' }); } catch (_) {}
+      r.hv_pipedrive_status = 'ambiguous';
+      if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
       showToast('⚠ ' + hits.length + ' mögliche Pipedrive-Treffer für „' + cleanFirma + '" — bitte HV-Card → „🔍 Suchen" manuell wählen', 'warning', 7500);
     }
   } catch (e) {
@@ -33124,12 +33147,15 @@ function _eiDisplayHV(r) {
       if (!assigned) kiHit = arr.find(x => x && (x.kunde_firma || x.kunde_name)) || arr[0];
     }
   } catch (_) {}
+  // V12.310: Pipedrive-Match-Status für Ampel in der Listen-Pille
+  const pdStatus = String(r.hv_pipedrive_status || '').trim();
   if (assigned) {
     return {
       primary:   String(assigned.assigned_org_name || '').trim(),
       secondary: String(assigned.assigned_org_email || assigned.kunde_email || '').trim(),
       source:    'assigned',
       orgId:     String(assigned.assigned_org_id || ''),
+      pdStatus:  pdStatus || 'matched',
     };
   }
   // V12.172: KI-Schnell-Analyse-Ergebnisse (gespeichert in Airtable)
@@ -33142,6 +33168,7 @@ function _eiDisplayHV(r) {
       primary:   realHv || realFn || '(unbekannt)',
       secondary: realHvMail || realFm || '',
       source:    'ai',
+      pdStatus,
     };
   }
   if (kiHit) {
