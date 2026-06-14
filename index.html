@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.322';
+const APP_VERSION = 'V12.323';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34129,6 +34129,18 @@ function renderEmailInboxDetail() {
   // V12.259: Wenn body_html vorhanden → standardmäßig das Original-HTML zeigen.
   // Toggle bleibt verfügbar, falls jemand den extrahierten Plain-Text sehen will.
   const htmlDefault = hasHtml;
+  // V12.323: Wenn Body kaputte „�"-Replacement-Chars enthält, Hinweis + Fix-Button anzeigen
+  const _hasCorruptChars = (String(r.body_text || '').indexOf('�') !== -1)
+    || (String(r.body_html || '').indexOf('�') !== -1);
+  if (_hasCorruptChars) {
+    html += `<div data-feature="ei_umlaut_fix" style="margin-bottom:10px;padding:11px 14px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:16px;flex-shrink:0">⚠️</span>
+      <div style="flex:1;min-width:0;font-size:12.5px;color:#9a3412;line-height:1.45">
+        <strong>Kaputte Umlaute im Body erkannt</strong> — das Inbound-Mail-Charset wurde falsch dekodiert. Klick auf „Fixen", um die <code>�</code>-Zeichen durch die wahrscheinlichsten Umlaute zu ersetzen.
+      </div>
+      <button onclick="fixEmailUmlauts('${r._id}')" style="background:#d97706;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0;display:inline-flex;align-items:center;gap:6px">🔧 Umlaute fixen</button>
+    </div>`;
+  }
   html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
     <div class="dr-section-head" style="margin-bottom:10px">
       <div class="dr-section-title">Email-Inhalt${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
@@ -34694,6 +34706,94 @@ function _fixCorruptUmlauts(s) {
   return s;
 }
 window._fixCorruptUmlauts = _fixCorruptUmlauts;
+
+// V12.323: Persistenter Umlaut-Fix für eine konkrete Email — wird vom Button im
+// Detail-View aufgerufen. Heuristik zuerst (kostet nichts); wenn dann noch
+// „�"-Zeichen übrig sind und ein Anthropic-Key konfiguriert ist, fragen wir
+// Claude Haiku als robusten Fallback. Ergebnis wird in body_text, body_html
+// und body_preview gespeichert und die Detail-Ansicht neu gerendert.
+async function fixEmailUmlauts(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) { showToast('Email nicht gefunden', 'error', 3000); return; }
+  const origText = String(r.body_text || '');
+  const origHtml = String(r.body_html || '');
+  const origPrev = String(r.body_preview || '');
+  const origBody = String(r.body || '');
+  const totalBad = (origText.match(/�/g) || []).length + (origHtml.match(/�/g) || []).length;
+  if (!totalBad) { showToast('Keine kaputten Zeichen gefunden', 'info', 2500); return; }
+  showToast('🔧 Heuristik läuft …', 'info', 1800);
+  // Stufe 1: deterministische Heuristik
+  let newText = _fixCorruptUmlauts(origText);
+  let newHtml = _fixCorruptUmlauts(origHtml);
+  let newPrev = _fixCorruptUmlauts(origPrev);
+  let newBody = _fixCorruptUmlauts(origBody);
+  const stillBadText = (newText.match(/�/g) || []).length;
+  const stillBadHtml = (newHtml.match(/�/g) || []).length;
+  // Stufe 2: KI-Fallback wenn nötig
+  if ((stillBadText + stillBadHtml) > 0 && APP_KEYS.anthropicKey && typeof callClaude === 'function') {
+    showToast('🤖 Claude korrigiert die restlichen Zeichen …', 'info', 3000);
+    try {
+      // Wir korrigieren primär den Plain-Text (sauberer), HTML bleibt dann aus dem Original
+      const aiFixed = await _eiAiFixUmlauts(newText || _stripHtml(newHtml) || origText);
+      if (aiFixed && aiFixed.length > 10) {
+        newText = aiFixed;
+        newPrev = aiFixed.slice(0, 240);
+      }
+      // HTML: weniger riskant via gleichem Prompt, aber nur wenn klein genug
+      if (newHtml && (newHtml.match(/�/g) || []).length > 0 && newHtml.length < 12000) {
+        const aiHtml = await _eiAiFixUmlauts(newHtml, true);
+        if (aiHtml && aiHtml.length > 10) newHtml = aiHtml;
+      }
+    } catch (e) {
+      console.warn('[V12.323] KI-Fix fehlgeschlagen, nur Heuristik wird gespeichert:', e.message);
+    }
+  }
+  const fixedTotal = (newText.match(/�/g) || []).length + (newHtml.match(/�/g) || []).length;
+  const repaired   = totalBad - fixedTotal;
+  // Schreiben (nur Felder updaten, die sich auch geändert haben)
+  const patch = {};
+  if (newText !== origText) patch.body_text    = newText;
+  if (newHtml !== origHtml) patch.body_html    = newHtml;
+  if (newPrev !== origPrev) patch.body_preview = newPrev;
+  if (newBody !== origBody) patch.body         = newBody;
+  if (!Object.keys(patch).length) { showToast('Keine Änderung erforderlich', 'info', 2500); return; }
+  try {
+    await atUpdate('Emails', recId, patch);
+    Object.assign(r, patch);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+    const restMsg = fixedTotal > 0 ? ' · noch ' + fixedTotal + ' offen' : '';
+    showToast('✓ ' + repaired + ' kaputte Zeichen repariert' + restMsg, 'success', 4500);
+  } catch (e) {
+    console.error('[V12.323] Speichern fehlgeschlagen:', e);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+window.fixEmailUmlauts = fixEmailUmlauts;
+
+// V12.323: KI-Call für robuste Umlaut-Korrektur. Claude bekommt den kaputten
+// Text und liefert die wahrscheinlichste Rekonstruktion zurück. Antwortet nur
+// mit dem reinen Ergebnis-Text — kein Kommentar, keine Markdown-Wrap.
+async function _eiAiFixUmlauts(text, isHtml) {
+  if (!APP_KEYS.anthropicKey) return '';
+  const sys = 'Du bist ein deutscher Text-Reparatur-Assistent. Aufgabe: Ersetze in einem Text alle U+FFFD-Replacement-Characters („�") durch die wahrscheinlichsten Umlaute (ä/ö/ü/ß) bzw. Sonderzeichen (z.B. §). Antworte AUSSCHLIESSLICH mit dem reparierten Text — keine Erklärung, kein Markdown, keine Anführungszeichen, keine Code-Blöcke.';
+  const userMsg = (isHtml ? 'HTML-Fragment:' : 'Plain-Text:') + '\n\n' + text;
+  try {
+    const out = await callClaude(
+      [{ role: 'user', content: userMsg }],
+      sys,
+      { maxTokens: Math.min(4096, Math.max(800, Math.ceil(text.length * 1.2))) }
+    );
+    let s = String(out || '').trim();
+    // Hin und wieder schlüpft Claude ein ```text-Block rein — abziehen
+    s = s.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/, '').trim();
+    return s;
+  } catch (e) {
+    console.warn('[V12.323] _eiAiFixUmlauts failed:', e.message);
+    return '';
+  }
+}
+window._eiAiFixUmlauts = _eiAiFixUmlauts;
 
 function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
