@@ -5445,6 +5445,8 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button id="lv_btnPreview" onclick="previewLightVertrag()" style="background:#fff;border:1.5px solid var(--navy);color:var(--navy);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">👁 Vorschau</button>
         <button id="lv_btnDownload" onclick="downloadLightVertrag()" style="background:#fff;border:1.5px solid var(--blue-mid);color:var(--blue-mid);border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">⬇ PDF herunterladen</button>
+        <!-- V12.322: EuC-Vertrag direkt per Email versenden -->
+        <button id="lv_btnSendMail" onclick="openLightVertragSendModal()" title="EuC-Vertrag als PDF an die HV senden" style="background:#7dc242;border:none;color:#fff;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">📧 Per Email senden</button>
         <!-- V12.272: Liftaro-Signatur konfigurieren -->
         <button type="button" onclick="openLiftaroSignatureSettings()" title="Name + Ort für die Liftaro-Signatur konfigurieren" style="background:#fff;border:1.5px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">✍ Unterschrift</button>
       </div>
@@ -6395,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.321';
+const APP_VERSION = 'V12.322';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -21211,6 +21213,169 @@ async function downloadLightVertrag() {
     showToast('PDF heruntergeladen', 'ok');
   } catch (e) { showToast('Download fehlgeschlagen: ' + e.message, 'error'); }
 }
+
+// V12.322: EuC-Vertrag direkt per Email an die HV versenden — kleines Anschreiben
+// (editierbar) + Bearbeiter-Signatur + PDF als Anhang.
+function openLightVertragSendModal() {
+  const d = (typeof getLightVertragForm === 'function') ? getLightVertragForm() : {};
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert (Setup → Email-Sender-URL/Secret)', 'error', 6000);
+    return;
+  }
+  const hvFirma = String(d.firma || '').trim() || '(Hausverwaltung)';
+  const hvAnsprech = String(d.gf || '').trim();
+  const hvEmail = String(d.email || '').trim();
+  const lvId = String(d.id || '').trim();
+  const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro-Team';
+  // Default-Anschreiben
+  const anrede = hvAnsprech ? 'Sehr geehrte Damen und Herren,' : 'Sehr geehrte Damen und Herren,';
+  const defaultBody = anrede + '\n\n'
+    + 'anbei senden wir Ihnen die EuC-Vereinbarung (Equipment under Control) zwischen Ihrer Hausverwaltung und der Liftaro GmbH zur Durchsicht und Unterzeichnung.\n\n'
+    + 'Die Vereinbarung ist von unserer Seite bereits vor-unterschrieben. Bitte zeichnen Sie das PDF gegen und senden es uns an check@liftaro.de zurück — gerne als Antwort auf diese Email, damit der Vorgang sauber bei uns ankommt.\n\n'
+    + 'Für Rückfragen stehen wir Ihnen jederzeit zur Verfügung.';
+  const defaultSubject = 'EuC-Vereinbarung Liftaro · ' + hvFirma + (lvId ? ' · ' + lvId : '');
+  let m = document.getElementById('lvSendMailModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'lvSendMailModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6400;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+    m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  }
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(700px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)">
+    <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">📧 EuC-Vertrag per Email senden</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">An <strong style="color:#fff">${_esc(hvFirma)}</strong> · PDF wird automatisch angehängt</div>
+      </div>
+      <button onclick="document.getElementById('lvSendMailModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;background:#f8fafc;overflow:auto;flex:1">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">An (HV-Email)</label>
+          <input id="lvSendTo" type="email" value="${_esc(hvEmail)}" placeholder="kontakt@hausverwaltung.de" style="width:100%;box-sizing:border-box;border:1px solid ${hvEmail ? '#cbd5e1' : '#fca5a5'};border-radius:7px;padding:8px 11px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+          ${hvEmail ? '' : '<div style="font-size:11px;color:#b91c1c;margin-top:3px">⚠ HV-Email im Vertrag eintragen oder hier manuell ergänzen</div>'}
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">CC (optional)</label>
+          <input id="lvSendCc" type="text" placeholder="info@firma.de, …" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Betreff</label>
+        <input id="lvSendSubject" type="text" value="${_esc(defaultSubject)}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px 11px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Anschreiben</label>
+        <textarea id="lvSendBody" rows="9" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:10px 12px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;background:#fff;resize:vertical">${_esc(defaultBody)}</textarea>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Die Bearbeiter-Signatur (${_esc(userName)}) wird automatisch am Ende angehängt.</div>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">📎</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;font-weight:700;color:#15803d">EuC-Vereinbarung_${_esc(hvFirma.replace(/[^\w\-]+/g,'_'))}.pdf</div>
+          <div style="font-size:11px;color:#166534;margin-top:2px">Wird beim Senden frisch aus dem Editor generiert — inkl. Liftaro-Vor-Unterschrift</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div style="font-size:11.5px;color:#64748b">Von: <strong>check@liftaro.de</strong> · Antwort-an: check@liftaro.de</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('lvSendMailModal').style.display='none'" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
+        <button id="lvSendBtn" onclick="sendLightVertragViaMail()" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">📤 Senden</button>
+      </div>
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+}
+window.openLightVertragSendModal = openLightVertragSendModal;
+
+async function sendLightVertragViaMail() {
+  const btn = document.getElementById('lvSendBtn');
+  const setBtn = (txt, dis) => { if (btn) { btn.disabled = !!dis; btn.style.opacity = dis ? '0.7' : '1'; btn.style.cursor = dis ? 'wait' : 'pointer'; btn.innerHTML = txt; } };
+  const to      = (document.getElementById('lvSendTo')      || {}).value || '';
+  const ccRaw   = (document.getElementById('lvSendCc')      || {}).value || '';
+  const subject = (document.getElementById('lvSendSubject') || {}).value || '';
+  const body    = (document.getElementById('lvSendBody')    || {}).value || '';
+  const toAddr  = to.trim();
+  if (!toAddr || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toAddr)) {
+    showToast('Bitte eine gültige HV-Email eintragen', 'warning', 4000);
+    return;
+  }
+  if (!subject.trim()) { showToast('Betreff darf nicht leer sein', 'warning', 3000); return; }
+  if (!body.trim())    { showToast('Anschreiben darf nicht leer sein', 'warning', 3000); return; }
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+    showToast('Email-Sender nicht konfiguriert', 'error', 5000); return;
+  }
+  setBtn('⏳ PDF wird erstellt …', true);
+  try {
+    // 1. PDF frisch aus dem Editor bauen
+    const { blob, filename } = await buildLightVertragPDF();
+    const arrBuf = await blob.arrayBuffer();
+    const bytes  = new Uint8Array(arrBuf);
+    // base64-encoden in Chunks (große Files sprengen sonst den Stack bei String.fromCharCode)
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+    }
+    const base64 = btoa(bin);
+    setBtn('⏳ Sende …', true);
+    // 2. Signatur des Bearbeiters
+    const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || '';
+    const sig = (typeof _eiResolveSignatureForSend === 'function')
+      ? _eiResolveSignatureForSend(body, userName)
+      : { textSig: '', htmlBody: '' };
+    const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
+    // 3. Payload
+    const subjectSafe = (typeof _eiSanitizeSubjectForEmail === 'function') ? _eiSanitizeSubjectForEmail(subject.trim()) : subject.trim();
+    const ccs = ccRaw.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    const payload = {
+      to:        toAddr,
+      subject:   subjectSafe,
+      text:      finalText,
+      replyTo:   'check@liftaro.de',
+      attachments: [{
+        filename: filename || 'EuC-Vereinbarung.pdf',
+        contentType: 'application/pdf',
+        contentBase64: base64,
+      }],
+    };
+    if (sig.htmlBody) payload.html = sig.htmlBody;
+    if (ccs.length)   payload.cc   = ccs;
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      let txt = ''; try { txt = await resp.text(); } catch (_) {}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+    }
+    // 4. Outgoing-Record in der Emails-Tabelle anlegen (Verlauf-Eintrag)
+    try {
+      await atWrite('Emails', {
+        direction:        'outgoing',
+        from_email:       'check@liftaro.de',
+        to_email:         toAddr,
+        bcc_email:        ccs.join(', '),
+        subject:          subjectSafe,
+        body:             finalText,
+        sent_at:          new Date().toISOString(),
+        attachment_filenames: filename || 'EuC-Vereinbarung.pdf',
+        bearbeiter_name:  userName || 'Bearbeiter',
+      });
+    } catch (e) { console.warn('[V12.322] Outgoing-Record fehlgeschlagen:', e.message); }
+    showToast('✓ EuC-Vertrag an „' + toAddr + '" gesendet', 'success', 4500);
+    const mo = document.getElementById('lvSendMailModal');
+    if (mo) mo.style.display = 'none';
+  } catch (e) {
+    console.error('[V12.322] sendLightVertragViaMail:', e);
+    showToast('Senden fehlgeschlagen: ' + e.message, 'error', 6000);
+    setBtn('📤 Senden', false);
+  }
+}
+window.sendLightVertragViaMail = sendLightVertragViaMail;
 
 // ═══════════════════════════════════════════════════════════════════
 // RECHNUNGSCHECK — Ergebnis-PDF (nativ mit pdf-lib)
