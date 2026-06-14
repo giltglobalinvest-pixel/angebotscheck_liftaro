@@ -3698,11 +3698,20 @@ const pdfWorkerReady = Promise.resolve();</script>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <!-- V12.244: Filter Vollmacht-Status (Alle / mit / ohne) -->
-        <div id="kundenVmFilterBar" style="display:inline-flex;gap:2px;background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);border-radius:8px;padding:3px;font-family:'DM Sans',sans-serif">
-          <button id="kundenVmFilter_all"     onclick="setKundenVmFilter('all')"     title="Alle Hausverwaltungen"            style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s">Alle</button>
-          <button id="kundenVmFilter_with"    onclick="setKundenVmFilter('with')"    title="Nur HVs mit hinterlegter Vollmacht" style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s">📜 mit</button>
-          <button id="kundenVmFilter_without" onclick="setKundenVmFilter('without')" title="Nur HVs ohne Vollmacht"             style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s">ohne</button>
+        <!-- V12.244/V12.289: Filter — kombinierbar: Vollmacht UND/ODER EuC -->
+        <div style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span title="Vollmacht-Filter" style="font-size:11px;color:var(--dr-ink-mute);font-weight:600;font-family:'DM Sans',sans-serif">📜 Vollmacht</span>
+          <div id="kundenVmFilterBar" style="display:inline-flex;gap:2px;background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);border-radius:8px;padding:3px;font-family:'DM Sans',sans-serif">
+            <button id="kundenVmFilter_all"     onclick="setKundenVmFilter('all')"     title="Alle HVs"                       style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .12s">Alle</button>
+            <button id="kundenVmFilter_with"    onclick="setKundenVmFilter('with')"    title="Nur HVs mit Vollmacht"          style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .12s">mit</button>
+            <button id="kundenVmFilter_without" onclick="setKundenVmFilter('without')" title="Nur HVs ohne Vollmacht"         style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .12s">ohne</button>
+          </div>
+          <span title="EuC-Vertrag-Filter" style="font-size:11px;color:var(--dr-ink-mute);font-weight:600;font-family:'DM Sans',sans-serif;margin-left:4px">🛡 EuC</span>
+          <div id="kundenEucFilterBar" style="display:inline-flex;gap:2px;background:var(--dr-surface-alt);border:1px solid var(--dr-border-strong);border-radius:8px;padding:3px;font-family:'DM Sans',sans-serif">
+            <button id="kundenEucFilter_all"     onclick="setKundenEucFilter('all')"     title="Alle HVs"                 style="background:var(--dr-blue,#2456E5);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .12s">Alle</button>
+            <button id="kundenEucFilter_with"    onclick="setKundenEucFilter('with')"    title="Nur HVs mit EuC-Vertrag"  style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .12s">mit</button>
+            <button id="kundenEucFilter_without" onclick="setKundenEucFilter('without')" title="Nur HVs ohne EuC-Vertrag" style="background:transparent;color:var(--dr-ink-mute);border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .12s">ohne</button>
+          </div>
         </div>
         <div style="position:relative">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--dr-ink-mute);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -6357,7 +6366,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.288';
+const APP_VERSION = 'V12.289';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -18380,6 +18389,23 @@ async function renderKundenList() {
     } catch (_) { window._vmByOrgIdCache = window._vmByOrgIdCache || {}; }
   }
   const vmMap = window._vmByOrgIdCache || {};
+  // V12.289: EuC-Vertrag-Cache pro Pipedrive-Org-ID — TTL 60s
+  if (!window._eucByOrgIdCache || (window.performance && performance.now() - (window._eucByOrgIdCacheAt || 0) > 60000) || window._eucByOrgIdCacheInvalid) {
+    try {
+      const allE = await loadLightVertraege();
+      const emap = {};
+      for (const v of allE || []) {
+        const oid = String(v.pipedrive_org_id || '').trim();
+        if (!oid) continue;
+        // Falls mehrere Verträge zur HV existieren: jüngsten behalten (savedAt-Sort beim Lader bereits abwärts)
+        if (!emap[oid]) emap[oid] = v;
+      }
+      window._eucByOrgIdCache = emap;
+      window._eucByOrgIdCacheAt = performance.now();
+      window._eucByOrgIdCacheInvalid = false;
+    } catch (_) { window._eucByOrgIdCache = window._eucByOrgIdCache || {}; }
+  }
+  const eucMap = window._eucByOrgIdCache || {};
   // V12.244: Vollmacht-Filter anwenden (Alle / mit / ohne)
   const vmFilter = window._kundenVmFilter || 'all';
   if (vmFilter !== 'all') {
@@ -18391,12 +18417,22 @@ async function renderKundenList() {
       ? filtered.filter(o => has(o.org_id))
       : filtered.filter(o => !has(o.org_id));
   }
+  // V12.289: EuC-Filter anwenden (kombinierbar mit Vollmacht-Filter)
+  const eucFilter = window._kundenEucFilter || 'all';
+  if (eucFilter !== 'all') {
+    const hasE = (oid) => !!eucMap[String(oid)];
+    filtered = eucFilter === 'with'
+      ? filtered.filter(o => hasE(o.org_id))
+      : filtered.filter(o => !hasE(o.org_id));
+  }
   // Stats um Filter-Hinweis ergänzen (nur wenn aktiv)
-  if (stats && vmFilter !== 'all') {
+  if (stats && (vmFilter !== 'all' || eucFilter !== 'all')) {
     const total = orgs.length;
     const shown = filtered.length;
-    const label = vmFilter === 'with' ? 'mit Vollmacht' : 'ohne Vollmacht';
-    stats.textContent = shown + ' von ' + total + ' HVs · Filter: ' + label;
+    const parts = [];
+    if (vmFilter  !== 'all') parts.push(vmFilter  === 'with' ? 'mit Vollmacht' : 'ohne Vollmacht');
+    if (eucFilter !== 'all') parts.push(eucFilter === 'with' ? 'mit EuC'       : 'ohne EuC');
+    stats.textContent = shown + ' von ' + total + ' HVs · Filter: ' + parts.join(' + ');
   }
   list.innerHTML = filtered.map(o => {
     const oid = String(o.org_id);
@@ -18427,7 +18463,17 @@ async function renderKundenList() {
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
         ${vmBtn}
-        <button onclick="openLightVertragForOrg(${oid})" title="Neue EuC-Vereinbarung mit dieser HV anlegen" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">🛡 EuC</button>
+        ${(() => {
+          // V12.289: EuC-Status-Button — existiert bereits ein Vertrag, öffnen statt neu anlegen
+          const ev = eucMap[oid];
+          if (ev && ev._recordId) {
+            const lvId = String(ev.id || '');
+            const lvIdEsc = lvId.replace(/'/g, '\\\'');
+            const tipExtra = lvId ? ' · ' + lvId : '';
+            return '<button onclick="openExistingLightVertrag(\'' + lvIdEsc + '\')" title="EuC-Vertrag öffnen' + tipExtra + '" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">🛡 EuC ✓</button>';
+          }
+          return '<button onclick="openLightVertragForOrg(' + oid + ')" title="Neue EuC-Vereinbarung mit dieser HV anlegen" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">🛡 + EuC</button>';
+        })()}
         <button data-feature="rahmenvertrag" onclick="openVertragForOrg(${oid})" title="Neuen Rahmenvertrag mit dieser HV anlegen" style="background:#fff;border:1px solid var(--blue-mid);color:var(--blue-mid);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">📑 Rahmen</button>
       </div>
     </div>`;
@@ -18468,6 +18514,45 @@ function setKundenVmFilter(mode) {
   renderKundenList();
 }
 window.setKundenVmFilter = setKundenVmFilter;
+
+// V12.289: EuC-Filter im HV-Modal (Alle / mit / ohne) — kombinierbar mit Vollmacht-Filter
+function setKundenEucFilter(mode) {
+  const valid = ['all', 'with', 'without'];
+  window._kundenEucFilter = valid.includes(mode) ? mode : 'all';
+  valid.forEach(m => {
+    const b = document.getElementById('kundenEucFilter_' + m);
+    if (!b) return;
+    if (m === window._kundenEucFilter) {
+      b.style.background = 'var(--dr-blue,#2456E5)';
+      b.style.color      = '#fff';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color      = 'var(--dr-ink-mute)';
+    }
+  });
+  renderKundenList();
+}
+window.setKundenEucFilter = setKundenEucFilter;
+
+// V12.289: Bestehenden EuC-Vertrag öffnen (anhand der id, z. B. "L_2026105")
+async function openExistingLightVertrag(lvId) {
+  if (!lvId) { showToast('Vertrags-ID fehlt', 'warning', 2500); return; }
+  try {
+    document.getElementById('kundenModal').style.display = 'none';
+    // Aus Cache holen, wenn vorhanden; sonst per atRead nachladen
+    const cached = (window._lightVertraegeCache || []).find(x => String(x.id || '') === String(lvId));
+    if (cached) { openLightVertragEditor(cached); return; }
+    const recs = await atRead('Light-Vertraege', "{id}='" + String(lvId).replace(/'/g, "\\'") + "'", { sort: false });
+    if (!recs.length) { showToast('EuC-Vertrag nicht gefunden', 'error', 3000); return; }
+    const v = { _recordId: recs[0].id, ...recs[0].fields };
+    // Unterschriebene Datei für den Editor mit-übergeben (V12.269-Konvention)
+    v._attSigned = Array.isArray(v.vertrag_signed_pdf) ? v.vertrag_signed_pdf : [];
+    openLightVertragEditor(v);
+  } catch (e) {
+    showToast('Öffnen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+window.openExistingLightVertrag = openExistingLightVertrag;
 
 // V12.165: Holt Detail-Persons für gefilterte HVs nach (parallel, Cache),
 // reichert dann die Zeile inline mit dem ersten "echten" Person-Namen an.
