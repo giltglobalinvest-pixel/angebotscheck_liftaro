@@ -6357,7 +6357,7 @@ body.feat-hidden-euc_im_check  [data-feature="euc_im_check"]  { display: none !i
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.287';
+const APP_VERSION = 'V12.288';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -9290,7 +9290,11 @@ async function extractVollmachtFromSignedContract() {
     return;
   }
 
-  // V12.270: Wenn keine Org-ID im Hidden-Feld — automatisch über Pipedrive suchen (Fallback für Bestands-Verträge)
+  // V12.270/V12.288: Wenn keine Org-ID im Hidden-Feld — automatisch via Pipedrive-Suche
+  // ermitteln (Fallback für Bestands-Verträge). V12.288: fuzzy-fähige Suche via
+  // find_property_manager (server-side), plus tolerante Normalisierung beim Match —
+  // damit „Dr. Wahl & Cie GmbH" auch dann gefunden wird, wenn Pipedrive eine leicht
+  // andere Schreibweise hat (Punkte, Whitespace, GmbH-Suffix etc.).
   if (!hvOrgId.trim()) {
     setStatus('working', '🔎 Pipedrive-ID für „' + _esc(hvName) + '" wird gesucht …');
     const proxyUrl = APP_KEYS.vorabcheckProxyUrl || '';
@@ -9298,23 +9302,64 @@ async function extractVollmachtFromSignedContract() {
       setStatus('error', '<strong>Pipedrive-ID fehlt</strong> · und Proxy-URL nicht konfiguriert. Lösung: HV oben über „HV wählen" neu auswählen — die Org-ID wird dann automatisch übernommen.');
       return;
     }
+    // V12.288: Aggressiver Norm-Helper für Firmen-Namen — Lowercase, alle
+    // Nicht-Alphanumerischen Zeichen weg, gängige Suffixe (gmbh/gbr/kg/co/ohg/
+    // gmbhcokg/ug) abschneiden.
+    const norm = (s) => {
+      let x = String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '') // Diakritika
+        .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+      // Geläufige Rechtsform-Suffixe abschneiden (vorne und hinten)
+      const suffixes = ['gmbh co kg', 'gmbh co', 'gmbh', 'gbr', 'kg', 'ohg', 'ug', 'ag', 'co kg', 'cie', 'partner'];
+      for (const sfx of suffixes) {
+        const re = new RegExp('\\b' + sfx + '\\b', 'g');
+        x = x.replace(re, ' ').trim().replace(/\s+/g, ' ');
+      }
+      return x;
+    };
     try {
       const rl = await fetch(proxyUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'list_property_managers', start: 0, limit: 500 }),
+        body: JSON.stringify({ action: 'find_property_manager', query: hvName.trim() }),
       });
       const d = await rl.json();
       if (!d.ok) throw new Error(d.error || 'Pipedrive HTTP-Fehler');
-      const orgs = d.results || [];
-      const match = orgs.find(o => String(o.name || '').trim().toLowerCase() === hvName.trim().toLowerCase());
+      const hits = Array.isArray(d.results) ? d.results : [];
+      console.log('[vollmacht-extract] Pipedrive find_property_manager →', hits.length, 'Treffer');
+      let match = null;
+      // 1) Exakter Name-Match (case-insensitive, getrimmt)
+      const exactKey = hvName.trim().toLowerCase();
+      match = hits.find(o => String(o.name || '').trim().toLowerCase() === exactKey);
+      // 2) Normalisierter Match (ohne Sonderzeichen / Suffixe)
+      if (!match) {
+        const tgt = norm(hvName);
+        if (tgt) match = hits.find(o => norm(o.name) === tgt);
+      }
+      // 3) Substring im normalisierten Raum (beidseitig)
+      if (!match) {
+        const tgt = norm(hvName);
+        if (tgt.length >= 4) {
+          match = hits.find(o => {
+            const n = norm(o.name);
+            return n && (n.includes(tgt) || tgt.includes(n));
+          });
+        }
+      }
+      // 4) Einziger Treffer → den nehmen
+      if (!match && hits.length === 1) match = hits[0];
       if (match && match.org_id) {
         hvOrgId = String(match.org_id);
-        // Hidden-Field gleich befüllen, damit nachfolgende Aktionen die ID kennen
         const h = document.getElementById('lv_hv_pipedrive_org_id');
         if (h) h.value = hvOrgId;
-        console.log('[vollmacht-extract] Pipedrive-Match', { name: hvName, org_id: hvOrgId });
+        console.log('[vollmacht-extract] Pipedrive-Match', { name: hvName, matched: match.name, org_id: hvOrgId });
       } else {
-        setStatus('error', '<strong>Pipedrive-ID nicht gefunden</strong> für „' + _esc(hvName) + '". Bitte HV oben über „HV wählen" neu auswählen.');
+        // Detaillierte Fehlermeldung: wenn Treffer existieren, anzeigen welche
+        if (hits.length) {
+          const top = hits.slice(0, 3).map(o => '• ' + (o.name || '?') + (o.city ? ' (' + o.city + ')' : '')).join('<br>');
+          setStatus('error', '<strong>HV nicht eindeutig zuzuordnen</strong> · Pipedrive lieferte ' + hits.length + ' Treffer für „' + _esc(hvName) + '", aber keiner passt eindeutig:<br>' + top + '<br><br>Bitte HV oben über „HV wählen" neu auswählen, damit die Pipedrive-ID gespeichert wird.');
+        } else {
+          setStatus('error', '<strong>Keine Pipedrive-Treffer</strong> für „' + _esc(hvName) + '". Bitte HV oben über „HV wählen" neu auswählen.');
+        }
         return;
       }
     } catch (e) {
