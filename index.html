@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.341';
+const APP_VERSION = 'V12.342';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7671,6 +7671,10 @@ async function setupTables() {
       // V12.310: Pipedrive-Match-Status für die KI-erkannte HV — 'matched' | 'not_found' | 'ambiguous'
       // Wird von _autoMatchHvFromPipedrive gesetzt. Steuert Farbe der HV-Pille in der Liste.
       { name: 'hv_pipedrive_status',  type: 'singleLineText' },
+      // V12.342: Timestamp wenn User den (Auto-)Vorgang explizit verworfen hat.
+      // Verhindert dass _autoMatchHvFromPipedrive nach Reload den Vorgang neu erzeugt.
+      // Wird gecleart sobald der User eine HV manuell zuordnet oder einen neuen Vorgang anlegt.
+      { name: 'vorgang_dismissed_at', type: 'singleLineText' },
       // V12.174: Aufzug-Zuordnung pro Email (eine Email = ein Aufzug; Multi-Splits)
       { name: 'aufzug_id',            type: 'singleLineText' },
       { name: 'aufzug_record_id',     type: 'singleLineText' },
@@ -30817,13 +30821,26 @@ async function _autoMatchHvFromPipedrive(recId, firma) {
       // überschrieben wird. Plus: Wenn der User bereits eine HV manuell zugeordnet
       // hat, RESPECT — wir überschreiben einen User-Pick nicht.
       let autoMatchWritten = false;
+      let skipReason = '';
       try {
-        const result = await _eiPatchVorgaenge(recId, (vorgaenge) => {
-          if (!Array.isArray(vorgaenge) || !vorgaenge.length) vorgaenge = [{}];
+        const result = await _eiPatchVorgaenge(recId, (vorgaenge, freshRec) => {
+          const rf = freshRec.fields || {};
+          // V12.342: Wenn die Vorgangsliste leer ist UND der User vorher explizit
+          // verworfen hat, NICHT mehr aus real_hv_firma rekonstituieren — der User
+          // hat aktiv „kein Vorgang in dieser Email" entschieden. Re-Aktivieren geht
+          // über HV-Card → „🔍 Suchen" oder manuellen Check-Anlegen-Block.
+          const isEmpty = !Array.isArray(vorgaenge) || !vorgaenge.length;
+          const dismissed = String(rf.vorgang_dismissed_at || '').trim();
+          if (isEmpty && dismissed) {
+            skipReason = 'dismissed';
+            return false;
+          }
+          if (isEmpty) vorgaenge = [{}];
           // Wenn schon manuell zugeordnet (assigned_org_id da UND nicht auto), nichts tun
           const v0 = vorgaenge[0] || {};
           if (v0.assigned_org_id && !v0.assigned_auto) {
             console.log('[V12.341] Auto-Match übersprungen — manuelle Zuordnung bereits gesetzt:', v0.assigned_org_name);
+            skipReason = 'manual';
             return false;
           }
           Object.assign(vorgaenge[0], {
@@ -30842,7 +30859,11 @@ async function _autoMatchHvFromPipedrive(recId, firma) {
           return vorgaenge;
         }, { hv_pipedrive_status: 'matched' });
         if (result === false) {
-          showToast('ℹ Pipedrive-Match übersprungen — manuelle HV-Zuordnung respektiert', 'info', 3500);
+          if (skipReason === 'dismissed') {
+            showToast('ℹ HV in Pipedrive gefunden — Vorgang bleibt verworfen. Re-Aktivieren: HV-Card → „🔍 Suchen"', 'info', 5500);
+          } else {
+            showToast('ℹ Pipedrive-Match übersprungen — manuelle HV-Zuordnung respektiert', 'info', 3500);
+          }
           return;
         }
       } catch (e) {
@@ -36559,13 +36580,19 @@ async function dismissVorgang(recId, vIdx) {
   const removed = JSON.parse(JSON.stringify(vorgaenge[vIdx]));
   const removedTitle = removed.titel || '';
   vorgaenge.splice(vIdx, 1);
+  // V12.342: Flag setzen wenn die Liste durch das Verwerfen leer wird — verhindert,
+  // dass _autoMatchHvFromPipedrive (z. B. durch erneutes „🤖 KI" oder Polling) den
+  // Vorgang aus real_hv_firma wieder rekonstituiert.
+  const dismissedAt = (vorgaenge.length === 0) ? new Date().toISOString() : (r.vorgang_dismissed_at || '');
   try {
     await atUpdate('Emails', recId, {
       vorgaenge_json: JSON.stringify(vorgaenge, null, 2),
       ki_vorgaenge_count: vorgaenge.length,
+      vorgang_dismissed_at: dismissedAt,
     });
     r.vorgaenge_json = JSON.stringify(vorgaenge, null, 2);
     r.ki_vorgaenge_count = vorgaenge.length;
+    r.vorgang_dismissed_at = dismissedAt;
     renderEmailInboxDetail();
     renderEmailInboxList();
     // V12.44: Undo-Snackbar (10 Sek) zeigen
@@ -36609,12 +36636,15 @@ function _showVorgangUndoSnackbar(recId, origVIdx, vorgang, title) {
     const insertAt = Math.max(0, Math.min(origVIdx, vorgaenge.length));
     vorgaenge.splice(insertAt, 0, vorgang);
     try {
+      // V12.342: dismissed-Flag wieder clearen — Undo reaktiviert den Vorgang
       await atUpdate('Emails', recId, {
         vorgaenge_json: JSON.stringify(vorgaenge, null, 2),
         ki_vorgaenge_count: vorgaenge.length,
+        vorgang_dismissed_at: '',
       });
       r.vorgaenge_json = JSON.stringify(vorgaenge, null, 2);
       r.ki_vorgaenge_count = vorgaenge.length;
+      r.vorgang_dismissed_at = '';
       if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
       if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
       showToast('Vorgang wiederhergestellt.', 'success');
@@ -36689,6 +36719,8 @@ async function _saveVorgangAssignment(recId, vIdx, patchObj) {
   // Frischer Stand wird aus Airtable gelesen, Initial-Vorgang ggf. erzeugt, patchObj
   // appliziert, dann atomisch zurückgeschrieben.
   try {
+    // V12.342: Manuelle Zuordnung clear das vorgang_dismissed_at-Flag — der User
+    // reaktiviert den Vorgang aktiv, also gilt das frühere Verwerfen nicht mehr.
     const result = await _eiPatchVorgaenge(recId, (vorgaenge, freshRec) => {
       const rf = freshRec.fields || {};
       if (vIdx === 0 && vorgaenge.length === 0) {
@@ -36705,12 +36737,14 @@ async function _saveVorgangAssignment(recId, vIdx, patchObj) {
         assigned_by: _eiCurrentUserName(),
       });
       return vorgaenge;
-    });
+    }, { vorgang_dismissed_at: '' });
     if (result === false) return false;
+    const _r = (_eiAllRecords || []).find(x => x._id === recId);
+    if (_r) _r.vorgang_dismissed_at = '';
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
     return true;
   } catch (e) {
-    console.error('[V12.341] _saveVorgangAssignment:', e);
+    console.error('[V12.342] _saveVorgangAssignment:', e);
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
     return false;
   }
@@ -37245,9 +37279,11 @@ async function addManualVorgangToEmail(recId, checkType) {
   vorgaenge.push(synth);
   const newJson = JSON.stringify(vorgaenge);
   try {
-    await atUpdate('Emails', recId, { vorgaenge_json: newJson, ki_vorgaenge_count: vorgaenge.length });
+    // V12.342: dismissed-Flag clearen — manuelle Anlage reaktiviert den Vorgang
+    await atUpdate('Emails', recId, { vorgaenge_json: newJson, ki_vorgaenge_count: vorgaenge.length, vorgang_dismissed_at: '' });
     r.vorgaenge_json = newJson;
     r.ki_vorgaenge_count = vorgaenge.length;
+    r.vorgang_dismissed_at = '';
     showToast(`Manuell ${typLabels[checkType] || 'Check'}-Vorgang angelegt — bitte Kunden zuordnen.`, 'success', 3000);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
