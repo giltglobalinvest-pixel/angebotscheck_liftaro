@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.332';
+const APP_VERSION = 'V12.333';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23458,8 +23458,31 @@ async function saveAufzug() {
   };
   try {
     let savedAufzug = null;
+    // V12.333: Retry-Helper — bei 422 „Field X cannot accept" oder „Unknown field name: X"
+    // das problematische Feld droppen und nochmal versuchen. So überleben wir Schema-
+    // Unterschiede zwischen Bases (z.B. neue Felder wie kuendigung_naechste_datum vor
+    // ensureFields ist durchgelaufen). Console-Warn dokumentiert was gedropped wurde.
+    const _safeWriteAz = async (op, payload, retryCount = 0) => {
+      try {
+        return await op(payload);
+      } catch (e) {
+        if (retryCount > 8) throw e;
+        const msg = String((e && e.message) || '');
+        const m = msg.match(/Field\s+"([^"]+)"\s+cannot accept/i)
+               || msg.match(/Unknown field name:\s*"([^"]+)"/i)
+               || msg.match(/Invalid field name:\s*"([^"]+)"/i);
+        if (m && Object.prototype.hasOwnProperty.call(payload, m[1])) {
+          console.warn('[V12.333] Aufzuege: Drop incompatible field „' + m[1] + '" and retry');
+          showToast('⚠ Feld „' + m[1] + '" konnte nicht gespeichert werden — Aufzug wird ohne dieses Feld angelegt', 'warning', 5500);
+          const reduced = Object.assign({}, payload);
+          delete reduced[m[1]];
+          if (Object.keys(reduced).length) return _safeWriteAz(op, reduced, retryCount + 1);
+        }
+        throw e;
+      }
+    };
     if (d._recordId) {
-      await atUpdate('Aufzuege', d._recordId, fields);
+      await _safeWriteAz((p) => atUpdate('Aufzuege', d._recordId, p), fields);
       savedAufzug = { ...d, ...fields, _recordId: d._recordId };
       showToast('Aufzug aktualisiert', 'ok');
     } else {
@@ -23468,7 +23491,7 @@ async function saveAufzug() {
       fields.im_euc = '';
       fields.euc_vertrag_id = '';
       fields.api_key = APP_KEYS.user?.api_key || 'unknown';
-      const rec = await atWrite('Aufzuege', fields);
+      const rec = await _safeWriteAz((p) => atWrite('Aufzuege', p), fields);
       document.getElementById('az_recordId').value = rec.id;
       document.getElementById('az_id').value = newId;
       document.getElementById('aufzugEditorTitle').textContent = 'Aufzug · ' + newId;
