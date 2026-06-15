@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.353';
+const APP_VERSION = 'V12.354';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29574,16 +29574,20 @@ function renderEmailInboxList() {
       // Falls aktueller Bearbeiter nicht in der Liste → trotzdem als Option zeigen (Backward-Compat)
       const bearbOpts = curBearb && !bearbList.includes(curBearb) ? [curBearb, ...bearbList] : bearbList;
       const optEsc = (v) => _esc(String(v));
+      // V12.354: Status-Set synchron zur Sidebar (Posteingang) — minus 'gesendet'
+      // ('gesendet' ist direction='outgoing', kein Status-Wert).
       const statusOpts = [
         { val: 'neu',            label: 'Neu' },
+        { val: 'gesichtet',      label: 'Gesichtet' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
+        { val: 'geantwortet',    label: 'Geantwortet' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
-      // Backward-Compat: falls Status='gesichtet'/'geantwortet' (alte Werte) → als Option anbieten
-      if (curStatus && !['neu','in_bearbeitung','wartend','verworfen'].includes(curStatus)) {
-        const oldLabels = { gesichtet: 'Gesichtet', geantwortet: 'Geantwortet', gesendet: 'Gesendet' };
-        statusOpts.unshift({ val: curStatus, label: oldLabels[curStatus] || curStatus });
+      // Backward-Compat: falls noch ein anderer Status drinsteht (z. B. 'gesendet') → als Option anbieten
+      const _knownStatus = ['neu','gesichtet','in_bearbeitung','wartend','geantwortet','verworfen'];
+      if (curStatus && !_knownStatus.includes(curStatus)) {
+        statusOpts.unshift({ val: curStatus, label: ({ gesendet: 'Gesendet' })[curStatus] || curStatus });
       }
       const checkOpts = [
         { val: '',               label: '—' },
@@ -35057,15 +35061,18 @@ function renderEmailInboxDetail() {
       // Zurück-Springen ändern müssen.
       const curStatus = String(r.status || 'neu');
       const curCheck  = String(r.check_status || '');
+      // V12.354: Status-Set synchron zur Sidebar (Posteingang) — minus 'gesendet'
       const statusOptsHdr = [
         { val: 'neu',            label: 'Neu' },
+        { val: 'gesichtet',      label: 'Gesichtet' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
+        { val: 'geantwortet',    label: 'Geantwortet' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
-      if (curStatus && !['neu','in_bearbeitung','wartend','verworfen'].includes(curStatus)) {
-        const oldLabels = { gesichtet: 'Gesichtet', geantwortet: 'Geantwortet', gesendet: 'Gesendet' };
-        statusOptsHdr.unshift({ val: curStatus, label: oldLabels[curStatus] || curStatus });
+      const _knownStatusHdr = ['neu','gesichtet','in_bearbeitung','wartend','geantwortet','verworfen'];
+      if (curStatus && !_knownStatusHdr.includes(curStatus)) {
+        statusOptsHdr.unshift({ val: curStatus, label: ({ gesendet: 'Gesendet' })[curStatus] || curStatus });
       }
       const checkOptsHdr = [
         { val: '',               label: '—' },
