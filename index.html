@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.333';
+const APP_VERSION = 'V12.334';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -21269,7 +21269,29 @@ function openLightVertragSendModal() {
       <div style="margin-bottom:12px">
         <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Anschreiben</label>
         <textarea id="lvSendBody" rows="9" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:10px 12px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;background:#fff;resize:vertical">${_esc(defaultBody)}</textarea>
-        <div style="font-size:11px;color:#64748b;margin-top:4px">Die Bearbeiter-Signatur (${_esc(userName)}) wird automatisch am Ende angehängt.</div>
+        ${(() => {
+          // V12.334: Echte Signatur-Vorschau einbauen — User sieht was am Ende mitgeschickt wird
+          const sigHtml = (typeof getBearbeiterSignatureHtml === 'function')
+            ? (getBearbeiterSignatureHtml(userName) || (typeof getCurrentUserSignatureHtml === 'function' ? getCurrentUserSignatureHtml() : ''))
+            : '';
+          const sigTextFallback = (typeof _eiGetSignature === 'function') ? _eiGetSignature() : '';
+          if (sigHtml && sigHtml.trim()) {
+            return `<details open style="margin-top:8px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:7px;overflow:hidden">
+              <summary style="cursor:pointer;padding:8px 12px;font-size:11.5px;font-weight:700;color:#475569;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;list-style:none;user-select:none">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                📝 Signatur-Vorschau · <span style="color:#94a3b8;font-weight:400">wird am Ende der Mail angehängt</span>
+              </summary>
+              <div style="padding:12px 14px;background:#fff;font-size:13px;line-height:1.5;color:#0f172a">${sigHtml}</div>
+            </details>`;
+          }
+          if (sigTextFallback && sigTextFallback.trim()) {
+            return `<details open style="margin-top:8px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:7px;overflow:hidden">
+              <summary style="cursor:pointer;padding:8px 12px;font-size:11.5px;font-weight:700;color:#475569;background:#fff;border-bottom:1px solid #e2e8f0">📝 Signatur-Vorschau</summary>
+              <pre style="margin:0;padding:12px 14px;background:#fff;font-size:12.5px;line-height:1.5;color:#0f172a;white-space:pre-wrap;word-wrap:break-word;font-family:Arial,Helvetica,sans-serif">${_esc(sigTextFallback)}</pre>
+            </details>`;
+          }
+          return `<div style="margin-top:6px;padding:8px 12px;background:#fff7ed;border:1px solid #fdba74;border-radius:7px;font-size:11.5px;color:#9a3412">⚠ Keine Signatur für „${_esc(userName)}" konfiguriert — Setup → Bearbeiter</div>`;
+        })()}
       </div>
       <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">📎</span>
