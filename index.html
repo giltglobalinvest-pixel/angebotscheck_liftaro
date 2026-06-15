@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.352';
+const APP_VERSION = 'V12.353';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29967,23 +29967,33 @@ function _renderEmailTimeline(r) {
   const itemsHtml = items.length
     ? items.map(renderItem).join('')
     : '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12.5px;background:#fff;border:1px dashed #cbd5e1;border-radius:8px;margin-bottom:8px">Noch kein Verlauf. Notiz unten anlegen oder per „Antworten" eine Mail senden.</div>';
-  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #1a3a5c;background:#fff">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:14px;font-weight:700;color:#0f172a">💬 Verlauf</span>
-        ${cntTotal > 0 ? `<span style="background:#1a3a5c;color:#fff;border-radius:9px;padding:1px 9px;font-size:11px;font-weight:700">${cntTotal}</span>` : ''}
-        ${cntTotal > 0 ? `<span style="font-size:11.5px;color:#64748b">${[
+  // V12.353: Verlauf-Liste in einklappbares <details>. Default = eingeklappt.
+  // Open-State pro Email-ID gemerkt, damit Re-Renders die Sektion nicht wieder zuklappen.
+  window._eiVerlaufOpen = window._eiVerlaufOpen || {};
+  const _verlaufOpen = window._eiVerlaufOpen[r._id] === true;
+  const _summaryMeta = cntTotal > 0
+    ? `<span style="background:#1a3a5c;color:#fff;border-radius:9px;padding:1px 9px;font-size:11px;font-weight:700">${cntTotal}</span>`
+      + `<span style="font-size:11.5px;color:#64748b">${[
           cntNotes    ? cntNotes    + ' Notiz'      + (cntNotes    === 1 ? '' : 'en') : '',
           cntReplies  ? cntReplies  + ' gesendet'   + (cntReplies  === 1 ? '' : '')   : '',
           cntIncoming ? cntIncoming + ' Antwort'    + (cntIncoming === 1 ? '' : 'en') + ' eingegangen' : '',
-        ].filter(Boolean).join(' · ')}</span>` : ''}
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
-        <button onclick="openLinkEmailModal('${r._id}')" title="Diese Email mit einer anderen verknüpfen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">🔗 Verknüpfen</button>
-        <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
-      </div>
-    </div>
-    ${itemsHtml}
+        ].filter(Boolean).join(' · ')}</span>`
+    : '';
+  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #1a3a5c;background:#fff">
+    <details ${_verlaufOpen ? 'open' : ''} ontoggle="window._eiVerlaufOpen=window._eiVerlaufOpen||{};window._eiVerlaufOpen['${r._id}']=this.open;const c=this.querySelector('.ei-verlauf-caret');if(c)c.style.transform=this.open?'rotate(90deg)':'rotate(0deg)';" style="margin-bottom:12px">
+      <summary style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none;outline:none;user-select:none;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <svg class="ei-verlauf-caret" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#64748b;transition:transform .15s ease;transform:${_verlaufOpen ? 'rotate(90deg)' : 'rotate(0deg)'}"><polyline points="9 18 15 12 9 6"/></svg>
+          <span style="font-size:14px;font-weight:700;color:#0f172a">💬 Verlauf</span>
+          ${_summaryMeta}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto" onclick="event.stopPropagation()">
+          <button onclick="event.preventDefault();openLinkEmailModal('${r._id}')" title="Diese Email mit einer anderen verknüpfen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">🔗 Verknüpfen</button>
+          <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
+        </div>
+      </summary>
+      <div style="margin-top:12px">${itemsHtml}</div>
+    </details>
     ${_renderEmailComposer(r)}
   </div>`;
 }
