@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.346';
+const APP_VERSION = 'V12.347';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -36242,37 +36242,64 @@ function _bearbSaveAndClose() {
 window._bearbSaveAndClose = _bearbSaveAndClose;
 
 async function setEmailStatus(recId, newStatus) {
+  // V12.347: Bug-Fix — Status sprang zurück, weil status + status_at + bearbeiter_name
+  // in EINEM atUpdate geschrieben wurden. Wenn EINS davon 422 wirft (z.B. status ist
+  // ein Single-Select ohne die Option, oder bearbeiter_name wurde mittlerweile zu
+  // Single-Select migriert), schlug die ganze Patch fehl und der lokale Cache wurde
+  // nicht aktualisiert → DOM-Re-Render setzte den Dropdown auf den alten Wert zurück.
+  // Fix: status alleine kritisch, Begleitfelder als Best-Effort. Plus optimistic UI.
+  const r = _eiAllRecords.find(x => x._id === recId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  const oldStatus = r.status || 'neu';
+  if (String(oldStatus) === String(newStatus)) return;
+
+  // Optimistic update — Dropdown bleibt sofort beim neuen Wert
+  const nowIso = new Date().toISOString();
+  r.status    = newStatus;
+  r.status_at = nowIso;
+  renderEmailInboxList();
+
   try {
-    await atUpdate('Emails', recId, { status: newStatus, status_at: new Date().toISOString(), bearbeiter_name: _eiCurrentUserName() });
-    const r = _eiAllRecords.find(x => x._id === recId);
-    if (r) { r.status = newStatus; r.status_at = new Date().toISOString(); }
-    // V12.255: Wenn die Email aus dem aktuell sichtbaren Filter rausfällt UND das
-    // Detail-Overlay sie gerade zeigt, dann zur nächsten Email der gefilterten Liste
-    // springen oder das Overlay schließen. Damit „verschwindet" die archivierte
-    // Email aus User-Sicht spürbar.
-    const ov = document.getElementById('emailInboxDetailOverlay');
-    const overlayOpen = ov && ov.style.display === 'flex';
-    const filtNow = (typeof _eiFiltered === 'function') ? _eiFiltered() : [];
-    const stillVisible = filtNow.some(x => x._id === recId);
-    if (overlayOpen && recId === _eiSelectedId && !stillVisible) {
-      if (filtNow.length) {
-        // Nächste Email in der Liste auswählen (selectEmailRow ruft renderList + renderDetail intern)
-        selectEmailRow(filtNow[0]._id);
-      } else {
-        // Liste leer → Overlay schließen
-        if (typeof closeEmailDetailOverlay === 'function') closeEmailDetailOverlay();
-      }
-    } else {
-      renderEmailInboxList();
-      renderEmailInboxDetail();
-    }
-    _refreshEmailInboxBadge();
-    // V12.255: Klarere Status-Labels statt techn. Strings
-    const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', wartend: 'wartend', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
-    showToast('Email ' + label + '.', 'success', 2200);
+    // Step 1 (kritisch): nur das status-Feld
+    await atUpdate('Emails', recId, { status: newStatus });
   } catch (e) {
-    showToast('Fehler beim Status-Update: ' + e.message, 'error');
+    // Rollback bei echtem Fehler (Single-Select-Option fehlt o.ä.)
+    r.status    = oldStatus;
+    r.status_at = r.status_at; // bleibt
+    renderEmailInboxList();
+    showToast('Status nicht änderbar: ' + e.message
+      + ' — Airtable akzeptiert „' + newStatus + '" wahrscheinlich nicht als Option im status-Feld.', 'error', 7000);
+    return;
   }
+
+  // Step 2 (best-effort): Begleitfelder einzeln, jeder Fehler nur loggen
+  try { await atUpdate('Emails', recId, { status_at: nowIso }); }
+  catch (e) { console.warn('[V12.347] status_at nicht aktualisiert:', e.message); }
+  try {
+    const bearb = _eiCurrentUserName();
+    if (bearb) await atUpdate('Emails', recId, { bearbeiter_name: bearb });
+  } catch (e) { console.warn('[V12.347] bearbeiter_name nicht aktualisiert:', e.message); }
+
+  // V12.255: Wenn die Email aus dem aktuell sichtbaren Filter rausfällt UND das
+  // Detail-Overlay sie gerade zeigt, dann zur nächsten Email der gefilterten Liste
+  // springen oder das Overlay schließen.
+  const ov = document.getElementById('emailInboxDetailOverlay');
+  const overlayOpen = ov && ov.style.display === 'flex';
+  const filtNow = (typeof _eiFiltered === 'function') ? _eiFiltered() : [];
+  const stillVisible = filtNow.some(x => x._id === recId);
+  if (overlayOpen && recId === _eiSelectedId && !stillVisible) {
+    if (filtNow.length) {
+      selectEmailRow(filtNow[0]._id);
+    } else {
+      if (typeof closeEmailDetailOverlay === 'function') closeEmailDetailOverlay();
+    }
+  } else {
+    renderEmailInboxList();
+    renderEmailInboxDetail();
+  }
+  _refreshEmailInboxBadge();
+  const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', wartend: 'wartend', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
+  showToast('Email ' + label + '.', 'success', 2200);
 }
 
 // V12.203/212: Vorgang in eigene Email auftrennen — Original behält die anderen, Kopie hat nur den einen.
