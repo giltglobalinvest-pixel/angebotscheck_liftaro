@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.351';
+const APP_VERSION = 'V12.352';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6848,13 +6848,17 @@ async function atWrite(table, fields) {
   return await res.json();
 }
 
-async function atUpdate(table, recordId, fields) {
+async function atUpdate(table, recordId, fields, opts) {
   if (!APP_KEYS.airtableWriteKey) throw new Error('Nicht eingeloggt');
   const base = APP_KEYS.appBaseId || APP_CONFIG.APP_BASE_ID;
+  // V12.352: optionaler 4. Parameter — { typecast: true } lässt Airtable neue
+  // Single-Select-Optionen auto-anlegen, statt 422 zu werfen.
+  const payload = { fields };
+  if (opts && opts.typecast) payload.typecast = true;
   const res = await fetch('https://api.airtable.com/v0/' + base + '/' + encodeURIComponent(table) + '/' + recordId, {
     method: 'PATCH',
     headers: { 'Authorization': 'Bearer ' + APP_KEYS.airtableWriteKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!res.ok || (data && data.error)) {
@@ -35037,6 +35041,49 @@ function renderEmailInboxDetail() {
       <div>${monoMeta('KI-Kosten:', cost + ' €')}</div>
       <div>${monoMeta('Anhänge:', String(attCount))}</div>
     </div>
+    ${(() => {
+      // V12.352: Status + Check-Status Inline-Dropdowns im Detail-Header — identisch
+      // zu den Schnellaktionen in der Liste, damit Bearbeiter sie nicht erst übers
+      // Zurück-Springen ändern müssen.
+      const curStatus = String(r.status || 'neu');
+      const curCheck  = String(r.check_status || '');
+      const statusOptsHdr = [
+        { val: 'neu',            label: 'Neu' },
+        { val: 'in_bearbeitung', label: 'In Bearbeitung' },
+        { val: 'wartend',        label: 'Wartend' },
+        { val: 'verworfen',      label: 'Archiviert' },
+      ];
+      if (curStatus && !['neu','in_bearbeitung','wartend','verworfen'].includes(curStatus)) {
+        const oldLabels = { gesichtet: 'Gesichtet', geantwortet: 'Geantwortet', gesendet: 'Gesendet' };
+        statusOptsHdr.unshift({ val: curStatus, label: oldLabels[curStatus] || curStatus });
+      }
+      const checkOptsHdr = [
+        { val: '',               label: '—' },
+        { val: 'kein_check',     label: '🚫 Kein Check' },
+        { val: 'in_bearbeitung', label: '🔄 In Bearbeitung' },
+        { val: 'gecheckt',       label: '✓ Gecheckt' },
+        { val: 'beauftragt',     label: '📤 Beauftragt' },
+        { val: 'abgerechnet',    label: '💶 Abgerechnet' },
+      ];
+      if (curCheck && !['','kein_check','in_bearbeitung','gecheckt','beauftragt','abgerechnet'].includes(curCheck)) {
+        checkOptsHdr.push({ val: curCheck, label: curCheck });
+      }
+      const selStyleHdr = 'background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;cursor:pointer;outline:none;min-width:160px';
+      const renderSelHdr = (opts, current, onchange) =>
+        '<select onchange="' + onchange + '" style="' + selStyleHdr + '">'
+        + opts.map(o => '<option value="' + _esc(String(o.val)) + '"' + (String(o.val) === String(current) ? ' selected' : '') + '>' + _esc(o.label) + '</option>').join('')
+        + '</select>';
+      return `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--dr-divider);display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+        <div style="display:inline-flex;align-items:center;gap:6px">
+          <span style="font-family:var(--dr-f-mono);font-size:10px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Status</span>
+          ${renderSelHdr(statusOptsHdr, curStatus, "setEmailStatus('" + r._id + "', this.value)")}
+        </div>
+        <div style="display:inline-flex;align-items:center;gap:6px">
+          <span style="font-family:var(--dr-f-mono);font-size:10px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Check-Status</span>
+          ${renderSelHdr(checkOptsHdr, curCheck, "setEmailCheckStatus('" + r._id + "', this.value)")}
+        </div>
+      </div>`;
+    })()}
     ${isForwarded && forwardedVia ? `<div style="margin-top:10px;padding:8px 12px;background:var(--dr-amber-soft);border:1px solid #FB923C44;border-radius:var(--dr-r-sm);font-size:11.5px;color:#9A3412;display:flex;align-items:center;gap:8px;line-height:1.4">
       <span style="font-size:14px">↪</span>
       <span>Weitergeleitet via <strong>${_esc(forwardedVia)}</strong>${r.raw_subject ? ` · Original-Betreff: <em>${_esc(r.raw_subject)}</em>` : ''}. Antworten gehen direkt an den UR-Absender.</span>
@@ -36219,7 +36266,8 @@ window._saveEmailSenderEdit = _saveEmailSenderEdit;
 async function setEmailCheckStatus(recId, val) {
   try {
     const value = String(val || '').trim();
-    await atUpdate('Emails', recId, { check_status: value });
+    // V12.352: typecast — Airtable legt neue Single-Select-Optionen automatisch an
+    await atUpdate('Emails', recId, { check_status: value }, { typecast: true });
     const r = _eiAllRecords.find(x => x._id === recId);
     if (r) r.check_status = value;
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
@@ -36426,8 +36474,10 @@ async function setEmailStatus(recId, newStatus) {
   renderEmailInboxList();
 
   try {
-    // Step 1 (kritisch): nur das status-Feld
-    await atUpdate('Emails', recId, { status: newStatus });
+    // Step 1 (kritisch): nur das status-Feld — V12.352: typecast lässt Airtable
+    // die Single-Select-Option auto-anlegen, falls sie noch nicht existiert.
+    // Verhindert dass z. B. 'wartend' / 'in_bearbeitung' mit 422 abgewiesen werden.
+    await atUpdate('Emails', recId, { status: newStatus }, { typecast: true });
   } catch (e) {
     // Rollback bei echtem Fehler (Single-Select-Option fehlt o.ä.)
     r.status    = oldStatus;
