@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.339';
+const APP_VERSION = 'V12.340';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35557,6 +35557,32 @@ function _stripHtml(html) {
     .trim();
 }
 
+// V12.340: Set aller orgIds mit existierendem Light-Vertrag (EuC) — wird im HV-Picker
+// genutzt, um Treffer mit „🛡 EuC"-Pille zu markieren. Cache mit 5-Min-TTL.
+async function _eiGetEucOrgIdSet() {
+  const now = Date.now();
+  if (window._eucOrgIdSet && window._eucOrgIdSetAt && (now - window._eucOrgIdSetAt) < 300000) {
+    return window._eucOrgIdSet;
+  }
+  try {
+    const list = (typeof loadLightVertraege === 'function') ? await loadLightVertraege() : [];
+    const set = new Set();
+    for (const v of (list || [])) {
+      const oid = String(v.pipedrive_org_id || '').trim();
+      if (oid) set.add(oid);
+    }
+    window._eucOrgIdSet   = set;
+    window._eucOrgIdSetAt = now;
+    return set;
+  } catch (e) {
+    console.warn('[V12.340] _eiGetEucOrgIdSet failed:', e.message);
+    window._eucOrgIdSet   = new Set();
+    window._eucOrgIdSetAt = now;
+    return window._eucOrgIdSet;
+  }
+}
+window._eiGetEucOrgIdSet = _eiGetEucOrgIdSet;
+
 // Promise-basierter Dialog für mehrere Pipedrive-HV-Treffer.
 // Resolves: chosen-hit-Object | null (=ohne Verknüpfung weiter) | false (=Abbruch)
 function _eiChooseHvDialog(query, hits) {
@@ -35577,19 +35603,36 @@ function _eiChooseHvDialog(query, hits) {
     document.body.appendChild(ov);
 
     const listEl = ov.querySelector('#_eiHvList');
-    hits.forEach((h, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'dr-section';
-      btn.style.cssText = 'padding:12px 14px;text-align:left;cursor:pointer;border:1px solid var(--dr-border);transition:all .15s';
-      btn.innerHTML = `<div style="font-weight:600;font-size:13.5px;color:var(--dr-ink)">${_esc(h.name || '')}</div>
-        <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:3px;font-family:var(--dr-f-mono);letter-spacing:.04em">
-          ${h.city ? '📍 ' + _esc(h.city) + ' · ' : ''}Pipedrive-ID ${_esc(String(h.org_id))}${h.email ? ' · ' + _esc(h.email) : ''}${h.kundennr ? ' · Kunde ' + _esc(h.kundennr) : ''}
-        </div>`;
-      btn.onmouseover = () => { btn.style.borderColor = 'var(--dr-blue-light)'; btn.style.background = 'var(--dr-blue-soft)'; };
-      btn.onmouseout  = () => { btn.style.borderColor = 'var(--dr-border)'; btn.style.background = 'var(--dr-surface)'; };
-      btn.onclick = () => { document.body.removeChild(ov); resolve(h); };
-      listEl.appendChild(btn);
-    });
+    // V12.340: EuC-Vertragsexistenz-Set laden, dann mit Pillen rendern
+    const renderHitsLocal = (eucSet) => {
+      listEl.innerHTML = '';
+      hits.forEach((h, i) => {
+        const hasEuc = eucSet.has(String(h.org_id));
+        const btn = document.createElement('button');
+        btn.className = 'dr-section';
+        btn.style.cssText = `padding:12px 14px;text-align:left;cursor:pointer;border:1px solid ${hasEuc ? '#86efac' : 'var(--dr-border)'};background:${hasEuc ? '#f0fdf4' : 'var(--dr-surface)'};transition:all .15s`;
+        btn.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div style="font-weight:600;font-size:13.5px;color:var(--dr-ink);flex:1;min-width:0">${_esc(h.name || '')}</div>
+            ${hasEuc ? '<span style="background:#16a34a;color:#fff;border-radius:9px;padding:2px 9px;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">🛡 EuC-Vertrag</span>' : ''}
+          </div>
+          <div style="font-size:11.5px;color:var(--dr-ink-mute);margin-top:3px;font-family:var(--dr-f-mono);letter-spacing:.04em">
+            ${h.city ? '📍 ' + _esc(h.city) + ' · ' : ''}Pipedrive-ID ${_esc(String(h.org_id))}${h.email ? ' · ' + _esc(h.email) : ''}${h.kundennr ? ' · Kunde ' + _esc(h.kundennr) : ''}
+          </div>`;
+        const baseBg     = hasEuc ? '#f0fdf4' : 'var(--dr-surface)';
+        const baseBorder = hasEuc ? '#86efac' : 'var(--dr-border)';
+        btn.onmouseover = () => { btn.style.borderColor = 'var(--dr-blue-light)'; btn.style.background = 'var(--dr-blue-soft)'; };
+        btn.onmouseout  = () => { btn.style.borderColor = baseBorder; btn.style.background = baseBg; };
+        btn.onclick = () => { document.body.removeChild(ov); resolve(h); };
+        listEl.appendChild(btn);
+      });
+    };
+    // Erst mit dem (ggf. leeren) Cache rendern, dann async ersetzen sobald geladen
+    renderHitsLocal(window._eucOrgIdSet || new Set());
+    if (typeof _eiGetEucOrgIdSet === 'function') {
+      _eiGetEucOrgIdSet().then((set) => {
+        try { if (ov.parentNode) renderHitsLocal(set); } catch (_) {}
+      });
+    }
     ov.querySelector('#_eiHvSkip').onclick   = () => { document.body.removeChild(ov); resolve(null); };
     ov.querySelector('#_eiHvCancel').onclick = () => { document.body.removeChild(ov); resolve(false); };
   });
@@ -36937,6 +36980,20 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
   // Im Hintergrund den Org-Cache befüllen, damit die lokale Substring-Suche
   // (Namensteile / Email-Domain) sofort Treffer liefert.
   _ensurePipedriveOrgsCache();
+  // V12.340: Set aller orgIds mit existierendem EuC-Vertrag — wird beim Render
+  // genutzt, damit User bei doppelten HVs (z.B. Bursian mit zwei Einträgen)
+  // sofort die mit EuC-Vertrag erkennt.
+  if (typeof _eiGetEucOrgIdSet === 'function') {
+    _eiGetEucOrgIdSet().then((set) => {
+      // Falls der Dialog beim Laden noch offen war: neu rendern mit Pillen
+      try {
+        const lst = document.getElementById('_eiHvList');
+        if (lst && window._eiHvLastHits && typeof window._eiHvLastRender === 'function') {
+          window._eiHvLastRender(window._eiHvLastHits, window._eiHvLastQuery || '');
+        }
+      } catch (_) {}
+    });
+  }
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px';
@@ -36980,12 +37037,24 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
         };
         return;
       }
-      listEl.innerHTML = hits.map((h, idx) => `<button data-idx="${idx}" style="background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:12px 14px;text-align:left;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--dr-blue-light)';this.style.background='var(--dr-blue-soft)'" onmouseout="this.style.borderColor='var(--dr-border)';this.style.background='var(--dr-surface)'">
-        <div style="font-weight:600;font-size:13.5px;color:var(--dr-ink)">${_esc(h.name || '')}</div>
+      // V12.340: Render-Cache aktualisieren — damit der async EuC-Set-Load-Callback
+      // mit den AKTUELLEN Hits re-rendert, auch nach Live-Search.
+      window._eiHvLastHits  = hits;
+      window._eiHvLastQuery = query;
+      // EuC-Set aus Cache lesen — wenn nicht geladen, leeres Set
+      const eucSet = window._eucOrgIdSet || new Set();
+      listEl.innerHTML = hits.map((h, idx) => {
+        const hasEuc = eucSet.has(String(h.org_id));
+        return `<button data-idx="${idx}" style="background:${hasEuc ? '#f0fdf4' : 'var(--dr-surface)'};border:1px solid ${hasEuc ? '#86efac' : 'var(--dr-border)'};border-radius:var(--dr-r-md);padding:12px 14px;text-align:left;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--dr-blue-light)';this.style.background='var(--dr-blue-soft)'" onmouseout="this.style.borderColor='${hasEuc ? '#86efac' : 'var(--dr-border)'}';this.style.background='${hasEuc ? '#f0fdf4' : 'var(--dr-surface)'}'">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div style="font-weight:600;font-size:13.5px;color:var(--dr-ink);flex:1;min-width:0">${_esc(h.name || '')}</div>
+          ${hasEuc ? '<span style="background:#16a34a;color:#fff;border-radius:9px;padding:2px 9px;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">🛡 EuC-Vertrag</span>' : ''}
+        </div>
         <div style="font-family:var(--dr-f-mono);font-size:10.5px;color:var(--dr-ink-mute);margin-top:3px;letter-spacing:.04em">
           ${h.city ? '📍 ' + _esc(h.city) + ' · ' : ''}Pipedrive-ID ${_esc(String(h.org_id))}${h.email ? ' · ' + _esc(h.email) : ''}${h.kundennr ? ' · Kunde ' + _esc(h.kundennr) : ''}
         </div>
-      </button>`).join('');
+      </button>`;
+      }).join('');
       [...listEl.querySelectorAll('button[data-idx]')].forEach(btn => {
         btn.onclick = () => {
           const idx = parseInt(btn.dataset.idx, 10);
@@ -36994,6 +37063,10 @@ function _eiHvSearchDialog(initialQuery, initialHits) {
         };
       });
     }
+    // V12.340: Letzte Render-Daten cachen, damit der EuC-Set-Load-Callback re-rendern kann
+    window._eiHvLastRender = renderHits;
+    window._eiHvLastHits   = initialHits;
+    window._eiHvLastQuery  = initialQuery;
     renderHits(initialHits, initialQuery);
     inputEl.value = initialQuery;
 
