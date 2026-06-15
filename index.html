@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.361';
+const APP_VERSION = 'V12.362';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28741,11 +28741,44 @@ function _eiUpdateSidebarCounts() {
   const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
   // V12.355: 'wartend' fehlte im Counter — Sidebar zeigte konstant 0 für „Wartend",
   // obwohl Mails mit dem Status existierten.
+  // V12.362: Threaded + Chat-Antworten skippen, damit Counter zur Liste passt.
+  // _eiFiltered() droppt diese vor dem Render — Counter zählte sie aber mit → Diskrepanz
+  // (z.B. Sidebar zeigte „Neu 3", Liste nur 2).
+  const threadedIds = new Set();
+  for (const x of all) {
+    if (typeof _eiThreadParentOf === 'function' && _eiThreadParentOf(x)) threadedIds.add(x._id);
+  }
+  const chatReplyIds = new Set();
+  {
+    const outChats = all.filter(x => x && x.direction === 'outgoing' && String(x.chat_email_id || '').trim());
+    if (outChats.length) {
+      const normSubj = (s) => String(s || '').toLowerCase().replace(/^(re|aw|antw|antwort|fwd|fw|wg)\s*:\s*/gi, '').replace(/\s+/g, ' ').trim();
+      for (const r of all) {
+        if (!r || r.direction === 'outgoing') continue;
+        const fromE = String(r.from_email || '').toLowerCase().trim();
+        if (!fromE) continue;
+        const rAt   = String(r.received_at || '');
+        const rSubj = normSubj(r.subject);
+        for (const o of outChats) {
+          if (String(o.to_email || '').toLowerCase().trim() !== fromE) continue;
+          if (rAt && o.sent_at && rAt < String(o.sent_at)) continue;
+          const oSubj = normSubj(o.subject);
+          if (!oSubj || !rSubj) continue;
+          if (rSubj === oSubj || (rSubj.length >= 8 && oSubj.length >= 8 && (rSubj.includes(oSubj) || oSubj.includes(rSubj)))) {
+            chatReplyIds.add(r._id);
+            break;
+          }
+        }
+      }
+    }
+  }
   let cAlle = 0, cSent = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, wartend:0, geantwortet:0, verworfen:0 };
   for (const r of all) {
     if (!r) continue;
     // V12.214: outgoing-Records zählen nur für den "Gesendet"-Filter — nicht für die Status-Counter
     if (r.direction === 'outgoing') { cSent++; continue; }
+    // V12.362: Thread- und Chat-Antworten skippen (siehe oben)
+    if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
     cAlle++;
     const s = (r.status || 'neu');
     if (s in byStatus) byStatus[s]++;
