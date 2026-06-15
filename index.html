@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.360';
+const APP_VERSION = 'V12.361';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11001,6 +11001,9 @@ async function openAttachmentQaModal(emailId, idx) {
       const resp = await fetch(url);
       if (!resp.ok) throw new Error('Download HTTP ' + resp.status);
       const buf = await resp.arrayBuffer();
+      // V12.361: pdfjsLib.getDocument detached den ArrayBuffer (transferiert ihn zum Worker).
+      // Für den OCR-Fallback brauchen wir die Bytes aber noch — also vorher klonen.
+      const bufForOcr = buf.slice(0);
       const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
       const parts = [];
       for (let p = 1; p <= pdf.numPages; p++) {
@@ -11017,9 +11020,9 @@ async function openAttachmentQaModal(emailId, idx) {
           statusEl.style.borderBottom = '1px solid #fde68a';
           statusEl.innerHTML = '⚠ Kein Text gefunden — vermutlich Scan-PDF. <button onclick="_eiAttQaTryOcr(\'' + emailId + '\',' + idx + ')" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:8px">🔍 KI-OCR versuchen</button>';
         }
-        // PDF-Buffer für späteren OCR-Aufruf merken
+        // V12.361: PDF-Buffer (Klon, weil Original an pdfjs detached wurde) für OCR-Aufruf merken
         window._eiAttQaBuf = window._eiAttQaBuf || {};
-        window._eiAttQaBuf[emailId + ':' + idx] = { buf, fname, emailId, idx };
+        window._eiAttQaBuf[emailId + ':' + idx] = { buf: bufForOcr, fname, emailId, idx };
         return; // Input bleibt disabled, bis OCR durchläuft
       }
       cache[fname] = text;
