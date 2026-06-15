@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.364';
+const APP_VERSION = 'V12.365';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11324,9 +11324,9 @@ async function _eiAttQaSummarize(key) {
 }
 window._eiAttQaSummarize = _eiAttQaSummarize;
 
-// V12.364: Q&A-Modal über ALLE PDF-Anhänge einer Email — nutzt nur die bereits
-// extrahierten Texte (kein automatisches OCR für noch nicht extrahierte). Quelle:
-// pro Datei ein "=== Dateiname ===" Header + Text, alles konkateniert.
+// V12.365: Q&A-Modal über ALLE PDF-Anhänge einer Email. Anhänge ohne Text-Cache
+// werden VORHER automatisch per pdfjs extrahiert (mit Progress-Status). Scan-PDFs
+// ohne OCR werden mit Hinweis übersprungen (Single-Modal pro Anhang macht KI-OCR).
 async function openAllAttachmentsQaModal(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) { showToast('Email nicht gefunden', 'error'); return; }
@@ -11339,10 +11339,51 @@ async function openAllAttachmentsQaModal(emailId) {
   let cache = {};
   try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
   if (!cache || typeof cache !== 'object') cache = {};
-  const withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
-  const withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
+  let withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
+  let withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
+  // V12.365: Auto-Extraktion fehlender Anhänge mit Progress-Modal
+  if (withoutText.length) {
+    showToast('Extrahiere ' + withoutText.length + ' fehlende Anhang' + (withoutText.length === 1 ? '' : 'e') + ' …', 'info', 2500);
+    const skipped = [];
+    for (let i = 0; i < withoutText.length; i++) {
+      const a = withoutText[i];
+      const fname = a.filename || a.name || 'Anhang';
+      const url = a.url || '';
+      if (!url) { skipped.push(fname + ' (keine URL)'); continue; }
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const buf = await resp.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+        const parts = [];
+        for (let p = 1; p <= pdf.numPages; p++) {
+          const page = await pdf.getPage(p);
+          const tc = await page.getTextContent();
+          parts.push(tc.items.map(it => it.str || '').join(' '));
+        }
+        const text = parts.join('\n\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+        if (!text) { skipped.push(fname + ' (Scan-PDF ohne OCR)'); continue; }
+        cache[fname] = text;
+      } catch (e) {
+        console.warn('[V12.365] Auto-Extraktion ' + fname + ':', e.message);
+        skipped.push(fname + ' (' + e.message + ')');
+      }
+    }
+    // Cache zurückschreiben
+    try {
+      const json = JSON.stringify(cache);
+      await atUpdate('Emails', emailId, { attachment_texts_json: json });
+      r.attachment_texts_json = json;
+    } catch (saveErr) { console.warn('[V12.365] Cache-Save:', saveErr.message); }
+    // withText/withoutText neu berechnen
+    withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
+    withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
+    if (skipped.length) {
+      showToast('⚠ ' + skipped.length + ' Anhang' + (skipped.length === 1 ? '' : 'e') + ' übersprungen (vermutlich Scan-PDF). Pro Anhang einzeln „🔍 Fragen" → „KI-OCR versuchen", dann ist er hier dabei.', 'warning', 7000);
+    }
+  }
   if (!withText.length) {
-    showToast('Noch kein Anhang-Text extrahiert. Pro Anhang einmal „🔍 Fragen" klicken — der Text wird gecached.', 'warning', 6000);
+    showToast('Keiner der PDF-Anhänge ist text-extrahierbar — vermutlich alles Scans. Pro Anhang einzeln „🔍 Fragen" + KI-OCR triggern.', 'warning', 6500);
     return;
   }
   const existing = document.getElementById('attQaModal');
