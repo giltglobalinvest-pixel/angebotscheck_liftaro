@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.336';
+const APP_VERSION = 'V12.337';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29916,11 +29916,27 @@ function _renderEmailComposer(r) {
           Weiterleiten
         </button>
       </div>
-      <div id="ei_composer_to_row" style="display:none;padding:10px 12px 0;background:#fff">
+      <div id="ei_composer_to_row" style="display:block;padding:10px 12px 0;background:#fff">
         <div style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:#64748b">
-          <span style="font-weight:700;color:#475569">An:</span>
-          <input id="ei_composer_to" type="email" placeholder="management@liftaro.de" style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none" onfocus="this.style.borderColor='#1a3a5c'" onblur="this.style.borderColor='#cbd5e1'">
-          <button type="button" onclick="document.getElementById('ei_composer_to').value='management@liftaro.de'" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">→ Management</button>
+          <span style="font-weight:700;color:#475569;min-width:30px">An:</span>
+          <input id="ei_composer_to" type="email" value="${_esc(r.from_email || '')}" placeholder="empfaenger@firma.de" style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none" onfocus="this.style.borderColor='#1a3a5c'" onblur="this.style.borderColor='#cbd5e1'">
+          <button type="button" id="ei_composer_btn_cc"  onclick="(function(){var e=document.getElementById('ei_composer_cc_row');if(e){e.style.display='block';document.getElementById('ei_composer_btn_cc').style.display='none';document.getElementById('ei_composer_cc').focus();}})()" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">+ CC</button>
+          <button type="button" id="ei_composer_btn_bcc" onclick="(function(){var e=document.getElementById('ei_composer_bcc_row');if(e){e.style.display='block';document.getElementById('ei_composer_btn_bcc').style.display='none';document.getElementById('ei_composer_bcc').focus();}})()" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">+ BCC</button>
+          <button type="button" onclick="document.getElementById('ei_composer_to').value='management@liftaro.de'" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">→ Mgmt</button>
+        </div>
+        <div id="ei_composer_cc_row" style="display:none;margin-top:6px">
+          <div style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:#64748b">
+            <span style="font-weight:700;color:#475569;min-width:30px">CC:</span>
+            <input id="ei_composer_cc" type="text" placeholder="komma-getrennt: max@firma.de, info@firma.de" style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none" onfocus="this.style.borderColor='#1a3a5c'" onblur="this.style.borderColor='#cbd5e1'">
+            <button type="button" onclick="(function(){document.getElementById('ei_composer_cc').value='';document.getElementById('ei_composer_cc_row').style.display='none';document.getElementById('ei_composer_btn_cc').style.display='inline-flex';})()" style="background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">✕</button>
+          </div>
+        </div>
+        <div id="ei_composer_bcc_row" style="display:none;margin-top:6px">
+          <div style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:#64748b">
+            <span style="font-weight:700;color:#475569;min-width:30px">BCC:</span>
+            <input id="ei_composer_bcc" type="text" placeholder="komma-getrennt — Empfänger sieht andere nicht" style="flex:1;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:12.5px;outline:none" onfocus="this.style.borderColor='#1a3a5c'" onblur="this.style.borderColor='#cbd5e1'">
+            <button type="button" onclick="(function(){document.getElementById('ei_composer_bcc').value='';document.getElementById('ei_composer_bcc_row').style.display='none';document.getElementById('ei_composer_btn_bcc').style.display='inline-flex';})()" style="background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:6px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">✕</button>
+          </div>
         </div>
       </div>
       <!-- V12.193: Pre-Message-Label (nur bei Forward) -->
@@ -30048,7 +30064,13 @@ function setComposerMode(mode, recId) {
   const fwdPrev = document.getElementById('ei_composer_fwd_preview');
   if (mode === 'reply') {
     if (inp)    inp.placeholder = 'Geben Sie Ihre Antwort hier ein …';
-    if (toRow)  toRow.style.display = 'none';
+    // V12.337: An-Zeile im Reply-Modus SICHTBAR + mit from_email vorbefüllen
+    if (toRow)  toRow.style.display = 'block';
+    const toEl2 = document.getElementById('ei_composer_to');
+    if (toEl2 && !String(toEl2.value || '').trim()) {
+      const r2 = (_eiAllRecords || []).find(x => x._id === recId);
+      if (r2) toEl2.value = String(r2.from_email || '').trim();
+    }
     if (preLbl) preLbl.style.display = 'none';
     if (sigRow) sigRow.style.display = 'block';
     if (fwdPrev)fwdPrev.style.display = 'none';
@@ -30121,8 +30143,17 @@ async function composerSubmit(recId) {
   if (mode === 'note' && !text) { showToast('Notiz ist leer', 'warning', 1500); return; }
   if (mode === 'reply' && !text) { showToast('Antwort ist leer', 'warning', 1500); return; }
   let to = '';
-  if (mode === 'forward') {
-    const toEl = document.getElementById('ei_composer_to');
+  // V12.337: To/CC/BCC aus den Inputs holen — gilt für Reply UND Forward
+  const toEl   = document.getElementById('ei_composer_to');
+  const ccEl   = document.getElementById('ei_composer_cc');
+  const bccEl  = document.getElementById('ei_composer_bcc');
+  const ccRaw  = ccEl  ? String(ccEl.value || '').trim()  : '';
+  const bccRaw = bccEl ? String(bccEl.value || '').trim() : '';
+  // Komma/Semikolon-getrennt parsen, ungültige raus
+  const parseList = (s) => s.split(/[,;]+/).map(x => x.trim()).filter(x => /^\S+@\S+\.\S+$/.test(x));
+  const ccs  = parseList(ccRaw);
+  const bccs = parseList(bccRaw);
+  if (mode === 'forward' || mode === 'reply') {
     to = toEl ? String(toEl.value || '').trim() : '';
     if (!to || !/^\S+@\S+\.\S+$/.test(to)) { showToast('Bitte gültige Empfänger-Adresse eintragen', 'warning', 2200); return; }
   }
@@ -30150,26 +30181,42 @@ async function composerSubmit(recId) {
       await forwardEmailTo(recId, to, text);
       if (inp) inp.value = '';
     } else {
-      // Reply
-      await quickReplyToEmail(recId, text);
+      // V12.337: Reply mit konkretem to + cc/bcc
+      await quickReplyToEmail(recId, text, { to: to, cc: ccs, bcc: bccs });
       if (inp) inp.value = '';
+      // CC/BCC-Felder leeren + zuklappen nach erfolgreichem Send
+      if (ccEl)  ccEl.value  = '';
+      if (bccEl) bccEl.value = '';
+      const ccRow = document.getElementById('ei_composer_cc_row');
+      const bccRow = document.getElementById('ei_composer_bcc_row');
+      const btnCc  = document.getElementById('ei_composer_btn_cc');
+      const btnBcc = document.getElementById('ei_composer_btn_bcc');
+      if (ccRow)  ccRow.style.display  = 'none';
+      if (bccRow) bccRow.style.display = 'none';
+      if (btnCc)  btnCc.style.display  = 'inline-flex';
+      if (btnBcc) btnBcc.style.display = 'inline-flex';
     }
   } finally {
     _eiSetSendingState(false);
   }
 }
 
-// V12.189: Schnelle Antwort direkt aus dem Composer (kein extra Modal)
-async function quickReplyToEmail(recId, bodyText) {
+// V12.189/V12.337: Schnelle Antwort direkt aus dem Composer (kein extra Modal).
+// V12.337: opts = { to, cc, bcc } — to überschreibt r.from_email (User kann's im
+// Composer manuell editieren), cc/bcc sind optionale komma-getrennte Adressen.
+async function quickReplyToEmail(recId, bodyText, opts) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
   if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
     showToast('Email-Sender nicht konfiguriert', 'error', 4500);
     return;
   }
-  // Reply-To = ursprünglicher Absender
-  const toAddr = String(r.from_email || '').trim();
+  opts = opts || {};
+  // V12.337: opts.to bevorzugt — User kann Adresse im Composer anpassen
+  const toAddr = String(opts.to || r.from_email || '').trim();
   if (!toAddr) { showToast('Keine Absender-Adresse zum Antworten', 'error', 3000); return; }
+  const ccArr  = Array.isArray(opts.cc)  ? opts.cc.filter(Boolean)  : [];
+  const bccArr = Array.isArray(opts.bcc) ? opts.bcc.filter(Boolean) : [];
   showToast('⏳ Antwort wird gesendet …', 'info', 2200);
   // V12.192: ai_subject bevorzugt
   const origSubj = String((r.ai_subject && r.ai_subject.trim()) || r.subject || '');
@@ -30194,6 +30241,9 @@ async function quickReplyToEmail(recId, bodyText) {
       inReplyTo: r.message_id || undefined,
     };
     if (_sig.htmlBody) replyPayload.html = _sig.htmlBody;
+    // V12.337: CC/BCC mitschicken wenn gesetzt
+    if (ccArr.length)  replyPayload.cc  = ccArr;
+    if (bccArr.length) replyPayload.bcc = bccArr;
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
@@ -30206,7 +30256,7 @@ async function quickReplyToEmail(recId, bodyText) {
     // Outgoing-Record
     const sentAt = new Date().toISOString();
     try {
-      await atWrite('Emails', {
+      const outRec = {
         direction:        'outgoing',
         from_email:       'check@liftaro.de',
         to_email:         toAddr,
@@ -30216,7 +30266,15 @@ async function quickReplyToEmail(recId, bodyText) {
         in_reply_to:      r.message_id || '',
         linked_check_ids: r.linked_check_ids || '',
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
-      });
+      };
+      // V12.337: CC/BCC im Verlauf-Eintrag persistieren (bcc_email-Feld existiert; cc als kombiniert)
+      if (ccArr.length || bccArr.length) {
+        outRec.bcc_email = [
+          ccArr.length  ? 'CC: '  + ccArr.join(', ')  : '',
+          bccArr.length ? 'BCC: ' + bccArr.join(', ') : '',
+        ].filter(Boolean).join(' · ');
+      }
+      await atWrite('Emails', outRec);
     } catch (e) { console.warn('[V12.189] Verlauf-Eintrag fehlgeschlagen:', e.message); }
     // Status auf "geantwortet" setzen
     try {
