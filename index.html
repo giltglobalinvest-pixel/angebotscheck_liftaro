@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.354';
+const APP_VERSION = 'V12.355';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28417,7 +28417,9 @@ function _restoreEmailInboxListState() {
 function _eiUpdateSidebarCounts() {
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
   const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
-  let cAlle = 0, cSent = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, geantwortet:0, verworfen:0 };
+  // V12.355: 'wartend' fehlte im Counter — Sidebar zeigte konstant 0 für „Wartend",
+  // obwohl Mails mit dem Status existierten.
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, wartend:0, geantwortet:0, verworfen:0 };
   for (const r of all) {
     if (!r) continue;
     // V12.214: outgoing-Records zählen nur für den "Gesendet"-Filter — nicht für die Status-Counter
@@ -28429,6 +28431,7 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_neu',            byStatus.neu);
   set('eiSideCnt_gesichtet',      byStatus.gesichtet);
   set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
+  set('eiSideCnt_wartend',        byStatus.wartend);
   set('eiSideCnt_geantwortet',    byStatus.geantwortet);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
   set('eiSideCnt_alle',           cAlle);
@@ -34895,7 +34898,7 @@ function openEmailDetailOverlay() {
   // Breadcrumb aktualisieren — zeigt aktuellen Status-Filter als Kontext
   const crumb = document.getElementById('emailDetailOverlayCrumbStatus');
   if (crumb) {
-    const map = { neu: 'Neu', gesichtet: 'Gesichtet', in_bearbeitung: 'In Bearbeitung', geantwortet: 'Geantwortet', gesendet: 'Gesendet', verworfen: 'Verworfen', alle: 'Alle', neue_antwort: 'Neue Antworten', chat_antwort: 'Chat-Antworten' };
+    const map = { neu: 'Neu', gesichtet: 'Gesichtet', in_bearbeitung: 'In Bearbeitung', wartend: 'Wartend', geantwortet: 'Geantwortet', gesendet: 'Gesendet', verworfen: 'Verworfen', alle: 'Alle', neue_antwort: 'Neue Antworten', chat_antwort: 'Chat-Antworten' };
     crumb.textContent = map[_eiFilter] || 'Email';
   }
   // Scroll-Reset
