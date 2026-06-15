@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.355';
+const APP_VERSION = 'V12.356';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -31853,12 +31853,18 @@ function _renderAufzugAnalysis(recId, list) {
       </div>
       ${fieldRow('Hersteller', 'hersteller', hr)}
       ${ai.anliegen ? `<div style="margin-top:6px;font-size:11.5px;color:#64748b"><em>${_esc(ai.anliegen)}</em></div>` : ''}
+      <!-- V12.356: Per-Aufzug-Aktionen — einzeln in DB speichern und/oder dieser Email zuordnen, ohne Email-Split -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed #e2e8f0">
+        <button onclick="_eiAufzugSaveSingle('${recId}', ${i})" ${!fn ? 'disabled' : ''} title="Diesen Aufzug in der Aufzüge-Tabelle speichern, OHNE ihn dieser Email zuzuordnen" style="background:${isInDb ? '#dcfce7' : (!fn ? '#cbd5e1' : '#fff')};border:1px solid ${isInDb ? '#86efac' : '#cbd5e1'};color:${isInDb ? '#15803d' : (!fn ? '#94a3b8' : '#475569')};border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:${!fn ? 'not-allowed' : 'pointer'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px">${isInDb ? '✓ in DB · aktualisieren' : '💾 In DB speichern'}</button>
+        <button onclick="_eiAufzugAssignSingle('${recId}', ${i})" ${!fn ? 'disabled' : ''} title="Diesen Aufzug speichern (falls noch nicht in DB) und dieser Email zuordnen — KEIN Email-Splitting" style="background:${!fn ? '#cbd5e1' : '#0891b2'};border:1px solid transparent;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:${!fn ? 'not-allowed' : 'pointer'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px">🎯 An diese Email zuordnen</button>
+      </div>
     </div>`;
   }).join('');
   const allHaveFn = list.every(e => String((e.ai && e.ai.fabriknummer) || (e.match && e.match.fabriknummer) || '').trim());
   const splitHint = isMulti
     ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#9a3412;line-height:1.5">
-        <strong>⚠ ${list.length} Aufzüge erkannt:</strong> Die Email wird in <strong>${list.length} separate Emails</strong> aufgeteilt — je eine pro Fabriknummer. Original behält Aufzug #1, die anderen sind neue Kopien.
+        <strong>⚠ ${list.length} Aufzüge erkannt.</strong> Pro Karte kannst du:<br>
+        💾 <strong>In DB speichern</strong> (nur Stammdaten anlegen) · 🎯 <strong>An diese Email zuordnen</strong> (genau einen Aufzug auf diese Mail setzen) · 🛗 <strong>Alle + splitten</strong> (untere Sammel-Aktion: erzeugt ${list.length} separate Emails).
       </div>`
     : '';
   const missingHint = !allHaveFn
@@ -34521,6 +34527,127 @@ async function sendServicebetriebMessage(emailId, sbId) {
     }
   }
 }
+
+// V12.356: Einzelnen erkannten Aufzug in die Aufzuege-Tabelle speichern, OHNE
+// ihn der aktuellen Email zuzuordnen. Nutzt upsertAufzug → idempotent.
+async function _eiAufzugSaveSingle(recId, idx) {
+  const cached = window._eiAiAufzugCache && window._eiAiAufzugCache[recId];
+  if (!cached || !cached[idx]) { showToast('Eintrag nicht mehr im Cache — bitte „Aufzug erkennen" erneut klicken.', 'warning'); return; }
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const entry = cached[idx];
+  const ai = entry.ai || {};
+  const fn = String(ai.fabriknummer || (entry.match && entry.match.fabriknummer) || '').trim();
+  if (!fn) { showToast('Fabriknummer fehlt — bitte ergänzen', 'warning', 3000); return; }
+  // HV ermitteln (für die saubere Zuordnung in der Aufzuege-Tabelle)
+  let hvOrgId = '', hvName = '';
+  try {
+    const arr = JSON.parse(r.vorgaenge_json || '[]');
+    if (Array.isArray(arr)) {
+      const a = arr.find(x => x && x.assigned_org_id);
+      if (a) { hvOrgId = String(a.assigned_org_id || ''); hvName = String(a.assigned_org_name || ''); }
+    }
+  } catch (_) {}
+  if (!hvName) hvName = String(r.confirmed_hv_org_name || r.real_hv_firma || '');
+  if (!hvOrgId) hvOrgId = String(r.confirmed_hv_org_id || '');
+  const composedStandort = [String(ai.strasse || '').trim(), [String(ai.plz || '').trim(), String(ai.ort || '').trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') || String(ai.standort || '').trim();
+  try {
+    showToast('Speichere Aufzug …', 'info', 1500);
+    const created = await upsertAufzug({
+      fabriknummer:        fn,
+      standort:            composedStandort,
+      hersteller:          String(ai.hersteller || '').trim(),
+      hv_pipedrive_org_id: hvOrgId,
+      hv_name:             hvName,
+      notiz:               'KI-Schnell-Anlage aus Email "' + (r.subject || '').slice(0, 80) + '"',
+    });
+    // Cache aktualisieren — Karte zeigt jetzt „✓ in DB"
+    entry.match = entry.match || {};
+    entry.match.id           = created.id;
+    entry.match._recordId    = created.recordId;
+    entry.match.fabriknummer = fn;
+    entry.match.standort     = composedStandort;
+    entry.match.hersteller   = String(ai.hersteller || '').trim();
+    showToast(created.isNew ? ('✓ Aufzug Fn ' + fn + ' angelegt') : ('ℹ Aufzug Fn ' + fn + ' war schon in DB — Daten aktualisiert'), 'success', 3000);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    console.warn('[V12.356] _eiAufzugSaveSingle:', e.message);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+window._eiAufzugSaveSingle = _eiAufzugSaveSingle;
+
+// V12.356: Einzelnen erkannten Aufzug der AKTUELLEN Email zuordnen. Falls noch
+// nicht in DB → vorher anlegen. KEIN Email-Splitting — die anderen erkannten
+// Aufzüge bleiben unangetastet (User kann sie separat speichern oder verwerfen).
+async function _eiAufzugAssignSingle(recId, idx) {
+  const cached = window._eiAiAufzugCache && window._eiAiAufzugCache[recId];
+  if (!cached || !cached[idx]) { showToast('Eintrag nicht mehr im Cache — bitte „Aufzug erkennen" erneut klicken.', 'warning'); return; }
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  const entry = cached[idx];
+  const ai = entry.ai || {};
+  const fn = String(ai.fabriknummer || (entry.match && entry.match.fabriknummer) || '').trim();
+  if (!fn) { showToast('Fabriknummer fehlt — bitte ergänzen', 'warning', 3000); return; }
+  // Schritt 1: in DB sicherstellen (analog _eiAufzugSaveSingle)
+  let m = entry.match;
+  if (!m || !m._recordId) {
+    let hvOrgId = '', hvName = '';
+    try {
+      const arr = JSON.parse(r.vorgaenge_json || '[]');
+      if (Array.isArray(arr)) {
+        const a = arr.find(x => x && x.assigned_org_id);
+        if (a) { hvOrgId = String(a.assigned_org_id || ''); hvName = String(a.assigned_org_name || ''); }
+      }
+    } catch (_) {}
+    if (!hvName) hvName = String(r.confirmed_hv_org_name || r.real_hv_firma || '');
+    if (!hvOrgId) hvOrgId = String(r.confirmed_hv_org_id || '');
+    const composedStandort = [String(ai.strasse || '').trim(), [String(ai.plz || '').trim(), String(ai.ort || '').trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') || String(ai.standort || '').trim();
+    try {
+      showToast('Lege Aufzug an / verknüpfe …', 'info', 1800);
+      const created = await upsertAufzug({
+        fabriknummer:        fn,
+        standort:            composedStandort,
+        hersteller:          String(ai.hersteller || '').trim(),
+        hv_pipedrive_org_id: hvOrgId,
+        hv_name:             hvName,
+        notiz:               'KI-Schnell-Anlage aus Email "' + (r.subject || '').slice(0, 80) + '"',
+      });
+      m = {
+        id:           created.id,
+        _recordId:    created.recordId,
+        fabriknummer: fn,
+        standort:     composedStandort,
+        hersteller:   String(ai.hersteller || '').trim(),
+      };
+      entry.match = m;
+    } catch (e) {
+      console.warn('[V12.356] upsertAufzug für Assign:', e.message);
+      showToast('Anlage fehlgeschlagen: ' + e.message, 'error', 5000);
+      return;
+    }
+  }
+  // Schritt 2: Email-Felder setzen
+  try {
+    const patchEmail = {
+      aufzug_id:           String(m.id || ''),
+      aufzug_record_id:    String(m._recordId || ''),
+      aufzug_fabriknummer: String(m.fabriknummer || fn),
+      aufzug_standort:     String(m.standort || ''),
+      aufzug_hersteller:   String(m.hersteller || ai.hersteller || ''),
+      ai_aufzug_at:        new Date().toISOString(),
+    };
+    await atUpdate('Emails', recId, patchEmail);
+    Object.assign(r, patchEmail);
+    showToast('✓ Aufzug Fn ' + fn + ' dieser Email zugeordnet', 'success', 3000);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  } catch (e) {
+    console.warn('[V12.356] Email-Zuordnung fehlgeschlagen:', e.message);
+    showToast('Email-Zuordnung fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+window._eiAufzugAssignSingle = _eiAufzugAssignSingle;
 
 async function applyAufzugAnalysis(recId) {
   const cached = window._eiAiAufzugCache[recId];
