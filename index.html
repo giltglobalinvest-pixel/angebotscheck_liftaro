@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.350';
+const APP_VERSION = 'V12.351';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7798,6 +7798,8 @@ async function setupTables() {
       { name: 'chat_partner_ansprechperson', type: 'singleLineText' },
       { name: 'chat_partner_email',          type: 'singleLineText' },
       { name: 'chat_partner_telefon',        type: 'singleLineText' },
+      // V12.351: Anhang-Dateinamen mitspeichern, damit Bubbles zeigen was mit raus ging
+      { name: 'attachment_filenames',        type: 'singleLineText' },
     ]);
   } catch(e) { console.warn('[V12.222] ensureFields(WartungsnehmerChat) failed:', e.message); }
   // V12.219: Servicebetriebe-Stammdaten — analog zu Wartungsnehmer, aber für externe Service-Firmen
@@ -10846,6 +10848,51 @@ function copyServiceBlockToClipboard(emailId) {
   }
 }
 window.copyServiceBlockToClipboard = copyServiceBlockToClipboard;
+
+// V12.351: Schnell-Kopie des Leistungsumfangs für den Servicebetrieb-Chat.
+// Quelle (Priorität): erster Vorgang → KI-Anliegen → KI-Summary → Email-Subject.
+// Fallback: Vorlage „Leistungsumfang: Siehe Anhang" wenn nichts Verwertbares da ist.
+function copyLeistungsumfangToClipboard(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden — bitte Seite neu laden', 'warning', 3500); return; }
+  let leistung = '';
+  try {
+    const arr = JSON.parse(r.vorgaenge_json || '[]');
+    if (Array.isArray(arr) && arr.length) {
+      const v0 = arr[0] || {};
+      leistung = String(v0.anliegen_volltext || v0.anliegen_kurz || '').trim();
+    }
+  } catch (_) {}
+  if (!leistung) leistung = String(r.real_anliegen || '').trim();
+  if (!leistung) leistung = String(r.ki_summary  || '').trim();
+  const block = leistung
+    ? 'Leistungsumfang:\n' + leistung
+    : 'Leistungsumfang: Siehe Anhang';
+  const ok   = () => showToast('✓ Leistungsumfang in Zwischenablage kopiert', 'success', 2200);
+  const fail = (e) => showToast('Kopieren fehlgeschlagen: ' + (e && e.message ? e.message : 'Browser blockt Clipboard'), 'error', 4000);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(block).then(ok).catch(() => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = block; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(ta);
+        success ? ok() : fail();
+      } catch (e) { fail(e); }
+    });
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = block; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(ta);
+      success ? ok() : fail();
+    } catch (e) { fail(e); }
+  }
+}
+window.copyLeistungsumfangToClipboard = copyLeistungsumfangToClipboard;
 
 async function attachVollmachtToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -33778,6 +33825,8 @@ async function sendWartungsnehmerMessage(emailId) {
     }
     const sentAt = new Date().toISOString();
     const newId  = 'wnc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
+    // V12.351: Anhang-Filenames als kommagetrennte Liste persistieren
+    const attachmentFilenamesCsv = pendingAttsWn.map(a => String(a.filename || '').trim()).filter(Boolean).join(', ');
     // Eintrag in WartungsnehmerChat anlegen
     const chatItemData = {
       id:                newId,
@@ -33801,6 +33850,8 @@ async function sendWartungsnehmerMessage(emailId) {
       message_id:        ourMsgId,
       in_reply_to:       inReplyTo || '',
       bearbeiter_name:   (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      // V12.351: Bubble zeigt damit was mitgeschickt wurde
+      attachment_filenames: attachmentFilenamesCsv,
     };
     let writeOk = false;
     try {
@@ -33826,6 +33877,8 @@ async function sendWartungsnehmerMessage(emailId) {
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
         // V12.231: Eindeutige Thread-Zuordnung — diese outgoing-Mail gehört zu DIESER Email
         chat_email_id:    emailId,
+        // V12.351: Anhang-Filenames synchron zum Chat-Record
+        attachment_filenames: attachmentFilenamesCsv,
       });
     } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
     if (ta) ta.value = '';
@@ -33999,6 +34052,17 @@ function _eiRenderWartungsnehmerSection(r, wn) {
                 + atts.map(a => `<a href="${_esc(a.url || '#')}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11px;color:#475569;text-decoration:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer">📎 ${_esc(a.filename || a.name || 'Anhang')}</a>`).join('')
                 + '</div>';
             }
+          } else {
+            // V12.351: outgoing WartungsnehmerChat-Records haben attachment_filenames als CSV-Liste
+            const attCsv = String(it.attachment_filenames || '').trim();
+            if (attCsv) {
+              const fnames = attCsv.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+              if (fnames.length) {
+                attsHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">'
+                  + fnames.map(fn => `<span style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:6px;padding:3px 8px;font-size:11px;display:inline-flex;align-items:center;gap:5px">📎 ${_esc(fn)}</span>`).join('')
+                  + '</div>';
+              }
+            }
           }
           // V12.264: Lösch-Token bestimmen — entweder outgoing Email-Record oder WartungsnehmerChat-Record
           const _delTok = it._source_email_id ? ('email:' + it._source_email_id)
@@ -34102,6 +34166,21 @@ function _eiRenderWartungsnehmerSection(r, wn) {
               + atts.map(a => `<a href="${_esc(a.url || '#')}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11px;color:#475569;text-decoration:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer">📎 ${_esc(a.filename || a.name || 'Anhang')}</a>`).join('')
               + '</div>';
           }
+        } else {
+          // V12.351: outgoing WartungsnehmerChat-Records — Anhang-Filenames als CSV
+          const attCsv = String(it.attachment_filenames || '').trim();
+          if (attCsv) {
+            const fnames = attCsv.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+            if (fnames.length) {
+              const isOutForAtt = String(it.direction || 'out') === 'out';
+              attsHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">'
+                + fnames.map(fn => isOutForAtt
+                    ? `<span style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:6px;padding:3px 8px;font-size:11px;display:inline-flex;align-items:center;gap:5px">📎 ${_esc(fn)}</span>`
+                    : `<span style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11px;color:#475569;display:inline-flex;align-items:center;gap:5px">📎 ${_esc(fn)}</span>`
+                  ).join('')
+                + '</div>';
+            }
+          }
         }
         // V12.264: Lösch-Token bestimmen
         const _delTok2 = it._source_email_id ? ('email:' + it._source_email_id)
@@ -34190,6 +34269,10 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         <!-- V12.348: Schnell-Kopie für externe Tools (Wartungsnehmer-Software, eigene Mail-Clients) -->
         <button onclick="copyServiceBlockToClipboard('${emailId}')" title="📋 Standort + Fabriknummer + HV-Name + Liftaro-Antwort-Adresse in Zwischenablage kopieren — zum Einfügen in externe Servicebetrieb-Plattformen" style="background:#0891b2;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:pointer;font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+        <!-- V12.351: Schnell-Kopie des Leistungsumfangs (aus KI-Analyse / Vorgang) -->
+        <button onclick="copyLeistungsumfangToClipboard('${emailId}')" title="📋 Leistungsumfang aus KI-Analyse / Vorgang in Zwischenablage kopieren — Fallback: 'Leistungsumfang: Siehe Anhang'" style="background:#16a34a;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:pointer;font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
         </button>
         <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
         <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;align-self:flex-end">
