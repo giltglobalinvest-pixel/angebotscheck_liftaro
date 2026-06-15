@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.366';
+const APP_VERSION = 'V12.367';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11341,24 +11341,81 @@ async function openAllAttachmentsQaModal(emailId) {
   if (!cache || typeof cache !== 'object') cache = {};
   let withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
   let withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
-  // V12.365/366: Auto-Extraktion fehlender Anhänge — erst pdfjs (schnell, kostenlos),
-  // dann für Scan-PDFs Fallback auf Claude-OCR via PDF-Document-API.
+  // V12.365/366/367: Auto-Extraktion fehlender Anhänge mit Live-Progress-Modal.
+  // pdfjs für Text-PDFs, Claude-OCR als Fallback für Scans. Status pro Anhang sichtbar.
   if (withoutText.length) {
-    showToast('Extrahiere ' + withoutText.length + ' fehlende Anhang' + (withoutText.length === 1 ? '' : 'e') + ' …', 'info', 2500);
-    // V12.366: Buffer-Klon pro Scan-Kandidat aufheben, damit der OCR-Fallback ihn nicht
-    // erneut runterladen muss (pdfjs detached den Original-Buffer).
-    const ocrCandidates = []; // {fname, bufClone}
-    const skipped = [];       // {fname, reason}
+    // V12.367: Progress-Modal aufbauen (eigenes Overlay, nicht das Q&A-Modal)
+    const existingProg = document.getElementById('attExtractProgress');
+    if (existingProg) try { existingProg.remove(); } catch (_) {}
+    const prog = document.createElement('div');
+    prog.id = 'attExtractProgress';
+    prog.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6600;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    // Anhang-Reihen vorab rendern (alle PDFs der Email, nicht nur withoutText, damit User sieht was vorhanden ist)
+    const rowsHtml = pdfs.map(a => {
+      const fn = a.filename || a.name || 'Anhang';
+      const id = 'attProgRow_' + Math.abs(fn.split('').reduce((acc,c)=>((acc<<5)-acc+c.charCodeAt(0))|0,0));
+      const alreadyHas = !!String(cache[fn] || '').trim();
+      return `<div data-att-fname="${_esc(fn)}" id="${id}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">
+        <span class="att-prog-icon" style="width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:${alreadyHas ? '#dcfce7' : '#f1f5f9'};color:${alreadyHas ? '#166534' : '#94a3b8'};font-size:11px;font-weight:700">${alreadyHas ? '✓' : '·'}</span>
+        <span style="flex:1;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(fn)}">${_esc(fn)}</span>
+        <span class="att-prog-status" style="font-size:11px;color:${alreadyHas ? '#15803d' : '#94a3b8'};white-space:nowrap;font-family:var(--dr-f-mono)">${alreadyHas ? 'aus Cache' : 'wartet …'}</span>
+      </div>`;
+    }).join('');
+    prog.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(560px,96vw);max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">'
+      + '<div style="background:#1a3a5c;color:#fff;padding:14px 22px;flex-shrink:0">'
+      +   '<div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;font-weight:700">🔍 Anhänge vorbereiten</div>'
+      +   '<div id="attProgHeadline" style="font-size:14.5px;font-weight:700;margin-top:2px">Extrahiere Texte aus ' + withoutText.length + ' PDF' + (withoutText.length === 1 ? '' : 's') + ' …</div>'
+      + '</div>'
+      + '<div style="padding:14px 22px 6px;flex-shrink:0">'
+      +   '<div style="height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden">'
+      +     '<div id="attProgBar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#0891b2);transition:width .3s ease;border-radius:99px"></div>'
+      +   '</div>'
+      +   '<div id="attProgCounter" style="font-size:11px;color:#64748b;margin-top:6px;font-family:var(--dr-f-mono);text-align:right">0 / ' + withoutText.length + '</div>'
+      + '</div>'
+      + '<div style="flex:1;overflow-y:auto;border-top:1px solid #f1f5f9;background:#fafbfc">' + rowsHtml + '</div>'
+      + '<div id="attProgPhase" style="padding:10px 22px;border-top:1px solid #f1f5f9;font-size:11.5px;color:#64748b;background:#fff;flex-shrink:0">Phase 1/2 · pdfjs-Schnellextraktion</div>'
+      + '</div>';
+    document.body.appendChild(prog);
+    // Helper für Status-Updates
+    const updateRow = (fname, status, color, icon, iconBg, iconColor) => {
+      const sel = '[data-att-fname="' + (fname.replace(/"/g, '\\"')) + '"]';
+      const row = document.querySelector(sel);
+      if (!row) return;
+      const iconEl = row.querySelector('.att-prog-icon');
+      const statusEl = row.querySelector('.att-prog-status');
+      if (iconEl) { iconEl.textContent = icon; iconEl.style.background = iconBg; iconEl.style.color = iconColor; }
+      if (statusEl) { statusEl.textContent = status; statusEl.style.color = color; }
+    };
+    const totalToProcess = withoutText.length;
+    let processed = 0;
+    const bumpProgress = () => {
+      processed++;
+      const pct = Math.round((processed / totalToProcess) * 100);
+      const bar = document.getElementById('attProgBar');
+      const cnt = document.getElementById('attProgCounter');
+      if (bar) bar.style.width = pct + '%';
+      if (cnt) cnt.textContent = processed + ' / ' + totalToProcess;
+    };
+    // Buffer-Klon pro Scan-Kandidat aufheben, damit der OCR-Fallback ihn nicht erneut runterladen muss
+    const ocrCandidates = [];
+    const skipped = [];
+    // === Phase 1: pdfjs-Schnellextraktion ===
     for (let i = 0; i < withoutText.length; i++) {
       const a = withoutText[i];
       const fname = a.filename || a.name || 'Anhang';
       const url = a.url || '';
-      if (!url) { skipped.push({ fname, reason: 'keine URL' }); continue; }
+      updateRow(fname, '⏳ lädt PDF …', '#7c3aed', '⏳', '#ede9fe', '#5b21b6');
+      if (!url) {
+        updateRow(fname, '✕ keine URL', '#9F1B1F', '✕', '#fee2e2', '#9F1B1F');
+        skipped.push({ fname, reason: 'keine URL' });
+        bumpProgress(); continue;
+      }
       try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const buf = await resp.arrayBuffer();
-        const bufClone = buf.slice(0); // für OCR-Fallback aufheben
+        const bufClone = buf.slice(0);
+        updateRow(fname, '⏳ parse PDF …', '#7c3aed', '⏳', '#ede9fe', '#5b21b6');
         const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
         const parts = [];
         for (let p = 1; p <= pdf.numPages; p++) {
@@ -11368,31 +11425,52 @@ async function openAllAttachmentsQaModal(emailId) {
         }
         const text = parts.join('\n\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
         if (!text) {
-          // Scan-PDF erkannt → für OCR-Fallback merken
+          updateRow(fname, '… Scan, OCR nötig', '#9a3412', '⋯', '#fff7ed', '#9a3412');
           ocrCandidates.push({ fname, bufClone });
         } else {
+          updateRow(fname, '✓ ' + text.length.toLocaleString('de-DE') + ' Z.', '#15803d', '✓', '#dcfce7', '#166534');
           cache[fname] = text;
         }
       } catch (e) {
-        console.warn('[V12.366] Auto-Extraktion ' + fname + ':', e.message);
+        console.warn('[V12.367] Auto-Extraktion ' + fname + ':', e.message);
+        updateRow(fname, '✕ ' + e.message.slice(0, 30), '#9F1B1F', '✕', '#fee2e2', '#9F1B1F');
         skipped.push({ fname, reason: e.message });
       }
+      bumpProgress();
     }
-    // V12.366: Scan-PDFs per Claude-OCR nachziehen, falls Anthropic-Key da ist
+    // === Phase 2: Claude-OCR für Scan-PDFs ===
     if (ocrCandidates.length) {
+      const phaseEl = document.getElementById('attProgPhase');
+      const headEl  = document.getElementById('attProgHeadline');
+      const barEl   = document.getElementById('attProgBar');
+      const cntEl   = document.getElementById('attProgCounter');
+      if (phaseEl) phaseEl.textContent = 'Phase 2/2 · KI-OCR für ' + ocrCandidates.length + ' Scan-PDF' + (ocrCandidates.length === 1 ? '' : 's') + ' (20–60s pro PDF)';
+      if (headEl)  headEl.textContent  = 'KI-OCR läuft … bitte nicht schließen';
+      if (barEl)   barEl.style.width   = '0%';
+      if (cntEl)   cntEl.textContent   = '0 / ' + ocrCandidates.length;
+      let ocrDone = 0;
+      const bumpOcr = () => {
+        ocrDone++;
+        const pct = Math.round((ocrDone / ocrCandidates.length) * 100);
+        if (barEl) barEl.style.width = pct + '%';
+        if (cntEl) cntEl.textContent = ocrDone + ' / ' + ocrCandidates.length;
+      };
       if (!APP_KEYS.anthropicKey) {
-        showToast('⚠ ' + ocrCandidates.length + ' Scan-PDF erkannt — Anthropic-Key fehlt für KI-OCR. Bitte im Setup eintragen.', 'warning', 7000);
-        ocrCandidates.forEach(o => skipped.push({ fname: o.fname, reason: 'Anthropic-Key fehlt' }));
+        ocrCandidates.forEach(o => {
+          updateRow(o.fname, '✕ Key fehlt', '#9F1B1F', '✕', '#fee2e2', '#9F1B1F');
+          skipped.push({ fname: o.fname, reason: 'Anthropic-Key fehlt' });
+          bumpOcr();
+        });
       } else {
-        showToast('🔍 Starte KI-OCR für ' + ocrCandidates.length + ' Scan-PDF' + (ocrCandidates.length === 1 ? '' : 's') + ' (kann pro PDF 20–60s dauern) …', 'info', 5000);
         for (let i = 0; i < ocrCandidates.length; i++) {
           const { fname, bufClone } = ocrCandidates[i];
+          updateRow(fname, '⏳ KI-OCR …', '#0891b2', '🔍', '#cffafe', '#0e7490');
           if (bufClone.byteLength > 30 * 1024 * 1024) {
+            updateRow(fname, '✕ >30MB', '#9F1B1F', '✕', '#fee2e2', '#9F1B1F');
             skipped.push({ fname, reason: 'PDF zu groß für KI-OCR (>30MB)' });
-            continue;
+            bumpOcr(); continue;
           }
           try {
-            // ArrayBuffer → Base64 chunkweise
             let bin = ''; const view = new Uint8Array(bufClone);
             for (let j = 0; j < view.length; j += 0x8000) {
               bin += String.fromCharCode.apply(null, view.subarray(j, j + 0x8000));
@@ -11427,26 +11505,33 @@ async function openAllAttachmentsQaModal(emailId) {
             const ocrText = (ocrData.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
             if (!ocrText || ocrText.length < 30) throw new Error('KI-OCR lieferte keinen verwertbaren Text');
             cache[fname] = ocrText;
-            showToast('✓ KI-OCR fertig: ' + fname + ' (' + ocrText.length.toLocaleString('de-DE') + ' Zeichen)', 'success', 2500);
+            updateRow(fname, '✓ ' + ocrText.length.toLocaleString('de-DE') + ' Z. (OCR)', '#15803d', '✓', '#dcfce7', '#166534');
           } catch (ocrErr) {
-            console.warn('[V12.366] KI-OCR ' + fname + ':', ocrErr.message);
-            skipped.push({ fname, reason: 'KI-OCR fehlgeschlagen — ' + ocrErr.message });
+            console.warn('[V12.367] KI-OCR ' + fname + ':', ocrErr.message);
+            updateRow(fname, '✕ ' + ocrErr.message.slice(0, 30), '#9F1B1F', '✕', '#fee2e2', '#9F1B1F');
+            skipped.push({ fname, reason: 'KI-OCR — ' + ocrErr.message });
           }
+          bumpOcr();
         }
       }
     }
-    // Cache zurückschreiben (einmal am Ende, beide Auto-Pfade aggregiert)
+    // Cache zurückschreiben
     try {
       const json = JSON.stringify(cache);
       await atUpdate('Emails', emailId, { attachment_texts_json: json });
       r.attachment_texts_json = json;
-    } catch (saveErr) { console.warn('[V12.366] Cache-Save:', saveErr.message); }
-    // withText/withoutText neu berechnen
+    } catch (saveErr) { console.warn('[V12.367] Cache-Save:', saveErr.message); }
     withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
     withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
-    if (skipped.length) {
-      showToast('⚠ ' + skipped.length + ' Anhang nicht verfügbar: ' + skipped.map(s => s.fname + ' (' + s.reason + ')').join(' · '), 'warning', 8000);
-    }
+    // Progress-Modal entfernen (kurz fertig zeigen, dann weg)
+    try {
+      const phaseEl = document.getElementById('attProgPhase');
+      const headEl  = document.getElementById('attProgHeadline');
+      if (headEl)  headEl.textContent  = '✓ Fertig · ' + withText.length + ' verfügbar' + (skipped.length ? ', ' + skipped.length + ' übersprungen' : '');
+      if (phaseEl) phaseEl.textContent = 'Modal öffnet in 1 Sekunde …';
+      await new Promise(r => setTimeout(r, 900));
+      const el = document.getElementById('attExtractProgress'); if (el) el.remove();
+    } catch (_) {}
   }
   if (!withText.length) {
     showToast('Kein Anhang konnte extrahiert werden. Bitte prüfe die Anhang-URLs / den Anthropic-Key / die PDF-Größe.', 'error', 6500);
