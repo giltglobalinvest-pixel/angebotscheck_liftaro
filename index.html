@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.365';
+const APP_VERSION = 'V12.366';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11341,19 +11341,24 @@ async function openAllAttachmentsQaModal(emailId) {
   if (!cache || typeof cache !== 'object') cache = {};
   let withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
   let withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
-  // V12.365: Auto-Extraktion fehlender Anhänge mit Progress-Modal
+  // V12.365/366: Auto-Extraktion fehlender Anhänge — erst pdfjs (schnell, kostenlos),
+  // dann für Scan-PDFs Fallback auf Claude-OCR via PDF-Document-API.
   if (withoutText.length) {
     showToast('Extrahiere ' + withoutText.length + ' fehlende Anhang' + (withoutText.length === 1 ? '' : 'e') + ' …', 'info', 2500);
-    const skipped = [];
+    // V12.366: Buffer-Klon pro Scan-Kandidat aufheben, damit der OCR-Fallback ihn nicht
+    // erneut runterladen muss (pdfjs detached den Original-Buffer).
+    const ocrCandidates = []; // {fname, bufClone}
+    const skipped = [];       // {fname, reason}
     for (let i = 0; i < withoutText.length; i++) {
       const a = withoutText[i];
       const fname = a.filename || a.name || 'Anhang';
       const url = a.url || '';
-      if (!url) { skipped.push(fname + ' (keine URL)'); continue; }
+      if (!url) { skipped.push({ fname, reason: 'keine URL' }); continue; }
       try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const buf = await resp.arrayBuffer();
+        const bufClone = buf.slice(0); // für OCR-Fallback aufheben
         const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
         const parts = [];
         for (let p = 1; p <= pdf.numPages; p++) {
@@ -11362,28 +11367,89 @@ async function openAllAttachmentsQaModal(emailId) {
           parts.push(tc.items.map(it => it.str || '').join(' '));
         }
         const text = parts.join('\n\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-        if (!text) { skipped.push(fname + ' (Scan-PDF ohne OCR)'); continue; }
-        cache[fname] = text;
+        if (!text) {
+          // Scan-PDF erkannt → für OCR-Fallback merken
+          ocrCandidates.push({ fname, bufClone });
+        } else {
+          cache[fname] = text;
+        }
       } catch (e) {
-        console.warn('[V12.365] Auto-Extraktion ' + fname + ':', e.message);
-        skipped.push(fname + ' (' + e.message + ')');
+        console.warn('[V12.366] Auto-Extraktion ' + fname + ':', e.message);
+        skipped.push({ fname, reason: e.message });
       }
     }
-    // Cache zurückschreiben
+    // V12.366: Scan-PDFs per Claude-OCR nachziehen, falls Anthropic-Key da ist
+    if (ocrCandidates.length) {
+      if (!APP_KEYS.anthropicKey) {
+        showToast('⚠ ' + ocrCandidates.length + ' Scan-PDF erkannt — Anthropic-Key fehlt für KI-OCR. Bitte im Setup eintragen.', 'warning', 7000);
+        ocrCandidates.forEach(o => skipped.push({ fname: o.fname, reason: 'Anthropic-Key fehlt' }));
+      } else {
+        showToast('🔍 Starte KI-OCR für ' + ocrCandidates.length + ' Scan-PDF' + (ocrCandidates.length === 1 ? '' : 's') + ' (kann pro PDF 20–60s dauern) …', 'info', 5000);
+        for (let i = 0; i < ocrCandidates.length; i++) {
+          const { fname, bufClone } = ocrCandidates[i];
+          if (bufClone.byteLength > 30 * 1024 * 1024) {
+            skipped.push({ fname, reason: 'PDF zu groß für KI-OCR (>30MB)' });
+            continue;
+          }
+          try {
+            // ArrayBuffer → Base64 chunkweise
+            let bin = ''; const view = new Uint8Array(bufClone);
+            for (let j = 0; j < view.length; j += 0x8000) {
+              bin += String.fromCharCode.apply(null, view.subarray(j, j + 0x8000));
+            }
+            const b64 = btoa(bin);
+            const ocrResp = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': APP_KEYS.anthropicKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+              body: JSON.stringify({
+                model: 'claude-haiku-4-5',
+                max_tokens: 8000,
+                messages: [{
+                  role: 'user',
+                  content: [
+                    { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 }, title: fname },
+                    { type: 'text', text: 'Extrahiere den vollständigen Textinhalt dieses PDFs. Gib NUR den extrahierten Text auf Deutsch zurück — keine Markdown-Formatierung, keine Kommentare. Behalte Absätze, Listen und Tabellen-Struktur möglichst bei.' }
+                  ]
+                }],
+              }),
+            });
+            if (!ocrResp.ok) {
+              let errBody = '';
+              try { errBody = await ocrResp.text(); } catch (_) {}
+              throw new Error('Claude HTTP ' + ocrResp.status + ': ' + errBody.slice(0, 150));
+            }
+            const ocrData = await ocrResp.json();
+            const ocrText = (ocrData.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+            if (!ocrText || ocrText.length < 30) throw new Error('KI-OCR lieferte keinen verwertbaren Text');
+            cache[fname] = ocrText;
+            showToast('✓ KI-OCR fertig: ' + fname + ' (' + ocrText.length.toLocaleString('de-DE') + ' Zeichen)', 'success', 2500);
+          } catch (ocrErr) {
+            console.warn('[V12.366] KI-OCR ' + fname + ':', ocrErr.message);
+            skipped.push({ fname, reason: 'KI-OCR fehlgeschlagen — ' + ocrErr.message });
+          }
+        }
+      }
+    }
+    // Cache zurückschreiben (einmal am Ende, beide Auto-Pfade aggregiert)
     try {
       const json = JSON.stringify(cache);
       await atUpdate('Emails', emailId, { attachment_texts_json: json });
       r.attachment_texts_json = json;
-    } catch (saveErr) { console.warn('[V12.365] Cache-Save:', saveErr.message); }
+    } catch (saveErr) { console.warn('[V12.366] Cache-Save:', saveErr.message); }
     // withText/withoutText neu berechnen
     withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
     withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
     if (skipped.length) {
-      showToast('⚠ ' + skipped.length + ' Anhang' + (skipped.length === 1 ? '' : 'e') + ' übersprungen (vermutlich Scan-PDF). Pro Anhang einzeln „🔍 Fragen" → „KI-OCR versuchen", dann ist er hier dabei.', 'warning', 7000);
+      showToast('⚠ ' + skipped.length + ' Anhang nicht verfügbar: ' + skipped.map(s => s.fname + ' (' + s.reason + ')').join(' · '), 'warning', 8000);
     }
   }
   if (!withText.length) {
-    showToast('Keiner der PDF-Anhänge ist text-extrahierbar — vermutlich alles Scans. Pro Anhang einzeln „🔍 Fragen" + KI-OCR triggern.', 'warning', 6500);
+    showToast('Kein Anhang konnte extrahiert werden. Bitte prüfe die Anhang-URLs / den Anthropic-Key / die PDF-Größe.', 'error', 6500);
     return;
   }
   const existing = document.getElementById('attQaModal');
