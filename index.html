@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.359';
+const APP_VERSION = 'V12.360';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11009,7 +11009,19 @@ async function openAttachmentQaModal(emailId, idx) {
         parts.push(tc.items.map(it => it.str || '').join(' '));
       }
       text = parts.join('\n\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-      if (!text) throw new Error('Kein Text extrahierbar — vermutlich Scan-PDF ohne OCR');
+      if (!text) {
+        // V12.360: Scan-PDF erkannt → Fallback-Button für KI-OCR via Claude PDF-Document-API anbieten
+        if (statusEl) {
+          statusEl.style.color = '#92400e';
+          statusEl.style.background = '#fef3c7';
+          statusEl.style.borderBottom = '1px solid #fde68a';
+          statusEl.innerHTML = '⚠ Kein Text gefunden — vermutlich Scan-PDF. <button onclick="_eiAttQaTryOcr(\'' + emailId + '\',' + idx + ')" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:8px">🔍 KI-OCR versuchen</button>';
+        }
+        // PDF-Buffer für späteren OCR-Aufruf merken
+        window._eiAttQaBuf = window._eiAttQaBuf || {};
+        window._eiAttQaBuf[emailId + ':' + idx] = { buf, fname, emailId, idx };
+        return; // Input bleibt disabled, bis OCR durchläuft
+      }
       cache[fname] = text;
       try {
         const json = JSON.stringify(cache);
@@ -11037,6 +11049,100 @@ async function openAttachmentQaModal(emailId, idx) {
   }
 }
 window.openAttachmentQaModal = openAttachmentQaModal;
+
+// V12.360: Scan-PDF-Fallback — schickt das gesamte PDF als base64-Document an Claude
+// (Vision-Support liest auch Scans), lässt sich den Volltext zurückgeben und cached
+// ihn in attachment_texts_json. Folgende Fragen laufen dann normal über den Text.
+async function _eiAttQaTryOcr(emailId, idx) {
+  const key = emailId + ':' + idx;
+  const ctx = (window._eiAttQaBuf || {})[key];
+  if (!ctx) return;
+  const { buf, fname } = ctx;
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt — bitte im Setup eintragen', 'error', 4000); return; }
+  const statusEl = document.getElementById('attQaStatus');
+  // Größencheck — Claude PDF-Upload sollte unter ~30MB liegen
+  if (buf.byteLength > 30 * 1024 * 1024) {
+    if (statusEl) statusEl.innerHTML = '⚠ PDF zu groß (>' + (Math.round(buf.byteLength/1024/1024)) + ' MB) für KI-OCR.';
+    return;
+  }
+  if (statusEl) {
+    statusEl.style.color = '#7c3aed';
+    statusEl.style.background = '#faf5ff';
+    statusEl.style.borderBottom = '1px solid #e9d5ff';
+    statusEl.innerHTML = '⏳ KI-OCR läuft — Claude liest das gescannte PDF (kann 20–60s dauern) …';
+  }
+  try {
+    // ArrayBuffer → Base64 chunkweise (große Buffer crashen mit fromCharCode.apply)
+    let bin = ''; const view = new Uint8Array(buf);
+    for (let i = 0; i < view.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000));
+    }
+    const b64 = btoa(bin);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 8000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 }, title: fname },
+            { type: 'text', text: 'Extrahiere den vollständigen Textinhalt dieses PDFs (Wartungsvertrag oder ähnliches Dokument). Gib NUR den extrahierten Text auf Deutsch zurück — keine Markdown-Formatierung, keine Kommentare, keine Einleitung. Behalte Absätze, Listen und Tabellen-Struktur möglichst bei. Wenn das Dokument mehrere Seiten hat, trenne sie mit einer Leerzeile.' }
+          ]
+        }],
+      }),
+    });
+    if (!resp.ok) {
+      let errBody = '';
+      try { errBody = await resp.text(); } catch (_) {}
+      throw new Error('Claude HTTP ' + resp.status + ': ' + errBody.slice(0, 200));
+    }
+    const data = await resp.json();
+    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+    if (!text || text.length < 30) throw new Error('KI-OCR lieferte keinen verwertbaren Text');
+    // In Cache speichern
+    const r = (_eiAllRecords || []).find(x => x._id === emailId);
+    if (r) {
+      let cache = {};
+      try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
+      if (!cache || typeof cache !== 'object') cache = {};
+      cache[fname] = text;
+      try {
+        const json = JSON.stringify(cache);
+        await atUpdate('Emails', emailId, { attachment_texts_json: json });
+        r.attachment_texts_json = json;
+      } catch (saveErr) { console.warn('[V12.360] OCR-Text speichern:', saveErr.message); }
+    }
+    // Status grün + Input freischalten
+    if (statusEl) {
+      statusEl.style.color = '#15803d';
+      statusEl.style.background = '#f0fdf4';
+      statusEl.style.borderBottom = '1px solid #bbf7d0';
+      statusEl.innerHTML = '✓ KI-OCR fertig (' + text.length.toLocaleString('de-DE') + ' Zeichen) · gespeichert · Fragen jetzt möglich';
+    }
+    const ta = document.getElementById('attQaInput');
+    const btn = document.getElementById('attQaSendBtn');
+    if (ta) { ta.disabled = false; ta.focus(); }
+    if (btn) { btn.disabled = false; btn.style.background = '#1a3a5c'; btn.style.cursor = 'pointer'; }
+    window._eiAttQa = window._eiAttQa || {};
+    window._eiAttQa[emailId + ':' + idx] = { text, messages: [], fname };
+  } catch (e) {
+    console.error('[V12.360] KI-OCR:', e);
+    if (statusEl) {
+      statusEl.style.color = '#a8312f';
+      statusEl.style.background = '#fef2f2';
+      statusEl.style.borderBottom = '1px solid #fca5a5';
+      statusEl.innerHTML = '⚠ KI-OCR fehlgeschlagen: ' + _esc(e.message);
+    }
+  }
+}
+window._eiAttQaTryOcr = _eiAttQaTryOcr;
 
 async function _eiAttQaSend(emailId, idx) {
   const key = emailId + ':' + idx;
