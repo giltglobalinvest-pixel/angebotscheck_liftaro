@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.330';
+const APP_VERSION = 'V12.331';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35137,6 +35137,8 @@ function renderEmailInboxDetail() {
     <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')" title="Email archivieren (aus der Liste ausblenden)">📦 Archivieren</button>
     <!-- V12.330: Demo-Check zum Testen des Workflows ohne echte Eingaben -->
     <button class="dr-pill" onclick="simulateCheckFromEmail('${r._id}')" title="Erstellt einen echten Check mit Demo-Werten (alter Partner, Vergleichsangebote, Erfolgsbeteiligung) — perfekt um zu sehen wie das fertige Ergebnis-PDF aussieht. Im Subject mit „🧪 SIM" markiert." style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;font-weight:700">🧪 Sim-Check (Demo)</button>
+    <!-- V12.331: Email für einen weiteren Aufzug duplizieren — HV bleibt, Aufzug-Zuordnung leer für manuelle Auswahl -->
+    <button class="dr-pill" onclick="duplicateEmailForAnotherAufzug('${r._id}')" title="Erstellt eine Kopie dieser Email mit gleicher HV-Zuordnung, aber leerem Aufzug-Slot — damit du für jeden Aufzug einen eigenen Check anlegen kannst, wenn die HV mehrere Verträge in einer Mail geschickt hat." style="background:#ede9fe;border:1px solid #c4b5fd;color:#5b21b6;font-weight:700">📑 Kopie für weiteren Aufzug</button>
     </div>
   </div>`;
 
@@ -35974,6 +35976,83 @@ async function splitVorgangIntoNewEmail(recId, vIdx) {
     showToast('Auftrennen fehlgeschlagen: ' + e.message, 'error', 5000);
   }
 }
+
+// V12.331: Email für einen WEITEREN Aufzug duplizieren — typischer Fall: eine HV
+// schickt eine Mail mit zwei Wartungsverträgen zu zwei verschiedenen Aufzügen, die
+// KI hat aber nur den ersten erkannt (oder beide in einen Vorgang gepackt). User
+// klickt diesen Button → eine Kopie der Email entsteht mit der GLEICHEN HV-Zuordnung
+// (vorgaenge_json wird übernommen), aber LEEREM Aufzug-Slot. Der User kann dann in
+// der Kopie den zweiten Aufzug zuordnen und daraus einen eigenen Check anlegen.
+async function duplicateEmailForAnotherAufzug(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) { showToast('Email nicht gefunden', 'error', 3000); return; }
+  if (!confirm('Diese Email für einen weiteren Aufzug duplizieren?\n\n• Hausverwaltungs-Zuordnung bleibt erhalten\n• Aufzug-Slot wird LEER — du wählst in der Kopie den anderen Aufzug\n• Anhänge werden übernommen\n• Verlinkte Checks und interne Notizen werden NICHT mitkopiert\n\nFortfahren?')) return;
+  showToast('📑 Kopie wird erstellt …', 'info', 1800);
+  try {
+    const copyFields = (typeof _eiCloneEmailFields === 'function') ? _eiCloneEmailFields(r) : Object.assign({}, r);
+    // HV-Zuordnung übernehmen (vorgaenge_json bleibt), aber Aufzug-Bezug aus dem
+    // ersten Vorgang entfernen, damit beim Check-Erstellen der neue Aufzug greift.
+    try {
+      const vs = JSON.parse(copyFields.vorgaenge_json || '[]');
+      if (Array.isArray(vs) && vs.length) {
+        for (const v of vs) {
+          delete v.aufzug_id;
+          delete v.aufzug_record_id;
+          delete v.aufzug_fabriknummer;
+          delete v.aufzug_standort;
+        }
+        copyFields.vorgaenge_json = JSON.stringify(vs);
+      }
+    } catch (_) {}
+    // Aufzug-Felder auf Email-Ebene leeren — User soll bewusst den 2. Aufzug zuordnen
+    delete copyFields.aufzug_id;
+    delete copyFields.aufzug_record_id;
+    delete copyFields.aufzug_fabriknummer;
+    delete copyFields.aufzug_standort;
+    delete copyFields.aufzug_hersteller;
+    delete copyFields.aufzug_im_euc;
+    delete copyFields.aufzug_euc_vertrag_id;
+    delete copyFields.aufzug_split_count;
+    // Wartungsnehmer-Cache (gehört zum Aufzug) und Linked-Checks entfernen
+    delete copyFields.wartungsnehmer_id;
+    delete copyFields.wartungsnehmer_firma;
+    delete copyFields.wartungsnehmer_ansprechperson;
+    delete copyFields.wartungsnehmer_email;
+    delete copyFields.wartungsnehmer_telefon;
+    delete copyFields.external_check_id;
+    delete copyFields.comments_json;
+    copyFields.linked_check_ids    = '';
+    copyFields.linked_checks_count = 0;
+    // Status zurück auf „neu" — die Kopie muss noch bearbeitet werden
+    copyFields.status = 'neu';
+    // Verlinkung zum Original
+    copyFields.aufzug_split_from = recId;
+    // Subject markieren — User sieht in der Liste sofort dass es eine Kopie ist
+    const baseSubj = String(copyFields.subject || r.subject || 'Anfrage').trim();
+    copyFields.subject = baseSubj + ' (Kopie für weiteren Aufzug)';
+    // ai_subject ist ein dynamisches Computed-Subject (typ/anliegen) — wir nullen es,
+    // damit beim nächsten Render das eigene Subject mit dem Suffix gewinnt.
+    copyFields.ai_subject = '';
+    const created = await atWrite('Emails', copyFields);
+    const newRecId = (created && created.id) ? created.id : '';
+    showToast('✓ Kopie erstellt — wird gleich geladen, dann bitte Aufzug zuordnen', 'success', 4000);
+    // Posteingang neu laden, Detail-View auf die Kopie wechseln
+    setTimeout(async () => {
+      try {
+        if (typeof loadEmailInbox === 'function') await loadEmailInbox(true);
+      } catch (_) {}
+      if (newRecId) {
+        _eiSelectedId = newRecId;
+      }
+      if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    }, 800);
+  } catch (e) {
+    console.error('[V12.331] duplicateEmailForAnotherAufzug:', e);
+    showToast('Duplizieren fehlgeschlagen: ' + e.message, 'error', 5500);
+  }
+}
+window.duplicateEmailForAnotherAufzug = duplicateEmailForAnotherAufzug;
 
 // V12.203/212: Alle Vorgänge in eigene Emails auftrennen — Original wird Container für Vorgang #1.
 // V12.212: Confirm bleibt (Multi-Action), aber dazu Progress-Banner + Pro-Karte ausgrauen.
