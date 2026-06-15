@@ -4764,6 +4764,18 @@ body.feat-hidden-ei_vorgaenge         [data-feature="ei_vorgaenge"]         { di
 body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { display: none !important; }
 body.feat-hidden-ei_manuell_check     [data-feature="ei_manuell_check"]     { display: none !important; }
 body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { display: none !important; }
+/* V12.346: Dezenter Toggle-Hint oben rechts an jeder ausblendbaren Kachel */
+[data-feature] { position: relative; }
+.ei-toggle-hint {
+  position: absolute; top: 8px; right: 10px;
+  background: rgba(15,24,48,.06); color: rgba(15,24,48,.45);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px; font-weight: 600; letter-spacing: .02em;
+  padding: 2px 7px; border-radius: 5px;
+  pointer-events: none; z-index: 5; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.ei-toggle-hint:hover { color: rgba(15,24,48,.7); background: rgba(15,24,48,.1); }
 /* V12.247: Karten-Layout für die Email-Liste — überschreibt das Tabellen-Look */
 #emailInboxList .ei-row {
   background:#fff;
@@ -6399,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.345';
+const APP_VERSION = 'V12.346';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35381,6 +35393,21 @@ function renderEmailInboxDetail() {
   // V12.259: HTML-Bodies sofort hydratisieren (statt lazy beim Toggle), damit
   // das Original-HTML standardmäßig sichtbar ist.
   if (typeof _eiHydrateHtmlBodies === 'function') _eiHydrateHtmlBodies(detEl);
+  // V12.346: Dezente Toggle-Hint-Pille oben rechts in jede ausblendbare Kachel.
+  // So sieht der Bearbeiter sofort, welche Sektion über welchen 👁-Toggle gesteuert wird.
+  try {
+    detEl.querySelectorAll('[data-feature]').forEach(el => {
+      if (el.querySelector(':scope > .ei-toggle-hint')) return;
+      const key = el.getAttribute('data-feature');
+      const f = (typeof FEATURE_REGISTRY !== 'undefined') ? FEATURE_REGISTRY.find(x => x.key === key) : null;
+      if (!f) return;
+      const hint = document.createElement('span');
+      hint.className = 'ei-toggle-hint';
+      hint.title = 'Diese Kachel kann über das 👁-Ansicht-Menü ausgeblendet werden — Toggle: ' + f.label;
+      hint.textContent = '👁 ' + f.label;
+      el.appendChild(hint);
+    });
+  } catch (_) {}
 }
 
 // V12.259: alle [data-html]-Elemente innerhalb des Containers in echtes DOM-Markup
