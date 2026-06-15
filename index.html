@@ -6412,7 +6412,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.371';
+const APP_VERSION = 'V12.372';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -30974,7 +30974,7 @@ function _renderEmailComposer(r) {
         </button>
       </div>
       <!-- V12.193/V12.335: Signatur-Anzeige standardmaeszig SICHTBAR (Reply ist Default-Tab) -->
-      <div id="ei_composer_sig_row" style="display:block;padding:8px 14px;border-top:1px solid #f1f5f9;background:#f8fafc">${_renderSignaturePreview()}</div>
+      <div id="ei_composer_sig_row" style="display:block;padding:8px 14px;border-top:1px solid #f1f5f9;background:#f8fafc">${_renderSignaturePreview(r)}</div>
       <!-- V12.193: Forward-Vorschau (nur bei Forward sichtbar) -->
       <div id="ei_composer_fwd_preview" style="display:none;padding:0 14px 14px;background:#f8fafc;border-top:1px solid #f1f5f9">${_renderForwardPreview(r)}</div>
     </div>
@@ -30982,15 +30982,25 @@ function _renderEmailComposer(r) {
 }
 
 // V12.193: Kompakte Signatur-Anzeige + Anpass-Button
-function _renderSignaturePreview() {
-  // V12.268: bevorzugt HTML-Signatur des angemeldeten Bearbeiters
-  const me = (typeof _eiCurrentUserName === 'function') ? _eiCurrentUserName() : '';
-  const htmlSig = (typeof getBearbeiterSignatureHtml === 'function') ? getBearbeiterSignatureHtml(me) : '';
+// V12.372: Lookup-Reihenfolge — erst Email-Bearbeiter (r.bearbeiter_name), dann
+// eingeloggter App-User. Damit zeigt der Composer die Signatur des aktuell für die
+// Email zugeordneten Bearbeiters, auch wenn jemand anderes eingeloggt ist (Ticket-
+// System-Workflow). Send-Pfad nutzt schon dieselbe Logik via _eiResolveSignatureForSend.
+function _renderSignaturePreview(r) {
+  const emailBearb = (r && String(r.bearbeiter_name || '').trim()) || '';
+  const meLogged   = (typeof _eiCurrentUserName === 'function') ? _eiCurrentUserName() : '';
+  const candidates = [emailBearb, meLogged].filter(Boolean);
+  let me = '', htmlSig = '';
+  for (const n of candidates) {
+    const s = (typeof getBearbeiterSignatureHtml === 'function') ? getBearbeiterSignatureHtml(n) : '';
+    if (s && s.trim()) { me = n; htmlSig = s; break; }
+  }
   if (htmlSig && htmlSig.trim()) {
     const sanitized = (typeof _sanitizeEmailHtml === 'function') ? _sanitizeEmailHtml(htmlSig) : htmlSig;
+    const sourceHint = (emailBearb && me === emailBearb) ? ' · Bearbeiter dieser Email' : (me === meLogged && meLogged ? ' · eingeloggt' : '');
     return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:11.5px;color:#475569">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;margin-bottom:4px">✍ Signatur${me ? ' · ' + _esc(me) : ''} (HTML, wird formatiert gesendet)</div>
+        <div style="font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;margin-bottom:4px">✍ Signatur${me ? ' · ' + _esc(me) : ''}${sourceHint} (HTML, wird formatiert gesendet)</div>
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.5;color:#0f172a">${sanitized}</div>
       </div>
       <button onclick="openBearbeiterEditor()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">✍ Anpassen</button>
