@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.367';
+const APP_VERSION = 'V12.368';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7768,6 +7768,12 @@ async function setupTables() {
       // V12.358: Pro Anhang extrahierter Text als JSON {filename: extractedText} — Cache, damit
       // das Fragen-stellen-Modal das PDF nicht jedes Mal neu extrahieren muss.
       { name: 'attachment_texts_json',         type: 'multilineText' },
+      // V12.368: Q&A-Sessions pro Anhang persistieren — {filename: [{q, a, ts}], "*": [...]}
+      // damit Sessions Reload überleben und im Modal als bestehende Bubbles geladen werden.
+      { name: 'attachment_qa_json',            type: 'multilineText' },
+      // V12.368: Letzte generierte Zusammenfassung — wird als Kontext in den Reply-Komposer-
+      // KI-Helper injiziert ("Folgende Fakten wurden aus den Anhängen extrahiert: ...").
+      { name: 'attachment_qa_summary',         type: 'multilineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
@@ -11046,7 +11052,10 @@ async function openAttachmentQaModal(emailId, idx) {
     if (btn) { btn.disabled = false; btn.style.background = '#1a3a5c'; btn.style.cursor = 'pointer'; }
     // Q&A-State pro Modal
     window._eiAttQa = window._eiAttQa || {};
-    window._eiAttQa[emailId + ':' + idx] = { text, messages: [], fname };
+    const _qaState = { text, messages: [], fname };
+    window._eiAttQa[emailId + ':' + idx] = _qaState;
+    // V12.368: bestehende Q&A aus Airtable laden + als Bubbles vorrendern
+    try { _eiAttQaLoadExisting(emailId, fname, _qaState); } catch (_) {}
   } catch (e) {
     console.error('[V12.358] PDF-Extraktion:', e);
     const statusEl = document.getElementById('attQaStatus');
@@ -11058,6 +11067,43 @@ async function openAttachmentQaModal(emailId, idx) {
   }
 }
 window.openAttachmentQaModal = openAttachmentQaModal;
+
+// V12.368: Bestehende Q&A-History aus attachment_qa_json in das Modal-Chat rendern.
+// Setzt state.messages für Folge-Fragen + macht SummaryRow sichtbar.
+function _eiAttQaLoadExisting(emailId, persistKey, state) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  let qaMap = {};
+  try { qaMap = JSON.parse(r.attachment_qa_json || '{}'); } catch (_) {}
+  if (!qaMap || typeof qaMap !== 'object') return;
+  const arr = Array.isArray(qaMap[persistKey]) ? qaMap[persistKey] : [];
+  if (!arr.length) return;
+  const chat = document.getElementById('attQaChat');
+  if (!chat) return;
+  const ph = document.getElementById('attQaPlaceholder');
+  if (ph) try { ph.remove(); } catch (_) {}
+  // Header über die vorgerenderten Bubbles
+  const head = document.createElement('div');
+  head.style.cssText = 'align-self:stretch;text-align:center;font-size:10.5px;color:#94a3b8;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:2px 0 4px';
+  head.textContent = '↑ ' + arr.length + ' frühere Frage' + (arr.length === 1 ? '' : 'n') + ' aus Cache';
+  chat.appendChild(head);
+  arr.forEach(pair => {
+    const userB = document.createElement('div');
+    userB.style.cssText = 'align-self:flex-end;max-width:75%;background:#1a3a5c;color:#fff;border-radius:14px;border-bottom-right-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap;opacity:.88';
+    userB.textContent = String(pair.q || '');
+    chat.appendChild(userB);
+    const aiB = document.createElement('div');
+    aiB.style.cssText = 'align-self:flex-start;background:#fff;border:1px solid #e2e8f0;color:#0f172a;border-radius:14px;border-bottom-left-radius:4px;padding:10px 14px;font-size:13px;line-height:1.55;max-width:85%;white-space:pre-wrap;box-shadow:0 1px 2px rgba(15,24,48,.04);opacity:.88';
+    aiB.textContent = String(pair.a || '');
+    chat.appendChild(aiB);
+    state.messages.push({ role: 'user', content: String(pair.q || '') });
+    state.messages.push({ role: 'assistant', content: String(pair.a || '') });
+  });
+  chat.scrollTop = chat.scrollHeight;
+  const sumRow = document.getElementById('attQaSummaryRow');
+  if (sumRow) sumRow.style.display = 'block';
+}
+window._eiAttQaLoadExisting = _eiAttQaLoadExisting;
 
 // V12.360: Scan-PDF-Fallback — schickt das gesamte PDF als base64-Document an Claude
 // (Vision-Support liest auch Scans), lässt sich den Volltext zurückgeben und cached
@@ -11215,6 +11261,22 @@ async function _eiAttQaSend(emailId, idx) {
     // V12.364: Nach erfolgreicher Antwort den Zusammenfassung-Button sichtbar machen
     const sumRow = document.getElementById('attQaSummaryRow');
     if (sumRow) sumRow.style.display = 'block';
+    // V12.368: Q&A in attachment_qa_json persistieren (Best-Effort, blockiert nicht)
+    try {
+      const r = (_eiAllRecords || []).find(x => x._id === emailId);
+      if (r) {
+        let qaMap = {};
+        try { qaMap = JSON.parse(r.attachment_qa_json || '{}'); } catch (_) {}
+        if (!qaMap || typeof qaMap !== 'object') qaMap = {};
+        const persistKey = state.multi ? '*' : (state.fname || ('att_' + idx));
+        if (!Array.isArray(qaMap[persistKey])) qaMap[persistKey] = [];
+        qaMap[persistKey].push({ q: question, a: answer, ts: new Date().toISOString() });
+        const json = JSON.stringify(qaMap);
+        atUpdate('Emails', emailId, { attachment_qa_json: json })
+          .then(() => { r.attachment_qa_json = json; })
+          .catch(e => console.warn('[V12.368] Q&A persist:', e.message));
+      }
+    } catch (e) { console.warn('[V12.368] Q&A persist build:', e.message); }
   } catch (e) {
     loadingEl.style.cssText = 'align-self:flex-start;background:#fef2f2;border:1px solid #fca5a5;color:#9F1B1F;border-radius:14px;padding:10px 14px;font-size:13px;line-height:1.5;max-width:85%';
     loadingEl.textContent = '⚠ ' + e.message;
@@ -11268,6 +11330,38 @@ async function _eiAttQaSummarize(key) {
     const data = await resp.json();
     const summary = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
     if (!summary) throw new Error('Leere Antwort');
+    // V12.368: Summary persistieren + als Notiz im Verlauf anlegen
+    try {
+      const [emailIdK] = String(key).split(':');
+      const r = (_eiAllRecords || []).find(x => x._id === emailIdK);
+      if (r) {
+        // attachment_qa_summary überschreiben (immer die jüngste)
+        atUpdate('Emails', emailIdK, { attachment_qa_summary: summary })
+          .then(() => { r.attachment_qa_summary = summary; })
+          .catch(e => console.warn('[V12.368] qa_summary persist:', e.message));
+        // Notiz im comments_json anlegen
+        try {
+          const comments = (typeof _parseEmailComments === 'function') ? _parseEmailComments(r) : [];
+          const author = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter';
+          const heading = state.multi
+            ? '📋 KI-Q&A-Zusammenfassung · Alle Anhänge'
+            : '📋 KI-Q&A-Zusammenfassung · ' + (state.fname || 'Anhang');
+          comments.push({
+            id:         Math.random().toString(36).slice(2, 10),
+            author:     author,
+            text:       heading + '\n\n' + summary,
+            created_at: new Date().toISOString(),
+          });
+          const cJson = JSON.stringify(comments);
+          atUpdate('Emails', emailIdK, { comments_json: cJson })
+            .then(() => {
+              r.comments_json = cJson;
+              if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+            })
+            .catch(e => console.warn('[V12.368] Notiz speichern:', e.message));
+        } catch (eNote) { console.warn('[V12.368] Notiz build:', eNote.message); }
+      }
+    } catch (ePersist) { console.warn('[V12.368] Summary-Persist:', ePersist.message); }
     // Loading-Bubble durch Summary-Box ersetzen
     loadingEl.style.cssText = 'align-self:stretch;background:#fef3c7;border:1px solid #fcd34d;color:#0f172a;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap;margin-top:6px;box-shadow:0 1px 3px rgba(217,119,6,.15)';
     loadingEl.innerHTML = '';
@@ -11576,7 +11670,10 @@ async function openAllAttachmentsQaModal(emailId) {
   }).join('\n\n');
   // Q&A-State (multi-Mode aktiv)
   window._eiAttQa = window._eiAttQa || {};
-  window._eiAttQa[emailId + ':*'] = { text, messages: [], fname: 'Alle Anhänge (' + withText.length + ')', multi: true };
+  const _qaStateMulti = { text, messages: [], fname: 'Alle Anhänge (' + withText.length + ')', multi: true };
+  window._eiAttQa[emailId + ':*'] = _qaStateMulti;
+  // V12.368: bestehende Q&A aus Airtable laden + als Bubbles vorrendern
+  try { _eiAttQaLoadExisting(emailId, '*', _qaStateMulti); } catch (_) {}
   const ta = document.getElementById('attQaInput');
   if (ta) ta.focus();
 }
@@ -33253,11 +33350,19 @@ async function generateEmailReplyAi(emailId) {
       '- KEINE Grußformel ("Mit freundlichen Grüßen") und KEIN Name am Ende — die Signatur wird automatisch angehängt\n' +
       '- Plain-Text, keine HTML-Tags\n' +
       '- Wenn Stichworte auf Anhang verweisen, schreib „im Anhang finden Sie …"';
+    // V12.368: Q&A-Erkenntnisse aus Anhängen als zusätzlichen Kontext mitgeben.
+    // Diese Summary wurde im Anhang-Q&A-Modal via „📋 Zusammenfassung erstellen"
+    // generiert und persistiert — sie enthält die Fakten die der Bearbeiter aus
+    // den PDF-Anhängen extrahiert hat. So bezieht die Reply-KI sie automatisch ein.
+    const qaSummary = String(r.attachment_qa_summary || '').trim();
+    const qaContextBlock = qaSummary
+      ? ('\n\nERKENNTNISSE AUS DEN ANHÄNGEN (KI-Q&A des Bearbeiters):\n' + qaSummary + '\n\nBeziehe diese Fakten ein, wenn sie für die Antwort relevant sind — z.B. konkrete Preise, Laufzeiten, Wartungs-Intervalle aus den Verträgen.')
+      : '';
     const userMsg =
       'KONTEXT — Original-Email vom Kunden:\n' +
       '   Absender: ' + fromName + '\n' +
       '   Betreff:  ' + subject + '\n' +
-      '   Inhalt:   ' + bodySnippet + '\n\n' +
+      '   Inhalt:   ' + bodySnippet + qaContextBlock + '\n\n' +
       'STICHWORTE des Bearbeiters für die Antwort:\n' +
       stichworte + '\n\n' +
       'Schreibe jetzt nur die Antwort-Email (ohne Betreff, ohne Signatur).';
