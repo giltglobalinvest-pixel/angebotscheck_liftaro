@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.340';
+const APP_VERSION = 'V12.341';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -30812,26 +30812,44 @@ async function _autoMatchHvFromPipedrive(recId, firma) {
       const orgTel  = String((details && details.tel)   || '');
       const addr    = (details && [details.strasse, [details.plz, details.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')) || '';
       const gf      = String((details && details.gf) || '');
-      let vorgaenge = [];
-      try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
-      if (!Array.isArray(vorgaenge) || !vorgaenge.length) vorgaenge = [{}];
-      Object.assign(vorgaenge[0], {
-        assigned_org_id:    orgId,
-        assigned_org_name:  orgName,
-        assigned_org_email: orgEmail,
-        assigned_org_tel:   orgTel,
-        assigned_org_addr:  addr,
-        assigned_org_gf:    gf,
-        assigned_as_private:false,
-        assigned_at:        new Date().toISOString(),
-        assigned_by:        'KI-Auto',
-        assigned_auto:      true,
-      });
-      const json = JSON.stringify(vorgaenge, null, 2);
-      // V12.310: zusätzlich Pipedrive-Status persistieren (für Listen-Pille-Farbe)
-      await atUpdate('Emails', recId, { vorgaenge_json: json, hv_pipedrive_status: 'matched' });
-      r.vorgaenge_json = json;
-      r.hv_pipedrive_status = 'matched';
+      // V12.341: Read-Modify-Write über _eiPatchVorgaenge — verhindert dass eine
+      // parallele User-Aktion (manuelle HV-Zuordnung) durch unseren Auto-Match
+      // überschrieben wird. Plus: Wenn der User bereits eine HV manuell zugeordnet
+      // hat, RESPECT — wir überschreiben einen User-Pick nicht.
+      let autoMatchWritten = false;
+      try {
+        const result = await _eiPatchVorgaenge(recId, (vorgaenge) => {
+          if (!Array.isArray(vorgaenge) || !vorgaenge.length) vorgaenge = [{}];
+          // Wenn schon manuell zugeordnet (assigned_org_id da UND nicht auto), nichts tun
+          const v0 = vorgaenge[0] || {};
+          if (v0.assigned_org_id && !v0.assigned_auto) {
+            console.log('[V12.341] Auto-Match übersprungen — manuelle Zuordnung bereits gesetzt:', v0.assigned_org_name);
+            return false;
+          }
+          Object.assign(vorgaenge[0], {
+            assigned_org_id:    orgId,
+            assigned_org_name:  orgName,
+            assigned_org_email: orgEmail,
+            assigned_org_tel:   orgTel,
+            assigned_org_addr:  addr,
+            assigned_org_gf:    gf,
+            assigned_as_private:false,
+            assigned_at:        new Date().toISOString(),
+            assigned_by:        'KI-Auto',
+            assigned_auto:      true,
+          });
+          autoMatchWritten = true;
+          return vorgaenge;
+        }, { hv_pipedrive_status: 'matched' });
+        if (result === false) {
+          showToast('ℹ Pipedrive-Match übersprungen — manuelle HV-Zuordnung respektiert', 'info', 3500);
+          return;
+        }
+      } catch (e) {
+        console.error('[V12.341] Auto-Match Save fehlgeschlagen:', e);
+        showToast('Auto-Match fehlgeschlagen: ' + e.message, 'error', 5000);
+        return;
+      }
       showToast('✓ Pipedrive-Match: „' + orgName + '" (ID ' + orgId + ') zugewiesen', 'success', 4000);
       if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
       if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
@@ -36620,31 +36638,79 @@ function _showVorgangUndoSnackbar(recId, origVIdx, vorgang, title) {
 // Workflow: Bearbeiter muss VOR Check-Erstellung den Vorgang einer HV zuordnen
 // (oder als Privatanfrage markieren). State in vorgaenge_json[].assigned_*.
 
-async function _saveVorgangAssignment(recId, vIdx, patchObj) {
-  const r = _eiAllRecords.find(x => x._id === recId);
-  if (!r) return false;
+// V12.341: Read-Modify-Write-Helper für vorgaenge_json. Bisher las jeder Caller
+// den In-Memory-Snapshot von r.vorgaenge_json, mutierte lokal und schrieb komplett
+// zurück. Wenn zwei Schreibpfade gleichzeitig liefen (z.B. Manueller Save + V12.307
+// Auto-Pipedrive-Match + V12.313 EuC-Sync), gewann der langsamere und überschrieb
+// die HV-Zuordnung des schnelleren → „die Zuordnung verschwand spontan". Dieser
+// Helper liest IMMER frisch aus Airtable, lässt den Mutator den Stand mutieren
+// und schreibt nur den vorgaenge_json + ggf. extraPatch zurück. Klassisches Read-
+// Modify-Write — eliminiert die Lost-Update-Race vollständig.
+//
+// mutator(vorgaenge, freshRec) → kann Array zurückgeben (ersetzt) ODER vorgaenge
+//   in-place mutieren ODER `false` zurückgeben (Abbruch ohne Schreiben).
+// extraPatch (optional): zusätzliche Top-Level-Felder die mit vorgaenge_json
+//   atomisch im gleichen atUpdate geschrieben werden (z.B. hv_pipedrive_status).
+async function _eiPatchVorgaenge(recId, mutator, extraPatch) {
+  // 1. Frisch aus Airtable lesen — KEIN In-Memory-Snapshot
+  const recs = await atRead('Emails', "RECORD_ID()='" + recId.replace(/'/g, "\\'") + "'", { sort: false });
+  const freshRec = recs && recs[0];
+  if (!freshRec) throw new Error('Email-Record nicht gefunden (vermutlich gelöscht): ' + recId);
   let vorgaenge = [];
-  try { vorgaenge = JSON.parse(r.vorgaenge_json || '[]'); } catch (_) {}
-  // V12.308: Wenn vIdx=0 und kein Vorgang existiert → Initial-Vorgang aus KI-Daten anlegen
-  if (vIdx === 0 && vorgaenge.length === 0) {
-    vorgaenge[0] = {
-      typ: '',
-      kunde_firma: String(r.real_hv_firma || '').trim(),
-      kunde_name:  String(r.real_absender_name || '').trim(),
-      kunde_email: String(r.real_hv_email || r.real_absender_email || '').trim(),
-    };
+  try { vorgaenge = JSON.parse((freshRec.fields && freshRec.fields.vorgaenge_json) || '[]'); } catch (_) {}
+  if (!Array.isArray(vorgaenge)) vorgaenge = [];
+  // 2. Mutator anwenden
+  const result = mutator(vorgaenge, freshRec);
+  if (result === false) return false; // Mutator hat Abbruch signalisiert
+  if (Array.isArray(result)) vorgaenge = result;
+  // 3. Atomisch zurückschreiben — vorgaenge_json + ggf. extraPatch
+  const json = JSON.stringify(vorgaenge, null, 2);
+  const payload = Object.assign({ vorgaenge_json: json }, extraPatch || {});
+  await atUpdate('Emails', recId, payload);
+  // 4. In-Memory mit FRISCHEM Stand synchronisieren
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (r) {
+    Object.assign(r, payload);
+    // Auch frisch geladene Felder mergen — verhindert dass andere Felder veraltet bleiben
+    if (freshRec.fields) {
+      for (const k of Object.keys(freshRec.fields)) {
+        if (k === 'vorgaenge_json') continue;
+        if (extraPatch && Object.prototype.hasOwnProperty.call(extraPatch, k)) continue;
+        if (r[k] === undefined || r[k] === null || r[k] === '') r[k] = freshRec.fields[k];
+      }
+    }
   }
-  if (vIdx < 0 || vIdx >= vorgaenge.length) return false;
-  Object.assign(vorgaenge[vIdx], patchObj, {
-    assigned_at: new Date().toISOString(),
-    assigned_by: _eiCurrentUserName(),
-  });
+  return vorgaenge;
+}
+window._eiPatchVorgaenge = _eiPatchVorgaenge;
+
+async function _saveVorgangAssignment(recId, vIdx, patchObj) {
+  // V12.341: Read-Modify-Write über _eiPatchVorgaenge — eliminiert Lost-Update-Race.
+  // Frischer Stand wird aus Airtable gelesen, Initial-Vorgang ggf. erzeugt, patchObj
+  // appliziert, dann atomisch zurückgeschrieben.
   try {
-    await atUpdate('Emails', recId, { vorgaenge_json: JSON.stringify(vorgaenge, null, 2) });
-    r.vorgaenge_json = JSON.stringify(vorgaenge, null, 2);
-    renderEmailInboxDetail();
+    const result = await _eiPatchVorgaenge(recId, (vorgaenge, freshRec) => {
+      const rf = freshRec.fields || {};
+      if (vIdx === 0 && vorgaenge.length === 0) {
+        vorgaenge[0] = {
+          typ: '',
+          kunde_firma: String(rf.real_hv_firma || '').trim(),
+          kunde_name:  String(rf.real_absender_name || '').trim(),
+          kunde_email: String(rf.real_hv_email || rf.real_absender_email || '').trim(),
+        };
+      }
+      if (vIdx < 0 || vIdx >= vorgaenge.length) return false;
+      Object.assign(vorgaenge[vIdx], patchObj, {
+        assigned_at: new Date().toISOString(),
+        assigned_by: _eiCurrentUserName(),
+      });
+      return vorgaenge;
+    });
+    if (result === false) return false;
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
     return true;
   } catch (e) {
+    console.error('[V12.341] _saveVorgangAssignment:', e);
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
     return false;
   }
