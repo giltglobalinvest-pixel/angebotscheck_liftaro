@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.363';
+const APP_VERSION = 'V12.364';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -10979,6 +10979,10 @@ async function openAttachmentQaModal(emailId, idx) {
     + '<div id="attQaChat" style="flex:1;overflow-y:auto;padding:14px 22px;background:#fafbfc;display:flex;flex-direction:column;gap:10px">'
     +   '<div id="attQaPlaceholder" style="text-align:center;color:#94a3b8;font-size:12px;padding:30px 14px;line-height:1.6">Sobald die Extraktion fertig ist, kannst du Fragen stellen.<br><span style="font-size:11px">Beispiele: <em>Wie viele Wartungen pro Jahr?</em> · <em>Wie wird abgerechnet?</em> · <em>Ist der Notruf enthalten?</em></span></div>'
     + '</div>'
+    + '<div id="attQaSummaryRow" style="display:none;padding:8px 22px;border-top:1px solid #e2e8f0;background:#fef3c7;flex-shrink:0">'
+    +   '<button onclick="_eiAttQaSummarize(\'' + emailId + ':' + idx + '\')" style="background:#d97706;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">📋 Zusammenfassung erstellen + kopieren</button>'
+    +   '<span style="margin-left:10px;font-size:11px;color:#92400e">Fasst alle bisherigen Antworten zusammen.</span>'
+    + '</div>'
     + '<div style="padding:12px 22px;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0">'
     +   '<div style="display:flex;gap:8px;align-items:flex-end">'
     +     '<textarea id="attQaInput" placeholder="Was möchtest du wissen?" rows="2" disabled onkeydown="if(event.key===\'Enter\'&&(event.metaKey||event.ctrlKey)){event.preventDefault();_eiAttQaSend(\'' + emailId + '\',' + idx + ');}" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;line-height:1.4;resize:vertical;outline:none;color:#0f172a"></textarea>'
@@ -11190,8 +11194,11 @@ async function _eiAttQaSend(emailId, idx) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 800,
-        system: 'Du bekommst den Volltext eines PDF-Anhangs (Wartungsvertrag, Angebot, Rechnung o.ä.) der einer Email beilag. Beantworte Fragen des Bearbeiters AUSSCHLIESSLICH basierend auf diesem Text. Wenn die Antwort nicht im Text steht, sag das ehrlich („Steht nicht im Vertrag" o.ä.). Antworte präzise, kurz und auf Deutsch. Zitiere konkrete Werte/Klauseln aus dem Text wenn möglich.\n\nPDF-Text:\n---\n' + state.text.slice(0, 60000) + '\n---',
+        max_tokens: state.multi ? 1500 : 800,
+        // V12.364: System-Prompt-Variante für Multi-Anhang-Modus
+        system: state.multi
+          ? 'Du bekommst die Volltexte MEHRERER PDF-Anhänge (z.B. Wartungsverträge, Angebote, Rechnungen) einer Email — jeweils mit einem Header "=== Dateiname ===" davor. Beantworte Fragen des Bearbeiters AUSSCHLIESSLICH basierend auf diesen Texten. Wenn die Frage einen Vergleich zwischen Anhängen erfordert, mache den Vergleich konkret und nenne IMMER welcher Anhang die Quelle ist (z.B. „Laut Otis-Vertrag: X · Laut Schindler-Angebot: Y"). Wenn die Antwort in keinem der Texte steht, sag das ehrlich. Antworte präzise und auf Deutsch.\n\nPDF-Texte:\n---\n' + state.text.slice(0, 100000) + '\n---'
+          : 'Du bekommst den Volltext eines PDF-Anhangs (Wartungsvertrag, Angebot, Rechnung o.ä.) der einer Email beilag. Beantworte Fragen des Bearbeiters AUSSCHLIESSLICH basierend auf diesem Text. Wenn die Antwort nicht im Text steht, sag das ehrlich („Steht nicht im Vertrag" o.ä.). Antworte präzise, kurz und auf Deutsch. Zitiere konkrete Werte/Klauseln aus dem Text wenn möglich.\n\nPDF-Text:\n---\n' + state.text.slice(0, 60000) + '\n---',
         messages: state.messages,
       }),
     });
@@ -11205,6 +11212,9 @@ async function _eiAttQaSend(emailId, idx) {
     state.messages.push({ role: 'assistant', content: answer });
     loadingEl.style.cssText = 'align-self:flex-start;background:#fff;border:1px solid #e2e8f0;color:#0f172a;border-radius:14px;border-bottom-left-radius:4px;padding:10px 14px;font-size:13px;line-height:1.55;max-width:85%;white-space:pre-wrap;box-shadow:0 1px 2px rgba(15,24,48,.04)';
     loadingEl.textContent = answer;
+    // V12.364: Nach erfolgreicher Antwort den Zusammenfassung-Button sichtbar machen
+    const sumRow = document.getElementById('attQaSummaryRow');
+    if (sumRow) sumRow.style.display = 'block';
   } catch (e) {
     loadingEl.style.cssText = 'align-self:flex-start;background:#fef2f2;border:1px solid #fca5a5;color:#9F1B1F;border-radius:14px;padding:10px 14px;font-size:13px;line-height:1.5;max-width:85%';
     loadingEl.textContent = '⚠ ' + e.message;
@@ -11215,6 +11225,170 @@ async function _eiAttQaSend(emailId, idx) {
   }
 }
 window._eiAttQaSend = _eiAttQaSend;
+
+// V12.364: Zusammenfassung aller bisherigen Q&A-Antworten erstellen + in Zwischenablage kopieren
+async function _eiAttQaSummarize(key) {
+  const state = (window._eiAttQa || {})[key];
+  if (!state) { showToast('Q&A-State nicht gefunden', 'error'); return; }
+  if (!state.messages.length) { showToast('Noch keine Fragen gestellt', 'info', 2500); return; }
+  const sumBtn = document.querySelector('#attQaSummaryRow button');
+  const chat = document.getElementById('attQaChat');
+  if (sumBtn) { sumBtn.disabled = true; sumBtn.style.opacity = '.65'; sumBtn.textContent = '⏳ Generiere …'; }
+  // Loading-Bubble
+  const loadingEl = document.createElement('div');
+  loadingEl.style.cssText = 'align-self:stretch;background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-top:6px';
+  loadingEl.textContent = '📋 ⏳ Fasse Antworten zusammen …';
+  if (chat) { chat.appendChild(loadingEl); chat.scrollTop = chat.scrollHeight; }
+  try {
+    if (!APP_KEYS.anthropicKey) throw new Error('Anthropic-Key fehlt');
+    const summaryMessages = state.messages.concat([{
+      role: 'user',
+      content: 'Fasse alle bisherigen Antworten kompakt zusammen — gut formatiert für E-Mail, Slack oder Notiz. Nutze Bullet-Points (•) oder kurze Absätze. Lass die Fragen weg, nur die wichtigsten Fakten/Werte/Klauseln. Antworte DIREKT mit der Zusammenfassung, keine Einleitung wie „Hier ist die Zusammenfassung". Wenn nur eine einzige Frage gestellt wurde, gib einfach die Antwort kompakt wieder.' + (state.multi ? ' Wenn mehrere Anhänge verglichen wurden, strukturiere die Zusammenfassung nach Anhängen oder als Vergleichstabelle.' : '')
+    }]);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1500,
+        system: 'Du verdichtest eine Q&A-Session zu einem PDF-Anhang (oder mehreren) zu einer kompakten Zusammenfassung. Quelle ist der Anhang-Text + die Q&A-History. Schreibe auf Deutsch, formatiert für sofortiges Copy-Paste in eine E-Mail oder Notiz.\n\nAnhang-Text:\n---\n' + state.text.slice(0, 80000) + '\n---',
+        messages: summaryMessages,
+      }),
+    });
+    if (!resp.ok) {
+      let errBody = '';
+      try { errBody = await resp.text(); } catch (_) {}
+      throw new Error('Claude HTTP ' + resp.status + ': ' + errBody.slice(0, 200));
+    }
+    const data = await resp.json();
+    const summary = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    if (!summary) throw new Error('Leere Antwort');
+    // Loading-Bubble durch Summary-Box ersetzen
+    loadingEl.style.cssText = 'align-self:stretch;background:#fef3c7;border:1px solid #fcd34d;color:#0f172a;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap;margin-top:6px;box-shadow:0 1px 3px rgba(217,119,6,.15)';
+    loadingEl.innerHTML = '';
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:10.5px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px';
+    header.innerHTML = '<span>📋 Zusammenfassung · ' + (state.messages.length / 2 | 0) + ' Q&A-Paar' + ((state.messages.length / 2 | 0) === 1 ? '' : 'e') + '</span>';
+    const copyBtn = document.createElement('button');
+    copyBtn.style.cssText = 'background:#fff;border:1px solid #fcd34d;color:#92400e;border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit';
+    copyBtn.textContent = '📋 Erneut kopieren';
+    copyBtn.onclick = () => {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(summary).then(() => showToast('✓ Erneut in Zwischenablage', 'success', 2000));
+      }
+    };
+    header.appendChild(copyBtn);
+    loadingEl.appendChild(header);
+    const body = document.createElement('div');
+    body.textContent = summary;
+    loadingEl.appendChild(body);
+    if (chat) chat.scrollTop = chat.scrollHeight;
+    // In Zwischenablage kopieren — mit Fallback
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(summary).then(
+        () => showToast('✓ Zusammenfassung in Zwischenablage kopiert', 'success', 2500),
+        () => {
+          try {
+            const fb = document.createElement('textarea');
+            fb.value = summary; fb.style.position = 'fixed'; fb.style.left = '-9999px';
+            document.body.appendChild(fb); fb.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(fb);
+            showToast(ok ? '✓ Zusammenfassung kopiert' : 'Kopieren fehlgeschlagen', ok ? 'success' : 'error', 2500);
+          } catch (_) { showToast('Kopieren fehlgeschlagen', 'error', 2500); }
+        }
+      );
+    } else {
+      try {
+        const fb = document.createElement('textarea');
+        fb.value = summary; fb.style.position = 'fixed'; fb.style.left = '-9999px';
+        document.body.appendChild(fb); fb.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(fb);
+        showToast(ok ? '✓ Zusammenfassung kopiert' : 'Kopieren fehlgeschlagen', ok ? 'success' : 'error', 2500);
+      } catch (_) {}
+    }
+  } catch (e) {
+    loadingEl.style.background = '#fef2f2';
+    loadingEl.style.borderColor = '#fca5a5';
+    loadingEl.style.color = '#9F1B1F';
+    loadingEl.textContent = '⚠ Zusammenfassung fehlgeschlagen: ' + e.message;
+  } finally {
+    if (sumBtn) { sumBtn.disabled = false; sumBtn.style.opacity = '1'; sumBtn.textContent = '📋 Zusammenfassung erneut erstellen + kopieren'; }
+  }
+}
+window._eiAttQaSummarize = _eiAttQaSummarize;
+
+// V12.364: Q&A-Modal über ALLE PDF-Anhänge einer Email — nutzt nur die bereits
+// extrahierten Texte (kein automatisches OCR für noch nicht extrahierte). Quelle:
+// pro Datei ein "=== Dateiname ===" Header + Text, alles konkateniert.
+async function openAllAttachmentsQaModal(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  const attList = Array.isArray(r.attachments) ? r.attachments : [];
+  const pdfs = attList.filter(a => {
+    const fname = a.filename || a.name || '';
+    return /\.pdf$/i.test(fname) && !isAttachmentIgnored(r, fname);
+  });
+  if (!pdfs.length) { showToast('Keine PDF-Anhänge in dieser Email', 'info', 3000); return; }
+  let cache = {};
+  try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
+  if (!cache || typeof cache !== 'object') cache = {};
+  const withText    = pdfs.filter(a => String(cache[a.filename || a.name] || '').trim());
+  const withoutText = pdfs.filter(a => !String(cache[a.filename || a.name] || '').trim());
+  if (!withText.length) {
+    showToast('Noch kein Anhang-Text extrahiert. Pro Anhang einmal „🔍 Fragen" klicken — der Text wird gecached.', 'warning', 6000);
+    return;
+  }
+  const existing = document.getElementById('attQaModal');
+  if (existing) try { existing.remove(); } catch (_) {}
+  const ov = document.createElement('div');
+  ov.id = 'attQaModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6500;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+  const fileListShort = withText.map(a => a.filename || a.name).join(' · ');
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(780px,96vw);height:min(85vh,800px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">'
+    + '<div style="background:#1a3a5c;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
+    +   '<div style="min-width:0;flex:1">'
+    +     '<div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;font-weight:700">🔍 Fragen über ALLE Anhänge</div>'
+    +     '<div style="font-size:13.5px;font-weight:700;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + _esc(fileListShort) + '">' + withText.length + ' PDF' + (withText.length === 1 ? '' : 's') + ' · ' + _esc(fileListShort) + '</div>'
+    +   '</div>'
+    +   '<button onclick="(function(){var m=document.getElementById(\'attQaModal\');if(m)m.remove();})()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 10px;line-height:1;flex-shrink:0">✕</button>'
+    + '</div>'
+    + '<div id="attQaStatus" style="padding:10px 22px;border-bottom:1px solid #bbf7d0;font-size:12px;color:#15803d;background:#f0fdf4;flex-shrink:0">✓ ' + withText.length + ' Anhang' + (withText.length === 1 ? '' : 'e') + ' aus Cache geladen' + (withoutText.length ? ' · ⚠ ' + withoutText.length + ' noch nicht extrahiert (übersprungen — vorher pro Anhang „🔍 Fragen" klicken)' : '') + '</div>'
+    + '<div id="attQaChat" style="flex:1;overflow-y:auto;padding:14px 22px;background:#fafbfc;display:flex;flex-direction:column;gap:10px">'
+    +   '<div id="attQaPlaceholder" style="text-align:center;color:#94a3b8;font-size:12px;padding:30px 14px;line-height:1.6">Stell Fragen über alle ' + withText.length + ' Anhänge.<br><span style="font-size:11px">Beispiele: <em>Vergleiche die Preise</em> · <em>Welcher Anbieter ist günstiger?</em> · <em>Welche Konditionen sind unterschiedlich?</em></span></div>'
+    + '</div>'
+    + '<div id="attQaSummaryRow" style="display:none;padding:8px 22px;border-top:1px solid #e2e8f0;background:#fef3c7;flex-shrink:0">'
+    +   '<button onclick="_eiAttQaSummarize(\'' + emailId + ':*\')" style="background:#d97706;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">📋 Zusammenfassung erstellen + kopieren</button>'
+    +   '<span style="margin-left:10px;font-size:11px;color:#92400e">Fasst alle bisherigen Antworten zusammen.</span>'
+    + '</div>'
+    + '<div style="padding:12px 22px;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0">'
+    +   '<div style="display:flex;gap:8px;align-items:flex-end">'
+    +     '<textarea id="attQaInput" placeholder="Frage über alle Anhänge stellen …" rows="2" onkeydown="if(event.key===\'Enter\'&&(event.metaKey||event.ctrlKey)){event.preventDefault();_eiAttQaSend(\'' + emailId + '\',\'*\');}" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;line-height:1.4;resize:vertical;outline:none;color:#0f172a"></textarea>'
+    +     '<button id="attQaSendBtn" onclick="_eiAttQaSend(\'' + emailId + '\',\'*\')" style="background:#1a3a5c;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">Senden</button>'
+    +   '</div>'
+    +   '<div style="font-size:11px;color:#94a3b8;margin-top:6px">Antworten basieren auf den extrahierten Texten aller ' + withText.length + ' Anhänge · ⌘+Enter sendet.</div>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  // Konkatenierten Text mit Dateinamen-Headern bauen
+  const text = withText.map(a => {
+    const fn = a.filename || a.name || 'Anhang';
+    return '=== ' + fn + ' ===\n' + String(cache[fn] || '').trim();
+  }).join('\n\n');
+  // Q&A-State (multi-Mode aktiv)
+  window._eiAttQa = window._eiAttQa || {};
+  window._eiAttQa[emailId + ':*'] = { text, messages: [], fname: 'Alle Anhänge (' + withText.length + ')', multi: true };
+  const ta = document.getElementById('attQaInput');
+  if (ta) ta.focus();
+}
+window.openAllAttachmentsQaModal = openAllAttachmentsQaModal;
 
 async function attachVollmachtToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -35664,10 +35838,19 @@ function renderEmailInboxDetail() {
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Hinzufügen
       </button>`;
+    // V12.364: Über alle Anhänge fragen — nur wenn ≥2 PDF-Anhänge (und mind. 1 bereits extrahiert,
+    // sonst bringt's nichts). Button ist optisch passend zum lila „🔍 Fragen"-Pro-Anhang-Button.
+    const _pdfCount = _attList.filter(a => {
+      const fn = a.filename || a.name || '';
+      return /\.pdf$/i.test(fn) && !isAttachmentIgnored(r, fn);
+    }).length;
+    const _allBtn = _pdfCount >= 2
+      ? `<button onclick="openAllAttachmentsQaModal('${r._id}')" title="🔍 Fragen über ALLE PDF-Anhänge dieser Email gleichzeitig stellen — z.B. um Verträge/Angebote zu vergleichen. Nutzt die bereits extrahierten Texte aus dem Cache." style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px;margin-right:6px">🔍 Über alle ${_pdfCount} fragen</button>`
+      : '';
     html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
       <div class="dr-section-head" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
         <div class="dr-section-title">📎 Anhänge${_attList.length ? `<span class="dr-section-title__count">${_attList.length}</span>` : ''}</div>
-        ${_uploadBtn}
+        <div style="display:inline-flex;align-items:center">${_allBtn}${_uploadBtn}</div>
       </div>`;
     if (!_attList.length) {
       html += `<div style="background:var(--dr-surface-alt);border:1px dashed var(--dr-border);border-radius:var(--dr-r-sm);padding:18px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px;line-height:1.5">
