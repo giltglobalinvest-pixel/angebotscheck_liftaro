@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.338';
+const APP_VERSION = 'V12.339';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32158,9 +32158,9 @@ Formuliere die fertige Nachricht jetzt — direkt, kein Vortext.`;
       if (sigBox) {
         if (sigText && sigText.trim()) {
           sigBox.style.display = 'block';
-          sigBox.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;gap:6px">'
-            + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>'
-            + 'Signatur — wird beim Senden automatisch angehängt'
+          sigBox.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:6px">'
+            + '<span style="display:inline-flex;align-items:center;gap:6px"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>Signatur — wird beim Senden automatisch angehängt</span>'
+            + '<button onclick="if(typeof openBearbeiterEditor===\'function\')openBearbeiterEditor()" title="Signatur fuer diesen Bearbeiter dauerhaft anpassen" style="background:#fff;border:1px solid #c4b5fd;color:#5b21b6;border-radius:5px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:0;text-transform:none">✍ Anpassen</button>'
             + '</div>'
             + '<div style="background:#f5f3ff;border:1px dashed #c4b5fd;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#475569;line-height:1.6;white-space:pre-wrap;font-family:inherit">' + _esc(sigText.trim()) + '</div>';
         } else {
@@ -32330,9 +32330,9 @@ async function generateEmailReplyAi(emailId) {
       if (sigBox) {
         if (sigText && sigText.trim()) {
           sigBox.style.display = 'block';
-          sigBox.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;gap:6px">'
-            + '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>'
-            + 'Signatur — wird beim Senden automatisch angehängt'
+          sigBox.innerHTML = '<div style="font-size:10.5px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:6px">'
+            + '<span style="display:inline-flex;align-items:center;gap:6px"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>Signatur — wird beim Senden automatisch angehängt</span>'
+            + '<button onclick="if(typeof openBearbeiterEditor===\'function\')openBearbeiterEditor()" title="Signatur fuer diesen Bearbeiter dauerhaft anpassen" style="background:#fff;border:1px solid #c4b5fd;color:#5b21b6;border-radius:5px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:0;text-transform:none">✍ Anpassen</button>'
             + '</div>'
             + '<div style="background:#f5f3ff;border:1px dashed #c4b5fd;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#475569;line-height:1.6;white-space:pre-wrap;font-family:inherit">' + _esc(sigText.trim()) + '</div>';
         } else {
