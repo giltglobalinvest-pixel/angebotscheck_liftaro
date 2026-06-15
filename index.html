@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.331';
+const APP_VERSION = 'V12.332';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34319,10 +34319,13 @@ async function applyAufzugAnalysis(recId) {
 
 // Helper: kopiert die für eine sinnvolle Email-Kopie nötigen Felder
 function _eiCloneEmailFields(r) {
-  // V12.212: Number-Felder dürfen NICHT als String kopiert werden — sonst 422 von Airtable.
+  // V12.212/V12.332: Number-Felder dürfen NICHT als String kopiert werden — sonst 422.
+  // V12.332: 'is_forwarded' rausgenommen — Airtable speichert es als Checkbox/Boolean,
+  // unser String-Cast triggert "Field cannot accept the provided value" (422). Die Kopie
+  // muss diese Markierung auch nicht erben — sie ist eine NEUE Mail-Instanz.
   const KEEP_STR = ['subject','from_email','from_name','to_email','received_at','body','body_text','body_html','body_preview',
     'message_id','ki_classification','ki_summary',
-    'attachment_filenames','status','direction','is_forwarded','forwarded_via','raw_subject',
+    'attachment_filenames','status','direction','forwarded_via','raw_subject',
     'vorgaenge_json','linked_check_ids',
     'real_from_name','real_from_email','real_hv_firma','real_hv_email','real_hv_tel','real_anliegen','real_kategorie','ai_quick_at',
     'attachments_ignored',
@@ -35977,19 +35980,94 @@ async function splitVorgangIntoNewEmail(recId, vIdx) {
   }
 }
 
+// V12.331/V12.332: Anhang-Picker-Modal — User wählt, welche Anhänge in die Kopie
+// uebernommen werden sollen. Promise resolved mit Array selected Anhängen (oder
+// false bei Abbruch). Zeigt sowohl Original- als auch neutralisierte Anhänge.
+function _eiPickAttachmentsForCopy(r) {
+  return new Promise((resolve) => {
+    const orig = Array.isArray(r.attachments) ? r.attachments : [];
+    const neut = Array.isArray(r.neutralized_attachments) ? r.neutralized_attachments : [];
+    if (!orig.length && !neut.length) { resolve({ orig: [], neut: [] }); return; }
+    const fmtKb = (b) => (b > 0 ? (b/1024).toFixed(0) + ' KB' : '');
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6700;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    const rowOf = (a, idx, group) => {
+      const fn = a.filename || a.name || ('Anhang_' + (idx + 1));
+      return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;cursor:pointer">
+        <input type="checkbox" checked data-group="${group}" data-idx="${idx}" style="width:17px;height:17px;accent-color:#7c3aed;cursor:pointer">
+        <span style="font-size:13px;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(fn)}</span>
+        ${a.size ? `<span style="font-size:11px;color:#94a3b8;font-family:var(--dr-f-mono)">${fmtKb(a.size)}</span>` : ''}
+        ${group === 'neut' ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700">🕶 neutralisiert</span>' : ''}
+      </label>`;
+    };
+    overlay.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(540px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+      <div style="background:#0f172a;color:#fff;padding:14px 20px">
+        <div style="font-size:15px;font-weight:700">📎 Welche Anhänge in die Kopie übernehmen?</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">Haken setzen für jeden Anhang, der in der duplizierten Email landet. Mit dem zweiten Aufzug verknüpfst du dort dann den richtigen Vertrag.</div>
+      </div>
+      <div style="padding:14px 18px;background:#f8fafc;overflow:auto;flex:1">
+        ${orig.length ? `<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Original-Anhänge (${orig.length})</div>${orig.map((a,i) => rowOf(a, i, 'orig')).join('')}` : ''}
+        ${neut.length ? `<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 6px">Neutralisierte Anhänge (${neut.length})</div>${neut.map((a,i) => rowOf(a, i, 'neut')).join('')}` : ''}
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button id="lvDupAllOn"  style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:5px 11px;font-size:11.5px;cursor:pointer">✓ Alle</button>
+          <button id="lvDupAllOff" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:5px 11px;font-size:11.5px;cursor:pointer">✕ Keine</button>
+        </div>
+      </div>
+      <div style="padding:14px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
+        <button id="lvDupCancel" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer">Abbrechen</button>
+        <button id="lvDupOk"     style="background:#7c3aed;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">Kopie erstellen</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#lvDupCancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
+    overlay.querySelector('#lvDupAllOn').onclick  = () => overlay.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = true);
+    overlay.querySelector('#lvDupAllOff').onclick = () => overlay.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = false);
+    overlay.querySelector('#lvDupOk').onclick = () => {
+      const picked = { orig: [], neut: [] };
+      overlay.querySelectorAll('input[type="checkbox"]').forEach(c => {
+        if (!c.checked) return;
+        const idx = parseInt(c.dataset.idx, 10);
+        if (c.dataset.group === 'orig' && orig[idx]) picked.orig.push(orig[idx]);
+        if (c.dataset.group === 'neut' && neut[idx]) picked.neut.push(neut[idx]);
+      });
+      document.body.removeChild(overlay);
+      resolve(picked);
+    };
+    overlay.onclick = (e) => { if (e.target === overlay) { document.body.removeChild(overlay); resolve(false); } };
+  });
+}
+window._eiPickAttachmentsForCopy = _eiPickAttachmentsForCopy;
+
 // V12.331: Email für einen WEITEREN Aufzug duplizieren — typischer Fall: eine HV
 // schickt eine Mail mit zwei Wartungsverträgen zu zwei verschiedenen Aufzügen, die
-// KI hat aber nur den ersten erkannt (oder beide in einen Vorgang gepackt). User
-// klickt diesen Button → eine Kopie der Email entsteht mit der GLEICHEN HV-Zuordnung
-// (vorgaenge_json wird übernommen), aber LEEREM Aufzug-Slot. Der User kann dann in
-// der Kopie den zweiten Aufzug zuordnen und daraus einen eigenen Check anlegen.
+// KI hat aber nur den ersten erkannt (oder beide in einen Vorgang gepackt).
+// V12.332: Mit Anhang-Auswahl + Retry bei 422-Field-Errors.
 async function duplicateEmailForAnotherAufzug(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) { showToast('Email nicht gefunden', 'error', 3000); return; }
-  if (!confirm('Diese Email für einen weiteren Aufzug duplizieren?\n\n• Hausverwaltungs-Zuordnung bleibt erhalten\n• Aufzug-Slot wird LEER — du wählst in der Kopie den anderen Aufzug\n• Anhänge werden übernommen\n• Verlinkte Checks und interne Notizen werden NICHT mitkopiert\n\nFortfahren?')) return;
+  // V12.332: Anhang-Picker statt simpler confirm
+  const picked = await _eiPickAttachmentsForCopy(r);
+  if (picked === false) return; // User abgebrochen
   showToast('📑 Kopie wird erstellt …', 'info', 1800);
   try {
     const copyFields = (typeof _eiCloneEmailFields === 'function') ? _eiCloneEmailFields(r) : Object.assign({}, r);
+    // V12.332: Anhänge nur die ausgewählten übernehmen
+    if (picked.orig && picked.orig.length) {
+      copyFields.attachments = picked.orig
+        .filter(a => a && a.url)
+        .map(a => ({ url: String(a.url), filename: String(a.filename || a.name || 'Anhang') }));
+    } else {
+      delete copyFields.attachments;
+    }
+    if (picked.neut && picked.neut.length) {
+      copyFields.neutralized_attachments = picked.neut
+        .filter(a => a && a.url)
+        .map(a => ({ url: String(a.url), filename: String(a.filename || a.name || 'Anhang') }));
+    } else {
+      delete copyFields.neutralized_attachments;
+    }
+    const totalAtt = (picked.orig ? picked.orig.length : 0) + (picked.neut ? picked.neut.length : 0);
+    copyFields.attachment_count = totalAtt;
     // HV-Zuordnung übernehmen (vorgaenge_json bleibt), aber Aufzug-Bezug aus dem
     // ersten Vorgang entfernen, damit beim Check-Erstellen der neue Aufzug greift.
     try {
@@ -36033,7 +36111,26 @@ async function duplicateEmailForAnotherAufzug(recId) {
     // ai_subject ist ein dynamisches Computed-Subject (typ/anliegen) — wir nullen es,
     // damit beim nächsten Render das eigene Subject mit dem Suffix gewinnt.
     copyFields.ai_subject = '';
-    const created = await atWrite('Emails', copyFields);
+    // V12.332: Retry-Helper — bei 422 „Field X cannot accept the provided value" bzw.
+    // „Unknown field name: X" das problematische Feld droppen und nochmal versuchen.
+    // So überleben wir Schema-Unterschiede zwischen Bases, ohne dass die ganze Kopie scheitert.
+    const _safeWrite = async (payload) => {
+      try {
+        return await atWrite('Emails', payload);
+      } catch (e) {
+        const msg = String((e && e.message) || '');
+        const m = msg.match(/Field\s+"([^"]+)"\s+cannot accept/i)
+               || msg.match(/Unknown field name:\s*"([^"]+)"/i);
+        if (m && Object.prototype.hasOwnProperty.call(payload, m[1])) {
+          console.warn('[V12.332] Drop incompatible field „' + m[1] + '" and retry');
+          const reduced = Object.assign({}, payload);
+          delete reduced[m[1]];
+          if (Object.keys(reduced).length) return _safeWrite(reduced);
+        }
+        throw e;
+      }
+    };
+    const created = await _safeWrite(copyFields);
     const newRecId = (created && created.id) ? created.id : '';
     showToast('✓ Kopie erstellt — wird gleich geladen, dann bitte Aufzug zuordnen', 'success', 4000);
     // Posteingang neu laden, Detail-View auf die Kopie wechseln
