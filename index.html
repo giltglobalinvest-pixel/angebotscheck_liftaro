@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.357';
+const APP_VERSION = 'V12.358';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7763,6 +7763,9 @@ async function setupTables() {
       // V12.278: Ignorierte Anhänge — Filenames (newline-getrennt), die NICHT in KI-Flows
       // (Schnell-Check, Neutralisierung) und nicht im Chat-Picker auftauchen sollen
       { name: 'attachments_ignored',           type: 'multilineText' },
+      // V12.358: Pro Anhang extrahierter Text als JSON {filename: extractedText} — Cache, damit
+      // das Fragen-stellen-Modal das PDF nicht jedes Mal neu extrahieren muss.
+      { name: 'attachment_texts_json',         type: 'multilineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
@@ -10897,6 +10900,164 @@ function copyLeistungsumfangToClipboard(emailId) {
   }
 }
 window.copyLeistungsumfangToClipboard = copyLeistungsumfangToClipboard;
+
+// V12.358: PDF-Anhang öffnen + Fragen stellen (Q&A-Modal).
+// Erstmal: Text aus PDF extrahieren (pdfjs) und in attachment_texts_json speichern.
+// Folge-Aufrufe: Cache nutzen, KEINE neue Extraktion. Claude beantwortet nur auf Basis
+// des extrahierten Texts.
+async function openAttachmentQaModal(emailId, idx) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  const a = (Array.isArray(r.attachments) ? r.attachments : [])[idx];
+  if (!a) { showToast('Anhang nicht gefunden', 'error'); return; }
+  const fname = a.filename || a.name || 'Anhang';
+  const url = a.url || '';
+  if (!url) { showToast('Anhang ohne URL', 'error'); return; }
+  // Modal aufbauen
+  const existing = document.getElementById('attQaModal');
+  if (existing) try { existing.remove(); } catch (_) {}
+  const ov = document.createElement('div');
+  ov.id = 'attQaModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6500;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(720px,96vw);height:min(85vh,800px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">'
+    + '<div style="background:#1a3a5c;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
+    +   '<div style="min-width:0;flex:1">'
+    +     '<div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;font-weight:700">🔍 Fragen zum Anhang</div>'
+    +     '<div style="font-size:14.5px;font-weight:700;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(fname) + '</div>'
+    +   '</div>'
+    +   '<button onclick="(function(){var m=document.getElementById(\'attQaModal\');if(m)m.remove();})()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 10px;line-height:1;flex-shrink:0">✕</button>'
+    + '</div>'
+    + '<div id="attQaStatus" style="padding:10px 22px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;background:#f8fafc;flex-shrink:0">⏳ Extrahiere Text aus PDF …</div>'
+    + '<div id="attQaChat" style="flex:1;overflow-y:auto;padding:14px 22px;background:#fafbfc;display:flex;flex-direction:column;gap:10px">'
+    +   '<div id="attQaPlaceholder" style="text-align:center;color:#94a3b8;font-size:12px;padding:30px 14px;line-height:1.6">Sobald die Extraktion fertig ist, kannst du Fragen stellen.<br><span style="font-size:11px">Beispiele: <em>Wie viele Wartungen pro Jahr?</em> · <em>Wie wird abgerechnet?</em> · <em>Ist der Notruf enthalten?</em></span></div>'
+    + '</div>'
+    + '<div style="padding:12px 22px;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0">'
+    +   '<div style="display:flex;gap:8px;align-items:flex-end">'
+    +     '<textarea id="attQaInput" placeholder="Was möchtest du wissen?" rows="2" disabled onkeydown="if(event.key===\'Enter\'&&(event.metaKey||event.ctrlKey)){event.preventDefault();_eiAttQaSend(\'' + emailId + '\',' + idx + ');}" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;line-height:1.4;resize:vertical;outline:none;color:#0f172a"></textarea>'
+    +     '<button id="attQaSendBtn" onclick="_eiAttQaSend(\'' + emailId + '\',' + idx + ')" disabled style="background:#cbd5e1;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:not-allowed;font-family:inherit;flex-shrink:0">Senden</button>'
+    +   '</div>'
+    +   '<div style="font-size:11px;color:#94a3b8;margin-top:6px">Antworten basieren ausschließlich auf dem Text dieses Anhangs · ⌘+Enter sendet.</div>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  // Cache prüfen + ggf. extrahieren
+  try {
+    let cache = {};
+    try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
+    if (!cache || typeof cache !== 'object') cache = {};
+    let text = String(cache[fname] || '').trim();
+    const statusEl = document.getElementById('attQaStatus');
+    if (text) {
+      if (statusEl) statusEl.innerHTML = '✓ Text aus Cache (' + text.length.toLocaleString('de-DE') + ' Zeichen) · Fragen jetzt möglich';
+    } else {
+      if (statusEl) statusEl.innerHTML = '⏳ Lade & extrahiere PDF (kann 5–15s dauern) …';
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Download HTTP ' + resp.status);
+      const buf = await resp.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true, disableAutoFetch: true }).promise;
+      const parts = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        parts.push(tc.items.map(it => it.str || '').join(' '));
+      }
+      text = parts.join('\n\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      if (!text) throw new Error('Kein Text extrahierbar — vermutlich Scan-PDF ohne OCR');
+      cache[fname] = text;
+      try {
+        const json = JSON.stringify(cache);
+        await atUpdate('Emails', emailId, { attachment_texts_json: json });
+        r.attachment_texts_json = json;
+      } catch (saveErr) { console.warn('[V12.358] attachment_texts_json speichern:', saveErr.message); }
+      if (statusEl) statusEl.innerHTML = '✓ Extrahiert + gespeichert (' + text.length.toLocaleString('de-DE') + ' Zeichen) · Fragen jetzt möglich';
+    }
+    // Input freischalten
+    const ta = document.getElementById('attQaInput');
+    const btn = document.getElementById('attQaSendBtn');
+    if (ta) { ta.disabled = false; ta.focus(); }
+    if (btn) { btn.disabled = false; btn.style.background = '#1a3a5c'; btn.style.cursor = 'pointer'; }
+    // Q&A-State pro Modal
+    window._eiAttQa = window._eiAttQa || {};
+    window._eiAttQa[emailId + ':' + idx] = { text, messages: [], fname };
+  } catch (e) {
+    console.error('[V12.358] PDF-Extraktion:', e);
+    const statusEl = document.getElementById('attQaStatus');
+    if (statusEl) {
+      statusEl.innerHTML = '⚠ Extraktion fehlgeschlagen: ' + _esc(e.message);
+      statusEl.style.color = '#a8312f';
+      statusEl.style.background = '#fef2f2';
+    }
+  }
+}
+window.openAttachmentQaModal = openAttachmentQaModal;
+
+async function _eiAttQaSend(emailId, idx) {
+  const key = emailId + ':' + idx;
+  const state = (window._eiAttQa || {})[key];
+  if (!state) return;
+  const ta = document.getElementById('attQaInput');
+  const btn = document.getElementById('attQaSendBtn');
+  const chat = document.getElementById('attQaChat');
+  if (!ta || !btn || !chat) return;
+  const question = String(ta.value || '').trim();
+  if (!question) return;
+  // Placeholder ausblenden beim ersten Send
+  const ph = document.getElementById('attQaPlaceholder');
+  if (ph) try { ph.remove(); } catch (_) {}
+  // User-Bubble
+  const userBubble = document.createElement('div');
+  userBubble.style.cssText = 'align-self:flex-end;max-width:75%;background:#1a3a5c;color:#fff;border-radius:14px;border-bottom-right-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45;white-space:pre-wrap';
+  userBubble.textContent = question;
+  chat.appendChild(userBubble);
+  chat.scrollTop = chat.scrollHeight;
+  ta.value = '';
+  ta.disabled = true; btn.disabled = true; btn.style.background = '#94a3b8'; btn.style.cursor = 'not-allowed'; btn.textContent = '…';
+  // Loading-Bubble
+  const loadingEl = document.createElement('div');
+  loadingEl.style.cssText = 'align-self:flex-start;background:#f1f5f9;color:#64748b;border-radius:14px;border-bottom-left-radius:4px;padding:8px 13px;font-size:13px;line-height:1.45';
+  loadingEl.textContent = '⏳ Denke nach …';
+  chat.appendChild(loadingEl);
+  chat.scrollTop = chat.scrollHeight;
+  // Claude-Call
+  state.messages.push({ role: 'user', content: question });
+  try {
+    if (!APP_KEYS.anthropicKey) throw new Error('Anthropic-Key fehlt — bitte im Setup eintragen');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 800,
+        system: 'Du bekommst den Volltext eines PDF-Anhangs (Wartungsvertrag, Angebot, Rechnung o.ä.) der einer Email beilag. Beantworte Fragen des Bearbeiters AUSSCHLIESSLICH basierend auf diesem Text. Wenn die Antwort nicht im Text steht, sag das ehrlich („Steht nicht im Vertrag" o.ä.). Antworte präzise, kurz und auf Deutsch. Zitiere konkrete Werte/Klauseln aus dem Text wenn möglich.\n\nPDF-Text:\n---\n' + state.text.slice(0, 60000) + '\n---',
+        messages: state.messages,
+      }),
+    });
+    if (!resp.ok) {
+      let errBody = '';
+      try { errBody = await resp.text(); } catch (_) {}
+      throw new Error('Claude HTTP ' + resp.status + ': ' + errBody.slice(0, 200));
+    }
+    const data = await resp.json();
+    const answer = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim() || '(keine Antwort)';
+    state.messages.push({ role: 'assistant', content: answer });
+    loadingEl.style.cssText = 'align-self:flex-start;background:#fff;border:1px solid #e2e8f0;color:#0f172a;border-radius:14px;border-bottom-left-radius:4px;padding:10px 14px;font-size:13px;line-height:1.55;max-width:85%;white-space:pre-wrap;box-shadow:0 1px 2px rgba(15,24,48,.04)';
+    loadingEl.textContent = answer;
+  } catch (e) {
+    loadingEl.style.cssText = 'align-self:flex-start;background:#fef2f2;border:1px solid #fca5a5;color:#9F1B1F;border-radius:14px;padding:10px 14px;font-size:13px;line-height:1.5;max-width:85%';
+    loadingEl.textContent = '⚠ ' + e.message;
+  } finally {
+    ta.disabled = false; btn.disabled = false; btn.style.background = '#1a3a5c'; btn.style.cursor = 'pointer'; btn.textContent = 'Senden';
+    ta.focus();
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
+window._eiAttQaSend = _eiAttQaSend;
 
 async function attachVollmachtToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
@@ -35343,6 +35504,7 @@ function renderEmailInboxDetail() {
           <button onclick="toggleAttachmentIgnore('${r._id}','${_esc(fname).replace(/'/g, '&#39;')}')" title="${ignored ? 'Wieder aktivieren — KI darf den Anhang nutzen' : 'Ignorieren — KI überspringt diesen Anhang im Schnell-Check & Chat-Picker'}" style="background:#fff;border:1px solid ${ignored ? '#86efac' : '#fca5a5'};color:${ignored ? '#166534' : '#9F1B1F'};border-radius:7px;padding:8px 10px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='${ignored ? '#dcfce7' : '#fee2e2'}'" onmouseout="this.style.background='#fff'">
             ${ignored ? '✓' : '🚫'}
           </button>
+          ${isPdf && !ignored ? `<button onclick="openAttachmentQaModal('${r._id}',${idx})" title="🔍 Fragen zum PDF stellen — Text wird einmal extrahiert + gespeichert, dann KI-Q&A (z.B. Wartungsanzahl, Abrechnungsmodus, Notruf-Inklusion)" style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🔍 Fragen</button>` : ''}
           ${isPdf && !ignored ? `<button id="neutralizeBtn_${idx}" onclick="openNeutralizePromptDialog('${r._id}',${idx})" title="PDF KI-anonymisieren — Prompt vor dem Start anpassbar" style="background:#0f172a;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px">🕶 Neutralisieren</button>` : ''}
           <button onclick="deleteEmailAttachment('${r._id}',${idx})" title="Anhang löschen" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:8px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff'">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
