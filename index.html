@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.368';
+const APP_VERSION = 'V12.369';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -24359,8 +24359,26 @@ function getAufzugForm() {
 
 async function saveAufzug() {
   const d = getAufzugForm();
-  if (!d.fabriknummer) { showToast('Fabriknummer ist Pflicht', 'error'); return; }
-  if (!d.hv_pipedrive_org_id) { showToast('Bitte erst eine Hausverwaltung auswählen', 'error'); return; }
+  // V12.369: Klarere Validierung. Bei NEUEM Aufzug bleiben beide Felder Pflicht.
+  // Bei UPDATE eines bestehenden Records (d._recordId vorhanden) ist die HV-Zuordnung
+  // optional — der User kann z.B. nur Notiz/Standort/Hersteller anpassen, ohne dass
+  // eine fehlende HV-Zuordnung den Save blockiert. Plus: Fehler-Toasts länger sichtbar +
+  // Scroll zum fehlenden Feld + visueller Highlight-Pulse.
+  const focusField = (id, label) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } catch (_) {}
+    const old = el.style.boxShadow;
+    el.style.transition = 'box-shadow .3s';
+    el.style.boxShadow = '0 0 0 4px rgba(168,49,47,.35)';
+    setTimeout(() => { el.style.boxShadow = old || ''; }, 1500);
+    showToast('⚠ ' + label + ' fehlt — bitte ausfüllen', 'error', 5000);
+  };
+  if (!d.fabriknummer) { focusField('az_fabriknummer', 'Fabriknummer'); return; }
+  if (!d._recordId && !d.hv_pipedrive_org_id) {
+    focusField('az_firma', 'Hausverwaltung (bei neuem Aufzug Pflicht)');
+    return;
+  }
   // V12.135: GLOBALE Eindeutigkeit (Fabriknummer) prüfen — egal welche HV.
   // Eine Fabriknummer ist physisch eindeutig (vom Hersteller gestanzt). Bei
   // Verwalterwechsel: bestehender Eintrag wird upgedatet, nicht dupliziert.
