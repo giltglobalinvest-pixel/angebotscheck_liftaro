@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.335';
+const APP_VERSION = 'V12.336';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34718,7 +34718,7 @@ function renderEmailInboxDetail() {
       </div>
     </div>
     <div style="font-size:12px;color:var(--dr-ink-soft);line-height:1.65;display:flex;flex-wrap:wrap;gap:14px">
-      <div>${monoMeta('Von:', _esc(r.from_name ? `${r.from_name} <${r.from_email}>` : r.from_email))}</div>
+      <div style="display:inline-flex;align-items:center;gap:6px">${monoMeta('Von:', _esc(r.from_name ? `${r.from_name} <${r.from_email}>` : r.from_email))}<button onclick="openEmailSenderEditor('${r._id}')" title="Absender manuell anpassen (Name + Email)" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:5px;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit" onmouseover="this.style.borderColor='#2456E5';this.style.color='#2456E5'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">✎</button></div>
       <div>${monoMeta('Empfangen:', _esc(String(r.received_at||'').replace('T',' ').slice(0,16)))}</div>
       <div>${monoMeta('Confidence:', _esc(conf))}</div>
       <div>${monoMeta('KI-Kosten:', cost + ' €')}</div>
@@ -35709,6 +35709,98 @@ async function setEmailBearbeiter(recId, name) {
   }
 }
 window.setEmailBearbeiter = setEmailBearbeiter;
+
+// V12.336: Absender manuell anpassen — typischer Fall: KI hat bei Forward den
+// Sammel-Account als from_email erkannt, der UR-Absender steht aber im Body.
+// Modal mit Name + Email, Speichern updated from_name/from_email in Airtable.
+// Achtung: das Threading (in_reply_to / chat_email_id) bleibt unverändert — der
+// User soll das nur anpassen, wenn er sicher ist (z.B. Anzeige korrigieren oder
+// Reply-Adresse fixen).
+function openEmailSenderEditor(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) { showToast('Email nicht gefunden', 'error', 3000); return; }
+  let m = document.getElementById('emailSenderEditorModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'emailSenderEditorModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6900;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+    document.body.appendChild(m);
+    m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+  }
+  const currName = String(r.from_name || '').trim();
+  const currMail = String(r.from_email || '').trim();
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(520px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+    <div style="background:#0f172a;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <div style="font-size:15px;font-weight:700">✎ Absender anpassen</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:3px">Manuelle Korrektur der „Von:"-Anzeige · ändert das Antwort-Ziel beim nächsten Reply.</div>
+      </div>
+      <button onclick="document.getElementById('emailSenderEditorModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px 22px;background:#f8fafc;overflow:auto">
+      <div style="margin-bottom:14px">
+        <label style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Name</label>
+        <input id="emailSenderName" type="text" value="${_esc(currName)}" placeholder="z. B. Elke Folk" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Email</label>
+        <input id="emailSenderMail" type="email" value="${_esc(currMail)}" placeholder="z. B. elke.folk@elfo-hv.com" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff">
+      </div>
+      <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:7px;padding:9px 12px;font-size:11.5px;color:#92400e;line-height:1.5">
+        <strong>Hinweis:</strong> Diese Änderung gilt nur für die Anzeige im Postfach + Reply-Adresse. Die ursprüngliche Empfangs-Adresse im Mail-Header bleibt unverändert (Threading kaputt machen vermeiden).
+      </div>
+    </div>
+    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="document.getElementById('emailSenderEditorModal').style.display='none'" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
+      <button onclick="_saveEmailSenderEdit('${recId}')" style="background:#2456E5;border:none;color:#fff;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+  setTimeout(() => { const inp = document.getElementById('emailSenderName'); if (inp) inp.focus(); }, 80);
+}
+window.openEmailSenderEditor = openEmailSenderEditor;
+
+async function _saveEmailSenderEdit(recId) {
+  const nameEl = document.getElementById('emailSenderName');
+  const mailEl = document.getElementById('emailSenderMail');
+  const newName = String((nameEl && nameEl.value) || '').trim();
+  const newMail = String((mailEl && mailEl.value) || '').trim();
+  if (newMail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newMail)) {
+    showToast('Email-Format ungültig', 'warning', 3000);
+    return;
+  }
+  try {
+    const r = (_eiAllRecords || []).find(x => x._id === recId);
+    if (!r) throw new Error('Email-Record nicht im Speicher');
+    const patch = { from_name: newName, from_email: newMail };
+    // V12.336: Retry-Helper für inkompatible Felder (analog V12.333)
+    const _safeUpdate = async (payload) => {
+      try { return await atUpdate('Emails', recId, payload); }
+      catch (e) {
+        const msg = String((e && e.message) || '');
+        const m = msg.match(/Field\s+"([^"]+)"\s+cannot accept/i) || msg.match(/Unknown field name:\s*"([^"]+)"/i);
+        if (m && Object.prototype.hasOwnProperty.call(payload, m[1])) {
+          const reduced = Object.assign({}, payload);
+          delete reduced[m[1]];
+          if (Object.keys(reduced).length) return _safeUpdate(reduced);
+        }
+        throw e;
+      }
+    };
+    await _safeUpdate(patch);
+    r.from_name = newName;
+    r.from_email = newMail;
+    const mo = document.getElementById('emailSenderEditorModal');
+    if (mo) mo.style.display = 'none';
+    showToast('✓ Absender angepasst', 'success', 2400);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList   === 'function') renderEmailInboxList();
+  } catch (e) {
+    console.error('[V12.336] _saveEmailSenderEdit:', e);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+window._saveEmailSenderEdit = _saveEmailSenderEdit;
 
 async function setEmailCheckStatus(recId, val) {
   try {
