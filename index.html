@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.334';
+const APP_VERSION = 'V12.335';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29747,7 +29747,17 @@ function _renderEmailTimeline(r) {
       // Reply (outgoing) — von uns gesendet. Unterscheide Antwort an Original-Absender vs. Weiterleitung an Dritten.
       const x = it.payload;
       const bearbeiter = String(x.bearbeiter_name || 'Liftaro').trim();
-      const bodyTrim = String(x.body || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      // V12.335: Newlines erhalten — vorher \s+ → Space kollabiert, Body war flach.
+      // Außerdem html_body bevorzugen wenn vorhanden — dann sieht User EXAKT was gesendet wurde (inkl. Signatur).
+      const rawBody = String(x.body || '');
+      const htmlBody = String(x.body_html || '').trim();
+      const fmtBody  = rawBody
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')  // nur Multi-Spaces normalisieren, NEWLINES STEHEN LASSEN
+        .trim();
+      const MAX = 4000;
+      const bodyTrim = fmtBody.length > MAX ? fmtBody.slice(0, MAX) : fmtBody;
+      const truncated = fmtBody.length > MAX;
       // V12.198: Label anhand der Empfänger-Adresse — Antwort an Original-Absender oder Weiterleitung
       const toEmail = String(x.to_email || '').trim().toLowerCase();
       const origFrom = String(r.from_email || '').trim().toLowerCase();
@@ -29764,7 +29774,9 @@ function _renderEmailTimeline(r) {
             <button onclick="event.stopPropagation();deleteChatBubble('${r._id}','email:${x._id}')" title="Diese ${isForward ? 'Weiterleitung' : 'Antwort'} löschen" style="background:transparent;border:none;color:#86efac;cursor:pointer;font-size:14px;padding:0 4px;line-height:1" onmouseover="this.style.color='#a8312f'" onmouseout="this.style.color='#86efac'">✕</button>
           </div>
           <div style="font-size:11.5px;color:#15803d;margin-bottom:6px"><strong>Betreff:</strong> ${_esc(x.subject || '')}</div>
-          <div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0">${_esc(bodyTrim)}${String(x.body || '').length > 600 ? '<span style="color:#64748b">…</span>' : ''}</div>
+          ${htmlBody
+            ? `<div style="font-size:13px;color:#0f172a;line-height:1.55;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0;max-height:480px;overflow-y:auto" data-html="${_esc(htmlBody)}"></div>`
+            : `<div style="font-size:13px;color:#0f172a;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;background:#fff;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0;max-height:480px;overflow-y:auto">${_esc(bodyTrim)}${truncated ? '<div style="color:#64748b;margin-top:6px;font-size:11px">… ' + (fmtBody.length - MAX).toLocaleString('de-DE') + ' weitere Zeichen ausgeblendet</div>' : ''}</div>`}
         </div>
       </div>`;
     }
@@ -29923,8 +29935,8 @@ function _renderEmailComposer(r) {
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
       </div>
-      <!-- V12.193: Signatur-Anzeige (bei Reply + Forward sichtbar) -->
-      <div id="ei_composer_sig_row" style="display:none;padding:8px 14px;border-top:1px solid #f1f5f9;background:#f8fafc">${_renderSignaturePreview()}</div>
+      <!-- V12.193/V12.335: Signatur-Anzeige standardmaeszig SICHTBAR (Reply ist Default-Tab) -->
+      <div id="ei_composer_sig_row" style="display:block;padding:8px 14px;border-top:1px solid #f1f5f9;background:#f8fafc">${_renderSignaturePreview()}</div>
       <!-- V12.193: Forward-Vorschau (nur bei Forward sichtbar) -->
       <div id="ei_composer_fwd_preview" style="display:none;padding:0 14px 14px;background:#f8fafc;border-top:1px solid #f1f5f9">${_renderForwardPreview(r)}</div>
     </div>
