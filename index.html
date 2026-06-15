@@ -6413,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.369';
+const APP_VERSION = 'V12.370';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32489,6 +32489,98 @@ async function _eiAiSubjectSave(recId) {
 //   3) Bei Match → übernehmen; bei Miss → upsertAufzug mit HV-Org-ID
 //   4) Bei mehreren Aufzügen wird die Email gesplittet — pro Aufzug eine eigene
 //      Kopie. Original behält den ersten Aufzug.
+// V12.370: KI-Extraktion des nächstmöglichen Kündigungsdatums aus den Anhang-Texten
+// (Wartungsvertrag o.ä.). Speichert das ermittelte Datum + Notiz „Vertragscheck L-XX"
+// direkt auf dem zugeordneten Aufzug-Record. Nutzt den Anhang-Text-Cache (V12.358) —
+// wenn der noch leer ist, muss der User vorher „🔍 Über alle Anhänge fragen" klicken
+// (oder einzelne PDFs öffnen), damit pdfjs+OCR die Texte cachen.
+async function runAiKuendigungAnalysis(recId) {
+  const r = (_eiAllRecords || []).find(x => x._id === recId);
+  if (!r) return;
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt — bitte im Setup eintragen', 'error', 4500); return; }
+  if (!r.aufzug_record_id) {
+    showToast('Erst einen Aufzug zuordnen — das Kündigungsdatum wird dort gespeichert.', 'warning', 5500);
+    return;
+  }
+  const btn = document.getElementById('ei_ai_kuendigung_btn');
+  const out = document.getElementById('ei_ai_kuendigung_result');
+  const setBtn = (label, dis) => { if (!btn) return; btn.disabled = !!dis; btn.style.opacity = dis ? '.7' : '1'; btn.textContent = label; };
+  setBtn('⏳ Analysiere …', true);
+  if (out) out.innerHTML = '<div style="font-size:11.5px;color:#7c3aed;padding:4px 0">⏳ Suche Kündigungsfrist + Laufzeit in den Vertrags-Texten …</div>';
+  try {
+    let cache = {};
+    try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
+    const pdfs = (Array.isArray(r.attachments) ? r.attachments : []).filter(a => {
+      const fn = a.filename || a.name || '';
+      return /\.pdf$/i.test(fn) && !isAttachmentIgnored(r, fn);
+    });
+    const textChunks = [];
+    for (const a of pdfs) {
+      const fn = a.filename || a.name || '';
+      const t = String((cache && cache[fn]) || '').trim();
+      if (t) textChunks.push('=== ' + fn + ' ===\n' + t);
+    }
+    if (!textChunks.length) {
+      throw new Error('Noch kein Anhang-Text extrahiert. Bitte erst „🔍 Über alle Anhänge fragen" oder pro Anhang „🔍 Fragen" klicken — danach hat die KI Vertrags-Text zum Auswerten.');
+    }
+    const fullText = textChunks.join('\n\n');
+    const today = new Date().toISOString().slice(0, 10);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 600,
+        system: 'Du analysierst Wartungsverträge / Serviceverträge für Aufzugsanlagen und ermittelst das NÄCHSTMÖGLICHE KÜNDIGUNGSDATUM.\n\nDefinition: Das ist das letzte Datum, an dem die Kündigung beim Anbieter eingegangen sein muss, damit der Vertrag zum frühestmöglichen Termin endet.\n\nVorgehen:\n1. Finde Vertragslaufzeit (Startdatum + Mindestlaufzeit + Verlängerungs-Regel)\n2. Finde Kündigungsfrist (z. B. „3 Monate vor Vertragsablauf, schriftlich")\n3. Heute ist ' + today + '. Berechne: nächster Vertragsablauf-Termin minus Kündigungsfrist = nächstes Kündigungsdatum\n4. Wenn der nächste Ablauftermin in der Vergangenheit liegt → springe zum übernächsten (laut Verlängerungsregel, z. B. „verlängert sich um 12 Monate")\n5. Berücksichtige Vertragsverlängerungen die im Vertrag markiert oder unterzeichnet sind\n\nAntworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n{\n  "kuendigung_naechste_datum": "YYYY-MM-DD oder leer wenn nicht ermittelbar",\n  "begruendung": "kurze Erklärung der Berechnung (max 220 Zeichen)"\n}\n\nWenn keine Kündigungsklausel oder Laufzeit im Text steht, gib leere Werte zurück.',
+        messages: [{ role: 'user', content: 'Vertrags-Texte aus den Anhängen:\n---\n' + fullText.slice(0, 80000) + '\n---' }],
+      }),
+    });
+    if (!resp.ok) {
+      let errBody = '';
+      try { errBody = await resp.text(); } catch (_) {}
+      throw new Error('Claude HTTP ' + resp.status + ': ' + errBody.slice(0, 150));
+    }
+    const data = await resp.json();
+    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed = null;
+    try { parsed = JSON.parse(cleaned); }
+    catch (_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
+    if (!parsed) throw new Error('Konnte KI-Antwort nicht als JSON parsen');
+    const datum = String(parsed.kuendigung_naechste_datum || '').trim();
+    const begruendung = String(parsed.begruendung || '').trim();
+    if (!datum) {
+      if (out) out.innerHTML = '<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#9a3412;margin-top:8px">⚠ Kein Kündigungsdatum im Vertrag gefunden' + (begruendung ? ' — ' + _esc(begruendung) : '') + '</div>';
+      return;
+    }
+    // Notiz aus L-ID / external_check_id
+    const checkId = (typeof _eiCheckIdForSubject === 'function') ? _eiCheckIdForSubject(r) : String(r.email_id || '').trim();
+    const notiz = checkId ? ('Vertragscheck ' + checkId) : '';
+    // Auf Aufzug-Record speichern
+    await atUpdate('Aufzuege', r.aufzug_record_id, {
+      kuendigung_naechste_datum: datum,
+      kuendigung_notiz: notiz,
+    });
+    if (out) out.innerHTML = '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#15803d;margin-top:8px">'
+      + '<div><strong>✓ Auf Aufzug Fn ' + _esc(r.aufzug_fabriknummer || '?') + ' gespeichert:</strong></div>'
+      + '<div style="margin-top:4px;font-family:var(--dr-f-mono);font-size:13px;color:#0f172a">📅 ' + _esc(datum) + (notiz ? ' · ' + _esc(notiz) : '') + '</div>'
+      + (begruendung ? '<div style="font-size:11.5px;color:#16a34a;margin-top:6px;line-height:1.5">💡 ' + _esc(begruendung) + '</div>' : '')
+      + '</div>';
+    showToast('✓ Kündigungsdatum am Aufzug gespeichert: ' + datum, 'success', 4000);
+  } catch (e) {
+    console.error('[V12.370] runAiKuendigungAnalysis:', e);
+    if (out) out.innerHTML = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#9F1B1F;margin-top:8px;line-height:1.5">⚠ ' + _esc(e.message) + '</div>';
+  } finally {
+    setBtn('Kündigung erkennen', false);
+  }
+}
+window.runAiKuendigungAnalysis = runAiKuendigungAnalysis;
+
 async function runAiAufzugAnalysis(recId) {
   const r = (_eiAllRecords || []).find(x => x._id === recId);
   if (!r) return;
@@ -36364,11 +36456,17 @@ function renderEmailInboxDetail() {
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
           Betreff strukturieren
         </button>
+        <!-- V12.370: Kündigungs-Schnellbutton — extrahiert Datum aus Vertrag und speichert am Aufzug -->
+        <button id="ei_ai_kuendigung_btn" onclick="runAiKuendigungAnalysis('${r._id}')" title="Aus den Vertrags-Anhängen das nächstmögliche Kündigungsdatum ermitteln und am zugeordneten Aufzug speichern (kuendigung_naechste_datum + Notiz „Vertragscheck L-XX"). Voraussetzung: Anhang-Texte müssen vorher per „🔍 Über alle Anhänge fragen" extrahiert worden sein." style="background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(220,38,38,.35)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Kündigung erkennen
+        </button>
       </div>
     </div>
     <div id="ei_ai_quick_result">${aiCached ? _renderAiQuickResult(aiCached) : ''}</div>
     <div id="ei_ai_aufzug_result"></div>
     <div id="ei_ai_subject_result">${(r.ai_subject || r.ai_subject_typ) ? _renderAiSubjectResult(r) : ''}</div>
+    <div id="ei_ai_kuendigung_result"></div>
   </div>`;
 
   // V12.168/V12.306: Externer Verweis — per Feature-Toggle ausblendbar (data-feature)
