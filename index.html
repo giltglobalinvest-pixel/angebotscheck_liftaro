@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.343';
+const APP_VERSION = 'V12.344';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34631,6 +34631,20 @@ function _eiDisplayHV(r) {
       secondary: String(assigned.assigned_org_email || assigned.kunde_email || '').trim(),
       source:    'assigned',
       orgId:     String(assigned.assigned_org_id || ''),
+      pdStatus:  pdStatus || 'matched',
+    };
+  }
+  // V12.344: Email-Level Fallback — HV-Zuordnung wurde vorher manuell bestätigt
+  // (oder per Auto-Match), Vorgang wurde aber verworfen. confirmed_hv_* bleibt
+  // bestehen und triggert grüne Liste-Pille, konsistent zur Detail-View.
+  const confOrgId   = String(r.confirmed_hv_org_id   || '').trim();
+  const confOrgName = String(r.confirmed_hv_org_name || '').trim();
+  if (confOrgId && confOrgName) {
+    return {
+      primary:   confOrgName,
+      secondary: String(r.confirmed_hv_email || '').trim(),
+      source:    'assigned',
+      orgId:     confOrgId,
       pdStatus:  pdStatus || 'matched',
     };
   }
