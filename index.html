@@ -4123,10 +4123,9 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="chat_antwort"   onclick="setEiFilter('chat_antwort')"  ><span class="ei-side-dot" style="background:#0891b2;animation:eiNeuPulse 1.6s ease-in-out infinite"></span><span class="ei-side-lbl">💬 Chat-Antworten</span><span class="ei-side-cnt" id="eiSideCnt_chat_antwort">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:6px 10px"></div>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
-            <button class="ei-side-item" data-status="gesichtet"      onclick="setEiFilter('gesichtet')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">Gesichtet</span><span class="ei-side-cnt" id="eiSideCnt_gesichtet">0</span></button>
+            <!-- V12.371: „Gesichtet" + „Geantwortet" entfernt — werden in „In Bearbeitung" zusammengefasst -->
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
             <button class="ei-side-item" data-status="wartend"        onclick="setEiFilter('wartend')"       ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Wartend</span><span class="ei-side-cnt" id="eiSideCnt_wartend">0</span></button>
-            <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#22c55e"></span><span class="ei-side-lbl">Geantwortet</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
             <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
@@ -6413,7 +6412,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.370';
+const APP_VERSION = 'V12.371';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29220,6 +29219,16 @@ function _restoreEmailInboxListState() {
   } catch (_) {}
 }
 
+// V12.371: Status-Mapping — „gesichtet" und „geantwortet" wurden aus dem UI entfernt
+// und werden auf „in_bearbeitung" zusammengefasst. Bestehende DB-Records mit diesen
+// Werten erscheinen damit automatisch unter „In Bearbeitung" — ohne Migration.
+const _EI_STATUS_NORMALIZE = { gesichtet: 'in_bearbeitung', geantwortet: 'in_bearbeitung' };
+function _eiNormStatus(s) {
+  const k = String(s || 'neu');
+  return Object.prototype.hasOwnProperty.call(_EI_STATUS_NORMALIZE, k) ? _EI_STATUS_NORMALIZE[k] : k;
+}
+window._eiNormStatus = _eiNormStatus;
+
 // V12.177: Sidebar-Counts pro Status auf Basis aller geladenen Emails
 function _eiUpdateSidebarCounts() {
   const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
@@ -29257,7 +29266,8 @@ function _eiUpdateSidebarCounts() {
       }
     }
   }
-  let cAlle = 0, cSent = 0, byStatus = { neu:0, gesichtet:0, in_bearbeitung:0, wartend:0, geantwortet:0, verworfen:0 };
+  // V12.371: 'gesichtet' und 'geantwortet' werden in 'in_bearbeitung' zusammengefasst
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, in_bearbeitung:0, wartend:0, verworfen:0 };
   for (const r of all) {
     if (!r) continue;
     // V12.214: outgoing-Records zählen nur für den "Gesendet"-Filter — nicht für die Status-Counter
@@ -29265,14 +29275,13 @@ function _eiUpdateSidebarCounts() {
     // V12.362: Thread- und Chat-Antworten skippen (siehe oben)
     if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
     cAlle++;
-    const s = (r.status || 'neu');
+    // V12.371: Normalisierung — 'gesichtet'/'geantwortet' → 'in_bearbeitung'
+    const s = _eiNormStatus(r.status || 'neu');
     if (s in byStatus) byStatus[s]++;
   }
   set('eiSideCnt_neu',            byStatus.neu);
-  set('eiSideCnt_gesichtet',      byStatus.gesichtet);
   set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
   set('eiSideCnt_wartend',        byStatus.wartend);
-  set('eiSideCnt_geantwortet',    byStatus.geantwortet);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
   set('eiSideCnt_alle',           cAlle);
   set('eiSideCnt_gesendet',       cSent);
@@ -30066,7 +30075,8 @@ function _eiFiltered() {
     if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r));
   } else {
-    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (r.status || 'neu') === _eiFilter);
+    // V12.371: Normalisierung — alte „gesichtet"/„geantwortet"-Records erscheinen unter „in_bearbeitung"
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiNormStatus(r.status || 'neu') === _eiFilter);
   }
   base = dropThreaded(base);
   // V12.215: Email-Typ-Filter (gilt für alle Status-Filter außer "gesendet")
@@ -30417,20 +30427,19 @@ function renderEmailInboxList() {
       // Falls aktueller Bearbeiter nicht in der Liste → trotzdem als Option zeigen (Backward-Compat)
       const bearbOpts = curBearb && !bearbList.includes(curBearb) ? [curBearb, ...bearbList] : bearbList;
       const optEsc = (v) => _esc(String(v));
-      // V12.354: Status-Set synchron zur Sidebar (Posteingang) — minus 'gesendet'
-      // ('gesendet' ist direction='outgoing', kein Status-Wert).
+      // V12.371: Status-Set ohne „Gesichtet"/„Geantwortet" — werden in „In Bearbeitung"
+      // zusammengefasst. Alte Records mit diesen Werten zeigen wir im Dropdown als
+      // „In Bearbeitung" an (Normalisierung via _eiNormStatus).
       const statusOpts = [
         { val: 'neu',            label: 'Neu' },
-        { val: 'gesichtet',      label: 'Gesichtet' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
-        { val: 'geantwortet',    label: 'Geantwortet' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
-      // Backward-Compat: falls noch ein anderer Status drinsteht (z. B. 'gesendet') → als Option anbieten
-      const _knownStatus = ['neu','gesichtet','in_bearbeitung','wartend','geantwortet','verworfen'];
-      if (curStatus && !_knownStatus.includes(curStatus)) {
-        statusOpts.unshift({ val: curStatus, label: ({ gesendet: 'Gesendet' })[curStatus] || curStatus });
+      const _curStatusDisplay = _eiNormStatus(curStatus);
+      const _knownStatus = ['neu','in_bearbeitung','wartend','verworfen'];
+      if (_curStatusDisplay && !_knownStatus.includes(_curStatusDisplay)) {
+        statusOpts.unshift({ val: _curStatusDisplay, label: ({ gesendet: 'Gesendet' })[_curStatusDisplay] || _curStatusDisplay });
       }
       const checkOpts = [
         { val: '',               label: '—' },
@@ -30452,7 +30461,7 @@ function renderEmailInboxList() {
       const statusSel = renderSel(
         'st_' + r._id,
         statusOpts,
-        curStatus,
+        _curStatusDisplay,
         'setEmailStatus(\'' + r._id + '\', this.value)'
       );
       const bearbSelOpts = [
@@ -31289,17 +31298,18 @@ async function quickReplyToEmail(recId, bodyText, opts) {
       }
       await atWrite('Emails', outRec);
     } catch (e) { console.warn('[V12.189] Verlauf-Eintrag fehlgeschlagen:', e.message); }
-    // Status auf "geantwortet" setzen
+    // V12.371: Status auf "in_bearbeitung" setzen (vorher 'geantwortet' — User wollte
+    // beide Auto-Status-Werte in „In Bearbeitung" zusammenfassen).
     try {
       await atUpdate('Emails', r._id, {
-        status:           'geantwortet',
+        status:           'in_bearbeitung',
         status_at:        sentAt,
         replied_at:       sentAt,
         replied_subject:  replySubject,
         replied_body:     bodyText.slice(0, 95000),
         bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
       });
-      r.status = 'geantwortet';
+      r.status = 'in_bearbeitung';
       r.replied_at = sentAt;
     } catch (_) {}
     showToast('✓ Antwort gesendet an ' + toAddr, 'success', 3000);
@@ -36141,18 +36151,18 @@ function renderEmailInboxDetail() {
       // Zurück-Springen ändern müssen.
       const curStatus = String(r.status || 'neu');
       const curCheck  = String(r.check_status || '');
-      // V12.354: Status-Set synchron zur Sidebar (Posteingang) — minus 'gesendet'
+      // V12.371: Status-Set ohne „Gesichtet"/„Geantwortet" — werden in „In Bearbeitung"
+      // zusammengefasst. Alte Records werden via _eiNormStatus auf in_bearbeitung gemapped.
       const statusOptsHdr = [
         { val: 'neu',            label: 'Neu' },
-        { val: 'gesichtet',      label: 'Gesichtet' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
-        { val: 'geantwortet',    label: 'Geantwortet' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
-      const _knownStatusHdr = ['neu','gesichtet','in_bearbeitung','wartend','geantwortet','verworfen'];
-      if (curStatus && !_knownStatusHdr.includes(curStatus)) {
-        statusOptsHdr.unshift({ val: curStatus, label: ({ gesendet: 'Gesendet' })[curStatus] || curStatus });
+      const _curStatusHdrDisplay = _eiNormStatus(curStatus);
+      const _knownStatusHdr = ['neu','in_bearbeitung','wartend','verworfen'];
+      if (_curStatusHdrDisplay && !_knownStatusHdr.includes(_curStatusHdrDisplay)) {
+        statusOptsHdr.unshift({ val: _curStatusHdrDisplay, label: ({ gesendet: 'Gesendet' })[_curStatusHdrDisplay] || _curStatusHdrDisplay });
       }
       const checkOptsHdr = [
         { val: '',               label: '—' },
@@ -36173,7 +36183,7 @@ function renderEmailInboxDetail() {
       return `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--dr-divider);display:flex;flex-wrap:wrap;gap:14px;align-items:center">
         <div style="display:inline-flex;align-items:center;gap:6px">
           <span style="font-family:var(--dr-f-mono);font-size:10px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Status</span>
-          ${renderSelHdr(statusOptsHdr, curStatus, "setEmailStatus('" + r._id + "', this.value)")}
+          ${renderSelHdr(statusOptsHdr, _curStatusHdrDisplay, "setEmailStatus('" + r._id + "', this.value)")}
         </div>
         <div style="display:inline-flex;align-items:center;gap:6px">
           <span style="font-family:var(--dr-f-mono);font-size:10px;color:var(--dr-ink-mute);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Check-Status</span>
@@ -40030,9 +40040,9 @@ async function doSendEmailReply() {
     // V12.117: Im Test-Modus Postfach-Status NICHT verändern
     const isTest = !!(_erContext && _erContext.testMode);
     if (!isTest) {
-      // 4. Email-Record updaten
+      // 4. Email-Record updaten — V12.371: Status auf 'in_bearbeitung' (statt 'geantwortet')
       await atUpdate('Emails', r._id, {
-        status:           'geantwortet',
+        status:           'in_bearbeitung',
         status_at:        new Date().toISOString(),
         replied_at:       new Date().toISOString(),
         replied_subject:  subject,
@@ -40040,7 +40050,7 @@ async function doSendEmailReply() {
         bearbeiter_name:  _eiCurrentUserName(),
       });
       // State lokal
-      r.status          = 'geantwortet';
+      r.status          = 'in_bearbeitung';
       r.replied_at      = new Date().toISOString();
       r.replied_subject = subject;
       r.replied_body    = body;
