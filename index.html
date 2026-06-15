@@ -4110,6 +4110,8 @@ const pdfWorkerReady = Promise.resolve();</script>
         <div style="padding:22px 18px 26px;border-bottom:1px solid rgba(255,255,255,.08)">
           <div style="font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1;color:#fff">liftaro<span style="color:#7dc242">.</span></div>
           <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:5px;letter-spacing:.02em">Wir schaffen Transparenz.</div>
+          <!-- V12.363: App-Version dezent unter der Tagline -->
+          <div id="eiSideVersion" style="font-size:10.5px;color:rgba(255,255,255,.4);margin-top:8px;letter-spacing:.04em;font-family:var(--dr-f-mono);font-weight:600" title="Aktuell installierte App-Version"></div>
         </div>
         <!-- Status-Menü -->
         <div style="padding:14px 10px;flex:1">
@@ -6411,7 +6413,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.362';
+const APP_VERSION = 'V12.363';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28480,6 +28482,8 @@ let _eiSelectedId  = null;      // Airtable-Record-ID der gewählten Email
 
 function openEmailInboxModal() {
   document.getElementById('emailInboxModal').style.display = 'flex';
+  // V12.363: App-Version in der Sidebar anzeigen
+  try { const vEl = document.getElementById('eiSideVersion'); if (vEl) vEl.textContent = (typeof APP_VERSION === 'string' ? APP_VERSION : ''); } catch (_) {}
   setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
   // V12.215: persistierten Typ-Filter im Button-Label anzeigen
   if (typeof setEmailTypFilter === 'function') setEmailTypFilter(window._eiTypFilter || '');
