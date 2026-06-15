@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.337';
+const APP_VERSION = 'V12.338';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35448,19 +35448,46 @@ async function fixEmailUmlauts(recId) {
   if (newHtml !== origHtml) patch.body_html = newHtml;
   if (newBody !== origBody) patch.body      = newBody;
   if (!Object.keys(patch).length) { showToast('Keine Änderung erforderlich', 'info', 2500); return; }
-  // Helper: schreiben mit 422-Retry — beim ersten 422 die unbekannten Felder rauswerfen
-  const tryWrite = async (p) => {
+  // V12.338: Patch-Inhalt loggen für Debug
+  console.log('[V12.338] fixEmailUmlauts patch — recId=' + recId + ', fields=', Object.keys(patch), 'lengths=', {
+    body_text: patch.body_text?.length || 0, body_html: patch.body_html?.length || 0, body: patch.body?.length || 0
+  });
+  // V12.338: Robuster Retry-Helper — analog V12.333. Erkennt sowohl „Unknown field name"
+  // als auch „Field cannot accept" (Datentyp-Mismatch) und droppt das problematische Feld.
+  const tryWrite = async (p, depth) => {
+    depth = depth || 0;
+    if (depth > 6) throw new Error('Zu viele Retry-Versuche — Schema-Konflikt');
     try {
       await atUpdate('Emails', recId, p);
       return p;
     } catch (e) {
       const msg = String((e && e.message) || '');
-      const m = msg.match(/Unknown field name:\s*"([^"]+)"/i);
+      console.warn('[V12.338] atUpdate fehlgeschlagen (depth ' + depth + '):', msg.slice(0, 300));
+      const m = msg.match(/Unknown field name:\s*"([^"]+)"/i)
+             || msg.match(/Field\s+"([^"]+)"\s+cannot accept/i)
+             || msg.match(/Invalid field name:\s*"([^"]+)"/i);
       if (m && Object.prototype.hasOwnProperty.call(p, m[1])) {
         const reduced = Object.assign({}, p);
         delete reduced[m[1]];
-        console.warn('[V12.325] Field „' + m[1] + '" existiert nicht — Retry ohne dieses Feld');
-        if (Object.keys(reduced).length) return tryWrite(reduced);
+        console.warn('[V12.338] Drop „' + m[1] + '" und retry');
+        if (Object.keys(reduced).length) return tryWrite(reduced, depth + 1);
+        throw new Error('Alle Felder waren inkompatibel — nichts gespeichert');
+      }
+      // Length-Limit-Fallback: wenn der gesamte Body zu lang ist (Airtable Cell-Limit
+      // 100.000 Zeichen für Long-Text), trunkieren wir die größten Felder
+      if (/too long|maximum length|cell size|invalid value for column/i.test(msg)) {
+        const reduced = Object.assign({}, p);
+        let trimmed = false;
+        for (const k of Object.keys(reduced)) {
+          if (typeof reduced[k] === 'string' && reduced[k].length > 50000) {
+            reduced[k] = reduced[k].slice(0, 50000) + '\n[…gekürzt durch Umlaute-Fix-Speicherung…]';
+            trimmed = true;
+          }
+        }
+        if (trimmed) {
+          console.warn('[V12.338] Body zu lang — gekürzt und Retry');
+          return tryWrite(reduced, depth + 1);
+        }
       }
       throw e;
     }
@@ -35475,7 +35502,7 @@ async function fixEmailUmlauts(recId) {
     const restMsg = fixedTotal > 0 ? ' · noch ' + fixedTotal + ' offen' : '';
     showToast('✓ ' + repaired + ' kaputte Zeichen repariert' + restMsg, 'success', 4500);
   } catch (e) {
-    console.error('[V12.325] Speichern fehlgeschlagen:', e);
+    console.error('[V12.338] Speichern fehlgeschlagen:', e);
     showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
   }
 }
