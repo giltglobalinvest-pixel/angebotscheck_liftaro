@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.356';
+const APP_VERSION = 'V12.357';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -28282,14 +28282,20 @@ async function _eiBuildHvDocsCache(records) {
     }
   }
   const eucByOid = {};
+  // V12.357: Signed-Status pro Light-Vertrag-ID — damit wir Entwurf vs. unterschriebenen Vertrag
+  // an der Aufzug-Card unterscheiden können (orange „📝 Entwurf" statt grün „✓ Im EuC").
+  window._eiEucVertragSignedById = {};
   // V12.291-Fuzzy-Match: auch Light-Vertraege ohne pipedrive_org_id über Firmenname auflösen
   // wäre hier möglich, aber wir bleiben pragmatisch — die Email hat in der Regel
   // die assigned_org_id, und V12.291 persistiert die org_id beim Save in Light-Vertraege.
   for (const v of lightVertraege || []) {
     const oid = String(v.pipedrive_org_id || '').trim();
-    if (!oid) continue;
+    const lvId = String(v.id || '').trim();
     const atts = Array.isArray(v.vertrag_signed_pdf) ? v.vertrag_signed_pdf : [];
-    if (atts.length && atts[0].url) {
+    const hasSigned = !!(atts.length && atts[0].url);
+    if (lvId) window._eiEucVertragSignedById[lvId] = hasSigned;
+    if (!oid) continue;
+    if (hasSigned) {
       // Jüngsten Vertrag pro HV behalten (savedAt-Sort ist absteigend)
       if (!eucByOid[oid]) eucByOid[oid] = { url: atts[0].url, filename: atts[0].filename || 'EuC-Vertrag.pdf' };
     }
@@ -30855,25 +30861,35 @@ function _renderEmailAssignmentCards(r) {
       </div>`;
   // Aufzug-Kachel
   // V12.311: Grüne Variante wenn Aufzug bereits einem EuC-Vertrag zugewiesen ist
-  const _azBg = azInEuC ? '#f0fdf4' : '#ecfeff';
-  const _azBd = azInEuC ? '#86efac' : '#67e8f9';
-  const _azFg = azInEuC ? '#15803d' : '#0e7490';
+  // V12.357: Bei Entwurf-Verträgen (kein vertrag_signed_pdf) wird die Card amber statt grün.
+  const azEucCache = window._eiEucVertragSignedById || {};
+  const azEucSignedKnown = !!(azEucId && Object.prototype.hasOwnProperty.call(azEucCache, azEucId));
+  const azEucIsDraft = azInEuC && azEucSignedKnown && azEucCache[azEucId] === false;
+  const _azBg = azEucIsDraft ? '#fef3c7' : (azInEuC ? '#f0fdf4' : '#ecfeff');
+  const _azBd = azEucIsDraft ? '#fcd34d' : (azInEuC ? '#86efac' : '#67e8f9');
+  const _azFg = azEucIsDraft ? '#a16207' : (azInEuC ? '#15803d' : '#0e7490');
+  const _azPillBg = azEucIsDraft ? '#fde68a' : '#dcfce7';
+  const _azPillFg = azEucIsDraft ? '#92400e' : '#166534';
+  const _azPillBd = azEucIsDraft ? '#fbbf24' : '#86efac';
   const azCard = hasAufzug
     ? `<div style="background:${_azBg};border:1px solid ${_azBd};border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;min-width:0">
         <svg width="22" height="22" fill="none" stroke="${_azFg}" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h.01M9 12h.01M9 16h.01M15 8h.01M15 12h.01M15 16h.01"/></svg>
         <div style="flex:1;min-width:0">
           <div style="font-size:10.5px;font-weight:700;color:${_azFg};text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            Aufzugsanlage${azInEuC ? ' · IM EUC' : ''}
+            Aufzugsanlage${azInEuC ? (azEucIsDraft ? ' · EUC-ENTWURF' : ' · IM EUC') : ''}
             ${splitCnt > 1 ? `<span style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:9px;padding:0 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">1/${splitCnt}</span>` : ''}
-            ${azInEuC && azEucId ? `<span title="In EuC-Vertrag ${_esc(azEucId)}" style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:9px;padding:0 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">🛡 ${_esc(azEucId)}</span>` : ''}
+            ${azInEuC && azEucId ? `<span title="${azEucIsDraft ? 'Vertrag ist nur Entwurf — unterschriebene Version noch nicht hochgeladen' : 'In unterschriebenem EuC-Vertrag ' + _esc(azEucId)}" style="background:${_azPillBg};color:${_azPillFg};border:1px solid ${_azPillBd};border-radius:9px;padding:0 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">${azEucIsDraft ? '📝' : '🛡'} ${_esc(azEucId)}${azEucIsDraft ? ' · ENTWURF' : ''}</span>` : ''}
           </div>
           ${afn ? `<div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:3px;font-family:var(--dr-f-mono)">Fn ${_esc(afn)}</div>` : ''}
           ${ast ? `<div style="font-size:12.5px;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(ast)}</div>` : ''}
           ${ahr ? `<div style="font-size:11.5px;color:#475569;margin-top:2px">Hersteller: ${_esc(ahr)}</div>` : ''}
+          ${azEucIsDraft ? `<div style="margin-top:6px;font-size:11px;color:#92400e;line-height:1.45">⚠ Der EuC-Vertrag liegt nur als Entwurf vor — die unterschriebene Version ist noch nicht in Airtable hinterlegt.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
           ${azInEuC
-            ? `<button disabled title="Aufzug ist bereits Bestandteil des EuC-Vertrags" style="background:#bbf7d0;border:1px solid #86efac;color:#166534;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:default;font-family:'DM Sans',sans-serif;white-space:nowrap;opacity:.85">✓ Im EuC</button>`
+            ? (azEucIsDraft
+                ? `<button disabled title="EuC-Vertrag ist nur Entwurf — sobald die unterschriebene Version hochgeladen wird, schaltet die Card auf '✓ Im EuC' um" style="background:#fde68a;border:1px solid #fcd34d;color:#92400e;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:default;font-family:'DM Sans',sans-serif;white-space:nowrap;opacity:.95">📝 EuC: Entwurf</button>`
+                : `<button disabled title="Aufzug ist bereits Bestandteil des unterschriebenen EuC-Vertrags" style="background:#bbf7d0;border:1px solid #86efac;color:#166534;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:default;font-family:'DM Sans',sans-serif;white-space:nowrap;opacity:.85">✓ Im EuC</button>`)
             : `<button type="button" data-action="push-euc-aufzug" data-email-id="${r._id}" onclick="(function(b){try{console.log('[V12.317] click handler',b.dataset.emailId);if(typeof pushAufzugToEuC==='function'){pushAufzugToEuC(b.dataset.emailId);}else if(typeof window.pushAufzugToEuC==='function'){window.pushAufzugToEuC(b.dataset.emailId);}else{console.error('[V12.317] pushAufzugToEuC nicht definiert');alert('Push-Funktion nicht geladen — bitte App neu laden');}}catch(e){console.error('[V12.317] click failed:',e);alert('Push-Fehler: '+e.message);}})(this)" title="Diesen Aufzug an den EuC-Vertrag der zugeordneten HV hängen" style="background:#16a34a;border:none;color:#fff;border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🛡 Zu EuC pushen</button>`}
           <button onclick="openAufzugPickerForEmail('${r._id}')" title="Aus existierenden Aufzügen auswählen" style="background:#fff;border:1px solid ${_azBd};color:${_azFg};border-radius:6px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🔍 Auswählen</button>
           <button onclick="runAiAufzugAnalysis('${r._id}')" title="Aufzug per KI neu erkennen" style="background:transparent;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">🤖 KI ändern</button>
