@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.358';
+const APP_VERSION = 'V12.359';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -10302,6 +10302,48 @@ async function neutralizeEmailAttachment(emailId, attIdx, opts) {
 }
 window.neutralizeEmailAttachment = neutralizeEmailAttachment;
 
+// V12.359: WinAnsi-Sanitize-Helper — pdf-lib's StandardFontEmbedder kann nur Latin-1 (+ ein
+// paar WinAnsi-Specials). Confusables aus LLM-Output (kyrillisch / griechisch / smart quotes)
+// werden auf ihre lateinischen Pendants gemappt; alles weitere Non-Latin-1 wird zu '?'.
+// Verhindert "WinAnsi cannot encode 'т' (0x0442)"-Fehler beim Rendern.
+function _winAnsiSafe(s) {
+  if (s == null) return '';
+  const conf = {
+    // Kyrillisch confusables (Kleinbuchstaben)
+    'а':'a','е':'e','о':'o','с':'c','р':'p','х':'x','у':'y','к':'k','т':'t','м':'m','н':'h','в':'B','і':'i','ӏ':'l','ѕ':'s','ј':'j','ԛ':'q','ԝ':'w',
+    // Kyrillisch confusables (Großbuchstaben)
+    'А':'A','Е':'E','О':'O','С':'C','Р':'P','Х':'X','У':'Y','К':'K','Т':'T','М':'M','Н':'H','В':'B','І':'I','Ѕ':'S','Ј':'J',
+    // Griechisch confusables
+    'α':'a','ο':'o','ε':'e','ρ':'p','τ':'t','κ':'k','ν':'v','ι':'i','μ':'u',
+    'Α':'A','Β':'B','Ε':'E','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'N','Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X','Ζ':'Z',
+    // Smart Quotes / Dashes
+    '‘':"'", '’':"'", '‚':',', '‛':"'",
+    '“':'"', '”':'"', '„':'"', '‟':'"',
+    '–':'-', '—':'-', '−':'-', '‒':'-', '―':'-',
+    '…':'...',
+    // Whitespace varianten → normales Space
+    ' ':' ', ' ':' ', ' ':' ', ' ':' ', ' ':' ', ' ':' ',
+    // Zero-width drop
+    '​':'', '‌':'', '‍':'', '﻿':'',
+  };
+  let out = '';
+  for (const ch of String(s)) {
+    if (Object.prototype.hasOwnProperty.call(conf, ch)) { out += conf[ch]; continue; }
+    const code = ch.charCodeAt(0);
+    // ASCII printable + Tab/LF/CR
+    if (code === 0x09 || code === 0x0A || code === 0x0D) { out += ch; continue; }
+    if (code >= 0x20 && code <= 0x7E) { out += ch; continue; }
+    // Latin-1 Supplement (deckt äöüß, € ist 0x20AC = separate WinAnsi-Slot)
+    if (code >= 0xA0 && code <= 0xFF) { out += ch; continue; }
+    // € ist in WinAnsi an 0x80 — separat zulassen
+    if (code === 0x20AC) { out += ch; continue; }
+    // Alles übrige durch Fragezeichen ersetzen
+    out += '?';
+  }
+  return out;
+}
+window._winAnsiSafe = _winAnsiSafe;
+
 // V12.263: Reines PDF-Bauen aus dem Review-Modal-State.
 // Eingabe: { title, anlage:{standort,fabriknummer,hersteller,weitere}, sections:[{heading,content}], notes, sourceFilename }
 // Ausgabe: Uint8Array (PDF-Bytes)
@@ -10336,6 +10378,10 @@ async function _buildNeutralizedPdfBytes(data) {
     const lineH = (o.lineH || size * 1.35);
     const indent = (o.indent || 0);
     const maxW = CONTENT_W - indent;
+    // V12.359: WinAnsi-Sanitize — verhindert "WinAnsi cannot encode" bei kyrillischen /
+    // griechischen Confusables aus KI-Output oder PDF-OCR. Confusables werden auf ihre
+    // lateinischen Pendants gemappt; alles übrige Non-Latin-1 wird zu '?'.
+    txt = (typeof _winAnsiSafe === 'function') ? _winAnsiSafe(txt) : String(txt || '');
     const lines = String(txt).split(/\r?\n/);
     for (const para of lines) {
       if (!para.trim()) { y -= lineH * 0.5; continue; }
