@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.348';
+const APP_VERSION = 'V12.349';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35149,6 +35149,18 @@ function renderEmailInboxDetail() {
       }).catch(() => {});
     }
     html += _eiRenderWartungsnehmerSection(r, _wnImmediate);
+  } else {
+    // V12.349: Dezenter Hinweis, warum der Chat hier (noch) fehlt — sonst wundert
+    // sich der Bearbeiter, wo der Chat-Block geblieben ist. Klick auf den Hinweis
+    // scrollt nach oben zur Aufzug-Card, damit man direkt den Aufzug picken kann.
+    html += `<div onclick="(function(){const c=document.querySelector('[data-feature]')||document.getElementById('emailExtraDetails');if(c){c.scrollIntoView({behavior:'smooth',block:'start'});const az=document.querySelector('button[onclick*=\\'openAufzugPickerForEmail\\']');if(az){az.style.transition='box-shadow .3s';az.style.boxShadow='0 0 0 4px rgba(8,145,178,.35)';setTimeout(()=>{az.style.boxShadow=''},2000)}}})()" style="margin-bottom:14px;padding:12px 14px;background:#ecfeff;border:1px dashed #67e8f9;border-radius:10px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#cffafe'" onmouseout="this.style.background='#ecfeff'">
+      <span style="font-size:18px;flex-shrink:0">💬</span>
+      <div style="flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:#0e7490">
+        <div style="font-weight:700;color:#155e75;margin-bottom:1px">Servicebetrieb-Chat erscheint hier, sobald ein Aufzug zugeordnet ist</div>
+        <div>Der Chat hängt am Aufzug → ohne Aufzug-Zuordnung kein Wartungsnehmer und keine Chat-Threads. Klick → springt zur Aufzug-Card oben.</div>
+      </div>
+      <svg width="16" height="16" fill="none" stroke="#0e7490" stroke-width="2.4" viewBox="0 0 24 24" style="flex-shrink:0"><polyline points="18 15 12 9 6 15"/></svg>
+    </div>`;
   }
 
   // V12.187: Alles Weitere in einen einklappbaren Container
