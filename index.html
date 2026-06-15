@@ -6411,7 +6411,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.347';
+const APP_VERSION = 'V12.348';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -10792,6 +10792,61 @@ function _pickEmailAttachmentsForChat(atts, emailId) {
 //   - HV aus Email-Kontext bekannt + Vollmacht vorhanden  → direkt anhängen
 //   - HV bekannt + keine Vollmacht                        → confirm „jetzt anlegen?"
 //   - HV unbekannt (Email nicht zugeordnet)               → Mini-Picker mit allen vorhandenen Vollmachten
+// V12.348: Schnell-Kopie eines Standard-Blocks für den Servicebetrieb-Chat
+//   Standort + Fabriknummer + HV-Name + Liftaro-Antwort-Adresse
+// Wird vom 📋-Button in der Chat-Toolbar gerufen. Bewusst KEIN Insert ins Textfeld,
+// sondern Clipboard — User pastet das direkt in seine externe Mail/Chat-Plattform.
+function copyServiceBlockToClipboard(emailId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden — bitte Seite neu laden', 'warning', 3500); return; }
+  const standort = String(r.aufzug_standort || '').trim();
+  const fabrikNr = String(r.aufzug_fabriknummer || '').trim();
+  // HV-Name: erst Vorgang, dann Email-Level confirmed_hv_*, dann real_hv_firma
+  let hvName = '';
+  try {
+    const arr = JSON.parse(r.vorgaenge_json || '[]');
+    if (Array.isArray(arr)) {
+      const a = arr.find(x => x && x.assigned_org_name);
+      if (a) hvName = String(a.assigned_org_name).trim();
+    }
+  } catch (_) {}
+  if (!hvName) hvName = String(r.confirmed_hv_org_name || '').trim();
+  if (!hvName) hvName = String(r.real_hv_firma || '').trim();
+  // Block bauen — fehlende Werte werden weggelassen, damit der Block sauber bleibt
+  const lines = [];
+  if (standort) lines.push('Standort: ' + standort);
+  if (fabrikNr) lines.push('Fabriknummer: ' + fabrikNr);
+  if (hvName)   lines.push('Name Hausverwaltung: ' + hvName);
+  lines.push('Email: check@liftaro.de (Bitte aber auf diese Email Antworten mit dem Angebot)');
+  const block = lines.join('\n');
+  // In Zwischenablage — Modern API mit Fallback auf execCommand
+  const ok = () => showToast('✓ Block in Zwischenablage kopiert', 'success', 2200);
+  const fail = (e) => showToast('Kopieren fehlgeschlagen: ' + (e && e.message ? e.message : 'Browser blockt Clipboard'), 'error', 4000);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(block).then(ok).catch(() => {
+      // Fallback bei Permission-Block
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = block; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(ta);
+        success ? ok() : fail();
+      } catch (e) { fail(e); }
+    });
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = block; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(ta);
+      success ? ok() : fail();
+    } catch (e) { fail(e); }
+  }
+}
+window.copyServiceBlockToClipboard = copyServiceBlockToClipboard;
+
 async function attachVollmachtToChat(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
   if (!r) {
@@ -34119,6 +34174,10 @@ function _eiRenderWartungsnehmerSection(r, wn) {
         <!-- V12.325: Vorlagen-Button — gespeicherte Snippets mit {{platzhalter}} -->
         <button onclick="openChatTemplatePicker('${emailId}')" title="Vorlage einfügen — Platzhalter wie {{hv_name}}, {{standort}}, {{fabriknummer}} werden automatisch ersetzt" ${canSend ? '' : 'disabled'} style="background:#d97706;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+        </button>
+        <!-- V12.348: Schnell-Kopie für externe Tools (Wartungsnehmer-Software, eigene Mail-Clients) -->
+        <button onclick="copyServiceBlockToClipboard('${emailId}')" title="📋 Standort + Fabriknummer + HV-Name + Liftaro-Antwort-Adresse in Zwischenablage kopieren — zum Einfügen in externe Servicebetrieb-Plattformen" style="background:#0891b2;border:1px solid transparent;color:#fff;border-radius:6px;width:34px;height:34px;padding:0;box-sizing:border-box;cursor:pointer;font-family:inherit;flex-shrink:0;align-self:flex-end;display:inline-flex;align-items:center;justify-content:center">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         </button>
         <textarea id="wnChatInput_${emailId}" rows="2" placeholder="${canSend ? 'Nachricht an ' + _esc(partner.ansprechperson || partner.firma || partner.email) + ' …' : 'Keine Email-Adresse für diesen Partner'}" ${canSend ? '' : 'disabled'} style="flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.4;padding:6px 8px;resize:vertical;background:transparent;color:#0f172a"></textarea>
         <button id="wnChatSendBtn_${emailId}" onclick="sendChatMessage('${emailId}')" ${canSend ? '' : 'disabled'} style="background:${canSend ? 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')' : '#cbd5e1'};color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:${canSend ? 'pointer' : 'not-allowed'};font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;align-self:flex-end">
