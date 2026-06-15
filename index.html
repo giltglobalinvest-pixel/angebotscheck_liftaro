@@ -6397,7 +6397,7 @@ body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.342';
+const APP_VERSION = 'V12.343';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7675,6 +7675,13 @@ async function setupTables() {
       // Verhindert dass _autoMatchHvFromPipedrive nach Reload den Vorgang neu erzeugt.
       // Wird gecleart sobald der User eine HV manuell zuordnet oder einen neuen Vorgang anlegt.
       { name: 'vorgang_dismissed_at', type: 'singleLineText' },
+      // V12.343: HV-Zuordnung auf Email-Level (überlebt Vorgang-Verwerfen).
+      // Wird parallel zu vorgaenge[0].assigned_org_* beim manuellen Picken UND beim
+      // Auto-Match gesetzt. Render-Logik der HV-Card fällt darauf zurück, wenn die
+      // Vorgangsliste leer ist — dann bleibt die HV grün statt orange.
+      { name: 'confirmed_hv_org_id',   type: 'singleLineText' },
+      { name: 'confirmed_hv_org_name', type: 'singleLineText' },
+      { name: 'confirmed_hv_email',    type: 'singleLineText' },
       // V12.174: Aufzug-Zuordnung pro Email (eine Email = ein Aufzug; Multi-Splits)
       { name: 'aufzug_id',            type: 'singleLineText' },
       { name: 'aufzug_record_id',     type: 'singleLineText' },
@@ -30618,6 +30625,14 @@ function _renderEmailAssignmentCards(r) {
       }
     }
   } catch (_) {}
+  // V12.343: Email-Level Fallback — HV-Zuordnung überlebt das Verwerfen des Vorgangs,
+  // weil sie konzeptionell eine Email-Eigenschaft ist, nicht eine Vorgangs-Eigenschaft.
+  if (!hvFirma && String(r.confirmed_hv_org_id || '').trim()) {
+    hvOrgId  = String(r.confirmed_hv_org_id   || '').trim();
+    hvFirma  = String(r.confirmed_hv_org_name || '').trim();
+    hvEmail  = String(r.confirmed_hv_email    || '').trim();
+    if (hvFirma) hvSource = 'confirmed';
+  }
   if (!hvFirma) {
     hvFirma = String(r.real_hv_firma || '').trim();
     hvEmail = String(r.real_hv_email || '').trim();
@@ -30857,7 +30872,13 @@ async function _autoMatchHvFromPipedrive(recId, firma) {
           });
           autoMatchWritten = true;
           return vorgaenge;
-        }, { hv_pipedrive_status: 'matched' });
+        }, {
+          hv_pipedrive_status: 'matched',
+          // V12.343: HV-Zuordnung auch auf Email-Level festhalten — bleibt grün nach Vorgang-Verwerfen
+          confirmed_hv_org_id:   orgId,
+          confirmed_hv_org_name: orgName,
+          confirmed_hv_email:    orgEmail,
+        });
         if (result === false) {
           if (skipReason === 'dismissed') {
             showToast('ℹ HV in Pipedrive gefunden — Vorgang bleibt verworfen. Re-Aktivieren: HV-Card → „🔍 Suchen"', 'info', 5500);
@@ -36721,6 +36742,23 @@ async function _saveVorgangAssignment(recId, vIdx, patchObj) {
   try {
     // V12.342: Manuelle Zuordnung clear das vorgang_dismissed_at-Flag — der User
     // reaktiviert den Vorgang aktiv, also gilt das frühere Verwerfen nicht mehr.
+    // V12.343: HV-Daten auch auf Email-Level festhalten (confirmed_hv_*), damit die
+    // grüne HV-Card oben das Vorgang-Verwerfen überlebt.
+    const extraPatch = { vorgang_dismissed_at: '' };
+    if (vIdx === 0 && Object.prototype.hasOwnProperty.call(patchObj, 'assigned_org_id')) {
+      const hasOrg = !!String(patchObj.assigned_org_id || '').trim();
+      const isPrivate = patchObj.assigned_as_private === true;
+      if (hasOrg) {
+        extraPatch.confirmed_hv_org_id   = String(patchObj.assigned_org_id   || '');
+        extraPatch.confirmed_hv_org_name = String(patchObj.assigned_org_name || '');
+        extraPatch.confirmed_hv_email    = String(patchObj.assigned_org_email || '');
+      } else if (isPrivate || !hasOrg) {
+        // markVorgangPrivate ODER clearVorgangAssignment → auch Email-Level clearen
+        extraPatch.confirmed_hv_org_id   = '';
+        extraPatch.confirmed_hv_org_name = '';
+        extraPatch.confirmed_hv_email    = '';
+      }
+    }
     const result = await _eiPatchVorgaenge(recId, (vorgaenge, freshRec) => {
       const rf = freshRec.fields || {};
       if (vIdx === 0 && vorgaenge.length === 0) {
@@ -36737,7 +36775,7 @@ async function _saveVorgangAssignment(recId, vIdx, patchObj) {
         assigned_by: _eiCurrentUserName(),
       });
       return vorgaenge;
-    }, { vorgang_dismissed_at: '' });
+    }, extraPatch);
     if (result === false) return false;
     const _r = (_eiAllRecords || []).find(x => x._id === recId);
     if (_r) _r.vorgang_dismissed_at = '';
