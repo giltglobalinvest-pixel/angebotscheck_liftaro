@@ -4147,10 +4147,10 @@ const pdfWorkerReady = Promise.resolve();</script>
             <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">📋</span>
             <span class="ei-side-lbl">LV-Vorlagen</span>
           </button>
-          <!-- V12.382: Servicebetriebe-Manager (Stammdaten + Fußzeilen-Pflege) -->
-          <button class="ei-side-item" onclick="openServicebetriebeManager()" title="Servicebetriebe-Stammdaten + Fußzeilen-Daten für LV-Anschreiben pflegen">
+          <!-- V12.383: Wartungsnehmer-Sidebar (alias — Servicebetriebe = Wartungsnehmer) -->
+          <button class="ei-side-item" onclick="openWartungsnehmerModal()" title="Wartungsnehmer / Servicebetriebe — Stammdaten + Fußzeilen-Daten für LV-Anschreiben">
             <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">🛠</span>
-            <span class="ei-side-lbl">Servicebetriebe</span>
+            <span class="ei-side-lbl">Wartungsnehmer</span>
           </button>
         </div>
       </div>
@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.382';
+const APP_VERSION = 'V12.383';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7645,6 +7645,20 @@ async function setupTables() {
       { name: 'api_key',        type: 'singleLineText' },
     ]),
   ]);
+  // V12.383: Fußzeilen-Felder für Wartungsnehmer (LV-Anschreiben) — idempotent
+  try {
+    await ensureFields('Wartungsnehmer', [
+      { name: 'web',                type: 'singleLineText' },
+      { name: 'ust_id',             type: 'singleLineText' },
+      { name: 'hrb_nummer',         type: 'singleLineText' },
+      { name: 'hrb_gericht',        type: 'singleLineText' },
+      { name: 'geschaeftsfuehrer',  type: 'singleLineText' },
+      { name: 'iban',               type: 'singleLineText' },
+      { name: 'bic',                type: 'singleLineText' },
+      { name: 'bank',               type: 'singleLineText' },
+    ]);
+    console.log('[V12.383] ensureFields(Wartungsnehmer: Fußzeile) OK');
+  } catch (e) { console.warn('[V12.383] ensureFields(Wartungsnehmer Fußzeile):', e.message); }
   // Attachment-Felder ggf. nachträglich anlegen
   await ensureFields('Checks', [
     { name: 'vorliegendes_pdf', type: 'multipleAttachments' },
@@ -8644,6 +8658,15 @@ async function upsertWartungsnehmer(data) {
     plz:            String(data.plz            || '').trim(),
     ort:            String(data.ort            || '').trim(),
     notiz:          String(data.notiz          || '').trim(),
+    // V12.383: Fußzeilen-Felder für LV-Anschreiben
+    web:                String(data.web               || '').trim(),
+    ust_id:             String(data.ust_id            || '').trim(),
+    hrb_nummer:         String(data.hrb_nummer        || '').trim(),
+    hrb_gericht:        String(data.hrb_gericht       || '').trim(),
+    geschaeftsfuehrer:  String(data.geschaeftsfuehrer || '').trim(),
+    iban:               String(data.iban              || '').trim(),
+    bic:                String(data.bic               || '').trim(),
+    bank:               String(data.bank              || '').trim(),
     savedAt:        now,
     api_key:        apiKey,
   };
@@ -8728,10 +8751,15 @@ async function renderWartungsnehmerList(q) {
     const tel = String(x.telefon || '').trim();
     const mail = String(x.email || '').trim();
     const adr = [x.strasse, [x.plz, x.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    // V12.383: Pflichtfeld-Badge für LV-Versand
+    const lvMissing = (typeof _eiLvCheckSbPflicht === 'function') ? _eiLvCheckSbPflicht(x) : [];
+    const lvBadge = lvMissing.length
+      ? '<span title="LV-Fußzeile: ' + _esc(lvMissing.join(', ')) + ' fehlen" style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700">⚠ LV: ' + lvMissing.length + ' Feld' + (lvMissing.length === 1 ? '' : 'er') + ' fehlen</span>'
+      : '<span title="LV-Fußzeile vollständig" style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700">✓ LV-bereit</span>';
     return `<div onclick="openWartungsnehmerEditor('${_esc(x._recordId)}')" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #0e7490;border-radius:10px;padding:12px 16px;margin-bottom:8px;cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor='#0e7490';this.style.boxShadow='0 2px 8px rgba(14,116,144,.15)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#0e7490';this.style.boxShadow='none'">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14.5px;font-weight:700;color:#0f172a">${_esc(x.firma || '(ohne Name)')}</div>
+          <div style="font-size:14.5px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${_esc(x.firma || '(ohne Name)')} ${lvBadge}</div>
           ${x.ansprechperson ? '<div style="font-size:12.5px;color:#475569;margin-top:2px">👤 ' + _esc(x.ansprechperson) + '</div>' : ''}
           <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;font-size:12px;color:#64748b">
             ${tel  ? '<span>📞 ' + _esc(tel)  + '</span>' : ''}
@@ -8747,7 +8775,12 @@ async function renderWartungsnehmerList(q) {
 
 // V12.201: Editor für einen Wartungsnehmer
 async function openWartungsnehmerEditor(recordId) {
-  let data = { _recordId: '', id: '', firma:'', ansprechperson:'', telefon:'', email:'', strasse:'', plz:'', ort:'', notiz:'' };
+  let data = {
+    _recordId: '', id: '', firma:'', ansprechperson:'', telefon:'', email:'',
+    strasse:'', plz:'', ort:'', notiz:'',
+    web:'', ust_id:'', hrb_nummer:'', hrb_gericht:'',
+    geschaeftsfuehrer:'', iban:'', bic:'', bank:'',
+  };
   if (recordId) {
     try {
       const recs = await atRead('Wartungsnehmer', "RECORD_ID()='" + recordId + "'", { sort: false });
@@ -8806,9 +8839,51 @@ async function openWartungsnehmerEditor(recordId) {
         </div>
       </div>
       <div>
+        <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Web</label>
+        <input id="wnEdit_web" type="text" value="${_esc(data.web || '')}" placeholder="www.example.de" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+      </div>
+      <div>
         <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Notiz</label>
         <textarea id="wnEdit_notiz" rows="3" placeholder="Optional: Vertragslaufzeit, Konditionen, Besonderheiten …" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical;line-height:1.5">${_esc(data.notiz || '')}</textarea>
       </div>
+      <details ${(data.ust_id || data.iban || data.geschaeftsfuehrer) ? 'open' : ''} style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:#0c4a6e">📄 Rechnungs-Fußzeile (Pflicht für LV-Anschreiben)</summary>
+        <div style="margin-top:12px;padding-top:8px;border-top:1px dashed #bae6fd;display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:11.5px;color:#0c4a6e;line-height:1.55">Wird in die Fußzeile des LV-Angebots an die Hausverwaltung übernommen. Pflicht für rechtskonforme Geschäftspapiere (§37a HGB / §35a GmbHG).</div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">USt-IdNr <span style="font-weight:500;text-transform:none;color:#94a3b8;font-size:10.5px;letter-spacing:0;margin-left:6px">z. B. DE123456789</span></label>
+            <input id="wnEdit_ust_id" type="text" value="${_esc(data.ust_id || '')}" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:10px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">HRB-Nummer</label>
+              <input id="wnEdit_hrb_nummer" type="text" value="${_esc(data.hrb_nummer || '')}" placeholder="HRB 12345" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Amtsgericht</label>
+              <input id="wnEdit_hrb_gericht" type="text" value="${_esc(data.hrb_gericht || '')}" placeholder="Berlin" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Geschäftsführer / Inhaber</label>
+            <input id="wnEdit_geschaeftsfuehrer" type="text" value="${_esc(data.geschaeftsfuehrer || '')}" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Bank</label>
+            <input id="wnEdit_bank" type="text" value="${_esc(data.bank || '')}" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+          </div>
+          <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">IBAN</label>
+              <input id="wnEdit_iban" type="text" value="${_esc(data.iban || '')}" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">BIC</label>
+              <input id="wnEdit_bic" type="text" value="${_esc(data.bic || '')}" style="width:100%;margin-top:5px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
     <div style="padding:12px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px">
       ${isEdit ? `<button onclick="deleteWartungsnehmerConfirm('${_esc(data._recordId)}','${_esc(data.firma || '')}')" style="background:transparent;border:1px solid #fca5a5;color:#a8312f;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Löschen</button>` : '<div></div>'}
@@ -8838,6 +8913,15 @@ async function saveWartungsnehmerFromEditor(recordId, existingId) {
       plz:            g('wnEdit_plz'),
       ort:            g('wnEdit_ort'),
       notiz:          g('wnEdit_notiz'),
+      // V12.383: Fußzeilen-Felder
+      web:                g('wnEdit_web'),
+      ust_id:             g('wnEdit_ust_id'),
+      hrb_nummer:         g('wnEdit_hrb_nummer'),
+      hrb_gericht:        g('wnEdit_hrb_gericht'),
+      geschaeftsfuehrer:  g('wnEdit_geschaeftsfuehrer'),
+      iban:               g('wnEdit_iban'),
+      bic:                g('wnEdit_bic'),
+      bank:               g('wnEdit_bank'),
     });
     document.getElementById('wartungsnehmerEditorModal').style.display = 'none';
     showToast('✓ Wartungsnehmer gespeichert', 'success', 2200);
@@ -12000,7 +12084,7 @@ function _eiLvCheckSbPflicht(sb) {
   return required.filter(r => !String(sb && sb[r.k] || '').trim()).map(r => r.lbl);
 }
 
-// "📤 An Dienstleister senden"-Button öffnet diesen Picker
+// V12.383: Picker auf Wartungsnehmer umgestellt (Servicebetriebe = Wartungsnehmer)
 async function openLvSendPicker() {
   const s = window._eiLvEditorState; if (!s) return;
   if (!s.positionen.length) { showToast('LV hat keine Positionen — erst Positionen extrahieren oder hinzufügen', 'warning', 3500); return; }
@@ -12008,21 +12092,21 @@ async function openLvSendPicker() {
     showToast('Bitte erst „💾 Speichern" klicken, damit das LV einen Datensatz hat', 'warning', 4000);
     return;
   }
-  let sbRecs = [];
-  try { sbRecs = await loadServicebetriebe(); } catch (_) {}
-  const items = (sbRecs || []).map(r => ({ ...r.fields, _recordId: r.id }))
+  let wnRecs = [];
+  try { wnRecs = await loadWartungsnehmer(); } catch (_) {}
+  const items = (wnRecs || []).map(r => ({ ...r.fields, _recordId: r.id }))
     .filter(x => x.firma);
   items.sort((a, b) => String(a.firma || '').localeCompare(String(b.firma || ''), 'de'));
   const ov = document.createElement('div');
   ov.id = 'eiLvSendPickerOv';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.75);display:flex;justify-content:center;align-items:center;z-index:100000;padding:30px;backdrop-filter:blur(6px)';
-  const sbList = items.map(x => {
+  const wnList = items.map(x => {
     const missing = _eiLvCheckSbPflicht(x);
     const badge = missing.length
       ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;margin-left:8px">⚠ ' + missing.length + ' Pflichtfeld' + (missing.length === 1 ? '' : 'er') + ' fehlen</span>'
       : '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;margin-left:8px">✓ vollständig</span>';
     const adr = [x.strasse, [x.plz, x.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-    return '<div onclick="_eiLvSelectSbForSend(\'' + _esc(x._recordId) + '\')" style="background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:11px 14px;margin-bottom:7px;cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 2px 10px rgba(124,58,237,.18)\'" onmouseout="this.style.borderColor=\'#e2e8f0\';this.style.boxShadow=\'none\'">'
+    return '<div onclick="_eiLvSelectWnForSend(\'' + _esc(x._recordId) + '\')" style="background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:11px 14px;margin-bottom:7px;cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 2px 10px rgba(124,58,237,.18)\'" onmouseout="this.style.borderColor=\'#e2e8f0\';this.style.boxShadow=\'none\'">'
       + '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:700;color:#0f172a">' + _esc(x.firma) + badge + '</div><div style="font-size:11px;color:#94a3b8;font-family:var(--dr-f-mono)">' + _esc(x.id || '?') + '</div></div>'
       + (x.email ? '<div style="font-size:12px;color:#475569;margin-top:3px">✉ ' + _esc(x.email) + '</div>' : '<div style="font-size:12px;color:#dc2626;margin-top:3px">⚠ keine Email hinterlegt</div>')
       + (adr ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">📍 ' + _esc(adr) + '</div>' : '')
@@ -12030,12 +12114,12 @@ async function openLvSendPicker() {
   }).join('');
   ov.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:680px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
     + '<div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">'
-    +   '<div><div style="font-size:11px;font-weight:700;color:#ddd6fe;letter-spacing:.08em;text-transform:uppercase">📤 LV an Servicebetrieb senden</div><div style="font-size:15px;font-weight:700">Empfänger auswählen</div></div>'
-    +   '<div style="display:flex;gap:6px"><button onclick="document.getElementById(\'eiLvSendPickerOv\').remove();openServicebetriebEditor()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:inherit">+ Neu</button><button onclick="document.getElementById(\'eiLvSendPickerOv\').remove()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button></div>'
+    +   '<div><div style="font-size:11px;font-weight:700;color:#ddd6fe;letter-spacing:.08em;text-transform:uppercase">📤 LV an Wartungsnehmer senden</div><div style="font-size:15px;font-weight:700">Empfänger auswählen</div></div>'
+    +   '<div style="display:flex;gap:6px"><button onclick="document.getElementById(\'eiLvSendPickerOv\').remove();openWartungsnehmerEditor()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:inherit">+ Neu</button><button onclick="document.getElementById(\'eiLvSendPickerOv\').remove()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button></div>'
     + '</div>'
     + '<div style="padding:18px 22px;overflow-y:auto;flex:1;background:#fafbfc">'
-    +   '<div style="font-size:12px;color:#475569;margin-bottom:14px;line-height:1.55">Servicebetrieb auswählen, an den die Anfrage geschickt wird. Pflichtfelder (USt-IdNr, IBAN, Geschäftsführer, Adresse) müssen für ein rechtskonformes Anschreiben vorhanden sein — Fehlende werden vor Versand abgefragt.</div>'
-    +   (items.length ? sbList : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12.5px;background:#fff;border:1px dashed #cbd5e1;border-radius:10px">Noch keine Servicebetriebe angelegt. Klick oben rechts „+ Neu" oder lege einen Servicebetrieb über die Sidebar „🛠 Servicebetriebe" an.</div>')
+    +   '<div style="font-size:12px;color:#475569;margin-bottom:14px;line-height:1.55">Wartungsnehmer (= Servicebetrieb) auswählen. Pflichtfelder (USt-IdNr, IBAN, Geschäftsführer, Adresse) sind für ein rechtskonformes LV-Anschreiben nötig — fehlende werden vor Versand abgefragt.</div>'
+    +   (items.length ? wnList : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12.5px;background:#fff;border:1px dashed #cbd5e1;border-radius:10px">Noch keine Wartungsnehmer angelegt. Klick oben rechts „+ Neu".</div>')
     + '</div>'
     + '</div>';
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
@@ -12043,25 +12127,25 @@ async function openLvSendPicker() {
 }
 window.openLvSendPicker = openLvSendPicker;
 
-async function _eiLvSelectSbForSend(sbRecordId) {
+async function _eiLvSelectWnForSend(wnRecordId) {
   document.getElementById('eiLvSendPickerOv')?.remove();
-  let sb = null;
+  let wn = null;
   try {
-    const recs = await atRead('Servicebetriebe', "RECORD_ID()='" + sbRecordId + "'", { sort: false });
-    if (recs && recs[0]) sb = { ...recs[0].fields, _recordId: recs[0].id };
-  } catch (e) { showToast('Servicebetrieb-Lookup fehlgeschlagen: ' + e.message, 'error', 4000); return; }
-  if (!sb) { showToast('Servicebetrieb nicht gefunden', 'error', 3000); return; }
-  const missing = _eiLvCheckSbPflicht(sb);
+    const recs = await atRead('Wartungsnehmer', "RECORD_ID()='" + wnRecordId + "'", { sort: false });
+    if (recs && recs[0]) wn = { ...recs[0].fields, _recordId: recs[0].id };
+  } catch (e) { showToast('Wartungsnehmer-Lookup fehlgeschlagen: ' + e.message, 'error', 4000); return; }
+  if (!wn) { showToast('Wartungsnehmer nicht gefunden', 'error', 3000); return; }
+  const missing = _eiLvCheckSbPflicht(wn);
   if (missing.length) {
-    const cont = confirm('⚠ Pflichtfelder für rechtskonforme Fußzeile fehlen:\n\n  • ' + missing.join('\n  • ') + '\n\nJetzt im Servicebetrieb-Editor nachtragen?\n\n(„OK" öffnet Editor · „Abbrechen" sendet trotzdem)');
+    const cont = confirm('⚠ Pflichtfelder für rechtskonforme Fußzeile fehlen:\n\n  • ' + missing.join('\n  • ') + '\n\nJetzt im Wartungsnehmer-Editor nachtragen?\n\n(„OK" öffnet Editor · „Abbrechen" sendet trotzdem)');
     if (cont) {
-      await openServicebetriebEditor(sbRecordId);
+      await openWartungsnehmerEditor(wnRecordId);
       return;
     }
   }
-  await _eiLvOpenSendDraft(sb);
+  await _eiLvOpenSendDraft(wn);
 }
-window._eiLvSelectSbForSend = _eiLvSelectSbForSend;
+window._eiLvSelectWnForSend = _eiLvSelectWnForSend;
 window._eiLvCheckSbPflicht = _eiLvCheckSbPflicht;
 window._eiLvGenerateToken = _eiLvGenerateToken;
 
@@ -12138,23 +12222,23 @@ async function _eiLvOpenSendDraft(sb) {
 }
 window._eiLvOpenSendDraft = _eiLvOpenSendDraft;
 
-async function _eiLvCreateAnfrage(sbRecordId, token, anfrageId) {
+async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
   const s = window._eiLvEditorState; if (!s) return;
   const btn = document.getElementById('lvSendDraftBtn');
   if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.textContent = '⏳ Erstelle …'; }
   try {
-    // Servicebetrieb-Snapshot frisch holen
-    const recs = await atRead('Servicebetriebe', "RECORD_ID()='" + sbRecordId + "'", { sort: false });
-    if (!recs || !recs[0]) throw new Error('Servicebetrieb nicht gefunden');
-    const sb = { ...recs[0].fields };
+    // V12.383: Wartungsnehmer-Snapshot frisch holen
+    const recs = await atRead('Wartungsnehmer', "RECORD_ID()='" + wnRecordId + "'", { sort: false });
+    if (!recs || !recs[0]) throw new Error('Wartungsnehmer nicht gefunden');
+    const wn = { ...recs[0].fields };
     const betreff = document.getElementById('lvSendBetreff')?.value || '';
     const body    = document.getElementById('lvSendBody')?.value || '';
     const fields = {
       id:                              anfrageId,
       lv_id:                           s.lvId,
       email_id:                        s.emailId,
-      servicebetrieb_id:               sb.id || '',
-      servicebetrieb_snapshot_json:    JSON.stringify(sb),
+      servicebetrieb_id:               wn.id || '',         // Schema-Feld bleibt "servicebetrieb_id", semantisch = Wartungsnehmer
+      servicebetrieb_snapshot_json:    JSON.stringify(wn),
       token:                           token,
       status:                          'pending',
       email_betreff:                   betreff,
