@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.385';
+const APP_VERSION = 'V12.386';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11520,21 +11520,34 @@ window._eiLvAdminResetPromptToDefault = _eiLvAdminResetPromptToDefault;
 // ----------------------------------------------------------------------------
 
 // Alle LVs zu einer Email laden — Cache: window._eiLvByEmail[emailId] = []
+// V12.386: Inflight-Schutz — pro Email nur 1 Request gleichzeitig, parallel-Calls warten auf dieselbe Promise
 async function _eiLvLoadForEmail(emailId, forceReload) {
   if (!emailId) return [];
   window._eiLvByEmail = window._eiLvByEmail || {};
+  window._eiLvInflight = window._eiLvInflight || {};
+  // Cache-Hit: kein Reload nötig
   if (!forceReload && Array.isArray(window._eiLvByEmail[emailId])) return window._eiLvByEmail[emailId];
-  try {
-    const filter = "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'";
-    const recs = await atRead('Leistungsverzeichnisse', filter, { sort: false });
-    const arr = (recs || []).map(r => ({ _recordId: r.id, ...r.fields })).filter(x => x && x.id);
-    window._eiLvByEmail[emailId] = arr;
-    return arr;
-  } catch (e) {
-    console.warn('[V12.376] _eiLvLoadForEmail:', e.message);
-    window._eiLvByEmail[emailId] = [];
-    return [];
-  }
+  // Inflight-Hit: existierende Promise zurückgeben, statt neuen Request zu starten
+  if (window._eiLvInflight[emailId]) return window._eiLvInflight[emailId];
+  const t0 = Date.now();
+  const p = (async () => {
+    try {
+      const filter = "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'";
+      const recs = await atRead('Leistungsverzeichnisse', filter, { sort: false });
+      const arr = (recs || []).map(r => ({ _recordId: r.id, ...r.fields })).filter(x => x && x.id);
+      window._eiLvByEmail[emailId] = arr;
+      console.log('[V12.386] _eiLvLoadForEmail(' + emailId + '): ' + arr.length + ' LVs in ' + (Date.now() - t0) + 'ms');
+      return arr;
+    } catch (e) {
+      console.warn('[V12.386] _eiLvLoadForEmail:', e.message);
+      window._eiLvByEmail[emailId] = [];
+      return [];
+    } finally {
+      delete window._eiLvInflight[emailId];
+    }
+  })();
+  window._eiLvInflight[emailId] = p;
+  return p;
 }
 window._eiLvLoadForEmail = _eiLvLoadForEmail;
 
@@ -37986,17 +37999,19 @@ function renderEmailInboxDetail() {
   setTimeout(() => { try { _eiSyncAufzugEucStatus(r._id); } catch (_) {} }, 80);
   // V12.376: Leistungsverzeichnis-Section — zeigt vorhandene LVs + Create-Button
   html += _renderEmailLvSection(r);
-  // V12.384: Lazy-Load mit IMMER-Re-Render (auch bei leerem Array, damit Loading-Spinner verschwindet)
-  setTimeout(() => {
-    if (typeof _eiLvLoadForEmail === 'function') {
-      _eiLvLoadForEmail(r._id, true).then(() => {
-        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-      }).catch(() => {
-        // Auch im Fehlerfall re-rendern damit der Spinner nicht ewig stehen bleibt
-        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-      });
-    }
-  }, 120);
+  // V12.386: Lazy-Load nur wenn Cache leer ist — sonst wiederholter Airtable-Call bei jedem Re-Render
+  const lvCacheReady = window._eiLvByEmail && Array.isArray(window._eiLvByEmail[r._id]);
+  if (!lvCacheReady) {
+    setTimeout(() => {
+      if (typeof _eiLvLoadForEmail === 'function') {
+        _eiLvLoadForEmail(r._id, false).then(() => {
+          if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+        }).catch(() => {
+          if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+        });
+      }
+    }, 60);
+  }
 
   // V12.171: KI-Schnell-Button — analysiert den Body (auch Forward-Inhalt) und schlägt
   // echten Absender, HV und Vorgang vor. Step 1: nur Anzeige, kein Auto-Speichern.
