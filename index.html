@@ -6419,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.380';
+const APP_VERSION = 'V12.381';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7827,6 +7827,7 @@ async function setupTables() {
     ]);
   } catch(e) { console.warn('[V12.222] ensureFields(WartungsnehmerChat) failed:', e.message); }
   // V12.219: Servicebetriebe-Stammdaten — analog zu Wartungsnehmer, aber für externe Service-Firmen
+  // V12.381: Erweitert um Fußzeilen-Felder für LV-Anschreiben (USt-IdNr, HRB, GF, IBAN/BIC, Web)
   try {
     ensureTable('Servicebetriebe', [
       { name: 'id',             type: 'singleLineText' },
@@ -7839,6 +7840,18 @@ async function setupTables() {
       { name: 'ort',            type: 'singleLineText' },
       { name: 'notiz',          type: 'multilineText'  },
     ]);
+    // V12.381: Nachrüsten der Fußzeilen-Felder (idempotent — schlägt nicht fehl wenn schon da)
+    try { ensureFields('Servicebetriebe', [
+      { name: 'ust_id',          type: 'singleLineText' },  // USt-IdNr (DE123456789)
+      { name: 'hrb_nummer',      type: 'singleLineText' },  // HRB 12345
+      { name: 'hrb_gericht',     type: 'singleLineText' },  // Amtsgericht Berlin
+      { name: 'geschaeftsfuehrer', type: 'singleLineText' },// GF (oder Inhaber)
+      { name: 'iban',            type: 'singleLineText' },  // DE89 3704 0044 0532 0130 00
+      { name: 'bic',             type: 'singleLineText' },  // COBADEFFXXX
+      { name: 'bank',            type: 'singleLineText' },  // Commerzbank Berlin
+      { name: 'web',             type: 'singleLineText' },  // www.example.de
+    ]); console.log('[V12.381] ensureFields(Servicebetriebe: Fußzeile) OK'); }
+    catch(e2) { console.warn('[V12.381] ensureFields(Servicebetriebe Fußzeile):', e2.message); }
   } catch(e) { console.warn('[V12.219] ensureTable(Servicebetriebe) failed:', e.message); }
   // V12.239: Vollmachten pro Hausverwaltung — unterschriebenes PDF zum Anhängen in Chat-Nachrichten
   // V12.242: + ensureFields als Backup, falls Tabelle existiert aber Felder fehlen (sonst 422 bei atWrite)
@@ -7875,6 +7888,29 @@ async function setupTables() {
       { name: 'savedAt',             type: 'singleLineText' },
     ]);
   } catch (e) { console.warn('[V12.375] ensureTable(Leistungsverzeichnisse) failed:', e.message); }
+  try {
+    // V12.381: LV-Anfragen — eine Anfrage pro Versand eines LVs an einen Servicebetrieb
+    // status-Flow: 'pending' → 'sent' → 'opened' → 'submitted' (Dienstleister hat Preise eingetragen)
+    ensureTable('LV_Anfragen', [
+      { name: 'id',                 type: 'singleLineText' },  // anfr_<random>
+      { name: 'lv_id',              type: 'singleLineText' },  // FK → Leistungsverzeichnisse.id
+      { name: 'email_id',           type: 'singleLineText' },  // FK → Emails (für Rück-Verlinkung)
+      { name: 'servicebetrieb_id',  type: 'singleLineText' },  // FK → Servicebetriebe.id
+      { name: 'servicebetrieb_snapshot_json', type: 'multilineText' }, // Snapshot der Firma+Fußzeilen-Daten
+      { name: 'token',              type: 'singleLineText' },  // URL-safe Random-Token für Landing-Auth
+      { name: 'status',             type: 'singleLineText' },  // pending | sent | opened | submitted | cancelled
+      { name: 'email_betreff',      type: 'singleLineText' },
+      { name: 'email_body',         type: 'multilineText'  },
+      { name: 'positionen_snapshot_json', type: 'multilineText' }, // Festgefrorene LV-Positionen zum Sendezeitpunkt
+      { name: 'response_json',      type: 'multilineText'  },  // [{pos_nr, preis_eur, lieferzeit, bemerkung}, ...]
+      { name: 'signatur_dataurl',   type: 'multilineText'  },  // base64 PNG der Unterschrift
+      { name: 'angebot_pdf',        type: 'multipleAttachments' }, // erzeugte PDF vom Dienstleister
+      { name: 'sent_at',            type: 'singleLineText' },
+      { name: 'opened_at',          type: 'singleLineText' },
+      { name: 'submitted_at',       type: 'singleLineText' },
+      { name: 'savedAt',            type: 'singleLineText' },
+    ]);
+  } catch (e) { console.warn('[V12.381] ensureTable(LV_Anfragen) failed:', e.message); }
   try {
     ensureTable('Vollmachten', [
       { name: 'id',                 type: 'singleLineText' },
@@ -8931,6 +8967,15 @@ async function upsertServicebetrieb(data) {
     plz:            String(data.plz || '').trim(),
     ort:            String(data.ort || '').trim(),
     notiz:          String(data.notiz || '').trim(),
+    // V12.381: Fußzeilen-Felder (Pflicht für rechtskonforme LV-Anschreiben)
+    ust_id:             String(data.ust_id || '').trim(),
+    hrb_nummer:         String(data.hrb_nummer || '').trim(),
+    hrb_gericht:        String(data.hrb_gericht || '').trim(),
+    geschaeftsfuehrer:  String(data.geschaeftsfuehrer || '').trim(),
+    iban:               String(data.iban || '').trim(),
+    bic:                String(data.bic || '').trim(),
+    bank:               String(data.bank || '').trim(),
+    web:                String(data.web || '').trim(),
   };
   if (data._recordId) {
     await atUpdate('Servicebetriebe', data._recordId, fields);
@@ -9069,8 +9114,20 @@ function startChatWithServicebetrieb(sbId, firma, ansprech, tel, email) {
 }
 
 // Servicebetrieb-Editor (Inline-Anlage)
-function openServicebetriebEditor(recordId) {
-  let data = { _recordId: '', id: '', firma:'', ansprechperson:'', telefon:'', email:'', strasse:'', plz:'', ort:'', notiz:'' };
+async function openServicebetriebEditor(recordId) {
+  // V12.381: Edit-Support + Adresse + Fußzeilen-Felder für LV-Anschreiben
+  let data = {
+    _recordId: '', id: '', firma:'', ansprechperson:'', telefon:'', email:'',
+    strasse:'', plz:'', ort:'', notiz:'', web:'',
+    ust_id:'', hrb_nummer:'', hrb_gericht:'', geschaeftsfuehrer:'',
+    iban:'', bic:'', bank:'',
+  };
+  if (recordId) {
+    try {
+      const rec = await atRead('Servicebetriebe', "RECORD_ID()='" + recordId + "'", { sort: false });
+      if (rec && rec[0]) { data = { ...data, ...rec[0].fields, _recordId: rec[0].id }; }
+    } catch (e) { console.warn('[V12.381] Lookup Servicebetrieb:', e.message); }
+  }
   let m = document.getElementById('eiSbEditorModal');
   if (!m) {
     m = document.createElement('div');
@@ -9080,26 +9137,43 @@ function openServicebetriebEditor(recordId) {
   }
   m.style.display = 'flex';
   const g = (id) => '<input id="sbEdit_' + id + '" type="text" value="' + _esc(data[id] || '') + '" placeholder="" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">';
-  const label = (lbl, html) => '<div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">' + lbl + '</label>' + html + '</div>';
-  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(620px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
+  const label = (lbl, html, hint) => '<div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">' + lbl + (hint ? '<span style="font-weight:500;text-transform:none;color:#94a3b8;font-size:10.5px;letter-spacing:0;margin-left:6px">' + hint + '</span>' : '') + '</label>' + html + '</div>';
+  const isEdit = !!data._recordId;
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(720px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">
     <div style="background:#0891b2;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:15px;font-weight:700">🛠 Neuer Servicebetrieb</span>
+      <span style="font-size:15px;font-weight:700">🛠 ${isEdit ? 'Servicebetrieb bearbeiten' : 'Neuer Servicebetrieb'}</span>
       <button onclick="document.getElementById('eiSbEditorModal').style.display='none'" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>
     </div>
     <div style="padding:18px 22px;overflow-y:auto;flex:1">
       ${label('Firma *', g('firma'))}
-      ${label('Ansprechperson', g('ansprechperson'))}
-      ${label('Email', g('email'))}
-      ${label('Telefon', g('telefon'))}
-      ${label('Notiz', '<textarea id="sbEdit_notiz" rows="2" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${label('Ansprechperson', g('ansprechperson'))}${label('Web', g('web'), 'www.example.de')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${label('Email', g('email'))}${label('Telefon', g('telefon'))}</div>
+      ${label('Straße', g('strasse'))}
+      <div style="display:grid;grid-template-columns:130px 1fr;gap:10px">${label('PLZ', g('plz'))}${label('Ort', g('ort'))}</div>
+      ${label('Notiz', '<textarea id="sbEdit_notiz" rows="2" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box;resize:vertical">' + _esc(data.notiz || '') + '</textarea>')}
+      <details ${(data.ust_id || data.iban || data.geschaeftsfuehrer) ? 'open' : ''} style="margin-top:14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:#0c4a6e">📄 Rechnungs-Fußzeile (für LV-Anschreiben)</summary>
+        <div style="margin-top:12px;padding-top:8px;border-top:1px dashed #bae6fd">
+          <div style="font-size:11.5px;color:#0c4a6e;margin-bottom:10px;line-height:1.55">Diese Daten erscheinen in der Fußzeile des LVs, das an die Hausverwaltung geht. Pflicht für rechtskonforme Geschäftspapiere (§37a HGB / §35a GmbHG).</div>
+          ${label('USt-IdNr', g('ust_id'), 'z. B. DE123456789')}
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:10px">${label('HRB-Nummer', g('hrb_nummer'), 'HRB 12345')}${label('Amtsgericht', g('hrb_gericht'), 'Berlin')}</div>
+          ${label('Geschäftsführer / Inhaber', g('geschaeftsfuehrer'))}
+          ${label('Bank', g('bank'))}
+          <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:10px">${label('IBAN', g('iban'))}${label('BIC', g('bic'))}</div>
+        </div>
+      </details>
     </div>
-    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">
-      <button onclick="document.getElementById('eiSbEditorModal').style.display='none'" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
-      <button id="sbEditSaveBtn" onclick="saveServicebetriebFromEditor()" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Speichern</button>
+    <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="font-size:11px;color:#94a3b8">${isEdit ? 'ID: <code>' + _esc(data.id || '') + '</code>' : 'Neuer Datensatz wird angelegt'}</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('eiSbEditorModal').style.display='none'" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>
+        <button id="sbEditSaveBtn" data-recid="${_esc(data._recordId || '')}" data-id="${_esc(data.id || '')}" onclick="saveServicebetriebFromEditor()" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Speichern</button>
+      </div>
     </div>
   </div>`;
   setTimeout(() => document.getElementById('sbEdit_firma')?.focus(), 100);
 }
+window.openServicebetriebEditor = openServicebetriebEditor;
 async function saveServicebetriebFromEditor() {
   const g = (id) => document.getElementById('sbEdit_' + id)?.value || '';
   const firma = g('firma').trim();
@@ -9108,14 +9182,22 @@ async function saveServicebetriebFromEditor() {
   if (btn) { btn.disabled = true; btn.textContent = 'Speichere …'; }
   try {
     const created = await upsertServicebetrieb({
+      _recordId: btn ? (btn.getAttribute('data-recid') || '') : '',
+      id: btn ? (btn.getAttribute('data-id') || '') : '',
       firma, ansprechperson: g('ansprechperson'),
       email: g('email'), telefon: g('telefon'), notiz: g('notiz'),
+      strasse: g('strasse'), plz: g('plz'), ort: g('ort'), web: g('web'),
+      ust_id: g('ust_id'), hrb_nummer: g('hrb_nummer'), hrb_gericht: g('hrb_gericht'),
+      geschaeftsfuehrer: g('geschaeftsfuehrer'),
+      iban: g('iban'), bic: g('bic'), bank: g('bank'),
     });
     document.getElementById('eiSbEditorModal').style.display = 'none';
-    showToast('✓ ' + firma + ' angelegt', 'success', 2200);
+    showToast('✓ ' + firma + ' gespeichert', 'success', 2200);
+    // Liste neu rendern falls offen
+    if (typeof renderServicebetriebeList === 'function') { try { renderServicebetriebeList(); } catch (_) {} }
     // Wenn ein Email-Picker offen war → direkt Chat-Tab starten
     const emailId = window._eiSbPickerTargetEmail;
-    if (emailId) {
+    if (emailId && !btn?.getAttribute('data-recid')) {
       startChatWithServicebetrieb(created.id, firma, g('ansprechperson'), g('telefon'), g('email'));
     }
   } catch (e) {
@@ -9123,6 +9205,7 @@ async function saveServicebetriebFromEditor() {
     if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
   }
 }
+window.saveServicebetriebFromEditor = saveServicebetriebFromEditor;
 
 // ============================================================================
 // V12.239: Vollmachten pro Hausverwaltung — CRUD + Verwaltung + Chat-Attach
@@ -11420,6 +11503,7 @@ async function _eiLvOpenEditor(emailId, existingLv, vorlage) {
     +     '<button onclick="_eiLvShowDiagnostics()" title="Diagnose der letzten KI-Extraktion (Prompt, Antwort, Token, Vorlagen-Quelle)" style="background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🔬 Diagnose</button>'
     +     '<button onclick="_eiLvExtractPositions()" id="lvEdExtractBtn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">🤖 KI: Positionen aus Anhang</button>'
     +     '<button onclick="_eiLvSave()" id="lvEdSaveBtn" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>'
+    +     '<button onclick="openLvSendPicker()" id="lvEdSendBtn" title="LV an einen Servicebetrieb senden" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 An Dienstleister senden</button>'
     +   '</div>'
     + '</div>'
     + '</div>';
@@ -11805,6 +11889,216 @@ async function _eiLvSave() {
   }
 }
 window._eiLvSave = _eiLvSave;
+
+// ============================================================================
+// V12.381: LV-Versand (Phase 2) — Token, Anfragen-Tabelle, Servicebetrieb-Picker
+// ============================================================================
+
+// URL-safer 22-char Token (base64url ohne padding) aus 16 zufälligen Bytes
+function _eiLvGenerateToken() {
+  const a = new Uint8Array(16);
+  (window.crypto || window.msCrypto).getRandomValues(a);
+  let s = btoa(String.fromCharCode.apply(null, a));
+  return s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Pflicht-Fußzeile prüfen — welche Felder fehlen?
+function _eiLvCheckSbPflicht(sb) {
+  const required = [
+    { k: 'firma',             lbl: 'Firma' },
+    { k: 'strasse',           lbl: 'Straße' },
+    { k: 'plz',               lbl: 'PLZ' },
+    { k: 'ort',               lbl: 'Ort' },
+    { k: 'email',             lbl: 'Email' },
+    { k: 'ust_id',            lbl: 'USt-IdNr' },
+    { k: 'geschaeftsfuehrer', lbl: 'Geschäftsführer/Inhaber' },
+    { k: 'iban',              lbl: 'IBAN' },
+  ];
+  return required.filter(r => !String(sb && sb[r.k] || '').trim()).map(r => r.lbl);
+}
+
+// "📤 An Dienstleister senden"-Button öffnet diesen Picker
+async function openLvSendPicker() {
+  const s = window._eiLvEditorState; if (!s) return;
+  if (!s.positionen.length) { showToast('LV hat keine Positionen — erst Positionen extrahieren oder hinzufügen', 'warning', 3500); return; }
+  if (s.recordId == null || !s.recordId) {
+    showToast('Bitte erst „💾 Speichern" klicken, damit das LV einen Datensatz hat', 'warning', 4000);
+    return;
+  }
+  let sbRecs = [];
+  try { sbRecs = await loadServicebetriebe(); } catch (_) {}
+  const items = (sbRecs || []).map(r => ({ ...r.fields, _recordId: r.id }))
+    .filter(x => x.firma);
+  items.sort((a, b) => String(a.firma || '').localeCompare(String(b.firma || ''), 'de'));
+  const ov = document.createElement('div');
+  ov.id = 'eiLvSendPickerOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.75);display:flex;justify-content:center;align-items:center;z-index:100000;padding:30px;backdrop-filter:blur(6px)';
+  const sbList = items.map(x => {
+    const missing = _eiLvCheckSbPflicht(x);
+    const badge = missing.length
+      ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;margin-left:8px">⚠ ' + missing.length + ' Pflichtfeld' + (missing.length === 1 ? '' : 'er') + ' fehlen</span>'
+      : '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;margin-left:8px">✓ vollständig</span>';
+    const adr = [x.strasse, [x.plz, x.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    return '<div onclick="_eiLvSelectSbForSend(\'' + _esc(x._recordId) + '\')" style="background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:11px 14px;margin-bottom:7px;cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor=\'#7c3aed\';this.style.boxShadow=\'0 2px 10px rgba(124,58,237,.18)\'" onmouseout="this.style.borderColor=\'#e2e8f0\';this.style.boxShadow=\'none\'">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:700;color:#0f172a">' + _esc(x.firma) + badge + '</div><div style="font-size:11px;color:#94a3b8;font-family:var(--dr-f-mono)">' + _esc(x.id || '?') + '</div></div>'
+      + (x.email ? '<div style="font-size:12px;color:#475569;margin-top:3px">✉ ' + _esc(x.email) + '</div>' : '<div style="font-size:12px;color:#dc2626;margin-top:3px">⚠ keine Email hinterlegt</div>')
+      + (adr ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">📍 ' + _esc(adr) + '</div>' : '')
+      + '</div>';
+  }).join('');
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:680px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
+    + '<div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">'
+    +   '<div><div style="font-size:11px;font-weight:700;color:#ddd6fe;letter-spacing:.08em;text-transform:uppercase">📤 LV an Servicebetrieb senden</div><div style="font-size:15px;font-weight:700">Empfänger auswählen</div></div>'
+    +   '<button onclick="document.getElementById(\'eiLvSendPickerOv\').remove()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>'
+    + '</div>'
+    + '<div style="padding:18px 22px;overflow-y:auto;flex:1;background:#fafbfc">'
+    +   '<div style="font-size:12px;color:#475569;margin-bottom:14px;line-height:1.55">Servicebetrieb auswählen, an den die Anfrage geschickt wird. Pflichtfelder (USt-IdNr, IBAN, Geschäftsführer, Adresse) müssen für ein rechtskonformes Anschreiben vorhanden sein — Fehlende werden vor Versand abgefragt.</div>'
+    +   (items.length ? sbList : '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12.5px;background:#fff;border:1px dashed #cbd5e1;border-radius:10px">Noch keine Servicebetriebe angelegt. Erst über den Chat-Picker (📨 Chat starten in einer Email) anlegen.</div>')
+    + '</div>'
+    + '</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+window.openLvSendPicker = openLvSendPicker;
+
+async function _eiLvSelectSbForSend(sbRecordId) {
+  document.getElementById('eiLvSendPickerOv')?.remove();
+  let sb = null;
+  try {
+    const recs = await atRead('Servicebetriebe', "RECORD_ID()='" + sbRecordId + "'", { sort: false });
+    if (recs && recs[0]) sb = { ...recs[0].fields, _recordId: recs[0].id };
+  } catch (e) { showToast('Servicebetrieb-Lookup fehlgeschlagen: ' + e.message, 'error', 4000); return; }
+  if (!sb) { showToast('Servicebetrieb nicht gefunden', 'error', 3000); return; }
+  const missing = _eiLvCheckSbPflicht(sb);
+  if (missing.length) {
+    const cont = confirm('⚠ Pflichtfelder für rechtskonforme Fußzeile fehlen:\n\n  • ' + missing.join('\n  • ') + '\n\nJetzt im Servicebetrieb-Editor nachtragen?\n\n(„OK" öffnet Editor · „Abbrechen" sendet trotzdem)');
+    if (cont) {
+      await openServicebetriebEditor(sbRecordId);
+      return;
+    }
+  }
+  await _eiLvOpenSendDraft(sb);
+}
+window._eiLvSelectSbForSend = _eiLvSelectSbForSend;
+window._eiLvCheckSbPflicht = _eiLvCheckSbPflicht;
+window._eiLvGenerateToken = _eiLvGenerateToken;
+
+// Email-Body-Template — baut das Anschreiben für den Servicebetrieb
+function _eiLvBuildSendEmail(s, sb, landingUrl) {
+  const titel = s.titel || 'LV';
+  const hv = s.snap.hv_name || '(Hausverwaltung)';
+  const fn = s.snap.fabriknummer || '?';
+  const standort = s.snap.standort || '?';
+  const posCount = s.positionen.length;
+  const ansprache = sb.ansprechperson ? ('Sehr geehrte/r Frau/Herr ' + sb.ansprechperson) : ('Sehr geehrte Damen und Herren');
+  const body = ansprache + ',\n\n'
+    + 'im Auftrag der Hausverwaltung ' + hv + ' bitten wir Sie um ein Angebot für nachstehende Leistungen am Aufzug '
+    + 'Fn ' + fn + ' (' + standort + '):\n\n'
+    + s.positionen.map((p, i) => '  ' + (i + 1) + '. ' + (p.titel || p.beschreibung.slice(0, 80)) + (p.menge && p.menge !== '1' ? ' (Menge: ' + p.menge + ' ' + p.einheit + ')' : '')).join('\n')
+    + '\n\n'
+    + 'Bitte tragen Sie Ihre Preise und Lieferzeiten online ein:\n'
+    + landingUrl + '\n\n'
+    + 'Das Leistungsverzeichnis sowie alle Detailangaben finden Sie über den obigen Link. Nach Eingabe Ihrer Preise und Unterschrift wird automatisch ein PDF-Angebot erzeugt.\n\n'
+    + 'Vielen Dank im Voraus.\n\n'
+    + 'Mit freundlichen Grüßen\n'
+    + 'Liftaro · im Auftrag von ' + hv;
+  const betreff = 'Angebotsanfrage Fn ' + fn + ' · ' + hv + ' · ' + posCount + ' Position' + (posCount === 1 ? '' : 'en');
+  return { betreff, body };
+}
+
+async function _eiLvOpenSendDraft(sb) {
+  const s = window._eiLvEditorState; if (!s) return;
+  // Token + Anfrage-ID vorab erzeugen, damit der Link in der Vorschau schon stimmt
+  const token = _eiLvGenerateToken();
+  const anfrageId = 'lva_' + token.slice(0, 8);
+  // Landing-URL: dieselbe Base wie die App, /partner/lv-anfrage.html (kommt in Phase 3)
+  const base = window.location.origin + window.location.pathname.replace(/[^\/]*$/, '');
+  const landingUrl = base + 'partner/lv-anfrage.html?t=' + token;
+  const { betreff, body } = _eiLvBuildSendEmail(s, sb, landingUrl);
+  const ov = document.createElement('div');
+  ov.id = 'eiLvSendDraftOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.78);display:flex;justify-content:center;align-items:center;z-index:100000;padding:30px;backdrop-filter:blur(6px)';
+  const sbAdr = [sb.strasse, [sb.plz, sb.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:760px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
+    + '<div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center">'
+    +   '<div><div style="font-size:11px;font-weight:700;color:#ddd6fe;letter-spacing:.08em;text-transform:uppercase">📤 LV-Versand</div><div style="font-size:15px;font-weight:700">' + _esc(sb.firma) + '</div></div>'
+    +   '<button onclick="document.getElementById(\'eiLvSendDraftOv\').remove()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button>'
+    + '</div>'
+    + '<div style="padding:18px 22px;overflow-y:auto;flex:1;background:#fafbfc">'
+    +   '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:14px">'
+    +     '<div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Empfänger</div>'
+    +     '<div style="font-size:13.5px;font-weight:700;color:#0f172a">' + _esc(sb.firma) + (sb.ansprechperson ? ' · ' + _esc(sb.ansprechperson) : '') + '</div>'
+    +     '<div style="font-size:12px;color:#475569;margin-top:2px">✉ ' + _esc(sb.email || '⚠ keine Email') + (sbAdr ? ' · 📍 ' + _esc(sbAdr) : '') + '</div>'
+    +   '</div>'
+    +   '<div style="margin-bottom:14px">'
+    +     '<label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Betreff</label>'
+    +     '<input id="lvSendBetreff" type="text" value="' + _esc(betreff) + '" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">'
+    +   '</div>'
+    +   '<div style="margin-bottom:14px">'
+    +     '<label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Anschreiben</label>'
+    +     '<textarea id="lvSendBody" rows="14" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:ui-monospace,monospace;resize:vertical;line-height:1.55;box-sizing:border-box">' + _esc(body) + '</textarea>'
+    +   '</div>'
+    +   '<div style="background:#fef3c7;border:1px solid #fcd34d;color:#78350f;padding:10px 14px;border-radius:7px;font-size:12px;line-height:1.55">'
+    +     '<b>📍 Landing-URL (Phase 3 — noch nicht live):</b><br><code style="font-size:11px;word-break:break-all">' + _esc(landingUrl) + '</code><br>'
+    +     '<span style="font-size:11px">Token: <code>' + _esc(token) + '</code> · Anfrage-ID: <code>' + _esc(anfrageId) + '</code></span>'
+    +   '</div>'
+    + '</div>'
+    + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px">'
+    +   '<div style="font-size:11.5px;color:#64748b">Versand erzeugt einen LV_Anfragen-Datensatz · Email folgt in Phase 2d</div>'
+    +   '<div style="display:flex;gap:8px">'
+    +     '<button onclick="navigator.clipboard.writeText(\'' + _esc(landingUrl) + '\').then(()=>showToast(\'Link kopiert\',\'success\',1500))" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">📋 Link kopieren</button>'
+    +     '<button id="lvSendDraftBtn" onclick="_eiLvCreateAnfrage(\'' + _esc(sb._recordId) + '\',\'' + _esc(token) + '\',\'' + _esc(anfrageId) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 Anfrage erstellen</button>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+window._eiLvOpenSendDraft = _eiLvOpenSendDraft;
+
+async function _eiLvCreateAnfrage(sbRecordId, token, anfrageId) {
+  const s = window._eiLvEditorState; if (!s) return;
+  const btn = document.getElementById('lvSendDraftBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.textContent = '⏳ Erstelle …'; }
+  try {
+    // Servicebetrieb-Snapshot frisch holen
+    const recs = await atRead('Servicebetriebe', "RECORD_ID()='" + sbRecordId + "'", { sort: false });
+    if (!recs || !recs[0]) throw new Error('Servicebetrieb nicht gefunden');
+    const sb = { ...recs[0].fields };
+    const betreff = document.getElementById('lvSendBetreff')?.value || '';
+    const body    = document.getElementById('lvSendBody')?.value || '';
+    const fields = {
+      id:                              anfrageId,
+      lv_id:                           s.lvId,
+      email_id:                        s.emailId,
+      servicebetrieb_id:               sb.id || '',
+      servicebetrieb_snapshot_json:    JSON.stringify(sb),
+      token:                           token,
+      status:                          'pending',
+      email_betreff:                   betreff,
+      email_body:                      body,
+      positionen_snapshot_json:        JSON.stringify(s.positionen),
+      sent_at:                         '',
+      savedAt:                         new Date().toISOString(),
+    };
+    await atWrite('LV_Anfragen', fields);
+    // LV-Status auf 'versendet' setzen
+    if (s.recordId) {
+      try { await atUpdate('Leistungsverzeichnisse', s.recordId, { status: 'versendet', savedAt: new Date().toISOString() }); s.status = 'versendet'; }
+      catch (_) {}
+    }
+    document.getElementById('eiLvSendDraftOv')?.remove();
+    showToast('✓ LV-Anfrage angelegt (' + anfrageId + ') · Email-Versand folgt in Phase 2d', 'success', 5000);
+    // Editor schließen damit User die LV-Pille mit neuem Status sieht
+    document.getElementById('lvEditorModal')?.remove();
+    await _eiLvLoadForEmail(s.emailId, true);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    console.error('[V12.381] _eiLvCreateAnfrage:', e);
+    showToast('Anfrage-Anlage fehlgeschlagen: ' + e.message, 'error', 6500);
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '📤 Anfrage erstellen'; }
+  }
+}
+window._eiLvCreateAnfrage = _eiLvCreateAnfrage;
 
 // Existing LV öffnen (von der Pille im Email-Detail)
 async function openLvForEmail(emailId, lvId) {
