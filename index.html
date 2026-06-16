@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.390';
+const APP_VERSION = 'V12.391';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7925,7 +7925,8 @@ async function setupTables() {
       { name: 'email_betreff',      type: 'singleLineText' },
       { name: 'email_body',         type: 'multilineText'  },
       { name: 'positionen_snapshot_json', type: 'multilineText' }, // Festgefrorene LV-Positionen zum Sendezeitpunkt
-      { name: 'response_json',      type: 'multilineText'  },  // [{pos_nr, preis_eur, lieferzeit, bemerkung}, ...]
+      { name: 'response_json',      type: 'multilineText'  },  // [{pos_nr, preis_eur, bemerkung}, ...]
+      { name: 'lieferzeit_gesamt',  type: 'singleLineText' },  // V12.391: Gesamt-Lieferzeit als freier Text
       { name: 'signatur_dataurl',   type: 'multilineText'  },  // base64 PNG der Unterschrift
       { name: 'angebot_pdf',        type: 'multipleAttachments' }, // erzeugte PDF vom Dienstleister
       { name: 'sent_at',            type: 'singleLineText' },
@@ -7933,6 +7934,8 @@ async function setupTables() {
       { name: 'submitted_at',       type: 'singleLineText' },
       { name: 'savedAt',            type: 'singleLineText' },
     ]);
+    // V12.391: lieferzeit_gesamt für bestehende Bases nachrüsten
+    try { ensureFields('LV_Anfragen', [{ name: 'lieferzeit_gesamt', type: 'singleLineText' }]); } catch(_) {}
   } catch (e) { console.warn('[V12.381] ensureTable(LV_Anfragen) failed:', e.message); }
   try {
     ensureTable('Vollmachten', [
