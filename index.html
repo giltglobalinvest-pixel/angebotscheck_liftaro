@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.383';
+const APP_VERSION = 'V12.384';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33221,11 +33221,20 @@ function _renderEmailAssignmentCards(r) {
 // Karten + „📋 LV erstellen"-Button. Nutzt window._eiLvByEmail (Lazy-Cache).
 function _renderEmailLvSection(r) {
   if (!r) return '';
-  const lvs = (window._eiLvByEmail && Array.isArray(window._eiLvByEmail[r._id])) ? window._eiLvByEmail[r._id] : [];
+  // V12.384: 3-Zustand — undefined = lädt noch, [] = geladen+leer, [...] = geladen+items
+  const cacheEntry = window._eiLvByEmail ? window._eiLvByEmail[r._id] : undefined;
+  const isLoading = !Array.isArray(cacheEntry);
+  const lvs = Array.isArray(cacheEntry) ? cacheEntry : [];
   // Voraussetzungs-Check für den Erstellen-Button
   const pre = (typeof _eiLvCheckPrereqs === 'function') ? _eiLvCheckPrereqs(r) : { ok: true };
   let cardsHtml = '';
-  if (lvs.length) {
+  if (isLoading) {
+    cardsHtml = '<div style="background:#fff;border:1px dashed #c4b5fd;border-radius:10px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;color:#6b21a8;font-size:12.5px">'
+      + '<span class="lv-spin" style="display:inline-block;width:16px;height:16px;border:2px solid #ddd6fe;border-top-color:#7c3aed;border-radius:50%;animation:lvspin .8s linear infinite"></span>'
+      + '<span>Lade vorhandene Leistungsverzeichnisse …</span>'
+      + '<style>@keyframes lvspin{to{transform:rotate(360deg)}}</style>'
+      + '</div>';
+  } else if (lvs.length) {
     cardsHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;margin-bottom:10px">' + lvs.map(lv => {
       let cnt = 0;
       try { const a = JSON.parse(lv.positionen_json || '[]'); cnt = Array.isArray(a) ? a.length : 0; } catch (_) {}
@@ -37951,14 +37960,15 @@ function renderEmailInboxDetail() {
   setTimeout(() => { try { _eiSyncAufzugEucStatus(r._id); } catch (_) {} }, 80);
   // V12.376: Leistungsverzeichnis-Section — zeigt vorhandene LVs + Create-Button
   html += _renderEmailLvSection(r);
-  // Lazy-Load der LVs für diese Email — danach Re-Render damit Pillen erscheinen
+  // V12.384: Lazy-Load mit IMMER-Re-Render (auch bei leerem Array, damit Loading-Spinner verschwindet)
   setTimeout(() => {
     if (typeof _eiLvLoadForEmail === 'function') {
-      _eiLvLoadForEmail(r._id, true).then(arr => {
-        if (Array.isArray(arr) && arr.length) {
-          if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-        }
-      }).catch(() => {});
+      _eiLvLoadForEmail(r._id, true).then(() => {
+        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      }).catch(() => {
+        // Auch im Fehlerfall re-rendern damit der Spinner nicht ewig stehen bleibt
+        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      });
     }
   }, 120);
 
