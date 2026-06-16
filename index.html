@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.394';
+const APP_VERSION = 'V12.395';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7936,11 +7936,15 @@ async function setupTables() {
     ]);
     // V12.391: lieferzeit_gesamt für bestehende Bases nachrüsten
     // V12.393: signatur_methode + signatur_name + bestaetigung_text
+    // V12.395: Vorlagen-Snapshot — Klauseln/Einleitung/Unterschrift werden beim Versand eingefroren
     try { ensureFields('LV_Anfragen', [
-      { name: 'lieferzeit_gesamt', type: 'singleLineText' },
-      { name: 'signatur_methode',  type: 'singleLineText' },
-      { name: 'signatur_name',     type: 'singleLineText' },
-      { name: 'bestaetigung_text', type: 'multilineText'  },
+      { name: 'lieferzeit_gesamt',        type: 'singleLineText' },
+      { name: 'signatur_methode',         type: 'singleLineText' },
+      { name: 'signatur_name',            type: 'singleLineText' },
+      { name: 'bestaetigung_text',        type: 'multilineText'  },
+      { name: 'klauseln_snapshot_html',   type: 'multilineText'  },
+      { name: 'einleitung_snapshot_html', type: 'multilineText'  },
+      { name: 'unterschrift_snapshot',    type: 'multilineText'  },
     ]); } catch(_) {}
   } catch (e) { console.warn('[V12.381] ensureTable(LV_Anfragen) failed:', e.message); }
   try {
@@ -12328,6 +12332,7 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
     if (!betreff) throw new Error('Betreff fehlt');
     if (!body)    throw new Error('Anschreiben fehlt');
     // 1) LV_Anfragen anlegen (status='pending', kein sent_at yet)
+    // V12.395: Vorlage einfrieren — Klauseln, Einleitung, Unterschrift_Text als Snapshot
     setBtn('⏳ Lege Anfrage an …');
     const fields = {
       id:                              anfrageId,
@@ -12340,6 +12345,9 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
       email_betreff:                   betreff,
       email_body:                      body,
       positionen_snapshot_json:        JSON.stringify(s.positionen),
+      klauseln_snapshot_html:          String((s.vorlage && s.vorlage.klauseln_html)   || ''),
+      einleitung_snapshot_html:        String((s.vorlage && s.vorlage.einleitung_html) || ''),
+      unterschrift_snapshot:           String((s.vorlage && s.vorlage.unterschrift_text) || ''),
       sent_at:                         '',
       savedAt:                         new Date().toISOString(),
     };
