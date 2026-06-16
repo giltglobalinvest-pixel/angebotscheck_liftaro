@@ -153,7 +153,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.4.0';
+  const APP_VERSION = 'v1.5.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -333,9 +333,10 @@
     const fn      = snap.fabriknummer || '';
     const hersteller = snap.hersteller || '';
     const lvTitel = lv && lv.titel || ('LV ' + (fn ? '· Fn ' + fn : ''));
-    const klauseln = (vorlage && vorlage.klauseln_html) || '';
-    const einleitung = (vorlage && vorlage.einleitung_html) || '';
-    const unterschriftText = (vorlage && vorlage.unterschrift_text) || 'Mit der Unterzeichnung dieses Leistungsverzeichnisses gebe ich ein verbindliches Angebot ab. Die genannten Preise sind exkl. MwSt.';
+    // v1.5: Snapshot bevorzugen (eingefroren beim Versand), Fallback auf Live-Vorlage
+    const klauseln         = String(anf.klauseln_snapshot_html   || (vorlage && vorlage.klauseln_html)    || '');
+    const einleitung       = String(anf.einleitung_snapshot_html || (vorlage && vorlage.einleitung_html)  || '');
+    const unterschriftText = String(anf.unterschrift_snapshot    || (vorlage && vorlage.unterschrift_text) || 'Mit der Unterzeichnung dieses Leistungsverzeichnisses gebe ich ein verbindliches Angebot ab. Die genannten Preise sind exkl. MwSt.');
 
     const positionenHtml = positionen.map((p, idx) => {
       const nr = String(p.pos_nr || (idx + 1));
