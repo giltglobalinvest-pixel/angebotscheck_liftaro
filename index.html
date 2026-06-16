@@ -6419,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.376';
+const APP_VERSION = 'V12.377';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11025,21 +11025,24 @@ function _eiLvDefaultPauschalVorlage() {
     pflicht_felder_json: JSON.stringify(['pos_nr', 'beschreibung', 'menge', 'einheit']),
     bausteine_json:      JSON.stringify([]),
     extraktion_prompt:
-      'Du bist Spezialist für Pauschalangebote von Aufzug-Wartungs- und Reparaturfirmen. '
-    + 'Extrahiere aus dem vorliegenden Angebots-/Vertrags-Text die konkreten Leistungspositionen und gibst sie als JSON-Array zurück.\n\n'
+      'Du bist Spezialist für Pauschalangebote von Aufzug-REPARATUR-Firmen (NICHT Wartungs-Verträge, NICHT Modernisierungen).\n\n'
+    + 'Lies das angehängte PDF-Angebot vollständig. Extrahiere AUSSCHLIESSLICH die konkreten Reparatur-/Erneuerungs-Positionen, die der Anbieter dort tatsächlich anbietet (z.B. "Erneuerung Schütze", "Tausch Display", "Austausch RS-Halter"). Mehrfach gleiche Bezeichnungen werden als Menge zusammengefasst.\n\n'
     + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
     + '[\n'
-    + '  { "pos_nr": "1", "beschreibung": "Konkrete Beschreibung der Position", "menge": "Menge oder 1 wenn pauschal", "einheit": "Stk/Std/Pauschal/m/kg" },\n'
+    + '  { "pos_nr": "1", "beschreibung": "Konkrete Reparatur-/Erneuerungs-Beschreibung", "menge": "Stückzahl", "einheit": "Stk / Pauschal / m / kg / Std" },\n'
     + '  ...\n'
     + ']\n\n'
-    + 'Regeln:\n'
-    + '- Eine Position = ein konkreter Leistungsbaustein (kein Sammelposten "Reparatur" — eher: "Hydraulikschlauch austauschen", "Steuerung prüfen").\n'
-    + '- Preise im Original-PDF IGNORIEREN — sie werden vom Dienstleister neu eingetragen.\n'
-    + '- Wenn keine Menge/Einheit erkennbar ist, nimm "1" und "Pauschal".\n'
-    + '- Maximal 30 Positionen — bei mehr verdichten.\n'
-    + '- Numerierung beginnt bei 1.\n'
-    + '- Keine Floskeln (MwSt., Insgesamt, Zwischensumme) — nur Leistungs-Bausteine.\n'
-    + '- Beschreibung neutral umformulieren — nicht im Stil des Original-Briefs zitieren, sondern als Aufgabe formulieren.',
+    + 'STRENGE Regeln (Verstoß = unbrauchbares Ergebnis):\n'
+    + '- HALLUZINIERE NIEMALS. Wenn der Text keine konkreten Reparatur-/Erneuerungs-Posten enthält, gib AUSDRÜCKLICH ein leeres Array `[]` zurück.\n'
+    + '- NIEMALS Wartungs-Bausteine wie "Monatliche Wartung", "Jährliche TÜV-Prüfung", "Notrufdienst", "Schmierung" erfinden — diese gehören NICHT in einen Reparatur-LV.\n'
+    + '- NIEMALS generische Posten ergänzen, die nicht im Original stehen.\n'
+    + '- Eine Position = ein konkreter Reparatur-/Erneuerungs-Posten. Unter-Bullets (Konfektionierung, Demontage, Montage, Entsorgung, Inbetriebnahme) sind Teil EINER Position, nicht eigene Positionen.\n'
+    + '- Mengen-Angaben am Anfang ("3x Erneuerung RS-Halter") = Menge 3 / Einheit "Stk".\n'
+    + '- Preise im PDF IGNORIEREN — sie werden vom Dienstleister neu eingetragen.\n'
+    + '- Beschreibung neutral formulieren (z.B. "Erneuerung der Hauptschütze inkl. Demontage, Montage, Entsorgung und Inbetriebnahme"), keine Begrüßung/Schlussfloskel.\n'
+    + '- Keine Sammelposten "Lieferung", "Montage", "Lieferzeit" — das sind Lieferbedingungen, keine Positionen.\n'
+    + '- Numerierung beginnt bei 1, fortlaufend.\n'
+    + '- Maximal 30 Positionen.',
     unterschrift_text:
       'Mit meiner Unterschrift bestätige ich verbindlich die vorgenannten Preise und die Ausführungszeit. Das Angebot ist 30 Tage ab Datum gültig.',
     pdf_layout_json: JSON.stringify({ accent: '#1a3a5c', accent2: '#7dc242' }),
@@ -11158,7 +11161,10 @@ function _eiLvAdminSelect(id) {
     +   '<textarea id="lvEd_einleitung" rows="5" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.5">' + _esc(v.einleitung_html || '') + '</textarea></div>'
     + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Klauseln (HTML — Gewährleistung, Haftung, Zahlung etc.)</label>'
     +   '<textarea id="lvEd_klauseln" rows="10" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.5">' + _esc(v.klauseln_html || '') + '</textarea></div>'
-    + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">KI-Extraktions-Prompt (System-Prompt für Claude)</label>'
+    + '<div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
+    +     '<label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">KI-Extraktions-Prompt (System-Prompt für Claude)</label>'
+    +     (v.typ === 'pauschal' ? '<button onclick="_eiLvAdminResetPromptToDefault()" title="Setzt den KI-Prompt auf den aktuellen Default zurück (nur die KI-Anweisung — Klauseln/Einleitung/Unterschrift bleiben)" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:5px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Default-Prompt laden</button>' : '')
+    +   '</div>'
     +   '<textarea id="lvEd_extraktion" rows="10" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,monospace;font-size:11.5px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.55">' + _esc(v.extraktion_prompt || '') + '</textarea></div>'
     + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Unterschrifts-Disclaimer</label>'
     +   '<textarea id="lvEd_unterschrift" rows="2" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:12.5px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.5">' + _esc(v.unterschrift_text || '') + '</textarea></div>'
@@ -11236,6 +11242,21 @@ function _eiLvAdminAddNew() {
   });
 }
 window._eiLvAdminAddNew = _eiLvAdminAddNew;
+
+// V12.377: Default-Prompt in das Textarea kopieren (Save erfolgt manuell durch User).
+// Nur Prompt — Klauseln/Einleitung/Unterschrift bleiben, falls der User dort eigene Texte hat.
+function _eiLvAdminResetPromptToDefault() {
+  if (!confirm('Den KI-Prompt auf den aktuellen Standard zurücksetzen?\n\nKlauseln, Einleitung und Unterschrifts-Text bleiben unverändert. Du musst danach noch „💾 Speichern" klicken.')) return;
+  const def = (typeof _eiLvDefaultPauschalVorlage === 'function') ? _eiLvDefaultPauschalVorlage() : null;
+  if (!def) { showToast('Default-Vorlage nicht verfügbar', 'error'); return; }
+  const ta = document.getElementById('lvEd_extraktion');
+  if (!ta) return;
+  ta.value = def.extraktion_prompt;
+  ta.style.background = '#dcfce7';
+  setTimeout(() => { ta.style.background = ''; }, 1200);
+  showToast('✓ Standard-Prompt geladen — jetzt „💾 Speichern" klicken zum Persistieren', 'info', 5000);
+}
+window._eiLvAdminResetPromptToDefault = _eiLvAdminResetPromptToDefault;
 
 // ----------------------------------------------------------------------------
 // V12.376: LV erstellen + Editor (Phase 1 Teil B)
@@ -11485,32 +11506,67 @@ function _eiLvPosMove(idx, dir) {
 }
 window._eiLvPosMove = _eiLvPosMove;
 
-// KI-Extraktion — nutzt Vorlagen-Prompt + Anhang-Texte aus attachment_texts_json
+// V12.377: KI-Extraktion — schickt PDFs DIREKT an Claude (Vision/Document-API)
+// statt verworrenen pdfjs-Text. Anti-Halluzinations-Hinweis in der User-Message,
+// damit Claude bei unleserlichen PDFs ein leeres Array zurückgibt statt zu erfinden.
 async function _eiLvExtractPositions() {
   const s = window._eiLvEditorState; if (!s) return;
   const btn = document.getElementById('lvEdExtractBtn');
   const setBtn = (txt, dis) => { if (!btn) return; btn.disabled = !!dis; btn.style.opacity = dis ? '.7' : '1'; btn.textContent = txt; };
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt — bitte im Setup eintragen', 'error', 4500); return; }
-  setBtn('⏳ Extrahiere …', true);
+  setBtn('⏳ Lade PDFs …', true);
   try {
     const r = (_eiAllRecords || []).find(x => x._id === s.emailId);
     if (!r) throw new Error('Email nicht gefunden');
-    let cache = {};
-    try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
     const pdfs = (Array.isArray(r.attachments) ? r.attachments : []).filter(a => {
       const fn = a.filename || a.name || '';
       return /\.pdf$/i.test(fn) && (typeof isAttachmentIgnored !== 'function' || !isAttachmentIgnored(r, fn));
     });
-    const textChunks = [];
-    for (const a of pdfs) {
-      const fn = a.filename || a.name || '';
-      const t = String((cache && cache[fn]) || '').trim();
-      if (t) textChunks.push('=== ' + fn + ' ===\n' + t);
+    if (!pdfs.length) throw new Error('Kein PDF-Anhang in der Email');
+    // PDFs runterladen + base64-encoden, dabei Größencap (Anthropic-API ~32 MB total)
+    const docContents = [];
+    const skipped = [];
+    let totalBytes = 0;
+    const MAX_TOTAL = 28 * 1024 * 1024;
+    const MAX_FILES = 5;
+    const arrToB64 = (buf) => {
+      let bin = ''; const view = new Uint8Array(buf);
+      for (let i = 0; i < view.length; i += 0x8000) {
+        bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000));
+      }
+      return btoa(bin);
+    };
+    for (let i = 0; i < pdfs.length && i < MAX_FILES; i++) {
+      const a = pdfs[i];
+      const fn = a.filename || a.name || ('Anhang ' + (i + 1));
+      if (!a.url) { skipped.push(fn + ' (keine URL)'); continue; }
+      setBtn('⏳ Lade ' + (i + 1) + '/' + Math.min(pdfs.length, MAX_FILES) + ' …', true);
+      try {
+        const resp = await fetch(a.url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const buf = await resp.arrayBuffer();
+        if (totalBytes + buf.byteLength > MAX_TOTAL) { skipped.push(fn + ' (Gesamtgröße > 28 MB)'); continue; }
+        totalBytes += buf.byteLength;
+        docContents.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: arrToB64(buf) },
+          title: fn,
+        });
+      } catch (e) {
+        console.warn('[V12.377] LV-Extract PDF-Load ' + fn + ':', e.message);
+        skipped.push(fn + ' (' + e.message + ')');
+      }
     }
-    if (!textChunks.length) throw new Error('Anhang-Texte sind noch nicht extrahiert. Bitte erst „🔍 Über alle Anhänge fragen" klicken — danach hat die KI Text zum Auswerten.');
-    const fullText = textChunks.join('\n\n').slice(0, 80000);
+    if (!docContents.length) throw new Error('Keiner der PDF-Anhänge konnte geladen werden' + (skipped.length ? ': ' + skipped.join(' · ') : ''));
+    if (pdfs.length > MAX_FILES) skipped.push((pdfs.length - MAX_FILES) + ' weitere übersprungen (max ' + MAX_FILES + ')');
     const sysPrompt = String(s.vorlage.extraktion_prompt || '').trim();
     if (!sysPrompt) throw new Error('Vorlage hat keinen KI-Prompt — bitte unter Werkzeuge → LV-Vorlagen pflegen');
+    setBtn('⏳ Claude liest PDF …', true);
+    const userText = 'Analysiere die obigen PDF-Anhänge sorgfältig und extrahiere die Reparatur-/Erneuerungs-Positionen exakt nach deiner Anweisung.\n\n'
+      + 'WICHTIG:\n'
+      + '- Wenn der/die PDF(s) tatsächlich ein Reparatur-/Erneuerungs-Angebot enthalten, gib die konkreten Posten zurück.\n'
+      + '- Wenn die PDFs etwas anderes sind (Wartungsvertrag, Rechnung, Korrespondenz, leere/unlesbare Datei): gib AUSDRÜCKLICH `[]` zurück. Erfinde NIEMALS Wartungs-Bausteine.\n\n'
+      + 'Antworte AUSSCHLIESSLICH mit gültigem JSON-Array.';
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -11523,7 +11579,7 @@ async function _eiLvExtractPositions() {
         model: 'claude-haiku-4-5',
         max_tokens: 2500,
         system: sysPrompt,
-        messages: [{ role: 'user', content: 'Anhang-Texte:\n---\n' + fullText + '\n---' }],
+        messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: userText }]) }],
       }),
     });
     if (!resp.ok) {
@@ -11544,12 +11600,16 @@ async function _eiLvExtractPositions() {
       menge:        String(p.menge || '1').trim(),
       einheit:      String(p.einheit || 'Pauschal').trim(),
     })).filter(p => p.beschreibung);
-    if (!norm.length) throw new Error('KI hat keine verwertbaren Positionen gefunden');
+    if (!norm.length) {
+      showToast('⚠ Claude hat keine konkreten Reparatur-Positionen im PDF gefunden. Vermutlich ist der Anhang kein Reparatur-Angebot, sondern z.B. ein Wartungsvertrag oder eine Korrespondenz. Manuell „+ Position hinzufügen" oder mit anderer Vorlage versuchen.', 'warning', 9000);
+      return;
+    }
     s.positionen = norm;
     _eiLvRenderEditorBody();
-    showToast('✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus Anhang extrahiert', 'success', 3000);
+    const skipMsg = (typeof skipped !== 'undefined' && skipped.length) ? ' · ⚠ ' + skipped.length + ' Anhang übersprungen: ' + skipped.join(' · ') : '';
+    showToast('✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus PDF extrahiert' + skipMsg, 'success', skipMsg ? 7000 : 3000);
   } catch (e) {
-    console.error('[V12.376] _eiLvExtractPositions:', e);
+    console.error('[V12.377] _eiLvExtractPositions:', e);
     showToast('Extraktion fehlgeschlagen: ' + e.message, 'error', 6500);
   } finally {
     setBtn('🤖 KI: Positionen aus Anhang', false);
