@@ -6419,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.375';
+const APP_VERSION = 'V12.376';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11236,6 +11236,374 @@ function _eiLvAdminAddNew() {
   });
 }
 window._eiLvAdminAddNew = _eiLvAdminAddNew;
+
+// ----------------------------------------------------------------------------
+// V12.376: LV erstellen + Editor (Phase 1 Teil B)
+// ----------------------------------------------------------------------------
+
+// Alle LVs zu einer Email laden — Cache: window._eiLvByEmail[emailId] = []
+async function _eiLvLoadForEmail(emailId, forceReload) {
+  if (!emailId) return [];
+  window._eiLvByEmail = window._eiLvByEmail || {};
+  if (!forceReload && Array.isArray(window._eiLvByEmail[emailId])) return window._eiLvByEmail[emailId];
+  try {
+    const filter = "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'";
+    const recs = await atRead('Leistungsverzeichnisse', filter, { sort: false });
+    const arr = (recs || []).map(r => ({ _recordId: r.id, ...r.fields })).filter(x => x && x.id);
+    window._eiLvByEmail[emailId] = arr;
+    return arr;
+  } catch (e) {
+    console.warn('[V12.376] _eiLvLoadForEmail:', e.message);
+    window._eiLvByEmail[emailId] = [];
+    return [];
+  }
+}
+window._eiLvLoadForEmail = _eiLvLoadForEmail;
+
+// Kontext-Snapshot bauen — HV, Standort, Fn, Hersteller, Aufzug-ID
+function _eiLvBuildKontextSnapshot(r) {
+  if (!r) return {};
+  let hvName = '', hvOrgId = '', hvEmail = '';
+  try {
+    const arr = JSON.parse(r.vorgaenge_json || '[]');
+    if (Array.isArray(arr)) {
+      const a = arr.find(x => x && x.assigned_org_id && x.assigned_org_name);
+      if (a) { hvName = String(a.assigned_org_name || '').trim(); hvOrgId = String(a.assigned_org_id || '').trim(); hvEmail = String(a.assigned_org_email || '').trim(); }
+    }
+  } catch (_) {}
+  if (!hvName)  hvName  = String(r.confirmed_hv_org_name || r.real_hv_firma || '').trim();
+  if (!hvOrgId) hvOrgId = String(r.confirmed_hv_org_id   || '').trim();
+  if (!hvEmail) hvEmail = String(r.confirmed_hv_email    || '').trim();
+  return {
+    hv_name: hvName,
+    hv_pipedrive_org_id: hvOrgId,
+    hv_email: hvEmail,
+    standort: String(r.aufzug_standort || '').trim(),
+    fabriknummer: String(r.aufzug_fabriknummer || '').trim(),
+    hersteller: String(r.aufzug_hersteller || '').trim(),
+    aufzug_id: String(r.aufzug_id || '').trim(),
+    aufzug_record_id: String(r.aufzug_record_id || '').trim(),
+    email_subject: String((r.ai_subject && r.ai_subject.trim()) || r.subject || '').trim(),
+    snapshot_at: new Date().toISOString(),
+  };
+}
+window._eiLvBuildKontextSnapshot = _eiLvBuildKontextSnapshot;
+
+// Voraussetzungen prüfen — gibt {ok, reason} zurück
+function _eiLvCheckPrereqs(r) {
+  if (!r) return { ok: false, reason: 'Email nicht gefunden' };
+  const snap = _eiLvBuildKontextSnapshot(r);
+  if (!snap.hv_pipedrive_org_id) return { ok: false, reason: 'Bitte zuerst eine Hausverwaltung aus Pipedrive zuordnen (HV-Card oben → 🔍 Suchen)' };
+  if (!snap.fabriknummer)        return { ok: false, reason: 'Bitte zuerst einen Aufzug zuordnen (Aufzug-Card oben → 🔍 Auswählen)' };
+  const pdfs = (Array.isArray(r.attachments) ? r.attachments : []).filter(a => {
+    const fn = a.filename || a.name || '';
+    return /\.pdf$/i.test(fn) && (typeof isAttachmentIgnored !== 'function' || !isAttachmentIgnored(r, fn));
+  });
+  if (!pdfs.length) return { ok: false, reason: 'Kein PDF-Anhang vorhanden — bitte ein Quell-Angebot anhängen' };
+  return { ok: true, snap, pdfs };
+}
+window._eiLvCheckPrereqs = _eiLvCheckPrereqs;
+
+// LV-Erstellen-Flow starten — wählt Vorlage und ruft den Editor auf
+async function startLvErstellen(emailId, vorlageId) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  const pre = _eiLvCheckPrereqs(r);
+  if (!pre.ok) { showToast('⚠ ' + pre.reason, 'warning', 6000); return; }
+  // Vorlagen sicherstellen (Default-Seed falls Tabelle leer)
+  if (typeof _eiSeedLvVorlagen === 'function') { try { await _eiSeedLvVorlagen(); } catch (_) {} }
+  let vorlagen = await _eiLvLoadVorlagen(true);
+  vorlagen = vorlagen.filter(v => String(v.aktiv) === '1');
+  if (!vorlagen.length) { showToast('Keine aktive LV-Vorlage vorhanden — bitte unter Werkzeuge → LV-Vorlagen anlegen', 'warning', 7000); return; }
+  let chosen = null;
+  if (vorlageId) chosen = vorlagen.find(v => String(v.id) === String(vorlageId)) || null;
+  if (!chosen && vorlagen.length === 1) chosen = vorlagen[0];
+  if (!chosen) {
+    // Vorlagen-Picker zeigen (nur wenn mehrere aktive Vorlagen)
+    chosen = await _eiLvVorlagenPicker(vorlagen);
+    if (!chosen) return;
+  }
+  _eiLvOpenEditor(emailId, null, chosen);
+}
+window.startLvErstellen = startLvErstellen;
+
+// Vorlagen-Picker — kleines Modal
+function _eiLvVorlagenPicker(vorlagen) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6800;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+    const list = vorlagen.map(v => {
+      const typ = { pauschal: '🛠 Pauschal', wartung: '🔄 Wartung', modernisierung: '🏗 Mod.' }[v.typ] || v.typ;
+      return '<button data-vid="' + _esc(String(v.id)) + '" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;cursor:pointer;text-align:left;font-family:inherit;display:flex;flex-direction:column;gap:3px">'
+        + '<span style="font-size:10px;color:#0891b2;font-weight:700;text-transform:uppercase;letter-spacing:.05em">' + _esc(typ) + '</span>'
+        + '<span style="font-size:13px;color:#0f172a;font-weight:600">' + _esc(v.name || '(ohne Name)') + '</span>'
+        + '</button>';
+    }).join('');
+    ov.innerHTML = '<div style="background:#fff;border-radius:12px;width:min(480px,94vw);padding:18px 20px;box-shadow:0 30px 80px rgba(0,0,0,.4)">'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:4px">📋 LV-Vorlage wählen</div>'
+      + '<div style="font-size:12px;color:#64748b;margin-bottom:14px">Mehrere aktive Vorlagen vorhanden — bitte auswählen.</div>'
+      + '<div style="display:flex;flex-direction:column;gap:8px">' + list + '</div>'
+      + '<div style="margin-top:14px;text-align:right"><button id="_lvPickCancel" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button></div>'
+      + '</div>';
+    document.body.appendChild(ov);
+    const cleanup = (v) => { try { ov.remove(); } catch (_) {} resolve(v); };
+    ov.querySelectorAll('button[data-vid]').forEach(b => b.onclick = () => {
+      const v = vorlagen.find(x => String(x.id) === b.getAttribute('data-vid'));
+      cleanup(v || null);
+    });
+    document.getElementById('_lvPickCancel').onclick = () => cleanup(null);
+    ov.onclick = (e) => { if (e.target === ov) cleanup(null); };
+  });
+}
+
+// Editor-Modal — wenn lv null → neu (Kontext-Snapshot + leere Positionen), sonst load
+async function _eiLvOpenEditor(emailId, existingLv, vorlage) {
+  const r = (_eiAllRecords || []).find(x => x._id === emailId);
+  if (!r) return;
+  const snap = (existingLv && (function(){ try { return JSON.parse(existingLv.kontext_snapshot_json || '{}'); } catch(_){ return {}; } })()) || _eiLvBuildKontextSnapshot(r);
+  let positionen = [];
+  if (existingLv) { try { positionen = JSON.parse(existingLv.positionen_json || '[]'); } catch (_) {} }
+  if (!Array.isArray(positionen)) positionen = [];
+  const lvId = (existingLv && existingLv.id) || ('lv_' + Math.random().toString(36).slice(2, 8) + '_' + Date.now().toString(36));
+  const recordId = (existingLv && existingLv._recordId) || '';
+  const status = (existingLv && existingLv.status) || 'entwurf';
+  const titel = (existingLv && existingLv.titel) || ('LV · ' + (snap.fabriknummer ? 'Fn ' + snap.fabriknummer : 'Aufzug') + ' · ' + (snap.hv_name || 'HV'));
+  // State global, damit die Render-Funktionen ihn finden
+  window._eiLvEditorState = { emailId, lvId, recordId, vorlage, snap, positionen, status, titel };
+  // Modal aufbauen
+  const ex = document.getElementById('lvEditorModal');
+  if (ex) try { ex.remove(); } catch (_) {}
+  const ov = document.createElement('div');
+  ov.id = 'lvEditorModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6500;display:flex;align-items:center;justify-content:center;padding:14px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(1100px,98vw);height:min(92vh,920px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)">'
+    + '<div style="background:#1a3a5c;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0">'
+    +   '<div style="min-width:0;flex:1">'
+    +     '<div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;font-weight:700">📋 Leistungsverzeichnis</div>'
+    +     '<div id="lvEdHeaderTitle" style="font-size:14.5px;font-weight:700;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(titel) + '</div>'
+    +     '<div style="font-size:11px;color:rgba(255,255,255,.65);margin-top:2px">Vorlage: ' + _esc(vorlage.name || vorlage.typ || '') + ' · Status: <span id="lvEdHeaderStatus">' + _esc(status) + '</span></div>'
+    +   '</div>'
+    +   '<button onclick="document.getElementById(\'lvEditorModal\').remove()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 10px;line-height:1;flex-shrink:0">✕</button>'
+    + '</div>'
+    + '<div id="lvEdBody" style="flex:1;overflow-y:auto;padding:18px 22px;background:#fafbfc"></div>'
+    + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-shrink:0">'
+    +   '<div style="font-size:11.5px;color:#64748b">Status wird beim Speichern auf „bereit" gesetzt, wenn mind. 1 Position vorhanden ist.</div>'
+    +   '<div style="display:flex;gap:8px">'
+    +     '<button onclick="_eiLvExtractPositions()" id="lvEdExtractBtn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">🤖 KI: Positionen aus Anhang</button>'
+    +     '<button onclick="_eiLvSave()" id="lvEdSaveBtn" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  _eiLvRenderEditorBody();
+}
+window._eiLvOpenEditor = _eiLvOpenEditor;
+
+function _eiLvRenderEditorBody() {
+  const body = document.getElementById('lvEdBody');
+  const s = window._eiLvEditorState;
+  if (!body || !s) return;
+  const { snap, positionen, vorlage } = s;
+  // Kontext-Snapshot (read-only Karten)
+  const kCard = (icon, label, val) => '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;min-width:0">'
+    + '<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:4px"><span>' + icon + '</span><span>' + label + '</span></div>'
+    + '<div style="font-size:13px;color:#0f172a;font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(val || '—') + '</div>'
+    + '</div>';
+  const ctxHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:18px">'
+    + kCard('🏢', 'Hausverwaltung', snap.hv_name)
+    + kCard('🛗', 'Fabriknummer', snap.fabriknummer)
+    + kCard('📍', 'Standort', snap.standort)
+    + kCard('🏭', 'Hersteller', snap.hersteller)
+    + '</div>';
+  // Titel-Editor
+  const titelHtml = '<div style="margin-bottom:14px">'
+    + '<label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Titel</label>'
+    + '<input id="lvEd_titel" type="text" value="' + _esc(s.titel || '') + '" oninput="window._eiLvEditorState.titel=this.value;var h=document.getElementById(\'lvEdHeaderTitle\');if(h)h.textContent=this.value" style="width:100%;margin-top:4px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:7px;font-family:inherit;font-size:13.5px;outline:none;box-sizing:border-box;font-weight:600;color:#0f172a">'
+    + '</div>';
+  // Positionen-Tabelle
+  const positionenHtml = positionen.length
+    ? positionen.map((p, idx) => '<tr data-idx="' + idx + '" style="background:#fff;border-bottom:1px solid #f1f5f9">'
+        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><input type="text" value="' + _esc(String(p.pos_nr || (idx + 1))) + '" oninput="_eiLvPosEdit(' + idx + ',\'pos_nr\',this.value)" style="width:50px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:center;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
+        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><textarea oninput="_eiLvPosEdit(' + idx + ',\'beschreibung\',this.value)" rows="2" style="width:100%;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12.5px;resize:vertical;background:transparent;line-height:1.45" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'">' + _esc(String(p.beschreibung || '')) + '</textarea></td>'
+        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><input type="text" value="' + _esc(String(p.menge || '1')) + '" oninput="_eiLvPosEdit(' + idx + ',\'menge\',this.value)" style="width:70px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
+        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><input type="text" value="' + _esc(String(p.einheit || 'Pauschal')) + '" oninput="_eiLvPosEdit(' + idx + ',\'einheit\',this.value)" style="width:95px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12px;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
+        + '<td style="padding:6px 8px;text-align:right;white-space:nowrap">'
+        +   '<button onclick="_eiLvPosMove(' + idx + ',-1)" title="Hoch" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:3px 6px;font-size:14px">↑</button>'
+        +   '<button onclick="_eiLvPosMove(' + idx + ',1)" title="Runter" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:3px 6px;font-size:14px">↓</button>'
+        +   '<button onclick="_eiLvPosDelete(' + idx + ')" title="Löschen" style="background:transparent;border:none;color:#fca5a5;cursor:pointer;padding:3px 6px;font-size:13px">✕</button>'
+        + '</td>'
+        + '</tr>').join('')
+    : '<tr><td colspan="5" style="padding:30px 16px;text-align:center;color:#94a3b8;font-size:12.5px;background:#fff">Noch keine Positionen. „🤖 KI: Positionen aus Anhang" oder „+ Position hinzufügen" klicken.</td></tr>';
+  const tableHtml = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:14px">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    + '<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
+    +   '<th style="padding:9px 8px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;width:60px">Nr.</th>'
+    +   '<th style="padding:9px 8px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Beschreibung</th>'
+    +   '<th style="padding:9px 8px;text-align:right;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;width:80px">Menge</th>'
+    +   '<th style="padding:9px 8px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;width:105px">Einheit</th>'
+    +   '<th style="padding:9px 8px;width:120px"></th>'
+    + '</tr></thead>'
+    + '<tbody id="lvEdPosBody">' + positionenHtml + '</tbody>'
+    + '</table>'
+    + '<div style="padding:8px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center">'
+    +   '<button onclick="_eiLvPosAdd()" style="background:transparent;border:1px dashed #cbd5e1;color:#475569;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Position hinzufügen</button>'
+    + '</div>'
+    + '</div>';
+  // Klauseln-Vorschau (Accordion)
+  const klauselnHtml = '<details style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-top:14px"><summary style="cursor:pointer;padding:12px 14px;font-size:12.5px;font-weight:700;color:#475569;list-style:none;outline:none">📜 Klauseln (aus Vorlage „' + _esc(vorlage.name) + '") · zur Vorschau aufklappen</summary><div style="padding:0 16px 14px;font-size:12.5px;color:#0f172a;line-height:1.55">' + (vorlage.klauseln_html || '<em style="color:#94a3b8">(keine Klauseln definiert — pflegen unter Werkzeuge → LV-Vorlagen)</em>') + '</div></details>';
+  body.innerHTML = ctxHtml + titelHtml + tableHtml + klauselnHtml;
+}
+window._eiLvRenderEditorBody = _eiLvRenderEditorBody;
+
+function _eiLvPosEdit(idx, field, value) {
+  const s = window._eiLvEditorState; if (!s || !s.positionen[idx]) return;
+  s.positionen[idx][field] = String(value || '').trim();
+}
+window._eiLvPosEdit = _eiLvPosEdit;
+function _eiLvPosAdd() {
+  const s = window._eiLvEditorState; if (!s) return;
+  s.positionen.push({ pos_nr: String(s.positionen.length + 1), beschreibung: '', menge: '1', einheit: 'Pauschal' });
+  _eiLvRenderEditorBody();
+}
+window._eiLvPosAdd = _eiLvPosAdd;
+function _eiLvPosDelete(idx) {
+  const s = window._eiLvEditorState; if (!s) return;
+  if (!confirm('Position löschen?')) return;
+  s.positionen.splice(idx, 1);
+  _eiLvRenderEditorBody();
+}
+window._eiLvPosDelete = _eiLvPosDelete;
+function _eiLvPosMove(idx, dir) {
+  const s = window._eiLvEditorState; if (!s) return;
+  const j = idx + dir;
+  if (j < 0 || j >= s.positionen.length) return;
+  const tmp = s.positionen[idx]; s.positionen[idx] = s.positionen[j]; s.positionen[j] = tmp;
+  // Pos-Nr renumerieren
+  s.positionen.forEach((p, i) => { p.pos_nr = String(i + 1); });
+  _eiLvRenderEditorBody();
+}
+window._eiLvPosMove = _eiLvPosMove;
+
+// KI-Extraktion — nutzt Vorlagen-Prompt + Anhang-Texte aus attachment_texts_json
+async function _eiLvExtractPositions() {
+  const s = window._eiLvEditorState; if (!s) return;
+  const btn = document.getElementById('lvEdExtractBtn');
+  const setBtn = (txt, dis) => { if (!btn) return; btn.disabled = !!dis; btn.style.opacity = dis ? '.7' : '1'; btn.textContent = txt; };
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt — bitte im Setup eintragen', 'error', 4500); return; }
+  setBtn('⏳ Extrahiere …', true);
+  try {
+    const r = (_eiAllRecords || []).find(x => x._id === s.emailId);
+    if (!r) throw new Error('Email nicht gefunden');
+    let cache = {};
+    try { cache = JSON.parse(r.attachment_texts_json || '{}'); } catch (_) {}
+    const pdfs = (Array.isArray(r.attachments) ? r.attachments : []).filter(a => {
+      const fn = a.filename || a.name || '';
+      return /\.pdf$/i.test(fn) && (typeof isAttachmentIgnored !== 'function' || !isAttachmentIgnored(r, fn));
+    });
+    const textChunks = [];
+    for (const a of pdfs) {
+      const fn = a.filename || a.name || '';
+      const t = String((cache && cache[fn]) || '').trim();
+      if (t) textChunks.push('=== ' + fn + ' ===\n' + t);
+    }
+    if (!textChunks.length) throw new Error('Anhang-Texte sind noch nicht extrahiert. Bitte erst „🔍 Über alle Anhänge fragen" klicken — danach hat die KI Text zum Auswerten.');
+    const fullText = textChunks.join('\n\n').slice(0, 80000);
+    const sysPrompt = String(s.vorlage.extraktion_prompt || '').trim();
+    if (!sysPrompt) throw new Error('Vorlage hat keinen KI-Prompt — bitte unter Werkzeuge → LV-Vorlagen pflegen');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': APP_KEYS.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 2500,
+        system: sysPrompt,
+        messages: [{ role: 'user', content: 'Anhang-Texte:\n---\n' + fullText + '\n---' }],
+      }),
+    });
+    if (!resp.ok) {
+      let body = ''; try { body = await resp.text(); } catch (_) {}
+      throw new Error('Claude HTTP ' + resp.status + ': ' + body.slice(0, 150));
+    }
+    const data = await resp.json();
+    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed = null;
+    try { parsed = JSON.parse(cleaned); }
+    catch (_) { const m = raw.match(/\[[\s\S]*\]/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
+    if (!Array.isArray(parsed)) throw new Error('Konnte KI-Antwort nicht als Array parsen');
+    // Normalisieren
+    const norm = parsed.map((p, i) => ({
+      pos_nr:       String(p.pos_nr || (i + 1)),
+      beschreibung: String(p.beschreibung || '').trim(),
+      menge:        String(p.menge || '1').trim(),
+      einheit:      String(p.einheit || 'Pauschal').trim(),
+    })).filter(p => p.beschreibung);
+    if (!norm.length) throw new Error('KI hat keine verwertbaren Positionen gefunden');
+    s.positionen = norm;
+    _eiLvRenderEditorBody();
+    showToast('✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus Anhang extrahiert', 'success', 3000);
+  } catch (e) {
+    console.error('[V12.376] _eiLvExtractPositions:', e);
+    showToast('Extraktion fehlgeschlagen: ' + e.message, 'error', 6500);
+  } finally {
+    setBtn('🤖 KI: Positionen aus Anhang', false);
+  }
+}
+window._eiLvExtractPositions = _eiLvExtractPositions;
+
+async function _eiLvSave() {
+  const s = window._eiLvEditorState; if (!s) return;
+  const btn = document.getElementById('lvEdSaveBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.textContent = '⏳ Speichere …'; }
+  try {
+    const newStatus = s.positionen.length ? 'bereit' : 'entwurf';
+    const fields = {
+      id:                     s.lvId,
+      email_id:               s.emailId,
+      vorlage_id:             String(s.vorlage.id || ''),
+      titel:                  String(s.titel || '').trim() || ('LV · ' + (s.snap.fabriknummer || '?')),
+      positionen_json:        JSON.stringify(s.positionen),
+      kontext_snapshot_json:  JSON.stringify(s.snap),
+      status:                 newStatus,
+      ki_extraktion_at:       new Date().toISOString(),
+      savedAt:                new Date().toISOString(),
+    };
+    if (s.recordId) await atUpdate('Leistungsverzeichnisse', s.recordId, fields);
+    else {
+      const result = await atWrite('Leistungsverzeichnisse', fields);
+      if (result && result.id) s.recordId = result.id;
+    }
+    s.status = newStatus;
+    const sh = document.getElementById('lvEdHeaderStatus'); if (sh) sh.textContent = newStatus;
+    await _eiLvLoadForEmail(s.emailId, true);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    showToast('✓ LV gespeichert (' + s.positionen.length + ' Position' + (s.positionen.length === 1 ? '' : 'en') + ')', 'success', 3000);
+  } catch (e) {
+    console.error('[V12.376] _eiLvSave:', e);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 6500);
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '💾 Speichern'; }
+  }
+}
+window._eiLvSave = _eiLvSave;
+
+// Existing LV öffnen (von der Pille im Email-Detail)
+async function openLvForEmail(emailId, lvId) {
+  const list = await _eiLvLoadForEmail(emailId, true);
+  const lv = list.find(x => String(x.id) === String(lvId));
+  if (!lv) { showToast('LV nicht gefunden', 'error'); return; }
+  const vorlagen = await _eiLvLoadVorlagen();
+  const vorlage = vorlagen.find(v => String(v.id) === String(lv.vorlage_id)) || vorlagen[0];
+  if (!vorlage) { showToast('Vorlage zu diesem LV fehlt — bitte unter Werkzeuge prüfen', 'warning', 5000); return; }
+  _eiLvOpenEditor(emailId, lv, vorlage);
+}
+window.openLvForEmail = openLvForEmail;
 
 // V12.358: PDF-Anhang öffnen + Fragen stellen (Q&A-Modal).
 // Erstmal: Text aus PDF extrahieren (pdfjs) und in attachment_texts_json speichern.
@@ -32175,6 +32543,52 @@ function _renderEmailAssignmentCards(r) {
   </div>`;
 }
 
+// V12.376: Leistungsverzeichnis-Section im Email-Detail. Zeigt vorhandene LVs als
+// Karten + „📋 LV erstellen"-Button. Nutzt window._eiLvByEmail (Lazy-Cache).
+function _renderEmailLvSection(r) {
+  if (!r) return '';
+  const lvs = (window._eiLvByEmail && Array.isArray(window._eiLvByEmail[r._id])) ? window._eiLvByEmail[r._id] : [];
+  // Voraussetzungs-Check für den Erstellen-Button
+  const pre = (typeof _eiLvCheckPrereqs === 'function') ? _eiLvCheckPrereqs(r) : { ok: true };
+  let cardsHtml = '';
+  if (lvs.length) {
+    cardsHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;margin-bottom:10px">' + lvs.map(lv => {
+      let cnt = 0;
+      try { const a = JSON.parse(lv.positionen_json || '[]'); cnt = Array.isArray(a) ? a.length : 0; } catch (_) {}
+      const statusBg = lv.status === 'bereit' ? '#dcfce7' : (lv.status === 'versendet' ? '#dbeafe' : '#fef3c7');
+      const statusFg = lv.status === 'bereit' ? '#166534' : (lv.status === 'versendet' ? '#1e40af' : '#92400e');
+      const statusLbl = lv.status === 'bereit' ? 'BEREIT' : (lv.status === 'versendet' ? 'VERSENDET' : 'ENTWURF');
+      return '<button onclick="openLvForEmail(\'' + r._id + '\',\'' + _esc(String(lv.id)) + '\')" style="background:#fff;border:1px solid #c4b5fd;border-radius:10px;padding:10px 12px;text-align:left;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;gap:4px">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
+        +   '<span style="font-size:10px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.05em">📋 ' + _esc(lv.id || '?') + '</span>'
+        +   '<span style="background:' + statusBg + ';color:' + statusFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">' + statusLbl + '</span>'
+        + '</div>'
+        + '<div style="font-size:13px;color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(lv.titel || '(ohne Titel)') + '</div>'
+        + '<div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">' + cnt + ' Position' + (cnt === 1 ? '' : 'en') + '</div>'
+        + '</button>';
+    }).join('') + '</div>';
+  }
+  const btnStyle = pre.ok
+    ? 'background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;cursor:pointer'
+    : 'background:#f1f5f9;color:#94a3b8;cursor:not-allowed';
+  const btnTitle = pre.ok
+    ? 'Leistungsverzeichnis aus den PDF-Anhängen extrahieren und bearbeiten'
+    : pre.reason;
+  const createBtn = '<button ' + (pre.ok ? '' : 'disabled ') + 'onclick="startLvErstellen(\'' + r._id + '\')" title="' + _esc(btnTitle) + '" style="' + btnStyle + ';border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;font-family:\'DM Sans\',sans-serif;display:inline-flex;align-items:center;gap:6px">📋 LV erstellen</button>';
+  return '<div class="dr-section" data-feature="ei_lv" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:' + (lvs.length ? '10' : '6') + 'px;flex-wrap:wrap">'
+    +   '<div>'
+    +     '<div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px">📋 Leistungsverzeichnis' + (lvs.length ? ' · ' + lvs.length : '') + '</div>'
+    +     '<div style="font-size:11.5px;color:#7c3aed">Neutrales Vorlagen-LV aus dem Anhang erzeugen — für vergleichbare Preisanfragen an Dienstleister.</div>'
+    +   '</div>'
+    +   createBtn
+    + '</div>'
+    + cardsHtml
+    + (pre.ok || lvs.length ? '' : '<div style="font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ ' + _esc(pre.reason) + '</div>')
+    + '</div>';
+}
+window._renderEmailLvSection = _renderEmailLvSection;
+
 // V12.313: Lazy-Sync — wenn der Aufzug in der Aufzuege-Tabelle bereits einem
 // EuC-Vertrag angehört (z. B. weil er direkt im EuC-Editor hinzugefügt wurde),
 // die Email aber noch aufzug_im_euc='' hat, holen wir den Status nach. Damit
@@ -36861,6 +37275,18 @@ function renderEmailInboxDetail() {
   // V12.313: Lazy-Sync — frischen EuC-Stand aus der Aufzuege-Tabelle nachholen,
   // damit die Card grün wird wenn der Aufzug bereits im EuC-Vertrag drin ist.
   setTimeout(() => { try { _eiSyncAufzugEucStatus(r._id); } catch (_) {} }, 80);
+  // V12.376: Leistungsverzeichnis-Section — zeigt vorhandene LVs + Create-Button
+  html += _renderEmailLvSection(r);
+  // Lazy-Load der LVs für diese Email — danach Re-Render damit Pillen erscheinen
+  setTimeout(() => {
+    if (typeof _eiLvLoadForEmail === 'function') {
+      _eiLvLoadForEmail(r._id, true).then(arr => {
+        if (Array.isArray(arr) && arr.length) {
+          if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+        }
+      }).catch(() => {});
+    }
+  }, 120);
 
   // V12.171: KI-Schnell-Button — analysiert den Body (auch Forward-Inhalt) und schlägt
   // echten Absender, HV und Vorgang vor. Step 1: nur Anzeige, kein Auto-Speichern.
