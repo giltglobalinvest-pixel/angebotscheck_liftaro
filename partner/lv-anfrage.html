@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e2440">
+<title>Liftaro — Angebotsanfrage</title>
+<link rel="icon" type="image/png" href="https://giltglobalinvest-pixel.github.io/angebotscheck_liftaro/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0e2440;
+    --navy-2: #16345a;
+    --purple: #7c3aed;
+    --purple-deep: #5b21b6;
+    --purple-soft: #f5f3ff;
+    --teal: #0891b2;
+    --teal-deep: #0e7490;
+    --teal-soft: #ecfeff;
+    --green: #16A34A;
+    --green-soft: #DCFCE7;
+    --amber: #D97706;
+    --amber-soft: #FEF3C7;
+    --red: #DC2626;
+    --red-soft: #FEE2E2;
+    --bg: #DDE7F0;
+    --surface: #FFFFFF;
+    --surface-alt: #F4F7FB;
+    --ink: #0F1830;
+    --ink-soft: #3D4A66;
+    --ink-mute: #5C6E87;
+    --ink-subtle: #94A3B8;
+    --border: #E2E8F0;
+    --border-strong: #CBD5E1;
+    --r-sm: 7px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --elev-1: 0 1px 2px rgba(15,24,48,.05), 0 2px 6px rgba(15,24,48,.06);
+    --elev-2: 0 2px 6px rgba(15,24,48,.07), 0 8px 22px rgba(15,24,48,.10);
+    --f-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --f-mono: 'DM Mono', 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--f-sans);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 18px 80px; }
+  .topbar {
+    background: var(--navy);
+    color: #fff;
+    padding: 14px 22px;
+    border-radius: var(--r-md);
+    margin-bottom: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: var(--elev-1);
+  }
+  .topbar .brand { font-size: 16px; font-weight: 700; letter-spacing: .04em; }
+  .topbar .tag { font-size: 11px; color: rgba(255,255,255,.7); text-transform: uppercase; letter-spacing: .08em; }
+  .card { background: var(--surface); border-radius: var(--r-lg); padding: 22px 24px; margin-bottom: 14px; box-shadow: var(--elev-1); }
+  .card h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: var(--ink); }
+  .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 700; color: var(--purple-deep); text-transform: uppercase; letter-spacing: .04em; }
+  .label { font-size: 11px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; display: block; }
+  .muted { color: var(--ink-mute); font-size: 12.5px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+  .briefkopf { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 14px 16px; background: var(--surface-alt); border-radius: var(--r-md); margin-bottom: 14px; }
+  .briefkopf .box { font-size: 12.5px; line-height: 1.5; color: var(--ink-soft); }
+  .briefkopf .box .tag { font-size: 10px; font-weight: 700; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+  .briefkopf .firma { font-weight: 700; color: var(--ink); font-size: 13.5px; margin-bottom: 2px; }
+  .pos-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .pos-table th { background: var(--surface-alt); color: var(--ink-mute); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .pos-row { border-bottom: 1px solid var(--border); }
+  .pos-row td { padding: 12px 10px; vertical-align: top; }
+  .pos-nr { font-family: var(--f-mono); font-size: 12px; color: var(--ink-mute); width: 40px; }
+  .pos-title { font-weight: 700; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
+  .pos-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; white-space: pre-line; }
+  .pos-menge { font-family: var(--f-mono); font-size: 12px; color: var(--ink-mute); white-space: nowrap; padding-top: 3px; }
+  .pos-inputs { display: grid; grid-template-columns: 130px 110px; gap: 8px; margin-top: 8px; }
+  .pos-inputs .field { display: flex; flex-direction: column; }
+  .field input, .field textarea { font-family: var(--f-sans); font-size: 13px; padding: 8px 11px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); outline: none; background: #fff; color: var(--ink); width: 100%; }
+  .field input:focus, .field textarea:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+  .field .suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--ink-mute); pointer-events: none; }
+  .field-wrap { position: relative; }
+  .bemerkung-row td { padding-top: 0; padding-bottom: 14px; }
+  .bemerkung { width: 100%; }
+  .bemerkung textarea { resize: vertical; min-height: 38px; font-size: 12.5px; line-height: 1.5; }
+  .klauseln { background: var(--surface-alt); padding: 14px 18px; border-radius: var(--r-md); margin-top: 8px; font-size: 12.5px; line-height: 1.65; color: var(--ink-soft); white-space: pre-line; }
+  .sig-box { border: 2px dashed var(--border-strong); border-radius: var(--r-md); background: #fff; padding: 8px; }
+  .sig-box canvas { width: 100%; height: 180px; touch-action: none; display: block; background: #fff; border-radius: var(--r-sm); }
+  .sig-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .sig-clear { background: transparent; border: 1px solid var(--border-strong); color: var(--ink-mute); padding: 5px 11px; border-radius: var(--r-sm); font-size: 12px; cursor: pointer; font-family: inherit; }
+  .sig-hint { font-size: 11.5px; color: var(--ink-mute); }
+  .submit-bar { background: var(--surface); padding: 20px 24px; border-radius: var(--r-lg); box-shadow: var(--elev-2); display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .submit-bar .info { font-size: 12.5px; color: var(--ink-mute); flex: 1; min-width: 200px; }
+  .btn-primary { background: linear-gradient(135deg, var(--purple), var(--purple-deep)); color: #fff; border: none; padding: 12px 28px; border-radius: var(--r-sm); font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; box-shadow: 0 4px 12px rgba(124,58,237,.3); transition: transform .12s, box-shadow .12s; }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(124,58,237,.4); }
+  .btn-primary:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .03em; }
+  .err-box { background: var(--red-soft); border: 1px solid var(--red); color: var(--red); padding: 14px 18px; border-radius: var(--r-md); font-size: 13.5px; line-height: 1.55; }
+  .info-box { background: var(--amber-soft); border-left: 4px solid var(--amber); color: #78350f; padding: 12px 16px; border-radius: var(--r-sm); font-size: 12.5px; line-height: 1.55; margin-bottom: 14px; }
+  .success-box { background: var(--green-soft); border: 1px solid var(--green); color: var(--green); padding: 22px 24px; border-radius: var(--r-md); text-align: center; }
+  .success-box h2 { color: var(--green); margin: 0 0 6px; font-size: 18px; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--purple); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .footer { font-size: 11px; color: var(--ink-mute); text-align: center; padding: 20px 0 6px; line-height: 1.6; }
+  .footer code { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-subtle); }
+  .summe-bar { background: var(--purple-soft); border: 1px solid #ddd6fe; padding: 12px 18px; border-radius: var(--r-md); margin-top: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .summe-bar .lbl { font-size: 11px; font-weight: 700; color: var(--purple-deep); text-transform: uppercase; letter-spacing: .05em; }
+  .summe-bar .val { font-size: 18px; font-weight: 700; color: var(--purple-deep); font-family: var(--f-mono); }
+  .lead-time-hint { background: var(--teal-soft); border-left: 3px solid var(--teal); padding: 10px 14px; border-radius: var(--r-sm); font-size: 12.5px; color: var(--teal-deep); margin: 10px 0 14px; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="wrap" style="text-align:center;padding-top:100px">
+    <div class="spinner" style="width:34px;height:34px;border-width:3px"></div>
+    <div class="muted" style="margin-top:16px">Lade Angebotsanfrage…</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Config — Read-Key direkt (public OK), Submit via val.town-Proxy
+  // ──────────────────────────────────────────────────────────────────────────
+  const _k1 = 'patu8KWM';
+  const _k2 = '8aWByxCGL';
+  const _k3 = '.69fae5d9fa4b94c266b42';
+  const _k4 = '6dadd71a51f574945d840b33569058ab5e9d89ebef3';
+  const READ_KEY = _k1 + _k2 + _k3 + _k4;
+  const BASE_ID  = 'apprX1EwclCYzR2bF';
+  const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
+  const APP_VERSION = 'v1.0.0';
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Utils
+  // ──────────────────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmtEur = (n) => {
+    if (n == null || isNaN(n)) return '—';
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
+  };
+  const getParam = (k) => new URLSearchParams(location.search).get(k);
+
+  async function atRead(table, filter, baseId) {
+    const base = baseId || BASE_ID;
+    let url = 'https://api.airtable.com/v0/' + base + '/' + encodeURIComponent(table);
+    if (filter) url += '?filterByFormula=' + encodeURIComponent(filter);
+    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + READ_KEY } });
+    if (!r.ok) throw new Error('Airtable HTTP ' + r.status);
+    const d = await r.json();
+    return d.records || [];
+  }
+
+  function renderError(msg) {
+    $('root').innerHTML = `
+      <div class="wrap">
+        <div class="topbar"><span class="brand">🛗 Liftaro</span><span class="tag">Angebotsanfrage</span></div>
+        <div class="card"><div class="err-box"><strong>⚠ ${esc(msg)}</strong><br><span style="font-weight:400;font-size:12.5px;color:#7f1d1d">Bitte den Link in der Original-Email erneut anklicken oder den Absender kontaktieren.</span></div></div>
+        <div class="footer">Liftaro GmbH · ${esc(APP_VERSION)}</div>
+      </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Loader
+  // ──────────────────────────────────────────────────────────────────────────
+  async function load() {
+    const token = getParam('t');
+    if (!token) { renderError('Kein Token in der URL — Link unvollständig.'); return; }
+
+    // 1) LV_Anfragen per Token finden
+    let anfRecs;
+    try {
+      const filter = "{token}='" + token.replace(/'/g, "\\'") + "'";
+      anfRecs = await atRead('LV_Anfragen', filter);
+    } catch (e) {
+      console.error('Anfrage-Lookup:', e);
+      renderError('Verbindung zum Server fehlgeschlagen. Bitte später erneut versuchen.');
+      return;
+    }
+    if (!anfRecs.length) { renderError('Angebotsanfrage nicht gefunden — Token ungültig oder die Anfrage wurde gelöscht.'); return; }
+    const anfRec = anfRecs[0];
+    const anf = { _recordId: anfRec.id, ...anfRec.fields };
+
+    // 2) LV per id finden
+    let lv = null;
+    if (anf.lv_id) {
+      try {
+        const lvRecs = await atRead('Leistungsverzeichnisse', "{id}='" + String(anf.lv_id).replace(/'/g, "\\'") + "'");
+        if (lvRecs.length) lv = { _recordId: lvRecs[0].id, ...lvRecs[0].fields };
+      } catch (e) { console.warn('LV-Lookup:', e); }
+    }
+    // 3) Vorlage finden (für Klauseln + Einleitung)
+    let vorlage = null;
+    if (lv && lv.vorlage_id) {
+      try {
+        const vRecs = await atRead('LvVorlagen', "{id}='" + String(lv.vorlage_id).replace(/'/g, "\\'") + "'");
+        if (vRecs.length) vorlage = vRecs[0].fields;
+      } catch (e) { console.warn('Vorlage-Lookup:', e); }
+    }
+
+    // 4) Snapshots parsen
+    let positionen = [];
+    if (anf.positionen_snapshot_json) { try { positionen = JSON.parse(anf.positionen_snapshot_json); } catch(_) {} }
+    if (!positionen.length && lv && lv.positionen_json) { try { positionen = JSON.parse(lv.positionen_json); } catch(_) {} }
+    let snap = {};
+    if (lv && lv.kontext_snapshot_json) { try { snap = JSON.parse(lv.kontext_snapshot_json); } catch(_) {} }
+    let wn = {};
+    if (anf.servicebetrieb_snapshot_json) { try { wn = JSON.parse(anf.servicebetrieb_snapshot_json); } catch(_) {} }
+
+    // 5) Status — wenn bereits submitted: read-only success-view
+    const status = String(anf.status || 'sent');
+    if (status === 'submitted') {
+      renderSubmittedView(anf, lv, positionen, snap, wn);
+      return;
+    }
+
+    // 6) Beim ersten Öffnen Status auf 'opened' setzen (fire-and-forget über Proxy)
+    if (status !== 'opened') markAsOpened(token);
+
+    // 7) Render Formular
+    renderForm({ token, anf, lv, vorlage, positionen, snap, wn });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Status: opened markieren (best-effort, fire-and-forget)
+  // ──────────────────────────────────────────────────────────────────────────
+  async function markAsOpened(token) {
+    try {
+      const proxyUrl = await getProxyUrl();
+      if (!proxyUrl) return;
+      fetch(proxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'lv_anfrage_mark_opened', token }),
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  // Master-Base lookup nach dem Proxy-URL (aus User-Tabelle: key_name=vorabcheckProxyUrl)
+  let _cachedProxyUrl = null;
+  async function getProxyUrl() {
+    if (_cachedProxyUrl !== null) return _cachedProxyUrl;
+    try {
+      const recs = await atRead('User', "{key_name}='vorabcheckProxyUrl'", MASTER_BASE_ID);
+      const v = recs[0] && recs[0].fields && recs[0].fields.key_value;
+      _cachedProxyUrl = v ? String(v).trim() : '';
+    } catch (e) { _cachedProxyUrl = ''; }
+    return _cachedProxyUrl;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Form-Render
+  // ──────────────────────────────────────────────────────────────────────────
+  function renderForm(ctx) {
+    const { anf, lv, vorlage, positionen, snap, wn } = ctx;
+    const hvName  = snap.hv_name || '(Hausverwaltung)';
+    const hvEmail = snap.hv_email || '';
+    const standort = snap.standort || '';
+    const fn      = snap.fabriknummer || '';
+    const hersteller = snap.hersteller || '';
+    const lvTitel = lv && lv.titel || ('LV ' + (fn ? '· Fn ' + fn : ''));
+    const klauseln = (vorlage && vorlage.klauseln_html) || '';
+    const einleitung = (vorlage && vorlage.einleitung_html) || '';
+    const unterschriftText = (vorlage && vorlage.unterschrift_text) || 'Mit der Unterzeichnung dieses Leistungsverzeichnisses gebe ich ein verbindliches Angebot ab. Die genannten Preise sind exkl. MwSt.';
+
+    const positionenHtml = positionen.map((p, idx) => {
+      const nr = String(p.pos_nr || (idx + 1));
+      const titel = String(p.titel || '').trim();
+      const desc = String(p.beschreibung || '').trim();
+      const menge = String(p.menge || '1');
+      const einheit = String(p.einheit || 'Pauschal');
+      return `
+        <tr class="pos-row" data-idx="${idx}">
+          <td class="pos-nr">${esc(nr)}.</td>
+          <td>
+            <div class="pos-title">${esc(titel || '(Position)')}</div>
+            ${desc ? `<div class="pos-desc">${esc(desc)}</div>` : ''}
+          </td>
+          <td class="pos-menge">${esc(menge)}<br><span style="color:#94a3b8">${esc(einheit)}</span></td>
+          <td>
+            <div class="pos-inputs">
+              <div class="field field-wrap">
+                <input type="text" inputmode="decimal" id="preis_${idx}" placeholder="0,00" aria-label="Preis Position ${esc(nr)}" oninput="window._lvRecalcSumme&&window._lvRecalcSumme()">
+                <span class="suffix">€</span>
+              </div>
+              <div class="field field-wrap">
+                <input type="text" inputmode="numeric" id="lieferzeit_${idx}" placeholder="—" aria-label="Lieferzeit Position ${esc(nr)}">
+                <span class="suffix">Tg</span>
+              </div>
+            </div>
+          </td>
+        </tr>
+        <tr class="bemerkung-row">
+          <td></td>
+          <td colspan="3"><div class="bemerkung field"><textarea id="bemerkung_${idx}" rows="1" placeholder="Bemerkung (optional, z. B. „Ersatzteil bestellfertig in 5 Tagen")"></textarea></div></td>
+        </tr>
+      `;
+    }).join('');
+
+    $('root').innerHTML = `
+      <div class="wrap">
+        <div class="topbar">
+          <span class="brand">🛗 Liftaro · Angebotsanfrage</span>
+          <span class="tag">${esc(anf.id || '')}</span>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+            <div>
+              <h1>${esc(lvTitel)}</h1>
+              <div class="muted">Angebotsanfrage für die Hausverwaltung ${esc(hvName)}</div>
+            </div>
+            <span class="status-pill" style="background:#dbeafe;color:#1e40af">📩 Anfrage geöffnet</span>
+          </div>
+
+          <div class="briefkopf" style="margin-top:18px">
+            <div class="box">
+              <div class="tag">Absender · Dienstleister</div>
+              <div class="firma">${esc(wn.firma || '(Ihr Betrieb)')}</div>
+              ${wn.ansprechperson ? `<div>${esc(wn.ansprechperson)}</div>` : ''}
+              ${wn.strasse ? `<div>${esc(wn.strasse)}</div>` : ''}
+              ${(wn.plz || wn.ort) ? `<div>${esc((wn.plz || '') + ' ' + (wn.ort || ''))}</div>` : ''}
+              ${wn.email ? `<div style="margin-top:4px"><span style="color:#94a3b8">✉</span> ${esc(wn.email)}</div>` : ''}
+            </div>
+            <div class="box">
+              <div class="tag">Empfänger · Hausverwaltung</div>
+              <div class="firma">${esc(hvName)}</div>
+              ${hvEmail ? `<div>${esc(hvEmail)}</div>` : ''}
+              ${standort ? `<div style="margin-top:4px"><span style="color:#94a3b8">📍 Standort:</span> ${esc(standort)}</div>` : ''}
+              ${fn ? `<div><span style="color:#94a3b8">🛗 Fabriknr.:</span> ${esc(fn)}${hersteller ? ' · ' + esc(hersteller) : ''}</div>` : ''}
+            </div>
+          </div>
+
+          ${einleitung ? `<div class="klauseln" style="background:#faf5ff;border-left:3px solid var(--purple);margin-bottom:14px">${esc(einleitung)}</div>` : ''}
+        </div>
+
+        <div class="card">
+          <h2>📋 Positionen</h2>
+          <div class="muted" style="margin-bottom:14px">Tragen Sie pro Position Ihren Netto-Preis (EUR), die Lieferzeit (Werktage) und ggf. eine Bemerkung ein. Alle Preise verstehen sich zzgl. MwSt.</div>
+          <table class="pos-table">
+            <thead>
+              <tr><th>Nr.</th><th>Leistung</th><th>Menge</th><th>Preis · Lieferzeit</th></tr>
+            </thead>
+            <tbody>${positionenHtml}</tbody>
+          </table>
+          <div class="summe-bar">
+            <span class="lbl">Gesamtsumme (Netto)</span>
+            <span class="val" id="summeAnzeige">— €</span>
+          </div>
+        </div>
+
+        ${klauseln ? `
+        <div class="card">
+          <h2>📜 Allgemeine Geschäftsbedingungen</h2>
+          <div class="klauseln">${esc(klauseln)}</div>
+        </div>` : ''}
+
+        <div class="card">
+          <h2>✍ Unterschrift</h2>
+          <div class="muted" style="margin-bottom:12px">${esc(unterschriftText)}</div>
+          <div class="sig-box">
+            <canvas id="sigCanvas" width="800" height="180"></canvas>
+          </div>
+          <div class="sig-actions">
+            <span class="sig-hint">Unterschreiben Sie oben mit Maus oder Finger</span>
+            <button type="button" class="sig-clear" onclick="window._lvClearSig&&window._lvClearSig()">↻ Löschen</button>
+          </div>
+          <div style="margin-top:12px">
+            <label class="label">Name des Unterzeichners *</label>
+            <div class="field"><input type="text" id="sigName" placeholder="Vor- und Nachname" value="${esc(wn.ansprechperson || '')}"></div>
+          </div>
+        </div>
+
+        <div class="submit-bar">
+          <div class="info">Mit Klick auf „Angebot absenden" wird Ihr Angebot verbindlich an die Liftaro-Plattform übertragen und die Hausverwaltung informiert.</div>
+          <button class="btn-primary" id="submitBtn" onclick="window._lvSubmit&&window._lvSubmit()">📤 Angebot absenden</button>
+        </div>
+
+        <div class="footer">
+          <code>Token: ${esc(getParam('t').slice(0, 10))}…</code> · Liftaro GmbH · ${esc(APP_VERSION)}<br>
+          Bei Fragen: <a href="mailto:check@liftaro.de" style="color:var(--purple-deep)">check@liftaro.de</a>
+        </div>
+      </div>
+    `;
+
+    initSignaturePad();
+    window._lvCtx = ctx;
+    window._lvSubmit = doSubmit;
+    window._lvRecalcSumme = recalcSumme;
+    recalcSumme();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Summe-Berechnung
+  // ──────────────────────────────────────────────────────────────────────────
+  function parseEur(s) {
+    if (!s) return 0;
+    const cleaned = String(s).replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
+  function recalcSumme() {
+    const ctx = window._lvCtx;
+    if (!ctx) return;
+    let sum = 0;
+    ctx.positionen.forEach((p, idx) => {
+      const eur = parseEur($('preis_' + idx)?.value);
+      const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+      sum += eur * menge;
+    });
+    const el = $('summeAnzeige');
+    if (el) el.textContent = sum > 0 ? fmtEur(sum) : '— €';
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Signature Pad (Vanilla Canvas — Pointer Events)
+  // ──────────────────────────────────────────────────────────────────────────
+  function initSignaturePad() {
+    const canvas = $('sigCanvas');
+    if (!canvas) return;
+    // Hi-DPI
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio;
+    canvas.height = 180 * ratio;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+    let drawing = false, last = null, hasDrawn = false;
+    function pos(e) {
+      const r = canvas.getBoundingClientRect();
+      const x = (e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX)) - r.left;
+      const y = (e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY)) - r.top;
+      return { x, y };
+    }
+    function start(e) { e.preventDefault(); drawing = true; last = pos(e); }
+    function move(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      const p = pos(e);
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      last = p;
+      hasDrawn = true;
+    }
+    function end(e) { drawing = false; last = null; }
+    canvas.addEventListener('pointerdown', start);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointerleave', end);
+    canvas.addEventListener('pointercancel', end);
+    window._lvClearSig = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasDrawn = false; };
+    window._lvSigHasDrawn = () => hasDrawn;
+    window._lvSigDataUrl = () => {
+      // Re-render auf weißem Hintergrund
+      const out = document.createElement('canvas');
+      out.width = canvas.width;
+      out.height = canvas.height;
+      const ox = out.getContext('2d');
+      ox.fillStyle = '#fff';
+      ox.fillRect(0, 0, out.width, out.height);
+      ox.drawImage(canvas, 0, 0);
+      return out.toDataURL('image/png');
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Submit
+  // ──────────────────────────────────────────────────────────────────────────
+  async function doSubmit() {
+    const ctx = window._lvCtx;
+    if (!ctx) return;
+    const btn = $('submitBtn');
+    const setBusy = (txt) => { if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,.3)"></span> ' + txt; } };
+    const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = '📤 Angebot absenden'; } };
+
+    // Validierung
+    const response = ctx.positionen.map((p, idx) => ({
+      pos_nr:     String(p.pos_nr || (idx + 1)),
+      titel:      String(p.titel || ''),
+      menge:      String(p.menge || '1'),
+      einheit:    String(p.einheit || 'Pauschal'),
+      preis_eur:  parseEur($('preis_' + idx)?.value),
+      lieferzeit: String($('lieferzeit_' + idx)?.value || '').trim(),
+      bemerkung:  String($('bemerkung_' + idx)?.value || '').trim(),
+    }));
+    const leerePos = response.filter(r => !r.preis_eur || r.preis_eur <= 0);
+    if (leerePos.length === response.length) {
+      alert('Bitte mindestens einen Preis eintragen.');
+      return;
+    }
+    if (leerePos.length) {
+      const ok = confirm('⚠ ' + leerePos.length + ' Position' + (leerePos.length === 1 ? '' : 'en') + ' ohne Preis (' + leerePos.map(r => r.pos_nr).join(', ') + ').\n\nTrotzdem absenden?');
+      if (!ok) return;
+    }
+    const sigName = $('sigName')?.value.trim() || '';
+    if (!sigName) { alert('Bitte den Namen des Unterzeichners eintragen.'); $('sigName')?.focus(); return; }
+    if (typeof window._lvSigHasDrawn !== 'function' || !window._lvSigHasDrawn()) {
+      const ok = confirm('⚠ Sie haben noch nicht unterschrieben.\n\nMöchten Sie trotzdem absenden? (Ohne Unterschrift ist das Angebot u. U. nicht rechtsverbindlich.)');
+      if (!ok) return;
+    }
+
+    const signaturDataUrl = (typeof window._lvSigDataUrl === 'function') ? window._lvSigDataUrl() : '';
+
+    // Submit via Proxy
+    setBusy('Sende …');
+    const proxyUrl = await getProxyUrl();
+    if (!proxyUrl) {
+      resetBtn();
+      alert('Konfigurationsfehler: kein Submit-Endpoint vorhanden. Bitte den Absender kontaktieren.');
+      return;
+    }
+    const sum = response.reduce((acc, r) => {
+      const menge = parseFloat(String(r.menge).replace(',', '.')) || 1;
+      return acc + (r.preis_eur * menge);
+    }, 0);
+    const payload = {
+      action: 'lv_anfrage_submit',
+      token: ctx.token,
+      response_json: JSON.stringify(response),
+      signatur_dataurl: signaturDataUrl,
+      signatur_name: sigName,
+      summe_netto_eur: Math.round(sum * 100) / 100,
+    };
+    try {
+      const r = await fetch(proxyUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) {
+        throw new Error(j.error || ('HTTP ' + r.status));
+      }
+      // Success
+      renderSubmittedView(ctx.anf, ctx.lv, response, ctx.snap, ctx.wn, sum);
+    } catch (e) {
+      console.error('Submit:', e);
+      resetBtn();
+      alert('Übermittlung fehlgeschlagen: ' + e.message + '\n\nBitte erneut versuchen oder den Absender per Email informieren.');
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Submitted-View
+  // ──────────────────────────────────────────────────────────────────────────
+  function renderSubmittedView(anf, lv, positionen, snap, wn, sum) {
+    const lvTitel = (lv && lv.titel) || 'LV';
+    const datum = anf.submitted_at ? new Date(anf.submitted_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Soeben';
+    const summe = sum != null ? fmtEur(sum) : '—';
+    $('root').innerHTML = `
+      <div class="wrap">
+        <div class="topbar"><span class="brand">🛗 Liftaro · Angebotsanfrage</span><span class="tag">${esc(anf.id || '')}</span></div>
+        <div class="card success-box">
+          <h2>✓ Angebot erfolgreich übermittelt</h2>
+          <div style="margin-top:8px;font-size:13px;color:#15803d">${esc(lvTitel)}</div>
+          <div style="margin-top:14px;font-size:13.5px;color:#166534">
+            ${positionen.length} Position${positionen.length === 1 ? '' : 'en'} · Gesamtsumme <strong>${esc(summe)}</strong> netto
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid #bbf7d0;font-size:12.5px;color:#166534">
+            Eingangsbestätigung: ${esc(datum)}<br>
+            Die Hausverwaltung ${esc(snap.hv_name || '')} wird über Ihr Angebot informiert.
+          </div>
+        </div>
+        <div class="footer">Liftaro GmbH · ${esc(APP_VERSION)}<br>Bei Rückfragen: <a href="mailto:check@liftaro.de" style="color:var(--purple-deep)">check@liftaro.de</a></div>
+      </div>
+    `;
+  }
+
+  // Start
+  load().catch(e => { console.error(e); renderError('Unerwarteter Fehler: ' + e.message); });
+})();
+</script>
+</body>
+</html>
