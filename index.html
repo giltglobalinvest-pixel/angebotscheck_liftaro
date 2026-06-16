@@ -6419,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.379';
+const APP_VERSION = 'V12.380';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11456,7 +11456,7 @@ function _eiLvRenderEditorBody() {
     ? positionen.map((p, idx) => '<tr data-idx="' + idx + '" style="background:#fff;border-bottom:1px solid #f1f5f9">'
         + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.pos_nr || (idx + 1))) + '" oninput="_eiLvPosEdit(' + idx + ',\'pos_nr\',this.value)" style="width:50px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:center;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
         + '<td style="padding:8px 10px;border-right:1px solid #f1f5f9;vertical-align:top">'
-        +   '<input type="text" placeholder="Titel — z. B. „Erneuerung Hauptschütze""value="' + _esc(String(p.titel || '')) + '" oninput="_eiLvPosEdit(' + idx + ',\'titel\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:13px;font-weight:700;color:#0f172a;background:#fff;outline:none;box-sizing:border-box" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
+        +   '<input type="text" placeholder="Posten-Titel (z. B. Erneuerung Hauptschütze)" value="' + _esc(String(p.titel || '')) + '" oninput="_eiLvPosEdit(' + idx + ',\'titel\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:13px;font-weight:700;color:#0f172a;background:#fff;outline:none;box-sizing:border-box" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
         +   '<textarea placeholder="Leistungsbeschreibung — alle Unter-Schritte (Konfektionierung, Montage, Entsorgung, Inbetriebnahme …) als Fließtext oder Bullet-Liste" oninput="_eiLvPosEdit(' + idx + ',\'beschreibung\',this.value)" rows="4" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12px;resize:vertical;background:#fafbfc;line-height:1.5;outline:none;box-sizing:border-box;color:#334155" onfocus="this.style.borderColor=\'#7c3aed\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'#e2e8f0\';this.style.background=\'#fafbfc\'">' + _esc(String(p.beschreibung || '')) + '</textarea>'
         + '</td>'
         + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.menge || '1')) + '" oninput="_eiLvPosEdit(' + idx + ',\'menge\',this.value)" style="width:70px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
