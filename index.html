@@ -6419,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.377';
+const APP_VERSION = 'V12.378';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11026,23 +11026,30 @@ function _eiLvDefaultPauschalVorlage() {
     bausteine_json:      JSON.stringify([]),
     extraktion_prompt:
       'Du bist Spezialist für Pauschalangebote von Aufzug-REPARATUR-Firmen (NICHT Wartungs-Verträge, NICHT Modernisierungen).\n\n'
-    + 'Lies das angehängte PDF-Angebot vollständig. Extrahiere AUSSCHLIESSLICH die konkreten Reparatur-/Erneuerungs-Positionen, die der Anbieter dort tatsächlich anbietet (z.B. "Erneuerung Schütze", "Tausch Display", "Austausch RS-Halter"). Mehrfach gleiche Bezeichnungen werden als Menge zusammengefasst.\n\n'
+    + 'Lies das angehängte PDF-Angebot vollständig. Extrahiere die echten Reparatur-/Erneuerungs-POSTEN und fasse pro Posten ALLE Unter-Schritte (Konfektionierung, Außerbetriebnahme, Demontage, Montage, Entsorgung, Inbetriebnahme, Funktionsprüfung etc.) zu EINEM Eintrag mit Titel + ausführlicher Beschreibung zusammen.\n\n'
     + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
     + '[\n'
-    + '  { "pos_nr": "1", "beschreibung": "Konkrete Reparatur-/Erneuerungs-Beschreibung", "menge": "Stückzahl", "einheit": "Stk / Pauschal / m / kg / Std" },\n'
+    + '  {\n'
+    + '    "pos_nr": "1",\n'
+    + '    "titel": "Kurzer Posten-Titel (max 80 Zeichen, z. B. „Erneuerung Hauptschütze")",\n'
+    + '    "beschreibung": "Mehrere Sätze (oder Aufzählung) mit allen Leistungen die zu diesem Posten gehören — typischerweise Konfektionierung, Außerbetriebnahme, Demontage, Montage, Entsorgung, Inbetriebnahme. Im Fließtext oder Bullet-Form, ca. 60–200 Wörter pro Posten. Übernimm die Substanz des Original-PDFs neutral.",\n'
+    + '    "menge": "Stückzahl als Zahl",\n'
+    + '    "einheit": "Stk / Pauschal / m / kg / Std"\n'
+    + '  },\n'
     + '  ...\n'
     + ']\n\n'
     + 'STRENGE Regeln (Verstoß = unbrauchbares Ergebnis):\n'
-    + '- HALLUZINIERE NIEMALS. Wenn der Text keine konkreten Reparatur-/Erneuerungs-Posten enthält, gib AUSDRÜCKLICH ein leeres Array `[]` zurück.\n'
-    + '- NIEMALS Wartungs-Bausteine wie "Monatliche Wartung", "Jährliche TÜV-Prüfung", "Notrufdienst", "Schmierung" erfinden — diese gehören NICHT in einen Reparatur-LV.\n'
-    + '- NIEMALS generische Posten ergänzen, die nicht im Original stehen.\n'
-    + '- Eine Position = ein konkreter Reparatur-/Erneuerungs-Posten. Unter-Bullets (Konfektionierung, Demontage, Montage, Entsorgung, Inbetriebnahme) sind Teil EINER Position, nicht eigene Positionen.\n'
-    + '- Mengen-Angaben am Anfang ("3x Erneuerung RS-Halter") = Menge 3 / Einheit "Stk".\n'
+    + '- ZUSAMMENFASSEN: Pro Reparatur-Posten EINE Position. Unter-Bullets wie „Konfektionierung", „Demontage", „Montage", „Entsorgung", „Inbetriebnahme" werden NIEMALS eigene Positionen — sie gehören IN die Beschreibung des übergeordneten Postens.\n'
+    + '- Beispiel: „3x Erneuerung RS-Halter" mit 8 Unter-Bullets → EINE Position mit titel="Erneuerung RS-Halter", menge=3, einheit="Stk", beschreibung enthält ALLE 8 Bullets als Fließtext oder Liste.\n'
+    + '- HALLUZINIERE NIEMALS. Wenn das PDF keine konkreten Reparatur-Posten enthält, gib `[]` zurück.\n'
+    + '- NIEMALS Wartungs-Bausteine („Monatliche Wartung", „TÜV-Prüfung", „Notrufdienst", „Schmierung") erfinden.\n'
+    + '- Mehrfach gleicher Posten („3x Erneuerung Schütz(e)" → 1× Hauptschütze, 1× Hilfsschütze, 1× RC-Glieder): Wenn die Posten unterschiedliche Bauteile betreffen, MEHRERE Positionen. Wenn identisch, EINE Position mit Menge.\n'
     + '- Preise im PDF IGNORIEREN — sie werden vom Dienstleister neu eingetragen.\n'
-    + '- Beschreibung neutral formulieren (z.B. "Erneuerung der Hauptschütze inkl. Demontage, Montage, Entsorgung und Inbetriebnahme"), keine Begrüßung/Schlussfloskel.\n'
-    + '- Keine Sammelposten "Lieferung", "Montage", "Lieferzeit" — das sind Lieferbedingungen, keine Positionen.\n'
+    + '- Keine Sammelposten „Lieferung", „Montage", „Lieferzeit" — das sind Lieferbedingungen, keine Positionen.\n'
+    + '- Titel kurz und sprechend (Substantiv-Phrase: „Erneuerung Hauptschütze", NICHT „Wir tauschen die Hauptschütze").\n'
+    + '- Beschreibung neutral und vollständig — Bearbeiter soll alle Details sehen ohne nochmal ins Original-PDF schauen zu müssen.\n'
     + '- Numerierung beginnt bei 1, fortlaufend.\n'
-    + '- Maximal 30 Positionen.',
+    + '- Realistisches Ziel: 3–8 Positionen für ein typisches Reparatur-Angebot.',
     unterschrift_text:
       'Mit meiner Unterschrift bestätige ich verbindlich die vorgenannten Preise und die Ausführungszeit. Das Angebot ist 30 Tage ab Datum gültig.',
     pdf_layout_json: JSON.stringify({ accent: '#1a3a5c', accent2: '#7dc242' }),
@@ -11443,13 +11450,17 @@ function _eiLvRenderEditorBody() {
     + '<input id="lvEd_titel" type="text" value="' + _esc(s.titel || '') + '" oninput="window._eiLvEditorState.titel=this.value;var h=document.getElementById(\'lvEdHeaderTitle\');if(h)h.textContent=this.value" style="width:100%;margin-top:4px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:7px;font-family:inherit;font-size:13.5px;outline:none;box-sizing:border-box;font-weight:600;color:#0f172a">'
     + '</div>';
   // Positionen-Tabelle
+  // V12.378: Titel oben (fett) + Beschreibung-Textarea darunter pro Position
   const positionenHtml = positionen.length
     ? positionen.map((p, idx) => '<tr data-idx="' + idx + '" style="background:#fff;border-bottom:1px solid #f1f5f9">'
-        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><input type="text" value="' + _esc(String(p.pos_nr || (idx + 1))) + '" oninput="_eiLvPosEdit(' + idx + ',\'pos_nr\',this.value)" style="width:50px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:center;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
-        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><textarea oninput="_eiLvPosEdit(' + idx + ',\'beschreibung\',this.value)" rows="2" style="width:100%;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12.5px;resize:vertical;background:transparent;line-height:1.45" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'">' + _esc(String(p.beschreibung || '')) + '</textarea></td>'
-        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><input type="text" value="' + _esc(String(p.menge || '1')) + '" oninput="_eiLvPosEdit(' + idx + ',\'menge\',this.value)" style="width:70px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
-        + '<td style="padding:6px 8px;border-right:1px solid #f1f5f9"><input type="text" value="' + _esc(String(p.einheit || 'Pauschal')) + '" oninput="_eiLvPosEdit(' + idx + ',\'einheit\',this.value)" style="width:95px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12px;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
-        + '<td style="padding:6px 8px;text-align:right;white-space:nowrap">'
+        + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.pos_nr || (idx + 1))) + '" oninput="_eiLvPosEdit(' + idx + ',\'pos_nr\',this.value)" style="width:50px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:center;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
+        + '<td style="padding:8px 10px;border-right:1px solid #f1f5f9;vertical-align:top">'
+        +   '<input type="text" placeholder="Titel — z. B. „Erneuerung Hauptschütze""value="' + _esc(String(p.titel || '')) + '" oninput="_eiLvPosEdit(' + idx + ',\'titel\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:13px;font-weight:700;color:#0f172a;background:#fff;outline:none;box-sizing:border-box" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
+        +   '<textarea placeholder="Leistungsbeschreibung — alle Unter-Schritte (Konfektionierung, Montage, Entsorgung, Inbetriebnahme …) als Fließtext oder Bullet-Liste" oninput="_eiLvPosEdit(' + idx + ',\'beschreibung\',this.value)" rows="4" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12px;resize:vertical;background:#fafbfc;line-height:1.5;outline:none;box-sizing:border-box;color:#334155" onfocus="this.style.borderColor=\'#7c3aed\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'#e2e8f0\';this.style.background=\'#fafbfc\'">' + _esc(String(p.beschreibung || '')) + '</textarea>'
+        + '</td>'
+        + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.menge || '1')) + '" oninput="_eiLvPosEdit(' + idx + ',\'menge\',this.value)" style="width:70px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
+        + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.einheit || 'Pauschal')) + '" oninput="_eiLvPosEdit(' + idx + ',\'einheit\',this.value)" style="width:95px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12px;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
+        + '<td style="padding:8px 8px;text-align:right;white-space:nowrap;vertical-align:top">'
         +   '<button onclick="_eiLvPosMove(' + idx + ',-1)" title="Hoch" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:3px 6px;font-size:14px">↑</button>'
         +   '<button onclick="_eiLvPosMove(' + idx + ',1)" title="Runter" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:3px 6px;font-size:14px">↓</button>'
         +   '<button onclick="_eiLvPosDelete(' + idx + ')" title="Löschen" style="background:transparent;border:none;color:#fca5a5;cursor:pointer;padding:3px 6px;font-size:13px">✕</button>'
@@ -11460,7 +11471,7 @@ function _eiLvRenderEditorBody() {
     + '<table style="width:100%;border-collapse:collapse;font-size:13px">'
     + '<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
     +   '<th style="padding:9px 8px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;width:60px">Nr.</th>'
-    +   '<th style="padding:9px 8px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Beschreibung</th>'
+    +   '<th style="padding:9px 10px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Titel + Leistungsbeschreibung</th>'
     +   '<th style="padding:9px 8px;text-align:right;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;width:80px">Menge</th>'
     +   '<th style="padding:9px 8px;text-align:left;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;width:105px">Einheit</th>'
     +   '<th style="padding:9px 8px;width:120px"></th>'
@@ -11484,7 +11495,7 @@ function _eiLvPosEdit(idx, field, value) {
 window._eiLvPosEdit = _eiLvPosEdit;
 function _eiLvPosAdd() {
   const s = window._eiLvEditorState; if (!s) return;
-  s.positionen.push({ pos_nr: String(s.positionen.length + 1), beschreibung: '', menge: '1', einheit: 'Pauschal' });
+  s.positionen.push({ pos_nr: String(s.positionen.length + 1), titel: '', beschreibung: '', menge: '1', einheit: 'Pauschal' });
   _eiLvRenderEditorBody();
 }
 window._eiLvPosAdd = _eiLvPosAdd;
@@ -11593,13 +11604,14 @@ async function _eiLvExtractPositions() {
     try { parsed = JSON.parse(cleaned); }
     catch (_) { const m = raw.match(/\[[\s\S]*\]/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
     if (!Array.isArray(parsed)) throw new Error('Konnte KI-Antwort nicht als Array parsen');
-    // Normalisieren
+    // V12.378: Normalisieren — titel separat vom beschreibung-Fließtext
     const norm = parsed.map((p, i) => ({
       pos_nr:       String(p.pos_nr || (i + 1)),
+      titel:        String(p.titel || '').trim(),
       beschreibung: String(p.beschreibung || '').trim(),
       menge:        String(p.menge || '1').trim(),
       einheit:      String(p.einheit || 'Pauschal').trim(),
-    })).filter(p => p.beschreibung);
+    })).filter(p => p.titel || p.beschreibung);
     if (!norm.length) {
       showToast('⚠ Claude hat keine konkreten Reparatur-Positionen im PDF gefunden. Vermutlich ist der Anhang kein Reparatur-Angebot, sondern z.B. ein Wartungsvertrag oder eine Korrespondenz. Manuell „+ Position hinzufügen" oder mit anderer Vorlage versuchen.', 'warning', 9000);
       return;
