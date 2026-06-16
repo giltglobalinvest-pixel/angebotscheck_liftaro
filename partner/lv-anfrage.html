@@ -144,7 +144,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.2.0';
+  const APP_VERSION = 'v1.3.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -384,16 +384,33 @@
         </div>` : ''}
 
         <div class="card">
-          <h2>✍ Unterschrift</h2>
-          <div class="muted" style="margin-bottom:12px">${esc(unterschriftText)}</div>
-          <div class="sig-box">
-            <canvas id="sigCanvas" width="800" height="180"></canvas>
+          <h2>✍ Verbindliche Bestätigung</h2>
+          <div class="muted" style="margin-bottom:14px">${esc(unterschriftText)}</div>
+
+          <div id="sigTabs" style="display:flex;gap:6px;background:var(--surface-alt);padding:4px;border-radius:var(--r-sm);margin-bottom:14px">
+            <button type="button" id="sigTabDigital" onclick="window._lvSwitchSigMode&&window._lvSwitchSigMode('digital')" style="flex:1;padding:8px 12px;border:none;border-radius:5px;background:var(--surface);color:var(--ink);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;box-shadow:var(--elev-1)">✓ Digital bestätigen</button>
+            <button type="button" id="sigTabDrawn" onclick="window._lvSwitchSigMode&&window._lvSwitchSigMode('drawn')" style="flex:1;padding:8px 12px;border:none;border-radius:5px;background:transparent;color:var(--ink-mute);font-weight:600;font-size:12.5px;cursor:pointer;font-family:inherit">✍ Unterschrift zeichnen</button>
           </div>
-          <div class="sig-actions">
-            <span class="sig-hint">Unterschreiben Sie oben mit Maus oder Finger</span>
-            <button type="button" class="sig-clear" onclick="window._lvClearSig&&window._lvClearSig()">↻ Löschen</button>
+
+          <div id="sigModeDigital" style="display:block">
+            <label style="display:flex;align-items:flex-start;gap:11px;padding:14px 16px;background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:var(--r-md);cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor='#5eead4'" onmouseout="this.style.borderColor='#99f6e4'">
+              <input type="checkbox" id="sigConfirm" style="margin-top:3px;width:18px;height:18px;cursor:pointer;accent-color:var(--purple)">
+              <span style="font-size:13px;color:var(--ink);line-height:1.55"><strong>Hiermit gebe ich mein Angebot zu den vorstehenden Preisen und Konditionen verbindlich ab.</strong> Ich bestätige rechtsverbindlich, im Namen meines Unternehmens zur Abgabe dieses Angebots befugt zu sein.</span>
+            </label>
+            <div class="muted" style="font-size:11.5px;margin-top:10px;line-height:1.5">Diese digitale Bestätigung gilt rechtlich gleichwertig zur handschriftlichen Unterschrift (§ 127 BGB i. V. m. § 126b BGB · Textform).</div>
           </div>
-          <div style="margin-top:12px">
+
+          <div id="sigModeDrawn" style="display:none">
+            <div class="sig-box">
+              <canvas id="sigCanvas" width="800" height="180"></canvas>
+            </div>
+            <div class="sig-actions">
+              <span class="sig-hint">Unterschreiben Sie oben mit Maus oder Finger</span>
+              <button type="button" class="sig-clear" onclick="window._lvClearSig&&window._lvClearSig()">↻ Löschen</button>
+            </div>
+          </div>
+
+          <div style="margin-top:14px">
             <label class="label">Name des Unterzeichners *</label>
             <div class="field"><input type="text" id="sigName" placeholder="Vor- und Nachname" value="${esc(wn.ansprechperson || '')}"></div>
           </div>
@@ -415,7 +432,31 @@
     window._lvCtx = ctx;
     window._lvSubmit = doSubmit;
     window._lvRecalcSumme = recalcSumme;
+    // v1.3: Tab-State (Default = digital)
+    window._lvSigMode = 'digital';
+    window._lvSwitchSigMode = switchSigMode;
     recalcSumme();
+  }
+
+  function switchSigMode(mode) {
+    window._lvSigMode = mode;
+    const tabD = $('sigTabDigital'), tabZ = $('sigTabDrawn');
+    const paneD = $('sigModeDigital'), paneZ = $('sigModeDrawn');
+    if (!tabD || !tabZ || !paneD || !paneZ) return;
+    const active = 'background:var(--surface);color:var(--ink);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;box-shadow:var(--elev-1)';
+    const inactive = 'background:transparent;color:var(--ink-mute);font-weight:600;font-size:12.5px;cursor:pointer;font-family:inherit';
+    const base = 'flex:1;padding:8px 12px;border:none;border-radius:5px;';
+    if (mode === 'drawn') {
+      tabD.style.cssText = base + inactive;
+      tabZ.style.cssText = base + active;
+      paneD.style.display = 'none';
+      paneZ.style.display = 'block';
+    } else {
+      tabD.style.cssText = base + active;
+      tabZ.style.cssText = base + inactive;
+      paneD.style.display = 'block';
+      paneZ.style.display = 'none';
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -528,12 +569,25 @@
     }
     const sigName = $('sigName')?.value.trim() || '';
     if (!sigName) { alert('Bitte den Namen des Unterzeichners eintragen.'); $('sigName')?.focus(); return; }
-    if (typeof window._lvSigHasDrawn !== 'function' || !window._lvSigHasDrawn()) {
-      const ok = confirm('⚠ Sie haben noch nicht unterschrieben.\n\nMöchten Sie trotzdem absenden? (Ohne Unterschrift ist das Angebot u. U. nicht rechtsverbindlich.)');
-      if (!ok) return;
+    // v1.3: zwei Modi — digital (Checkbox) oder gezeichnet (Canvas)
+    const sigMode = String(window._lvSigMode || 'digital');
+    let signaturDataUrl = '';
+    let bestaetigungText = '';
+    if (sigMode === 'drawn') {
+      if (typeof window._lvSigHasDrawn !== 'function' || !window._lvSigHasDrawn()) {
+        alert('Bitte unterschreiben Sie oben mit Maus oder Finger — oder wechseln Sie zu „✓ Digital bestätigen".');
+        return;
+      }
+      signaturDataUrl = (typeof window._lvSigDataUrl === 'function') ? window._lvSigDataUrl() : '';
+    } else {
+      const cb = $('sigConfirm');
+      if (!cb || !cb.checked) {
+        alert('Bitte die Bestätigungs-Checkbox aktivieren — oder wechseln Sie zu „✍ Unterschrift zeichnen".');
+        cb?.focus();
+        return;
+      }
+      bestaetigungText = 'Hiermit gebe ich mein Angebot zu den vorstehenden Preisen und Konditionen verbindlich ab. Ich bestätige rechtsverbindlich, im Namen meines Unternehmens zur Abgabe dieses Angebots befugt zu sein.';
     }
-
-    const signaturDataUrl = (typeof window._lvSigDataUrl === 'function') ? window._lvSigDataUrl() : '';
 
     // Submit via Proxy
     setBusy('Sende …');
@@ -553,6 +607,8 @@
       response_json: JSON.stringify(response),
       signatur_dataurl: signaturDataUrl,
       signatur_name: sigName,
+      signatur_methode: sigMode,            // 'digital' | 'drawn'
+      bestaetigung_text: bestaetigungText,  // Klausel-Text bei Digital
       summe_netto_eur: Math.round(sum * 100) / 100,
       lieferzeit_gesamt: lieferzeitGesamt,
     };
