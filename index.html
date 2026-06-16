@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.387';
+const APP_VERSION = 'V12.388';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7843,6 +7843,10 @@ async function setupTables() {
       { name: 'chat_partner_telefon',        type: 'singleLineText' },
       // V12.351: Anhang-Dateinamen mitspeichern, damit Bubbles zeigen was mit raus ging
       { name: 'attachment_filenames',        type: 'singleLineText' },
+      // V12.388: LV-Anfrage als Chat-Item — verlinkt zur LV_Anfragen-Tabelle
+      { name: 'nachricht_typ',               type: 'singleLineText' }, // 'normal' (default) | 'lv_anfrage' | 'lv_antwort'
+      { name: 'lv_anfrage_id',               type: 'singleLineText' }, // FK → LV_Anfragen.id
+      { name: 'lv_anfrage_token',            type: 'singleLineText' }, // Landing-Token (für Re-Open-Link in der Bubble)
     ]);
   } catch(e) { console.warn('[V12.222] ensureFields(WartungsnehmerChat) failed:', e.message); }
   // V12.219: Servicebetriebe-Stammdaten — analog zu Wartungsnehmer, aber für externe Service-Firmen
@@ -11551,6 +11555,35 @@ async function _eiLvLoadForEmail(emailId, forceReload) {
 }
 window._eiLvLoadForEmail = _eiLvLoadForEmail;
 
+// V12.388: Alle LV-Anfragen zu einer Email laden — Cache + Inflight-Schutz
+async function _eiLvAnfragenLoadForEmail(emailId, forceReload) {
+  if (!emailId) return [];
+  window._eiLvAnfragenByEmail = window._eiLvAnfragenByEmail || {};
+  window._eiLvAnfragenInflight = window._eiLvAnfragenInflight || {};
+  if (!forceReload && Array.isArray(window._eiLvAnfragenByEmail[emailId])) return window._eiLvAnfragenByEmail[emailId];
+  if (window._eiLvAnfragenInflight[emailId]) return window._eiLvAnfragenInflight[emailId];
+  const t0 = Date.now();
+  const p = (async () => {
+    try {
+      const filter = "{email_id}='" + String(emailId).replace(/'/g, "\\'") + "'";
+      const recs = await atRead('LV_Anfragen', filter, { sort: false });
+      const arr = (recs || []).map(r => ({ _recordId: r.id, ...r.fields })).filter(x => x && x.id);
+      window._eiLvAnfragenByEmail[emailId] = arr;
+      console.log('[V12.388] _eiLvAnfragenLoadForEmail(' + emailId + '): ' + arr.length + ' Anfragen in ' + (Date.now() - t0) + 'ms');
+      return arr;
+    } catch (e) {
+      console.warn('[V12.388] _eiLvAnfragenLoadForEmail:', e.message);
+      window._eiLvAnfragenByEmail[emailId] = [];
+      return [];
+    } finally {
+      delete window._eiLvAnfragenInflight[emailId];
+    }
+  })();
+  window._eiLvAnfragenInflight[emailId] = p;
+  return p;
+}
+window._eiLvAnfragenLoadForEmail = _eiLvAnfragenLoadForEmail;
+
 // Kontext-Snapshot bauen — HV, Standort, Fn, Hersteller, Aufzug-ID
 function _eiLvBuildKontextSnapshot(r) {
   if (!r) return {};
@@ -12313,6 +12346,32 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
         bearbeiter_name:  userName,
       });
     } catch (e) { console.warn('[V12.387] Outgoing-Email-Record:', e.message); }
+    // V12.388: Auch als Chat-Eintrag im Wartungsnehmer-Thread (damit LV-Anfrage als Konversations-Item sichtbar ist)
+    try {
+      const chatId = 'wnc_' + sentAt.replace(/\D/g, '').slice(0, 14) + '_' + Math.floor(Math.random() * 0x10000).toString(36);
+      await atWrite('WartungsnehmerChat', {
+        id:                            chatId,
+        email_id:                      s.emailId,
+        aufzug_id:                     '',
+        partner_typ:                   'wartungsnehmer',
+        wartungsnehmer_id:             wn.id || '',
+        chat_partner_firma:            String(wn.firma || ''),
+        chat_partner_ansprechperson:   String(wn.ansprechperson || ''),
+        chat_partner_email:            wn.email,
+        chat_partner_telefon:          String(wn.telefon || ''),
+        direction:                     'out',
+        from_email:                    'check@liftaro.de',
+        from_name:                     'Liftaro',
+        to_email:                      wn.email,
+        subject:                       subjectSafe,
+        body:                          finalText,
+        created_at:                    sentAt,
+        bearbeiter_name:               userName,
+        nachricht_typ:                 'lv_anfrage',
+        lv_anfrage_id:                 anfrageId,
+        lv_anfrage_token:              token,
+      });
+    } catch (e) { console.warn('[V12.388] WartungsnehmerChat-Eintrag (lv_anfrage):', e.message); }
     // 5) LV-Status auf 'versendet'
     if (s.recordId) {
       try { await atUpdate('Leistungsverzeichnisse', s.recordId, { status: 'versendet', savedAt: sentAt }); s.status = 'versendet'; }
@@ -12321,7 +12380,11 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
     document.getElementById('eiLvSendDraftOv')?.remove();
     document.getElementById('lvEditorModal')?.remove();
     showToast('✓ LV-Anfrage an „' + wn.email + '" gesendet (' + anfrageId + ')', 'success', 5500);
-    await _eiLvLoadForEmail(s.emailId, true);
+    // V12.388: Beide Caches refreshen — LVs (Status versendet) + Anfragen (neue Empfänger-Zeile)
+    await Promise.all([
+      _eiLvLoadForEmail(s.emailId, true).catch(() => {}),
+      (typeof _eiLvAnfragenLoadForEmail === 'function' ? _eiLvAnfragenLoadForEmail(s.emailId, true) : Promise.resolve()).catch(() => {}),
+    ]);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   } catch (e) {
     console.error('[V12.387] _eiLvCreateAnfrage:', e);
@@ -33327,20 +33390,48 @@ function _renderEmailLvSection(r) {
       + '<style>@keyframes lvspin{to{transform:rotate(360deg)}}</style>'
       + '</div>';
   } else if (lvs.length) {
-    cardsHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;margin-bottom:10px">' + lvs.map(lv => {
+    // V12.388: pro LV alle Anfragen aus dem Cache anhängen → zeigen wir „→ an XYZ"
+    const anfCache = (window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[r._id])) ? window._eiLvAnfragenByEmail[r._id] : [];
+    const fmtZeit = (iso) => { if (!iso) return ''; try { const d = new Date(iso); const today = new Date(); const sameDay = d.toDateString() === today.toDateString(); return sameDay ? d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); } catch(_) { return ''; } };
+    cardsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">' + lvs.map(lv => {
       let cnt = 0;
       try { const a = JSON.parse(lv.positionen_json || '[]'); cnt = Array.isArray(a) ? a.length : 0; } catch (_) {}
       const statusBg = lv.status === 'bereit' ? '#dcfce7' : (lv.status === 'versendet' ? '#dbeafe' : '#fef3c7');
       const statusFg = lv.status === 'bereit' ? '#166534' : (lv.status === 'versendet' ? '#1e40af' : '#92400e');
       const statusLbl = lv.status === 'bereit' ? 'BEREIT' : (lv.status === 'versendet' ? 'VERSENDET' : 'ENTWURF');
-      return '<button onclick="openLvForEmail(\'' + r._id + '\',\'' + _esc(String(lv.id)) + '\')" style="background:#fff;border:1px solid #c4b5fd;border-radius:10px;padding:10px 12px;text-align:left;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;gap:4px">'
-        + '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
-        +   '<span style="font-size:10px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.05em">📋 ' + _esc(lv.id || '?') + '</span>'
-        +   '<span style="background:' + statusBg + ';color:' + statusFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">' + statusLbl + '</span>'
-        + '</div>'
-        + '<div style="font-size:13px;color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(lv.titel || '(ohne Titel)') + '</div>'
-        + '<div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">' + cnt + ' Position' + (cnt === 1 ? '' : 'en') + '</div>'
-        + '</button>';
+      const anfragen = anfCache.filter(a => String(a.lv_id) === String(lv.id));
+      // Empfänger-Zeilen
+      let recipientsHtml = '';
+      if (anfragen.length) {
+        recipientsHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;padding-top:6px;border-top:1px dashed #ddd6fe">'
+          + anfragen.map(a => {
+              let snap = {}; try { snap = JSON.parse(a.servicebetrieb_snapshot_json || '{}'); } catch(_) {}
+              const firma = String(snap.firma || a.servicebetrieb_id || 'Wartungsnehmer');
+              const email = String(snap.email || '');
+              const sBg = a.status === 'submitted' ? '#dcfce7' : (a.status === 'opened' ? '#fef3c7' : (a.status === 'sent' ? '#dbeafe' : '#f1f5f9'));
+              const sFg = a.status === 'submitted' ? '#166534' : (a.status === 'opened' ? '#92400e' : (a.status === 'sent' ? '#1e40af' : '#475569'));
+              const sLbl = a.status === 'submitted' ? '💰 Antwort eingegangen' : (a.status === 'opened' ? '👁 Link geöffnet' : (a.status === 'sent' ? '✓ gesendet' : 'pending'));
+              const zeit = fmtZeit(a.sent_at || a.savedAt);
+              return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#475569">'
+                +     '<span style="color:#7c3aed">→</span>'
+                +     '<span style="font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + _esc(firma) + (email ? ' <span style="color:#94a3b8;font-weight:400">· ' + _esc(email) + '</span>' : '') + '</span>'
+                +     '<span style="background:' + sBg + ';color:' + sFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;white-space:nowrap">' + sLbl + '</span>'
+                +     (zeit ? '<span style="color:#94a3b8;font-size:10.5px;white-space:nowrap">' + _esc(zeit) + '</span>' : '')
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }
+      return '<div style="background:#fff;border:1px solid #c4b5fd;border-radius:10px;padding:10px 12px;font-family:inherit;display:flex;flex-direction:column;gap:4px">'
+        + '<button onclick="openLvForEmail(\'' + r._id + '\',\'' + _esc(String(lv.id)) + '\')" style="background:transparent;border:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;gap:4px;width:100%">'
+        +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
+        +     '<span style="font-size:10px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.05em">📋 ' + _esc(lv.id || '?') + '</span>'
+        +     '<span style="background:' + statusBg + ';color:' + statusFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">' + statusLbl + '</span>'
+        +   '</div>'
+        +   '<div style="font-size:13px;color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(lv.titel || '(ohne Titel)') + '</div>'
+        +   '<div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">' + cnt + ' Position' + (cnt === 1 ? '' : 'en') + (anfragen.length ? ' · ' + anfragen.length + ' Anfrage' + (anfragen.length === 1 ? '' : 'n') : '') + '</div>'
+        + '</button>'
+        + recipientsHtml
+        + '</div>';
     }).join('') + '</div>';
   }
   const btnStyle = pre.ok
@@ -38053,16 +38144,17 @@ function renderEmailInboxDetail() {
   // V12.376: Leistungsverzeichnis-Section — zeigt vorhandene LVs + Create-Button
   html += _renderEmailLvSection(r);
   // V12.386: Lazy-Load nur wenn Cache leer ist — sonst wiederholter Airtable-Call bei jedem Re-Render
+  // V12.388: Parallel LV-Anfragen mitladen damit Empfänger-Zeilen erscheinen
   const lvCacheReady = window._eiLvByEmail && Array.isArray(window._eiLvByEmail[r._id]);
-  if (!lvCacheReady) {
+  const anfCacheReady = window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[r._id]);
+  if (!lvCacheReady || !anfCacheReady) {
     setTimeout(() => {
-      if (typeof _eiLvLoadForEmail === 'function') {
-        _eiLvLoadForEmail(r._id, false).then(() => {
-          if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-        }).catch(() => {
-          if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-        });
-      }
+      const tasks = [];
+      if (!lvCacheReady && typeof _eiLvLoadForEmail === 'function') tasks.push(_eiLvLoadForEmail(r._id, false).catch(()=>{}));
+      if (!anfCacheReady && typeof _eiLvAnfragenLoadForEmail === 'function') tasks.push(_eiLvAnfragenLoadForEmail(r._id, false).catch(()=>{}));
+      Promise.all(tasks).then(() => {
+        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      });
     }, 60);
   }
 
