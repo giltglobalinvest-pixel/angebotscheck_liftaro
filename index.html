@@ -4126,6 +4126,8 @@ const pdfWorkerReady = Promise.resolve();</script>
             <!-- V12.371: „Gesichtet" + „Geantwortet" entfernt — werden in „In Bearbeitung" zusammengefasst -->
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
             <button class="ei-side-item" data-status="wartend"        onclick="setEiFilter('wartend')"       ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Wartend</span><span class="ei-side-cnt" id="eiSideCnt_wartend">0</span></button>
+            <!-- V12.373: Wiedervorlage — automatischer Wechsel zurück auf "Neu" bei Eintritt des Datums -->
+            <button class="ei-side-item" data-status="wiedervorlage"  onclick="setEiFilter('wiedervorlage')" ><span class="ei-side-dot" style="background:#0891b2"></span><span class="ei-side-lbl">📅 Wiedervorlage</span><span class="ei-side-cnt" id="eiSideCnt_wiedervorlage">0</span></button>
             <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
@@ -6412,7 +6414,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.372';
+const APP_VERSION = 'V12.373';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7707,6 +7709,9 @@ async function setupTables() {
       // Verhindert dass _autoMatchHvFromPipedrive nach Reload den Vorgang neu erzeugt.
       // Wird gecleart sobald der User eine HV manuell zuordnet oder einen neuen Vorgang anlegt.
       { name: 'vorgang_dismissed_at', type: 'singleLineText' },
+      // V12.373: Wiedervorlage-Datum (YYYY-MM-DD). Wenn status='wiedervorlage' UND
+      // dieses Datum ≤ heute → App setzt Status beim nächsten Load auf 'neu' zurück.
+      { name: 'wiedervorlage_datum', type: 'singleLineText' },
       // V12.343: HV-Zuordnung auf Email-Level (überlebt Vorgang-Verwerfen).
       // Wird parallel zu vorgaenge[0].assigned_org_* beim manuellen Picken UND beim
       // Auto-Match gesetzt. Render-Logik der HV-Card fällt darauf zurück, wenn die
@@ -29267,7 +29272,10 @@ function _eiUpdateSidebarCounts() {
     }
   }
   // V12.371: 'gesichtet' und 'geantwortet' werden in 'in_bearbeitung' zusammengefasst
-  let cAlle = 0, cSent = 0, byStatus = { neu:0, in_bearbeitung:0, wartend:0, verworfen:0 };
+  // V12.373: Wiedervorlage-Status mitzählen + abgelaufene auf 'neu' zurücksetzen
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, verworfen:0 };
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const expireWvIds = []; // { recId, oldDatum }
   for (const r of all) {
     if (!r) continue;
     // V12.214: outgoing-Records zählen nur für den "Gesendet"-Filter — nicht für die Status-Counter
@@ -29276,12 +29284,31 @@ function _eiUpdateSidebarCounts() {
     if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
     cAlle++;
     // V12.371: Normalisierung — 'gesichtet'/'geantwortet' → 'in_bearbeitung'
-    const s = _eiNormStatus(r.status || 'neu');
+    let s = _eiNormStatus(r.status || 'neu');
+    // V12.373: Wiedervorlage-Datum erreicht? Sofort auf 'neu' zurück (lokal + async DB-Patch)
+    if (s === 'wiedervorlage') {
+      const wvDate = String(r.wiedervorlage_datum || '').trim().slice(0, 10);
+      if (wvDate && wvDate <= todayIso) {
+        expireWvIds.push({ recId: r._id, oldDatum: wvDate });
+        r.status = 'neu';
+        r.wiedervorlage_datum = '';
+        s = 'neu';
+      }
+    }
     if (s in byStatus) byStatus[s]++;
+  }
+  // V12.373: Abgelaufene Wiedervorlagen in Airtable persistieren (Best-Effort, async)
+  if (expireWvIds.length) {
+    for (const { recId, oldDatum } of expireWvIds) {
+      atUpdate('Emails', recId, { status: 'neu', wiedervorlage_datum: '' }, { typecast: true })
+        .then(() => console.log('[V12.373] Wiedervorlage abgelaufen → status=neu:', recId, 'war:', oldDatum))
+        .catch(e => console.warn('[V12.373] Wiedervorlage-Expire fail:', recId, e.message));
+    }
   }
   set('eiSideCnt_neu',            byStatus.neu);
   set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
   set('eiSideCnt_wartend',        byStatus.wartend);
+  set('eiSideCnt_wiedervorlage',  byStatus.wiedervorlage);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
   set('eiSideCnt_alle',           cAlle);
   set('eiSideCnt_gesendet',       cSent);
@@ -30427,17 +30454,17 @@ function renderEmailInboxList() {
       // Falls aktueller Bearbeiter nicht in der Liste → trotzdem als Option zeigen (Backward-Compat)
       const bearbOpts = curBearb && !bearbList.includes(curBearb) ? [curBearb, ...bearbList] : bearbList;
       const optEsc = (v) => _esc(String(v));
-      // V12.371: Status-Set ohne „Gesichtet"/„Geantwortet" — werden in „In Bearbeitung"
-      // zusammengefasst. Alte Records mit diesen Werten zeigen wir im Dropdown als
-      // „In Bearbeitung" an (Normalisierung via _eiNormStatus).
+      // V12.371: Status-Set ohne „Gesichtet"/„Geantwortet"
+      // V12.373: + „Auf Wiedervorlage" mit automatischem Zurückwechsel auf „Neu"
       const statusOpts = [
         { val: 'neu',            label: 'Neu' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
+        { val: 'wiedervorlage',  label: '📅 Auf Wiedervorlage' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
       const _curStatusDisplay = _eiNormStatus(curStatus);
-      const _knownStatus = ['neu','in_bearbeitung','wartend','verworfen'];
+      const _knownStatus = ['neu','in_bearbeitung','wartend','wiedervorlage','verworfen'];
       if (_curStatusDisplay && !_knownStatus.includes(_curStatusDisplay)) {
         statusOpts.unshift({ val: _curStatusDisplay, label: ({ gesendet: 'Gesendet' })[_curStatusDisplay] || _curStatusDisplay });
       }
@@ -35995,7 +36022,7 @@ function openEmailDetailOverlay() {
   // Breadcrumb aktualisieren — zeigt aktuellen Status-Filter als Kontext
   const crumb = document.getElementById('emailDetailOverlayCrumbStatus');
   if (crumb) {
-    const map = { neu: 'Neu', gesichtet: 'Gesichtet', in_bearbeitung: 'In Bearbeitung', wartend: 'Wartend', geantwortet: 'Geantwortet', gesendet: 'Gesendet', verworfen: 'Verworfen', alle: 'Alle', neue_antwort: 'Neue Antworten', chat_antwort: 'Chat-Antworten' };
+    const map = { neu: 'Neu', gesichtet: 'Gesichtet', in_bearbeitung: 'In Bearbeitung', wartend: 'Wartend', wiedervorlage: '📅 Wiedervorlage', geantwortet: 'Geantwortet', gesendet: 'Gesendet', verworfen: 'Verworfen', alle: 'Alle', neue_antwort: 'Neue Antworten', chat_antwort: 'Chat-Antworten' };
     crumb.textContent = map[_eiFilter] || 'Email';
   }
   // Scroll-Reset
@@ -36167,10 +36194,11 @@ function renderEmailInboxDetail() {
         { val: 'neu',            label: 'Neu' },
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
+        { val: 'wiedervorlage',  label: '📅 Auf Wiedervorlage' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
       const _curStatusHdrDisplay = _eiNormStatus(curStatus);
-      const _knownStatusHdr = ['neu','in_bearbeitung','wartend','verworfen'];
+      const _knownStatusHdr = ['neu','in_bearbeitung','wartend','wiedervorlage','verworfen'];
       if (_curStatusHdrDisplay && !_knownStatusHdr.includes(_curStatusHdrDisplay)) {
         statusOptsHdr.unshift({ val: _curStatusHdrDisplay, label: ({ gesendet: 'Gesendet' })[_curStatusHdrDisplay] || _curStatusHdrDisplay });
       }
@@ -37588,6 +37616,48 @@ function _bearbSaveAndClose() {
 }
 window._bearbSaveAndClose = _bearbSaveAndClose;
 
+// V12.373: Datums-Dialog für Wiedervorlage. Promise-basiert — resolved zu YYYY-MM-DD
+// Strings oder null bei Abbruch. Default = morgen.
+function _eiPromptWiedervorlageDatum(currentDatum) {
+  return new Promise(resolve => {
+    const existing = document.getElementById('_wvDatumDlg');
+    if (existing) try { existing.remove(); } catch (_) {}
+    const today = new Date();
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const todayIso = today.toISOString().slice(0, 10);
+    const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+    const defaultVal = (currentDatum && /^\d{4}-\d{2}-\d{2}$/.test(currentDatum)) ? currentDatum : tomorrowIso;
+    const ov = document.createElement('div');
+    ov.id = '_wvDatumDlg';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6700;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+    ov.innerHTML = '<div style="background:#fff;border-radius:12px;padding:22px 24px;width:min(440px,94vw);box-shadow:0 30px 80px rgba(0,0,0,.45)">'
+      + '<div style="font-size:15.5px;font-weight:700;margin-bottom:6px;color:#0f172a;display:flex;align-items:center;gap:8px"><span style="font-size:18px">📅</span><span>Auf Wiedervorlage</span></div>'
+      + '<div style="font-size:12.5px;color:#64748b;margin-bottom:14px;line-height:1.55">Wann soll diese Email wieder auf <strong>„Neu"</strong> springen? Bei Eintritt des Datums setzt die App den Status automatisch zurück — beim nächsten Posteingang-Aufruf oder Polling.</div>'
+      + '<label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Wiedervorlage-Datum</label>'
+      + '<input type="date" id="_wvInput" value="' + defaultVal + '" min="' + todayIso + '" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;color:#0f172a">'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">'
+      +   '<button id="_wvCancel" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>'
+      +   '<button id="_wvOk" style="background:#0891b2;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Setzen</button>'
+      + '</div>'
+      + '</div>';
+    document.body.appendChild(ov);
+    const cleanup = (val) => { try { ov.remove(); } catch (_) {} resolve(val); };
+    document.getElementById('_wvCancel').onclick = () => cleanup(null);
+    document.getElementById('_wvOk').onclick = () => {
+      const v = String(document.getElementById('_wvInput').value || '').trim();
+      cleanup(v || null);
+    };
+    ov.onclick = (e) => { if (e.target === ov) cleanup(null); };
+    const inp = document.getElementById('_wvInput');
+    if (inp) { inp.focus(); inp.select && inp.select(); }
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', escHandler); cleanup(null); }
+      else if (e.key === 'Enter') { document.removeEventListener('keydown', escHandler); document.getElementById('_wvOk').click(); }
+    });
+  });
+}
+window._eiPromptWiedervorlageDatum = _eiPromptWiedervorlageDatum;
+
 async function setEmailStatus(recId, newStatus) {
   // V12.347: Bug-Fix — Status sprang zurück, weil status + status_at + bearbeiter_name
   // in EINEM atUpdate geschrieben wurden. Wenn EINS davon 422 wirft (z.B. status ist
@@ -37600,17 +37670,36 @@ async function setEmailStatus(recId, newStatus) {
   const oldStatus = r.status || 'neu';
   if (String(oldStatus) === String(newStatus)) return;
 
+  // V12.373: Wiedervorlage — Datum abfragen bevor Status gesetzt wird
+  let wiedervorlageDatum = '';
+  if (newStatus === 'wiedervorlage') {
+    const picked = await _eiPromptWiedervorlageDatum(String(r.wiedervorlage_datum || ''));
+    if (!picked) {
+      // Abbruch — Dropdown zurück auf alten Wert via Re-Render
+      renderEmailInboxList();
+      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      return;
+    }
+    wiedervorlageDatum = picked;
+  }
+
   // Optimistic update — Dropdown bleibt sofort beim neuen Wert
   const nowIso = new Date().toISOString();
   r.status    = newStatus;
   r.status_at = nowIso;
+  // V12.373: Wiedervorlage-Datum mit-tracken
+  if (newStatus === 'wiedervorlage') r.wiedervorlage_datum = wiedervorlageDatum;
+  else if (oldStatus === 'wiedervorlage') r.wiedervorlage_datum = ''; // clearen wenn weg
   renderEmailInboxList();
 
   try {
-    // Step 1 (kritisch): nur das status-Feld — V12.352: typecast lässt Airtable
-    // die Single-Select-Option auto-anlegen, falls sie noch nicht existiert.
-    // Verhindert dass z. B. 'wartend' / 'in_bearbeitung' mit 422 abgewiesen werden.
-    await atUpdate('Emails', recId, { status: newStatus }, { typecast: true });
+    // Step 1 (kritisch): status-Feld + ggf. wiedervorlage_datum atomisch in einem Call.
+    // V12.352: typecast lässt Airtable die Single-Select-Option auto-anlegen.
+    // V12.373: wiedervorlage_datum mit-schreiben/-clearen, damit Datum und Status synchron sind.
+    const patch1 = { status: newStatus };
+    if (newStatus === 'wiedervorlage') patch1.wiedervorlage_datum = wiedervorlageDatum;
+    else if (oldStatus === 'wiedervorlage') patch1.wiedervorlage_datum = '';
+    await atUpdate('Emails', recId, patch1, { typecast: true });
   } catch (e) {
     // Rollback bei echtem Fehler (Single-Select-Option fehlt o.ä.)
     r.status    = oldStatus;
@@ -37647,8 +37736,9 @@ async function setEmailStatus(recId, newStatus) {
     renderEmailInboxDetail();
   }
   _refreshEmailInboxBadge();
-  const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', wartend: 'wartend', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
-  showToast('Email ' + label + '.', 'success', 2200);
+  const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', wartend: 'wartend', wiedervorlage: 'auf Wiedervorlage', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
+  const extraInfo = (newStatus === 'wiedervorlage' && wiedervorlageDatum) ? (' bis ' + wiedervorlageDatum) : '';
+  showToast('Email ' + label + extraInfo + '.', 'success', 3000);
 }
 
 // V12.203/212: Vorgang in eigene Email auftrennen — Original behält die anderen, Kopie hat nur den einen.
