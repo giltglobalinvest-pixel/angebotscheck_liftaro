@@ -6419,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.378';
+const APP_VERSION = 'V12.379';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11025,7 +11025,7 @@ function _eiLvDefaultPauschalVorlage() {
     pflicht_felder_json: JSON.stringify(['pos_nr', 'beschreibung', 'menge', 'einheit']),
     bausteine_json:      JSON.stringify([]),
     extraktion_prompt:
-      'Du bist Spezialist für Pauschalangebote von Aufzug-REPARATUR-Firmen (NICHT Wartungs-Verträge, NICHT Modernisierungen).\n\n'
+      '[v12.378-titel] Du bist Spezialist für Pauschalangebote von Aufzug-REPARATUR-Firmen (NICHT Wartungs-Verträge, NICHT Modernisierungen).\n\n'
     + 'Lies das angehängte PDF-Angebot vollständig. Extrahiere die echten Reparatur-/Erneuerungs-POSTEN und fasse pro Posten ALLE Unter-Schritte (Konfektionierung, Außerbetriebnahme, Demontage, Montage, Entsorgung, Inbetriebnahme, Funktionsprüfung etc.) zu EINEM Eintrag mit Titel + ausführlicher Beschreibung zusammen.\n\n'
     + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
     + '[\n'
@@ -11417,6 +11417,7 @@ async function _eiLvOpenEditor(emailId, existingLv, vorlage) {
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-shrink:0">'
     +   '<div style="font-size:11.5px;color:#64748b">Status wird beim Speichern auf „bereit" gesetzt, wenn mind. 1 Position vorhanden ist.</div>'
     +   '<div style="display:flex;gap:8px">'
+    +     '<button onclick="_eiLvShowDiagnostics()" title="Diagnose der letzten KI-Extraktion (Prompt, Antwort, Token, Vorlagen-Quelle)" style="background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:7px;padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🔬 Diagnose</button>'
     +     '<button onclick="_eiLvExtractPositions()" id="lvEdExtractBtn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">🤖 KI: Positionen aus Anhang</button>'
     +     '<button onclick="_eiLvSave()" id="lvEdSaveBtn" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>'
     +   '</div>'
@@ -11570,14 +11571,37 @@ async function _eiLvExtractPositions() {
     }
     if (!docContents.length) throw new Error('Keiner der PDF-Anhänge konnte geladen werden' + (skipped.length ? ': ' + skipped.join(' · ') : ''));
     if (pdfs.length > MAX_FILES) skipped.push((pdfs.length - MAX_FILES) + ' weitere übersprungen (max ' + MAX_FILES + ')');
-    const sysPrompt = String(s.vorlage.extraktion_prompt || '').trim();
-    if (!sysPrompt) throw new Error('Vorlage hat keinen KI-Prompt — bitte unter Werkzeuge → LV-Vorlagen pflegen');
+    // V12.379: Auto-Override veralteter DB-Prompts via Versionsmarker
+    const REQUIRED_MARKER = '[v12.378-titel]';
+    const dbPrompt = String(s.vorlage.extraktion_prompt || '').trim();
+    const defVorlage = (typeof _eiLvDefaultPauschalVorlage === 'function' && (s.vorlage.typ || 'pauschal') === 'pauschal') ? _eiLvDefaultPauschalVorlage() : null;
+    const defPrompt = defVorlage ? String(defVorlage.extraktion_prompt || '').trim() : '';
+    let sysPrompt; let promptSource; let promptWarning = '';
+    if (dbPrompt && dbPrompt.indexOf(REQUIRED_MARKER) !== -1) {
+      sysPrompt = dbPrompt; promptSource = 'Vorlage (DB) — Marker ' + REQUIRED_MARKER + ' ✓';
+    } else if (defPrompt) {
+      sysPrompt = defPrompt;
+      promptSource = 'Code-Default (V12.379) — DB-Prompt fehlt Marker';
+      promptWarning = 'DB-Prompt veraltet (kein ' + REQUIRED_MARKER + '). Tipp: Werkzeuge → LV-Vorlagen → „🔄 Default-Prompt laden" → „💾 Speichern".';
+    } else if (dbPrompt) {
+      sysPrompt = dbPrompt; promptSource = 'Vorlage (DB) — kein Code-Default für Typ „' + (s.vorlage.typ || '?') + '"';
+    } else {
+      throw new Error('Weder DB-Prompt noch Code-Default vorhanden');
+    }
     setBtn('⏳ Claude liest PDF …', true);
     const userText = 'Analysiere die obigen PDF-Anhänge sorgfältig und extrahiere die Reparatur-/Erneuerungs-Positionen exakt nach deiner Anweisung.\n\n'
       + 'WICHTIG:\n'
-      + '- Wenn der/die PDF(s) tatsächlich ein Reparatur-/Erneuerungs-Angebot enthalten, gib die konkreten Posten zurück.\n'
-      + '- Wenn die PDFs etwas anderes sind (Wartungsvertrag, Rechnung, Korrespondenz, leere/unlesbare Datei): gib AUSDRÜCKLICH `[]` zurück. Erfinde NIEMALS Wartungs-Bausteine.\n\n'
+      + '- Liefere für jede Position UNBEDINGT die Felder `titel` (Substantiv-Phrase) und `beschreibung` (Fließtext mit allen Unter-Schritten).\n'
+      + '- Fasse Unter-Bullets (Konfektionierung, Demontage, Montage, Entsorgung, Inbetriebnahme) IMMER zu einer Position zusammen.\n'
+      + '- Wenn das PDF kein Reparatur-Angebot ist (Wartungsvertrag, Rechnung, Korrespondenz, leere/unlesbare Datei): gib AUSDRÜCKLICH `[]` zurück.\n\n'
       + 'Antworte AUSSCHLIESSLICH mit gültigem JSON-Array.';
+    const reqBody = {
+      model: 'claude-haiku-4-5',
+      max_tokens: 2500,
+      system: sysPrompt,
+      messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: userText }]) }],
+    };
+    const t0 = Date.now();
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -11586,13 +11610,9 @@ async function _eiLvExtractPositions() {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 2500,
-        system: sysPrompt,
-        messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: userText }]) }],
-      }),
+      body: JSON.stringify(reqBody),
     });
+    const tMs = Date.now() - t0;
     if (!resp.ok) {
       let body = ''; try { body = await resp.text(); } catch (_) {}
       throw new Error('Claude HTTP ' + resp.status + ': ' + body.slice(0, 150));
@@ -11600,10 +11620,37 @@ async function _eiLvExtractPositions() {
     const data = await resp.json();
     const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-    let parsed = null;
+    let parsed = null; let parseError = '';
     try { parsed = JSON.parse(cleaned); }
-    catch (_) { const m = raw.match(/\[[\s\S]*\]/); if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} } }
-    if (!Array.isArray(parsed)) throw new Error('Konnte KI-Antwort nicht als Array parsen');
+    catch (e1) {
+      parseError = String(e1.message || e1);
+      const m = raw.match(/\[[\s\S]*\]/);
+      if (m) { try { parsed = JSON.parse(m[0]); parseError = ''; } catch (e2) { parseError = String(e2.message || e2); } }
+    }
+    // V12.379: Diagnose-State immer speichern, auch bei Fehler
+    window._eiLvLastDiagnostics = {
+      ts: new Date().toISOString(),
+      durMs: tMs,
+      emailId: s.emailId || '',
+      vorlageId: s.vorlage.id || '',
+      vorlageName: s.vorlage.name || '',
+      vorlageTyp: s.vorlage.typ || '',
+      promptSource, promptWarning,
+      systemPrompt: sysPrompt,
+      userText,
+      pdfCount: docContents.length,
+      pdfNames: docContents.map(d => d.title),
+      pdfTotalBytes: totalBytes,
+      skipped: skipped.slice(),
+      model: reqBody.model,
+      usage: data.usage || null,
+      stopReason: data.stop_reason || '',
+      rawResponse: raw,
+      cleanedResponse: cleaned,
+      parseError,
+      parsedCount: Array.isArray(parsed) ? parsed.length : 0,
+    };
+    if (!Array.isArray(parsed)) throw new Error('Konnte KI-Antwort nicht als Array parsen (' + (parseError || 'unbekannt') + ')');
     // V12.378: Normalisieren — titel separat vom beschreibung-Fließtext
     const norm = parsed.map((p, i) => ({
       pos_nr:       String(p.pos_nr || (i + 1)),
@@ -11612,22 +11659,116 @@ async function _eiLvExtractPositions() {
       menge:        String(p.menge || '1').trim(),
       einheit:      String(p.einheit || 'Pauschal').trim(),
     })).filter(p => p.titel || p.beschreibung);
+    window._eiLvLastDiagnostics.normalizedCount = norm.length;
+    window._eiLvLastDiagnostics.titelEmptyCount = norm.filter(p => !p.titel).length;
     if (!norm.length) {
-      showToast('⚠ Claude hat keine konkreten Reparatur-Positionen im PDF gefunden. Vermutlich ist der Anhang kein Reparatur-Angebot, sondern z.B. ein Wartungsvertrag oder eine Korrespondenz. Manuell „+ Position hinzufügen" oder mit anderer Vorlage versuchen.', 'warning', 9000);
+      showToast('⚠ Claude hat keine konkreten Reparatur-Positionen im PDF gefunden. „🔬 Diagnose" klicken für Details.', 'warning', 9000);
       return;
     }
     s.positionen = norm;
     _eiLvRenderEditorBody();
-    const skipMsg = (typeof skipped !== 'undefined' && skipped.length) ? ' · ⚠ ' + skipped.length + ' Anhang übersprungen: ' + skipped.join(' · ') : '';
-    showToast('✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus PDF extrahiert' + skipMsg, 'success', skipMsg ? 7000 : 3000);
+    let toast = '✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus PDF extrahiert';
+    if (promptWarning) toast += ' · ⚠ ' + promptWarning;
+    const skipMsg = (skipped.length) ? ' · ⚠ ' + skipped.length + ' Anhang übersprungen: ' + skipped.join(' · ') : '';
+    toast += skipMsg;
+    showToast(toast, promptWarning ? 'warning' : 'success', (promptWarning || skipMsg) ? 9000 : 3500);
   } catch (e) {
-    console.error('[V12.377] _eiLvExtractPositions:', e);
-    showToast('Extraktion fehlgeschlagen: ' + e.message, 'error', 6500);
+    console.error('[V12.379] _eiLvExtractPositions:', e);
+    showToast('Extraktion fehlgeschlagen: ' + e.message + ' — „🔬 Diagnose" klicken für Details.', 'error', 7500);
   } finally {
     setBtn('🤖 KI: Positionen aus Anhang', false);
   }
 }
 window._eiLvExtractPositions = _eiLvExtractPositions;
+
+// V12.379: Diagnose-Modal für die letzte KI-Extraktion
+function _eiLvShowDiagnostics() {
+  const d = window._eiLvLastDiagnostics;
+  if (!d) {
+    showToast('Noch keine KI-Extraktion in dieser Session — erst „🤖 KI: Positionen aus Anhang" klicken.', 'info', 4500);
+    return;
+  }
+  const esc = (typeof _esc === 'function') ? _esc : ((x) => String(x).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])));
+  const kb = (n) => (n / 1024).toFixed(1) + ' KB';
+  const row = (k, v, color) => '<tr><td style="padding:6px 10px;color:#64748b;font-weight:600;font-size:11.5px;vertical-align:top;white-space:nowrap;border-bottom:1px solid #f1f5f9">' + esc(k) + '</td><td style="padding:6px 10px;font-size:12px;color:' + (color || '#0f172a') + ';border-bottom:1px solid #f1f5f9;word-break:break-word">' + v + '</td></tr>';
+  const pre = (txt) => '<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;margin:0">' + esc(String(txt || '')) + '</pre>';
+  const warnBox = d.promptWarning
+    ? '<div style="background:#fef3c7;border:1px solid #fcd34d;color:#78350f;padding:10px 14px;border-radius:7px;font-size:12.5px;margin-bottom:14px;line-height:1.5">⚠ <b>' + esc(d.promptWarning) + '</b></div>'
+    : '';
+  const usage = d.usage
+    ? (d.usage.input_tokens || 0) + ' in / ' + (d.usage.output_tokens || 0) + ' out' + (d.usage.cache_read_input_tokens ? ' (cache ' + d.usage.cache_read_input_tokens + ')' : '')
+    : '—';
+  const titelOk = (d.normalizedCount || 0) - (d.titelEmptyCount || 0);
+  const titelBadge = (d.titelEmptyCount > 0)
+    ? '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700">⚠ ' + d.titelEmptyCount + ' ohne titel</span>'
+    : '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700">✓ alle ' + titelOk + ' mit titel</span>';
+  const html = ''
+    + '<div style="padding:18px 22px;background:#fafbfc">'
+    +   warnBox
+    +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">'
+    +     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">'
+    +       '<div style="background:#f8fafc;padding:8px 12px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8f0">Vorlage</div>'
+    +       '<table style="width:100%;border-collapse:collapse">'
+    +         row('Name', esc(d.vorlageName || '—'))
+    +         row('Typ', esc(d.vorlageTyp || '—'))
+    +         row('ID', '<code style="font-size:10.5px">' + esc(d.vorlageId || '—') + '</code>')
+    +         row('Prompt-Quelle', '<b>' + esc(d.promptSource || '—') + '</b>', d.promptWarning ? '#b45309' : '#0f172a')
+    +       '</table>'
+    +     '</div>'
+    +     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">'
+    +       '<div style="background:#f8fafc;padding:8px 12px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8f0">Ergebnis</div>'
+    +       '<table style="width:100%;border-collapse:collapse">'
+    +         row('Positionen (Roh / normalisiert)', '<b>' + (d.parsedCount || 0) + ' → ' + (d.normalizedCount || 0) + '</b>')
+    +         row('Titel-Felder', titelBadge)
+    +         row('Stop-Reason', '<code>' + esc(d.stopReason || '—') + '</code>')
+    +         row('Token-Usage', '<code>' + esc(usage) + '</code>')
+    +         row('Dauer', (d.durMs || 0) + ' ms')
+    +         row('Zeitpunkt', esc(d.ts || '—'))
+    +       '</table>'
+    +     '</div>'
+    +   '</div>'
+    +   '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">'
+    +     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    +       '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">PDF-Anhänge</div>'
+    +       '<div style="font-size:11.5px;color:#475569"><b>' + (d.pdfCount || 0) + '</b> PDF · <b>' + kb(d.pdfTotalBytes || 0) + '</b> · Model <code>' + esc(d.model || '?') + '</code></div>'
+    +     '</div>'
+    +     '<div style="font-size:12px;color:#334155;line-height:1.55">'
+    +       (d.pdfNames && d.pdfNames.length ? d.pdfNames.map(n => '<div>· ' + esc(n) + '</div>').join('') : '<i style="color:#94a3b8">keine</i>')
+    +       (d.skipped && d.skipped.length ? '<div style="margin-top:6px;color:#b45309">⚠ Übersprungen: ' + esc(d.skipped.join(' · ')) + '</div>' : '')
+    +     '</div>'
+    +   '</div>'
+    +   '<details style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:10px">'
+    +     '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#475569">📜 System-Prompt (' + (d.systemPrompt || '').length + ' Zeichen)</summary>'
+    +     '<div style="margin-top:10px">' + pre(d.systemPrompt) + '</div>'
+    +   '</details>'
+    +   '<details style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:10px">'
+    +     '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#475569">💬 User-Prompt</summary>'
+    +     '<div style="margin-top:10px">' + pre(d.userText) + '</div>'
+    +   '</details>'
+    +   '<details open style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:10px">'
+    +     '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#475569">🤖 Claude-Roh-Antwort (' + (d.rawResponse || '').length + ' Zeichen' + (d.parseError ? ' · ⚠ Parse-Fehler: ' + esc(d.parseError) : '') + ')</summary>'
+    +     '<div style="margin-top:10px">' + pre(d.rawResponse) + '</div>'
+    +   '</details>'
+    + '</div>';
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.8);display:flex;justify-content:center;align-items:center;z-index:100000;padding:30px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:980px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
+    + '<div style="background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
+    +   '<div><div style="font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:.08em;text-transform:uppercase">🔬 KI-Diagnose</div><div style="font-size:16px;font-weight:700">Letzte LV-Extraktion</div></div>'
+    +   '<div style="display:flex;gap:6px"><button id="lvDiagCopyBtn" style="background:#334155;border:none;color:#cbd5e1;cursor:pointer;padding:6px 12px;font-size:12px;font-weight:600;border-radius:6px;font-family:inherit">📋 JSON kopieren</button><button onclick="this.closest(\'[data-lvdiag]\').remove()" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:22px;line-height:1;padding:4px 10px">✕</button></div>'
+    + '</div>'
+    + '<div style="flex:1;overflow-y:auto">' + html + '</div>'
+    + '</div>';
+  ov.setAttribute('data-lvdiag', '1');
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  const copyBtn = ov.querySelector('#lvDiagCopyBtn');
+  if (copyBtn) copyBtn.onclick = async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); copyBtn.textContent = '✓ Kopiert'; setTimeout(() => copyBtn.textContent = '📋 JSON kopieren', 1500); }
+    catch (e) { copyBtn.textContent = '⚠ Fehler'; }
+  };
+}
+window._eiLvShowDiagnostics = _eiLvShowDiagnostics;
 
 async function _eiLvSave() {
   const s = window._eiLvEditorState; if (!s) return;
