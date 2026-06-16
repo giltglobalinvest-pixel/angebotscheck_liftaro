@@ -153,7 +153,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.5.0';
+  const APP_VERSION = 'v1.6.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -674,7 +674,13 @@
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) {
-        throw new Error(j.error || ('HTTP ' + r.status));
+        // v1.6: Wenn der Proxy "Einwilligung fehlt" wirft, ist die lv_anfrage_submit-Action
+        // im val.town nicht installiert — der POST fällt durch zum Default-Vorabcheck-Handler.
+        const errMsg = String(j.error || ('HTTP ' + r.status));
+        if (/einwilligung/i.test(errMsg) || /consent/i.test(errMsg)) {
+          throw new Error('Server-Backend nicht für LV-Anfragen konfiguriert (Action „lv_anfrage_submit" fehlt im val.town). Bitte den Empfänger der Anfrage informieren.');
+        }
+        throw new Error(errMsg);
       }
       // Success
       renderSubmittedView(ctx.anf, ctx.lv, response, ctx.snap, ctx.wn, sum);
