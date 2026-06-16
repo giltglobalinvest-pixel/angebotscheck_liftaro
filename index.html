@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.391';
+const APP_VERSION = 'V12.392';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11282,7 +11282,7 @@ function _eiLvDefaultPauschalVorlage() {
     pflicht_felder_json: JSON.stringify(['pos_nr', 'beschreibung', 'menge', 'einheit']),
     bausteine_json:      JSON.stringify([]),
     extraktion_prompt:
-      '[v12.378-titel] Du bist Spezialist für Pauschalangebote von Aufzug-REPARATUR-Firmen (NICHT Wartungs-Verträge, NICHT Modernisierungen).\n\n'
+      '[v12.392-preis] Du bist Spezialist für Pauschalangebote von Aufzug-REPARATUR-Firmen (NICHT Wartungs-Verträge, NICHT Modernisierungen).\n\n'
     + 'Lies das angehängte PDF-Angebot vollständig. Extrahiere die echten Reparatur-/Erneuerungs-POSTEN und fasse pro Posten ALLE Unter-Schritte (Konfektionierung, Außerbetriebnahme, Demontage, Montage, Entsorgung, Inbetriebnahme, Funktionsprüfung etc.) zu EINEM Eintrag mit Titel + ausführlicher Beschreibung zusammen.\n\n'
     + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
     + '[\n'
@@ -11291,7 +11291,8 @@ function _eiLvDefaultPauschalVorlage() {
     + '    "titel": "Kurzer Posten-Titel (max 80 Zeichen, z. B. „Erneuerung Hauptschütze")",\n'
     + '    "beschreibung": "Mehrere Sätze (oder Aufzählung) mit allen Leistungen die zu diesem Posten gehören — typischerweise Konfektionierung, Außerbetriebnahme, Demontage, Montage, Entsorgung, Inbetriebnahme. Im Fließtext oder Bullet-Form, ca. 60–200 Wörter pro Posten. Übernimm die Substanz des Original-PDFs neutral.",\n'
     + '    "menge": "Stückzahl als Zahl",\n'
-    + '    "einheit": "Stk / Pauschal / m / kg / Std"\n'
+    + '    "einheit": "Stk / Pauschal / m / kg / Std",\n'
+    + '    "preis_eur": "Netto-Einzelpreis dieser Position als Zahl (z. B. 489.50). Wenn im PDF kein Einzelpreis für genau diesen Posten erkennbar ist: null (NICHT raten, NICHT teilen, NICHT aus Gesamtsumme errechnen)."\n'
     + '  },\n'
     + '  ...\n'
     + ']\n\n'
@@ -11301,7 +11302,7 @@ function _eiLvDefaultPauschalVorlage() {
     + '- HALLUZINIERE NIEMALS. Wenn das PDF keine konkreten Reparatur-Posten enthält, gib `[]` zurück.\n'
     + '- NIEMALS Wartungs-Bausteine („Monatliche Wartung", „TÜV-Prüfung", „Notrufdienst", „Schmierung") erfinden.\n'
     + '- Mehrfach gleicher Posten („3x Erneuerung Schütz(e)" → 1× Hauptschütze, 1× Hilfsschütze, 1× RC-Glieder): Wenn die Posten unterschiedliche Bauteile betreffen, MEHRERE Positionen. Wenn identisch, EINE Position mit Menge.\n'
-    + '- Preise im PDF IGNORIEREN — sie werden vom Dienstleister neu eingetragen.\n'
+    + '- Einzelpreis im PDF EXTRAHIEREN (Feld preis_eur, Netto, in EUR als Zahl) — wenn der Posten im PDF einen konkreten Einzelpreis hat. Wenn nur eine Gesamtsumme genannt ist (kein Einzelpreis pro Posten), preis_eur=null setzen.\n'
     + '- Keine Sammelposten „Lieferung", „Montage", „Lieferzeit" — das sind Lieferbedingungen, keine Positionen.\n'
     + '- Titel kurz und sprechend (Substantiv-Phrase: „Erneuerung Hauptschütze", NICHT „Wir tauschen die Hauptschütze").\n'
     + '- Beschreibung neutral und vollständig — Bearbeiter soll alle Details sehen ohne nochmal ins Original-PDF schauen zu müssen.\n'
@@ -11758,6 +11759,13 @@ function _eiLvRenderEditorBody() {
         + '<td style="padding:8px 10px;border-right:1px solid #f1f5f9;vertical-align:top">'
         +   '<input type="text" placeholder="Posten-Titel (z. B. Erneuerung Hauptschütze)" value="' + _esc(String(p.titel || '')) + '" oninput="_eiLvPosEdit(' + idx + ',\'titel\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:13px;font-weight:700;color:#0f172a;background:#fff;outline:none;box-sizing:border-box" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
         +   '<textarea placeholder="Leistungsbeschreibung — alle Unter-Schritte (Konfektionierung, Montage, Entsorgung, Inbetriebnahme …) als Fließtext oder Bullet-Liste" oninput="_eiLvPosEdit(' + idx + ',\'beschreibung\',this.value)" rows="4" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12px;resize:vertical;background:#fafbfc;line-height:1.5;outline:none;box-sizing:border-box;color:#334155" onfocus="this.style.borderColor=\'#7c3aed\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'#e2e8f0\';this.style.background=\'#fafbfc\'">' + _esc(String(p.beschreibung || '')) + '</textarea>'
+        // V12.392: Originalpreis aus PDF (KI-extrahiert) — editierbar
+        +   '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b">'
+        +     '<span style="font-weight:600;color:#475569">📎 Original (aus PDF):</span>'
+        +     '<input type="text" inputmode="decimal" placeholder="—" value="' + (p.preis_eur != null ? String(p.preis_eur).replace('.', ',') : '') + '" oninput="_eiLvPosEdit(' + idx + ',\'preis_eur\',this.value)" style="width:90px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:4px;font-family:var(--dr-f-mono);font-size:11.5px;text-align:right;background:#fff;outline:none" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
+        +     '<span style="color:#94a3b8">€</span>'
+        +     (p.preis_eur != null && p.preis_eur > 0 ? '<span style="margin-left:auto;background:#f0fdfa;color:#0e7490;border-radius:4px;padding:2px 7px;font-weight:600">→ Wunschpreis −30 %: ' + (p.preis_eur * 0.7).toFixed(2).replace('.', ',') + ' €</span>' : '')
+        +   '</div>'
         + '</td>'
         + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.menge || '1')) + '" oninput="_eiLvPosEdit(' + idx + ',\'menge\',this.value)" style="width:70px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
         + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.einheit || 'Pauschal')) + '" oninput="_eiLvPosEdit(' + idx + ',\'einheit\',this.value)" style="width:95px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12px;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
@@ -11791,12 +11799,24 @@ window._eiLvRenderEditorBody = _eiLvRenderEditorBody;
 
 function _eiLvPosEdit(idx, field, value) {
   const s = window._eiLvEditorState; if (!s || !s.positionen[idx]) return;
+  // V12.392: preis_eur als Zahl (oder null) speichern, sonst als String
+  if (field === 'preis_eur') {
+    const raw = String(value || '').replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(raw);
+    s.positionen[idx].preis_eur = (isNaN(n) || n <= 0) ? null : n;
+    // Wunschpreis-Anzeige live aktualisieren (nicht aufwendig: full re-render)
+    if (typeof _eiLvRenderEditorBody === 'function') {
+      clearTimeout(window._eiLvWunschTimer);
+      window._eiLvWunschTimer = setTimeout(() => _eiLvRenderEditorBody(), 350);
+    }
+    return;
+  }
   s.positionen[idx][field] = String(value || '').trim();
 }
 window._eiLvPosEdit = _eiLvPosEdit;
 function _eiLvPosAdd() {
   const s = window._eiLvEditorState; if (!s) return;
-  s.positionen.push({ pos_nr: String(s.positionen.length + 1), titel: '', beschreibung: '', menge: '1', einheit: 'Pauschal' });
+  s.positionen.push({ pos_nr: String(s.positionen.length + 1), titel: '', beschreibung: '', menge: '1', einheit: 'Pauschal', preis_eur: null });
   _eiLvRenderEditorBody();
 }
 window._eiLvPosAdd = _eiLvPosAdd;
@@ -11872,7 +11892,7 @@ async function _eiLvExtractPositions() {
     if (!docContents.length) throw new Error('Keiner der PDF-Anhänge konnte geladen werden' + (skipped.length ? ': ' + skipped.join(' · ') : ''));
     if (pdfs.length > MAX_FILES) skipped.push((pdfs.length - MAX_FILES) + ' weitere übersprungen (max ' + MAX_FILES + ')');
     // V12.379: Auto-Override veralteter DB-Prompts via Versionsmarker
-    const REQUIRED_MARKER = '[v12.378-titel]';
+    const REQUIRED_MARKER = '[v12.392-preis]';
     const dbPrompt = String(s.vorlage.extraktion_prompt || '').trim();
     const defVorlage = (typeof _eiLvDefaultPauschalVorlage === 'function' && (s.vorlage.typ || 'pauschal') === 'pauschal') ? _eiLvDefaultPauschalVorlage() : null;
     const defPrompt = defVorlage ? String(defVorlage.extraktion_prompt || '').trim() : '';
@@ -11952,12 +11972,21 @@ async function _eiLvExtractPositions() {
     };
     if (!Array.isArray(parsed)) throw new Error('Konnte KI-Antwort nicht als Array parsen (' + (parseError || 'unbekannt') + ')');
     // V12.378: Normalisieren — titel separat vom beschreibung-Fließtext
+    // V12.392: preis_eur als Zahl (oder null) mit-übernehmen
+    const parseNum = (v) => {
+      if (v == null || v === '' || v === false) return null;
+      if (typeof v === 'number') return isFinite(v) ? v : null;
+      const s = String(v).replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+      const n = parseFloat(s);
+      return (isNaN(n) || !isFinite(n) || n <= 0) ? null : n;
+    };
     const norm = parsed.map((p, i) => ({
       pos_nr:       String(p.pos_nr || (i + 1)),
       titel:        String(p.titel || '').trim(),
       beschreibung: String(p.beschreibung || '').trim(),
       menge:        String(p.menge || '1').trim(),
       einheit:      String(p.einheit || 'Pauschal').trim(),
+      preis_eur:    parseNum(p.preis_eur),
     })).filter(p => p.titel || p.beschreibung);
     window._eiLvLastDiagnostics.normalizedCount = norm.length;
     window._eiLvLastDiagnostics.titelEmptyCount = norm.filter(p => !p.titel).length;
