@@ -85,8 +85,9 @@
   .pos-title { font-weight: 700; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
   .pos-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; white-space: pre-line; }
   .pos-menge { font-family: var(--f-mono); font-size: 12px; color: var(--ink-mute); white-space: nowrap; padding-top: 3px; }
-  .pos-inputs { display: grid; grid-template-columns: 130px 110px; gap: 8px; margin-top: 8px; }
+  .pos-inputs { display: flex; gap: 8px; margin-top: 8px; }
   .pos-inputs .field { display: flex; flex-direction: column; }
+  .pos-preis-wrap { width: 150px; }
   .field input, .field textarea { font-family: var(--f-sans); font-size: 13px; padding: 8px 11px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); outline: none; background: #fff; color: var(--ink); width: 100%; }
   .field input:focus, .field textarea:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
   .field .suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--ink-mute); pointer-events: none; }
@@ -292,13 +293,9 @@
           <td class="pos-menge">${esc(menge)}<br><span style="color:#94a3b8">${esc(einheit)}</span></td>
           <td>
             <div class="pos-inputs">
-              <div class="field field-wrap">
+              <div class="field field-wrap pos-preis-wrap">
                 <input type="text" inputmode="decimal" id="preis_${idx}" placeholder="0,00" aria-label="Preis Position ${esc(nr)}" oninput="window._lvRecalcSumme&&window._lvRecalcSumme()">
                 <span class="suffix">€</span>
-              </div>
-              <div class="field field-wrap">
-                <input type="text" inputmode="numeric" id="lieferzeit_${idx}" placeholder="—" aria-label="Lieferzeit Position ${esc(nr)}">
-                <span class="suffix">Tg</span>
               </div>
             </div>
           </td>
@@ -352,7 +349,7 @@
           <div class="muted" style="margin-bottom:14px">Tragen Sie pro Position Ihren Netto-Preis (EUR), die Lieferzeit (Werktage) und ggf. eine Bemerkung ein. Alle Preise verstehen sich zzgl. MwSt.</div>
           <table class="pos-table">
             <thead>
-              <tr><th>Nr.</th><th>Leistung</th><th>Menge</th><th>Preis · Lieferzeit</th></tr>
+              <tr><th>Nr.</th><th>Leistung</th><th>Menge</th><th>Preis (netto)</th></tr>
             </thead>
             <tbody>${positionenHtml}</tbody>
           </table>
@@ -360,6 +357,12 @@
             <span class="lbl">Gesamtsumme (Netto)</span>
             <span class="val" id="summeAnzeige">— €</span>
           </div>
+        </div>
+
+        <div class="card">
+          <h2>📅 Lieferzeit / Ausführungstermin</h2>
+          <div class="muted" style="margin-bottom:10px">Wann können Sie die Leistung erbringen? Freier Text — z. B. „in ca. 10 Werktagen nach Auftragserteilung", „nach Absprache", „sofort verfügbar".</div>
+          <div class="field"><input type="text" id="lieferzeitGesamt" placeholder="z. B. ca. 10 Werktage nach Auftragserteilung" autocomplete="off"></div>
         </div>
 
         ${klauseln ? `
@@ -499,9 +502,9 @@
       menge:      String(p.menge || '1'),
       einheit:    String(p.einheit || 'Pauschal'),
       preis_eur:  parseEur($('preis_' + idx)?.value),
-      lieferzeit: String($('lieferzeit_' + idx)?.value || '').trim(),
       bemerkung:  String($('bemerkung_' + idx)?.value || '').trim(),
     }));
+    const lieferzeitGesamt = String($('lieferzeitGesamt')?.value || '').trim();
     const leerePos = response.filter(r => !r.preis_eur || r.preis_eur <= 0);
     if (leerePos.length === response.length) {
       alert('Bitte mindestens einen Preis eintragen.');
@@ -539,6 +542,7 @@
       signatur_dataurl: signaturDataUrl,
       signatur_name: sigName,
       summe_netto_eur: Math.round(sum * 100) / 100,
+      lieferzeit_gesamt: lieferzeitGesamt,
     };
     try {
       const r = await fetch(proxyUrl, {
