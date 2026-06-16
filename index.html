@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.393';
+const APP_VERSION = 'V12.394';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12418,10 +12418,14 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
     document.getElementById('eiLvSendDraftOv')?.remove();
     document.getElementById('lvEditorModal')?.remove();
     showToast('✓ LV-Anfrage an „' + wn.email + '" gesendet (' + anfrageId + ')', 'success', 5500);
-    // V12.388: Beide Caches refreshen — LVs (Status versendet) + Anfragen (neue Empfänger-Zeile)
+    // V12.394: Alle drei relevanten Caches refreshen
+    //  - LVs (Status versendet)
+    //  - LV-Anfragen (neue Empfänger-Zeile in der LV-Card)
+    //  - Wartungsnehmer-Chat (neue Kachel im Chat-Thread)
     await Promise.all([
       _eiLvLoadForEmail(s.emailId, true).catch(() => {}),
       (typeof _eiLvAnfragenLoadForEmail === 'function' ? _eiLvAnfragenLoadForEmail(s.emailId, true) : Promise.resolve()).catch(() => {}),
+      (typeof loadWartungsnehmerChat === 'function' ? loadWartungsnehmerChat(s.emailId) : Promise.resolve()).catch(() => {}),
     ]);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   } catch (e) {
