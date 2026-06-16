@@ -4142,6 +4142,11 @@ const pdfWorkerReady = Promise.resolve();</script>
             <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">✍</span>
             <span class="ei-side-lbl">Signatur einstellen</span>
           </button>
+          <!-- V12.375: LV-Vorlagen-Admin (Klauseln + KI-Prompt pro Angebotstyp) -->
+          <button class="ei-side-item" onclick="openLvVorlagenAdminModal()" title="Leistungsverzeichnis-Vorlagen pflegen — Klauseln, KI-Prompt, Pflichtfelder pro Angebotstyp">
+            <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">📋</span>
+            <span class="ei-side-lbl">LV-Vorlagen</span>
+          </button>
         </div>
       </div>
       <!-- Inhalts-Pane: Sub-Header + 2-Spalten (Liste | Detail) -->
@@ -6414,7 +6419,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.374';
+const APP_VERSION = 'V12.375';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7837,6 +7842,39 @@ async function setupTables() {
   } catch(e) { console.warn('[V12.219] ensureTable(Servicebetriebe) failed:', e.message); }
   // V12.239: Vollmachten pro Hausverwaltung — unterschriebenes PDF zum Anhängen in Chat-Nachrichten
   // V12.242: + ensureFields als Backup, falls Tabelle existiert aber Felder fehlen (sonst 422 bei atWrite)
+  try {
+    // V12.375: Leistungsverzeichnis-Feature — Vorlagen pro Angebotstyp (Pauschal/Wartung/Mod)
+    // Klauseln + KI-Prompt + Layout-Hinweise sind PRO VORLAGE editierbar. Default-Eintrag
+    // wird bei ensureTable mit-seeded falls Tabelle leer ist (siehe _eiSeedLvVorlagen).
+    ensureTable('LvVorlagen', [
+      { name: 'id',                 type: 'singleLineText' },
+      { name: 'typ',                type: 'singleLineText' },  // 'pauschal' | 'wartung' | 'modernisierung'
+      { name: 'name',               type: 'singleLineText' },
+      { name: 'einleitung_html',    type: 'multilineText'  },  // Text zwischen Empfänger-Block und Positionstabelle
+      { name: 'klauseln_html',      type: 'multilineText'  },  // AGB-Block, frei editierbar
+      { name: 'pflicht_felder_json',type: 'multilineText'  },  // ["pos_nr","beschreibung","menge","einheit"]
+      { name: 'bausteine_json',     type: 'multilineText'  },  // Standard-Bausteine (Wartung/Mod)
+      { name: 'extraktion_prompt',  type: 'multilineText'  },  // KI-System-Prompt für Positions-Extraktion
+      { name: 'unterschrift_text',  type: 'multilineText'  },  // Disclaimer beim Signieren
+      { name: 'pdf_layout_json',    type: 'multilineText'  },  // optional: Farben, Schrift-Hinweise
+      { name: 'aktiv',              type: 'singleLineText' },  // '1' | ''
+      { name: 'savedAt',            type: 'singleLineText' },
+    ]);
+  } catch (e) { console.warn('[V12.375] ensureTable(LvVorlagen) failed:', e.message); }
+  try {
+    // V12.375: Konkrete Leistungsverzeichnisse pro Email — entstehen durch KI-Extraktion + manuelles Editieren
+    ensureTable('Leistungsverzeichnisse', [
+      { name: 'id',                  type: 'singleLineText' },
+      { name: 'email_id',            type: 'singleLineText' },
+      { name: 'vorlage_id',          type: 'singleLineText' },
+      { name: 'titel',               type: 'singleLineText' },
+      { name: 'positionen_json',     type: 'multilineText'  },  // [{pos_nr, beschreibung, menge, einheit}, ...]
+      { name: 'kontext_snapshot_json', type: 'multilineText' }, // HV, Standort, Fn, Hersteller — festgefroren
+      { name: 'status',              type: 'singleLineText' },  // 'entwurf' | 'bereit' | 'versendet'
+      { name: 'ki_extraktion_at',    type: 'singleLineText' },
+      { name: 'savedAt',             type: 'singleLineText' },
+    ]);
+  } catch (e) { console.warn('[V12.375] ensureTable(Leistungsverzeichnisse) failed:', e.message); }
   try {
     ensureTable('Vollmachten', [
       { name: 'id',                 type: 'singleLineText' },
@@ -10958,6 +10996,246 @@ function copyLeistungsumfangToClipboard(emailId) {
   }
 }
 window.copyLeistungsumfangToClipboard = copyLeistungsumfangToClipboard;
+
+// ============================================================================
+// V12.375: Leistungsverzeichnis-Feature — Phase 1 (LV erstellen + Vorlage pflegen)
+// ============================================================================
+
+// Default-Vorlage für Pauschalangebote. Wird beim ersten App-Start gespeichert,
+// falls die LvVorlagen-Tabelle leer ist. Jeder Bearbeiter kann sie dann pflegen.
+function _eiLvDefaultPauschalVorlage() {
+  return {
+    id: 'lvv_pauschal_default',
+    typ: 'pauschal',
+    name: 'Pauschalangebot Reparatur (Standard)',
+    einleitung_html:
+      '<p>Sehr geehrte Damen und Herren,</p>'
+    + '<p>im Auftrag unseres Kunden — der unten genannten Hausverwaltung — bitten wir Sie um ein verbindliches Angebot für die nachfolgend aufgeführten Leistungen am o. g. Aufzug.</p>'
+    + '<p>Bitte tragen Sie pro Position Ihren <strong>Netto-Einzelpreis</strong> ein und nennen Sie uns die voraussichtliche <strong>Ausführungszeit</strong> sowie etwaige Ergänzungen.</p>'
+    + '<p>Es gelten die unten aufgeführten Vertragsbedingungen.</p>',
+    klauseln_html:
+      '<h4>Gewährleistung</h4>'
+    + '<p>Auf alle ausgeführten Arbeiten und verbauten Teile gewähren wir 24 Monate Gewährleistung gemäß §634a BGB, beginnend mit der mangelfreien Abnahme.</p>'
+    + '<h4>Eigentumsvorbehalt</h4>'
+    + '<p>Die gelieferte Ware bleibt bis zur vollständigen Bezahlung Eigentum des Auftragnehmers.</p>'
+    + '<h4>Haftung</h4>'
+    + '<p>Haftung für Schäden ist auf Vorsatz und grobe Fahrlässigkeit beschränkt. Für leichte Fahrlässigkeit haften wir nur bei Verletzung wesentlicher Vertragspflichten.</p>'
+    + '<h4>Zahlungsbedingungen</h4>'
+    + '<p>30 % bei Auftragsvergabe, 60 % nach Anlieferung, 10 % nach mangelfreier Abnahme. Zahlungsziel 14 Tage netto.</p>',
+    pflicht_felder_json: JSON.stringify(['pos_nr', 'beschreibung', 'menge', 'einheit']),
+    bausteine_json:      JSON.stringify([]),
+    extraktion_prompt:
+      'Du bist Spezialist für Pauschalangebote von Aufzug-Wartungs- und Reparaturfirmen. '
+    + 'Extrahiere aus dem vorliegenden Angebots-/Vertrags-Text die konkreten Leistungspositionen und gibst sie als JSON-Array zurück.\n\n'
+    + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
+    + '[\n'
+    + '  { "pos_nr": "1", "beschreibung": "Konkrete Beschreibung der Position", "menge": "Menge oder 1 wenn pauschal", "einheit": "Stk/Std/Pauschal/m/kg" },\n'
+    + '  ...\n'
+    + ']\n\n'
+    + 'Regeln:\n'
+    + '- Eine Position = ein konkreter Leistungsbaustein (kein Sammelposten "Reparatur" — eher: "Hydraulikschlauch austauschen", "Steuerung prüfen").\n'
+    + '- Preise im Original-PDF IGNORIEREN — sie werden vom Dienstleister neu eingetragen.\n'
+    + '- Wenn keine Menge/Einheit erkennbar ist, nimm "1" und "Pauschal".\n'
+    + '- Maximal 30 Positionen — bei mehr verdichten.\n'
+    + '- Numerierung beginnt bei 1.\n'
+    + '- Keine Floskeln (MwSt., Insgesamt, Zwischensumme) — nur Leistungs-Bausteine.\n'
+    + '- Beschreibung neutral umformulieren — nicht im Stil des Original-Briefs zitieren, sondern als Aufgabe formulieren.',
+    unterschrift_text:
+      'Mit meiner Unterschrift bestätige ich verbindlich die vorgenannten Preise und die Ausführungszeit. Das Angebot ist 30 Tage ab Datum gültig.',
+    pdf_layout_json: JSON.stringify({ accent: '#1a3a5c', accent2: '#7dc242' }),
+    aktiv: '1',
+    savedAt: new Date().toISOString(),
+  };
+}
+window._eiLvDefaultPauschalVorlage = _eiLvDefaultPauschalVorlage;
+
+// Alle Vorlagen aus Airtable laden — Cache auf window._eiLvVorlagenCache
+async function _eiLvLoadVorlagen(forceReload) {
+  if (!forceReload && Array.isArray(window._eiLvVorlagenCache)) return window._eiLvVorlagenCache;
+  try {
+    const recs = await atRead('LvVorlagen', null, { sort: false });
+    const arr = (recs || []).map(r => ({ _recordId: r.id, ...r.fields })).filter(x => x && x.id);
+    window._eiLvVorlagenCache = arr;
+    return arr;
+  } catch (e) {
+    console.warn('[V12.375] _eiLvLoadVorlagen:', e.message);
+    window._eiLvVorlagenCache = [];
+    return [];
+  }
+}
+window._eiLvLoadVorlagen = _eiLvLoadVorlagen;
+
+// Seeder — beim Inbox-Öffnen prüfen, ob die Tabelle leer ist. Wenn ja, Default schreiben.
+let _eiLvSeederRan = false;
+async function _eiSeedLvVorlagen() {
+  if (_eiLvSeederRan) return;
+  _eiLvSeederRan = true;
+  try {
+    const existing = await _eiLvLoadVorlagen(true);
+    if (existing.length > 0) return; // schon was da → nichts seeden
+    const def = _eiLvDefaultPauschalVorlage();
+    await atWrite('LvVorlagen', def);
+    await _eiLvLoadVorlagen(true);
+    console.log('[V12.375] Default-Pauschalangebots-Vorlage geseeded.');
+  } catch (e) {
+    console.warn('[V12.375] _eiSeedLvVorlagen:', e.message);
+    _eiLvSeederRan = false; // erneut versuchen
+  }
+}
+window._eiSeedLvVorlagen = _eiSeedLvVorlagen;
+
+// Vorlagen-Admin-Modal — Liste links, Edit-Formular rechts. Jeder Bearbeiter darf editieren.
+async function openLvVorlagenAdminModal(preselectVorlageId) {
+  // Existierendes Modal entfernen
+  const ex = document.getElementById('lvVorlagenAdminModal');
+  if (ex) try { ex.remove(); } catch (_) {}
+  const ov = document.createElement('div');
+  ov.id = 'lvVorlagenAdminModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.65);z-index:6400;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);font-family:"DM Sans",sans-serif';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(1080px,98vw);height:min(86vh,840px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">'
+    + '<div style="background:#1a3a5c;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
+    +   '<div>'
+    +     '<div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;font-weight:700">📋 Leistungsverzeichnis-Vorlagen</div>'
+    +     '<div style="font-size:14.5px;font-weight:700;margin-top:2px">Klauseln, KI-Prompt + Eingabefelder pro Angebotstyp pflegen</div>'
+    +   '</div>'
+    +   '<button onclick="document.getElementById(\'lvVorlagenAdminModal\').remove()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 10px;line-height:1">✕</button>'
+    + '</div>'
+    + '<div style="flex:1;display:grid;grid-template-columns:260px 1fr;min-height:0;overflow:hidden">'
+    +   '<div style="border-right:1px solid #e2e8f0;overflow-y:auto;background:#f8fafc;padding:10px">'
+    +     '<div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 10px">Vorlagen</div>'
+    +     '<div id="lvAdminList" style="display:flex;flex-direction:column;gap:4px"></div>'
+    +     '<button onclick="_eiLvAdminAddNew()" style="margin-top:12px;background:#fff;border:1px dashed #cbd5e1;color:#475569;border-radius:7px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:inherit;width:100%;font-weight:600">+ Neue Vorlage</button>'
+    +   '</div>'
+    +   '<div id="lvAdminEdit" style="overflow-y:auto;padding:18px 22px;background:#fafbfc">'
+    +     '<div style="text-align:center;color:#94a3b8;font-size:13px;padding:60px 20px">Wähle links eine Vorlage zum Bearbeiten.</div>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  // Vorlagen laden + Liste rendern
+  await _eiLvLoadVorlagen(true);
+  _eiLvAdminRenderList(preselectVorlageId);
+}
+window.openLvVorlagenAdminModal = openLvVorlagenAdminModal;
+
+function _eiLvAdminRenderList(preselectId) {
+  const list = document.getElementById('lvAdminList');
+  if (!list) return;
+  const vorlagen = Array.isArray(window._eiLvVorlagenCache) ? window._eiLvVorlagenCache : [];
+  if (!vorlagen.length) {
+    list.innerHTML = '<div style="padding:14px 10px;font-size:12px;color:#94a3b8;text-align:center">Noch keine Vorlagen.</div>';
+    return;
+  }
+  list.innerHTML = vorlagen.map(v => {
+    const typBadge = { pauschal: '🛠 Pauschal', wartung: '🔄 Wartung', modernisierung: '🏗 Modernisierung' }[v.typ] || v.typ;
+    const dim = (String(v.aktiv) === '1') ? '' : 'opacity:.55;';
+    return '<button onclick="_eiLvAdminSelect(\'' + _esc(String(v.id)) + '\')" style="background:#fff;border:1px solid #e2e8f0;border-radius:7px;padding:8px 10px;cursor:pointer;text-align:left;font-family:inherit;display:flex;flex-direction:column;gap:2px;' + dim + '">'
+      + '<div style="font-size:9.5px;color:#0891b2;font-weight:700;text-transform:uppercase;letter-spacing:.05em">' + _esc(typBadge) + '</div>'
+      + '<div style="font-size:12.5px;color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(v.name || '(ohne Name)') + '</div>'
+      + '</button>';
+  }).join('');
+  const targetId = preselectId || (vorlagen[0] && vorlagen[0].id);
+  if (targetId) _eiLvAdminSelect(targetId);
+}
+window._eiLvAdminRenderList = _eiLvAdminRenderList;
+
+function _eiLvAdminSelect(id) {
+  const v = (window._eiLvVorlagenCache || []).find(x => String(x.id) === String(id));
+  const ed = document.getElementById('lvAdminEdit');
+  if (!ed) return;
+  if (!v) { ed.innerHTML = '<div style="color:#9F1B1F">Vorlage nicht gefunden.</div>'; return; }
+  ed.innerHTML = '<div style="display:flex;flex-direction:column;gap:14px">'
+    + '<div style="display:grid;grid-template-columns:1fr 200px;gap:12px">'
+    +   '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Name</label>'
+    +     '<input id="lvEd_name" type="text" value="' + _esc(v.name || '') + '" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box"></div>'
+    +   '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Typ</label>'
+    +     '<select id="lvEd_typ" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;outline:none;box-sizing:border-box;cursor:pointer">'
+    +       ['pauschal','wartung','modernisierung'].map(t => '<option value="' + t + '"' + (t === v.typ ? ' selected' : '') + '>' + t + '</option>').join('')
+    +     '</select></div>'
+    + '</div>'
+    + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Einleitung (HTML — erscheint über der Positionsliste)</label>'
+    +   '<textarea id="lvEd_einleitung" rows="5" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.5">' + _esc(v.einleitung_html || '') + '</textarea></div>'
+    + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Klauseln (HTML — Gewährleistung, Haftung, Zahlung etc.)</label>'
+    +   '<textarea id="lvEd_klauseln" rows="10" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.5">' + _esc(v.klauseln_html || '') + '</textarea></div>'
+    + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">KI-Extraktions-Prompt (System-Prompt für Claude)</label>'
+    +   '<textarea id="lvEd_extraktion" rows="10" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,monospace;font-size:11.5px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.55">' + _esc(v.extraktion_prompt || '') + '</textarea></div>'
+    + '<div><label style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Unterschrifts-Disclaimer</label>'
+    +   '<textarea id="lvEd_unterschrift" rows="2" style="width:100%;margin-top:4px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:12.5px;outline:none;resize:vertical;box-sizing:border-box;line-height:1.5">' + _esc(v.unterschrift_text || '') + '</textarea></div>'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">'
+    +   '<label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#0f172a;cursor:pointer">'
+    +     '<input id="lvEd_aktiv" type="checkbox"' + (String(v.aktiv) === '1' ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer;accent-color:#16a34a"> Aktiv (User kann diese Vorlage auswählen)'
+    +   '</label>'
+    + '</div>'
+    + '<div style="display:flex;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid #e2e8f0">'
+    +   '<button onclick="_eiLvAdminDelete(\'' + _esc(String(v.id)) + '\')" style="background:#fff;border:1px solid #fca5a5;color:#9F1B1F;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🗑 Löschen</button>'
+    +   '<button onclick="_eiLvAdminSave(\'' + _esc(String(v.id)) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>'
+    + '</div>'
+    + '</div>';
+}
+window._eiLvAdminSelect = _eiLvAdminSelect;
+
+async function _eiLvAdminSave(id) {
+  const v = (window._eiLvVorlagenCache || []).find(x => String(x.id) === String(id));
+  if (!v) { showToast('Vorlage nicht gefunden', 'error'); return; }
+  const patch = {
+    name:              String(document.getElementById('lvEd_name').value || '').trim(),
+    typ:               String(document.getElementById('lvEd_typ').value  || 'pauschal'),
+    einleitung_html:   String(document.getElementById('lvEd_einleitung').value || ''),
+    klauseln_html:     String(document.getElementById('lvEd_klauseln').value   || ''),
+    extraktion_prompt: String(document.getElementById('lvEd_extraktion').value || ''),
+    unterschrift_text: String(document.getElementById('lvEd_unterschrift').value || ''),
+    aktiv:             document.getElementById('lvEd_aktiv').checked ? '1' : '',
+    savedAt:           new Date().toISOString(),
+  };
+  try {
+    if (v._recordId) await atUpdate('LvVorlagen', v._recordId, patch);
+    else             await atWrite('LvVorlagen', Object.assign({ id: v.id }, patch));
+    showToast('✓ Vorlage gespeichert', 'success', 2200);
+    await _eiLvLoadVorlagen(true);
+    _eiLvAdminRenderList(id);
+  } catch (e) {
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+window._eiLvAdminSave = _eiLvAdminSave;
+
+async function _eiLvAdminDelete(id) {
+  if (!confirm('Vorlage wirklich löschen?')) return;
+  const v = (window._eiLvVorlagenCache || []).find(x => String(x.id) === String(id));
+  if (!v) return;
+  try {
+    if (v._recordId) await atDelete('LvVorlagen', v._recordId);
+    showToast('Vorlage gelöscht', 'info', 2000);
+    await _eiLvLoadVorlagen(true);
+    _eiLvAdminRenderList();
+  } catch (e) {
+    showToast('Löschen fehlgeschlagen: ' + e.message, 'error', 4000);
+  }
+}
+window._eiLvAdminDelete = _eiLvAdminDelete;
+
+function _eiLvAdminAddNew() {
+  const newId = 'lvv_' + Math.random().toString(36).slice(2, 8) + '_' + Date.now().toString(36);
+  const fresh = {
+    id: newId,
+    typ: 'pauschal',
+    name: 'Neue Vorlage',
+    einleitung_html: '',
+    klauseln_html: '',
+    extraktion_prompt: '',
+    unterschrift_text: '',
+    pflicht_felder_json: JSON.stringify(['pos_nr','beschreibung','menge','einheit']),
+    bausteine_json: JSON.stringify([]),
+    pdf_layout_json: JSON.stringify({}),
+    aktiv: '1',
+    savedAt: new Date().toISOString(),
+  };
+  atWrite('LvVorlagen', fresh).then(() => _eiLvLoadVorlagen(true)).then(() => _eiLvAdminRenderList(newId)).catch(e => {
+    showToast('Anlegen fehlgeschlagen: ' + e.message, 'error', 4500);
+  });
+}
+window._eiLvAdminAddNew = _eiLvAdminAddNew;
 
 // V12.358: PDF-Anhang öffnen + Fragen stellen (Q&A-Modal).
 // Erstmal: Text aus PDF extrahieren (pdfjs) und in attachment_texts_json speichern.
@@ -28969,6 +29247,8 @@ function openEmailInboxModal() {
   document.getElementById('emailInboxModal').style.display = 'flex';
   // V12.363: App-Version in der Sidebar anzeigen
   try { const vEl = document.getElementById('eiSideVersion'); if (vEl) vEl.textContent = (typeof APP_VERSION === 'string' ? APP_VERSION : ''); } catch (_) {}
+  // V12.375: Default-LV-Vorlage seeden (idempotent, läuft nur einmal pro Session und nur wenn DB leer)
+  if (typeof _eiSeedLvVorlagen === 'function') _eiSeedLvVorlagen().catch(()=>{});
   setEiFilter(_eiFilter || 'neu', /*skipRender*/true);
   // V12.215: persistierten Typ-Filter im Button-Label anzeigen
   if (typeof setEmailTypFilter === 'function') setEmailTypFilter(window._eiTypFilter || '');
