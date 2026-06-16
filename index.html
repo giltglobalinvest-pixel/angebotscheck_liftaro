@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.386';
+const APP_VERSION = 'V12.387';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12223,10 +12223,10 @@ async function _eiLvOpenSendDraft(sb) {
     +   '</div>'
     + '</div>'
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px">'
-    +   '<div style="font-size:11.5px;color:#64748b">Versand erzeugt einen LV_Anfragen-Datensatz · Email folgt in Phase 2d</div>'
+    +   '<div style="font-size:11.5px;color:#64748b">Sendet die Email an den Wartungsnehmer · legt LV-Anfrage in Airtable an</div>'
     +   '<div style="display:flex;gap:8px">'
     +     '<button onclick="navigator.clipboard.writeText(\'' + _esc(landingUrl) + '\').then(()=>showToast(\'Link kopiert\',\'success\',1500))" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">📋 Link kopieren</button>'
-    +     '<button id="lvSendDraftBtn" onclick="_eiLvCreateAnfrage(\'' + _esc(sb._recordId) + '\',\'' + _esc(token) + '\',\'' + _esc(anfrageId) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 Anfrage erstellen</button>'
+    +     '<button id="lvSendDraftBtn" onclick="_eiLvCreateAnfrage(\'' + _esc(sb._recordId) + '\',\'' + _esc(token) + '\',\'' + _esc(anfrageId) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 Senden</button>'
     +   '</div>'
     + '</div>'
     + '</div>';
@@ -12238,19 +12238,31 @@ window._eiLvOpenSendDraft = _eiLvOpenSendDraft;
 async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
   const s = window._eiLvEditorState; if (!s) return;
   const btn = document.getElementById('lvSendDraftBtn');
-  if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.textContent = '⏳ Erstelle …'; }
+  const setBtn = (txt) => { if (!btn) return; btn.disabled = true; btn.style.opacity = '.7'; btn.textContent = txt; };
+  const resetBtn = () => { if (!btn) return; btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '📤 Senden'; };
+  setBtn('⏳ Lade Wartungsnehmer …');
+  let anfRecordId = null;
   try {
-    // V12.383: Wartungsnehmer-Snapshot frisch holen
+    // V12.387: Email-Sender-Check VOR allem anderen
+    if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) {
+      throw new Error('Email-Sender nicht konfiguriert — bitte unter Setup → „Email-Sender" eintragen');
+    }
+    // Wartungsnehmer-Snapshot
     const recs = await atRead('Wartungsnehmer', "RECORD_ID()='" + wnRecordId + "'", { sort: false });
     if (!recs || !recs[0]) throw new Error('Wartungsnehmer nicht gefunden');
     const wn = { ...recs[0].fields };
-    const betreff = document.getElementById('lvSendBetreff')?.value || '';
-    const body    = document.getElementById('lvSendBody')?.value || '';
+    if (!wn.email) throw new Error('Wartungsnehmer hat keine Email-Adresse hinterlegt');
+    const betreff = (document.getElementById('lvSendBetreff')?.value || '').trim();
+    const body    = (document.getElementById('lvSendBody')?.value || '').trim();
+    if (!betreff) throw new Error('Betreff fehlt');
+    if (!body)    throw new Error('Anschreiben fehlt');
+    // 1) LV_Anfragen anlegen (status='pending', kein sent_at yet)
+    setBtn('⏳ Lege Anfrage an …');
     const fields = {
       id:                              anfrageId,
       lv_id:                           s.lvId,
       email_id:                        s.emailId,
-      servicebetrieb_id:               wn.id || '',         // Schema-Feld bleibt "servicebetrieb_id", semantisch = Wartungsnehmer
+      servicebetrieb_id:               wn.id || '',         // Schema-Feld bleibt "servicebetrieb_id" (= Wartungsnehmer-ID)
       servicebetrieb_snapshot_json:    JSON.stringify(wn),
       token:                           token,
       status:                          'pending',
@@ -12260,22 +12272,63 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
       sent_at:                         '',
       savedAt:                         new Date().toISOString(),
     };
-    await atWrite('LV_Anfragen', fields);
-    // LV-Status auf 'versendet' setzen
+    const created = await atWrite('LV_Anfragen', fields);
+    anfRecordId = created && created.id;
+    // 2) Email senden via val.town email-sender
+    setBtn('⏳ Sende Email an ' + wn.email + ' …');
+    const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
+    const subjectSafe = (typeof _eiSanitizeSubjectForEmail === 'function') ? _eiSanitizeSubjectForEmail(betreff) : betreff;
+    const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig: '', htmlBody: '' };
+    const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
+    const payload = {
+      to:        wn.email,
+      subject:   subjectSafe,
+      text:      finalText,
+      replyTo:   'check@liftaro.de',
+    };
+    if (sig.htmlBody) payload.html = sig.htmlBody;
+    const resp = await fetch(APP_KEYS.emailSenderUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      let txt = ''; try { txt = await resp.text(); } catch (_) {}
+      throw new Error('email-sender HTTP ' + resp.status + ': ' + txt.slice(0, 200));
+    }
+    const sentAt = new Date().toISOString();
+    // 3) Anfrage-Status auf 'sent' + sent_at
+    try {
+      if (anfRecordId) await atUpdate('LV_Anfragen', anfRecordId, { status: 'sent', sent_at: sentAt, savedAt: sentAt });
+    } catch (e) { console.warn('[V12.387] Anfrage-Status-Update:', e.message); }
+    // 4) Outgoing-Record in Emails-Tabelle (Verlauf)
+    try {
+      await atWrite('Emails', {
+        direction:        'outgoing',
+        from_email:       'check@liftaro.de',
+        to_email:         wn.email,
+        subject:          subjectSafe,
+        body:             finalText,
+        sent_at:          sentAt,
+        bearbeiter_name:  userName,
+      });
+    } catch (e) { console.warn('[V12.387] Outgoing-Email-Record:', e.message); }
+    // 5) LV-Status auf 'versendet'
     if (s.recordId) {
-      try { await atUpdate('Leistungsverzeichnisse', s.recordId, { status: 'versendet', savedAt: new Date().toISOString() }); s.status = 'versendet'; }
+      try { await atUpdate('Leistungsverzeichnisse', s.recordId, { status: 'versendet', savedAt: sentAt }); s.status = 'versendet'; }
       catch (_) {}
     }
     document.getElementById('eiLvSendDraftOv')?.remove();
-    showToast('✓ LV-Anfrage angelegt (' + anfrageId + ') · Email-Versand folgt in Phase 2d', 'success', 5000);
-    // Editor schließen damit User die LV-Pille mit neuem Status sieht
     document.getElementById('lvEditorModal')?.remove();
+    showToast('✓ LV-Anfrage an „' + wn.email + '" gesendet (' + anfrageId + ')', 'success', 5500);
     await _eiLvLoadForEmail(s.emailId, true);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   } catch (e) {
-    console.error('[V12.381] _eiLvCreateAnfrage:', e);
-    showToast('Anfrage-Anlage fehlgeschlagen: ' + e.message, 'error', 6500);
-    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '📤 Anfrage erstellen'; }
+    console.error('[V12.387] _eiLvCreateAnfrage:', e);
+    // Wenn die Anfrage angelegt wurde aber Send fehlschlug, bleibt sie status='pending' — User kann erneut senden
+    const hint = anfRecordId ? ' · Anfrage ist angelegt (status=pending), Senden bitte erneut versuchen.' : '';
+    showToast('Versand fehlgeschlagen: ' + e.message + hint, 'error', 8000);
+    resetBtn();
   }
 }
 window._eiLvCreateAnfrage = _eiLvCreateAnfrage;
