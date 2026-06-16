@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.384';
+const APP_VERSION = 'V12.385';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12269,13 +12269,39 @@ window._eiLvCreateAnfrage = _eiLvCreateAnfrage;
 
 // Existing LV öffnen (von der Pille im Email-Detail)
 async function openLvForEmail(emailId, lvId) {
-  const list = await _eiLvLoadForEmail(emailId, true);
-  const lv = list.find(x => String(x.id) === String(lvId));
-  if (!lv) { showToast('LV nicht gefunden', 'error'); return; }
-  const vorlagen = await _eiLvLoadVorlagen();
-  const vorlage = vorlagen.find(v => String(v.id) === String(lv.vorlage_id)) || vorlagen[0];
-  if (!vorlage) { showToast('Vorlage zu diesem LV fehlt — bitte unter Werkzeuge prüfen', 'warning', 5000); return; }
-  _eiLvOpenEditor(emailId, lv, vorlage);
+  // V12.385: Sofortiger Loading-Toast + Cache-First + bessere Fehler-Toasts
+  const t = (typeof showToast === 'function') ? showToast('⏳ Öffne Leistungsverzeichnis …', 'info', 8000) : null;
+  try {
+    // Cache zuerst nutzen — wenn nichts da, dann frisch laden
+    const cached = (window._eiLvByEmail && Array.isArray(window._eiLvByEmail[emailId])) ? window._eiLvByEmail[emailId] : null;
+    let list = cached;
+    if (!list) list = await _eiLvLoadForEmail(emailId, true);
+    let lv = list.find(x => String(x.id) === String(lvId));
+    // Fallback: wenn Cache veraltet, einmal frisch nachladen
+    if (!lv && cached) {
+      list = await _eiLvLoadForEmail(emailId, true);
+      lv = list.find(x => String(x.id) === String(lvId));
+    }
+    if (!lv) {
+      console.warn('[V12.385] openLvForEmail: LV nicht gefunden', { emailId, lvId, listIds: list.map(x => x.id) });
+      showToast('LV „' + lvId + '" nicht gefunden in Email (Liste: ' + list.length + ' LVs). Reload der Seite hilft evtl.', 'error', 6000);
+      return;
+    }
+    const vorlagen = await _eiLvLoadVorlagen();
+    if (!vorlagen.length) {
+      showToast('Keine LV-Vorlagen geladen — Airtable-Verbindung prüfen', 'error', 6000);
+      return;
+    }
+    const vorlage = vorlagen.find(v => String(v.id) === String(lv.vorlage_id)) || vorlagen[0];
+    if (!vorlage) {
+      showToast('Vorlage zu diesem LV fehlt — bitte unter Werkzeuge prüfen', 'warning', 5000);
+      return;
+    }
+    await _eiLvOpenEditor(emailId, lv, vorlage);
+  } catch (e) {
+    console.error('[V12.385] openLvForEmail Fehler:', e);
+    showToast('LV-Editor konnte nicht geöffnet werden: ' + (e && e.message || e), 'error', 8000);
+  }
 }
 window.openLvForEmail = openLvForEmail;
 
