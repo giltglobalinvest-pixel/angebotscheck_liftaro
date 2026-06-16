@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.389';
+const APP_VERSION = 'V12.390';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35845,9 +35845,12 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
   const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
   // LV-Daten aus dem Cache holen (window._eiLvByEmail) und Anfrage aus _eiLvAnfragenByEmail
   const lvs = (window._eiLvByEmail && Array.isArray(window._eiLvByEmail[emailId])) ? window._eiLvByEmail[emailId] : [];
-  const anf = (window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[emailId]))
-    ? window._eiLvAnfragenByEmail[emailId].find(a => String(a.id) === String(it.lv_anfrage_id))
-    : null;
+  const anfList = (window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[emailId])) ? window._eiLvAnfragenByEmail[emailId] : [];
+  // V12.390: Match per ID ODER Token (synthetische Bubbles haben nur den Token aus Body-Parse)
+  const anf = anfList.find(a =>
+    (it.lv_anfrage_id && String(a.id) === String(it.lv_anfrage_id)) ||
+    (it.lv_anfrage_token && String(a.token) === String(it.lv_anfrage_token))
+  ) || null;
   let lv = null;
   if (anf) lv = lvs.find(x => String(x.id) === String(anf.lv_id)) || null;
   // Fallback wenn anf nicht geladen — versuche über it.lv_anfrage_id ähnlich zu matchen (LV nicht 1:1 möglich)
@@ -36058,6 +36061,16 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
       const fromHtml = _eiHtmlToTextWithBreaks(bodyHtml);
       if (fromHtml && fromHtml.length >= body.length * 0.6) body = fromHtml;
     }
+    // V12.390: LV-Anfrage-Token im Body erkennen (Marker für synthesisierte LV-Anfrage-Kacheln)
+    let _lvToken = '';
+    let _lvNachrichtTyp = '';
+    if (isOut) {
+      const m = body.match(/lv-anfrage\.html\?t=([A-Za-z0-9_-]{8,})/);
+      if (m && m[1]) {
+        _lvToken = m[1];
+        _lvNachrichtTyp = 'lv_anfrage';
+      }
+    }
     synthetic.push({
       id:                           'synthetic_' + e._id,
       email_id:                     emailId,
@@ -36078,6 +36091,8 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
       chat_partner_email:           isOut ? String(e.to_email || '').toLowerCase() : matchEmail,
       chat_partner_telefon:         partner.chat_partner_telefon,
       bearbeiter_name:              isOut ? (e.bearbeiter_name || 'Du') : '',
+      nachricht_typ:                _lvNachrichtTyp,
+      lv_anfrage_token:             _lvToken,
       _synthetic:                   true,
       _source_email_id:             e._id,
     });
@@ -36760,8 +36775,8 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           const partnerLabel = cls.firma || cls.email || (itPartnerTyp === 'wartungsnehmer' ? 'Wartungsnehmer' : 'Servicebetrieb');
           const acc = itPartnerTyp === 'wartungsnehmer' ? '#7c3aed' : '#0891b2';
           const accDeep = itPartnerTyp === 'wartungsnehmer' ? '#5b21b6' : '#0e7490';
-          // V12.389: LV-Anfrage als kompakte Kachel statt Email-Bubble
-          if (String(it.nachricht_typ || '') === 'lv_anfrage' && typeof _eiLvRenderAnfrageBubble === 'function') {
+          // V12.390: LV-Anfrage als kompakte Kachel (auch synthetisch via Token im Body)
+          if ((String(it.nachricht_typ || '') === 'lv_anfrage' || String(it.lv_anfrage_token || '')) && typeof _eiLvRenderAnfrageBubble === 'function') {
             return _eiLvRenderAnfrageBubble(it, emailId, isOut, acc, accDeep);
           }
           const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
@@ -36897,8 +36912,8 @@ function _eiRenderWartungsnehmerSection(r, wn) {
   const bubbles = filteredItems.length
     ? filteredItems.map(it => {
         const isOut = String(it.direction || 'out') === 'out';
-        // V12.389: LV-Anfrage als kompakte Kachel statt Email-Bubble
-        if (String(it.nachricht_typ || '') === 'lv_anfrage' && typeof _eiLvRenderAnfrageBubble === 'function') {
+        // V12.390: LV-Anfrage als kompakte Kachel (auch synthetisch via Token im Body)
+        if ((String(it.nachricht_typ || '') === 'lv_anfrage' || String(it.lv_anfrage_token || '')) && typeof _eiLvRenderAnfrageBubble === 'function') {
           return _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep);
         }
         const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
