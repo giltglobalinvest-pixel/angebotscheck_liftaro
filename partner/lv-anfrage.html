@@ -143,7 +143,8 @@
   const READ_KEY = _k1 + _k2 + _k3 + _k4;
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
-  const APP_VERSION = 'v1.0.0';
+  const PROJECT_ID = 'p_1777239396379';
+  const APP_VERSION = 'v1.2.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -250,15 +251,20 @@
     } catch (_) {}
   }
 
-  // Master-Base lookup nach dem Proxy-URL (aus User-Tabelle: key_name=vorabcheckProxyUrl)
+  // v1.2: Master-Base lookup — Tabelle ist "Keys", gefiltert auf project_id
   let _cachedProxyUrl = null;
   async function getProxyUrl() {
     if (_cachedProxyUrl !== null) return _cachedProxyUrl;
     try {
-      const recs = await atRead('User', "{key_name}='vorabcheckProxyUrl'", MASTER_BASE_ID);
+      const filter = "AND({project_id}='" + PROJECT_ID + "',{key_name}='vorabcheckProxyUrl')";
+      const recs = await atRead('Keys', filter, MASTER_BASE_ID);
       const v = recs[0] && recs[0].fields && recs[0].fields.key_value;
       _cachedProxyUrl = v ? String(v).trim() : '';
-    } catch (e) { _cachedProxyUrl = ''; }
+      if (!_cachedProxyUrl) console.warn('[lv-anfrage] vorabcheckProxyUrl in Master-Base/Keys nicht gefunden');
+    } catch (e) {
+      console.error('[lv-anfrage] getProxyUrl failed:', e);
+      _cachedProxyUrl = '';
+    }
     return _cachedProxyUrl;
   }
 
@@ -283,6 +289,11 @@
       const desc = String(p.beschreibung || '').trim();
       const menge = String(p.menge || '1');
       const einheit = String(p.einheit || 'Pauschal');
+      // v1.2: Wunschpreis = Original × 0.7 (wenn vorhanden)
+      const origPreis = (p.preis_eur != null && p.preis_eur > 0) ? Number(p.preis_eur) : null;
+      const wunsch = origPreis != null ? (origPreis * 0.7) : null;
+      const wunschStr = wunsch != null ? wunsch.toFixed(2).replace('.', ',') : '';
+      const origStr = origPreis != null ? origPreis.toFixed(2).replace('.', ',') : '';
       return `
         <tr class="pos-row" data-idx="${idx}">
           <td class="pos-nr">${esc(nr)}.</td>
@@ -294,10 +305,11 @@
           <td>
             <div class="pos-inputs">
               <div class="field field-wrap pos-preis-wrap">
-                <input type="text" inputmode="decimal" id="preis_${idx}" placeholder="0,00" aria-label="Preis Position ${esc(nr)}" oninput="window._lvRecalcSumme&&window._lvRecalcSumme()">
+                <input type="text" inputmode="decimal" id="preis_${idx}" placeholder="0,00" value="${esc(wunschStr)}" aria-label="Preis Position ${esc(nr)}" oninput="window._lvRecalcSumme&&window._lvRecalcSumme()">
                 <span class="suffix">€</span>
               </div>
             </div>
+            ${origPreis != null ? `<div style="margin-top:5px;font-size:10.5px;color:#0e7490;line-height:1.45">💡 Zielpreis (−30 % vom Vergleichsangebot ${esc(origStr)} €)</div>` : ''}
           </td>
         </tr>
         <tr class="bemerkung-row">
