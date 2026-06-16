@@ -96,6 +96,15 @@
   .bemerkung { width: 100%; }
   .bemerkung textarea { resize: vertical; min-height: 38px; font-size: 12.5px; line-height: 1.5; }
   .klauseln { background: var(--surface-alt); padding: 14px 18px; border-radius: var(--r-md); margin-top: 8px; font-size: 12.5px; line-height: 1.65; color: var(--ink-soft); white-space: pre-line; }
+  .klauseln.rich { white-space: normal; }
+  .klauseln.rich h2, .klauseln.rich h3, .klauseln.rich h4, .klauseln.rich h5 { color: var(--ink); font-size: 13px; font-weight: 700; margin: 14px 0 4px; letter-spacing: .01em; }
+  .klauseln.rich h2:first-child, .klauseln.rich h3:first-child, .klauseln.rich h4:first-child, .klauseln.rich h5:first-child { margin-top: 0; }
+  .klauseln.rich p { margin: 0 0 8px; }
+  .klauseln.rich p:last-child { margin-bottom: 0; }
+  .klauseln.rich ul, .klauseln.rich ol { margin: 4px 0 10px; padding-left: 20px; }
+  .klauseln.rich li { margin: 2px 0; }
+  .klauseln.rich strong, .klauseln.rich b { color: var(--ink); }
+  .klauseln.rich a { color: var(--purple-deep); }
   .sig-box { border: 2px dashed var(--border-strong); border-radius: var(--r-md); background: #fff; padding: 8px; }
   .sig-box canvas { width: 100%; height: 180px; touch-action: none; display: block; background: #fff; border-radius: var(--r-sm); }
   .sig-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
@@ -144,13 +153,58 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.3.0';
+  const APP_VERSION = 'v1.4.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
   // ──────────────────────────────────────────────────────────────────────────
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  // v1.4: Whitelist-basiertes Sanitizing für klauseln_html / einleitung_html
+  // Erlaubt nur strukturelle Inline- und Block-Tags. Strip <script>, on-Handler, javascript:-URLs.
+  function sanitizeHtml(html) {
+    if (!html) return '';
+    try {
+      const tpl = document.createElement('template');
+      tpl.innerHTML = String(html);
+      const allowedTags = new Set(['p','br','h2','h3','h4','h5','strong','b','em','i','u','ul','ol','li','span','div','a','small']);
+      const walk = (node) => {
+        const kids = Array.from(node.childNodes);
+        for (const c of kids) {
+          if (c.nodeType === 1) {
+            const tag = c.tagName.toLowerCase();
+            if (!allowedTags.has(tag)) {
+              // Tag verwerfen, Kinder aber behalten
+              const parent = c.parentNode;
+              while (c.firstChild) parent.insertBefore(c.firstChild, c);
+              parent.removeChild(c);
+              continue;
+            }
+            // Attribute strippen (außer href auf <a>)
+            for (const attr of Array.from(c.attributes)) {
+              const an = attr.name.toLowerCase();
+              if (tag === 'a' && an === 'href') {
+                const v = String(attr.value || '').trim();
+                if (/^(https?:|mailto:|tel:)/i.test(v)) continue;
+              }
+              c.removeAttribute(attr.name);
+            }
+            if (tag === 'a') c.setAttribute('target', '_blank'), c.setAttribute('rel', 'noopener noreferrer');
+            walk(c);
+          } else if (c.nodeType === 8) {
+            c.parentNode.removeChild(c); // Kommentare raus
+          }
+        }
+      };
+      walk(tpl.content);
+      const tmp = document.createElement('div');
+      tmp.appendChild(tpl.content);
+      return tmp.innerHTML;
+    } catch (e) {
+      console.warn('sanitizeHtml fallback:', e);
+      return esc(html);
+    }
+  }
   const fmtEur = (n) => {
     if (n == null || isNaN(n)) return '—';
     return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
@@ -353,7 +407,7 @@
             </div>
           </div>
 
-          ${einleitung ? `<div class="klauseln" style="background:#faf5ff;border-left:3px solid var(--purple);margin-bottom:14px">${esc(einleitung)}</div>` : ''}
+          ${einleitung ? `<div class="klauseln rich" style="background:#faf5ff;border-left:3px solid var(--purple);margin-bottom:14px">${sanitizeHtml(einleitung)}</div>` : ''}
         </div>
 
         <div class="card">
@@ -380,7 +434,7 @@
         ${klauseln ? `
         <div class="card">
           <h2>📜 Allgemeine Geschäftsbedingungen</h2>
-          <div class="klauseln">${esc(klauseln)}</div>
+          <div class="klauseln rich">${sanitizeHtml(klauseln)}</div>
         </div>` : ''}
 
         <div class="card">
