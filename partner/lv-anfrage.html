@@ -153,7 +153,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.6.0';
+  const APP_VERSION = 'v1.7.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -296,30 +296,29 @@
   // ──────────────────────────────────────────────────────────────────────────
   async function markAsOpened(token) {
     try {
-      const proxyUrl = await getProxyUrl();
-      if (!proxyUrl) return;
-      fetch(proxyUrl, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'lv_anfrage_mark_opened', token }),
+      const base = await getPartnerApiUrl();
+      if (!base) return;
+      fetch(base + '/api/lv-anfragen/' + encodeURIComponent(token) + '/mark-opened', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       }).catch(() => {});
     } catch (_) {}
   }
 
-  // v1.2: Master-Base lookup — Tabelle ist "Keys", gefiltert auf project_id
-  let _cachedProxyUrl = null;
-  async function getProxyUrl() {
-    if (_cachedProxyUrl !== null) return _cachedProxyUrl;
+  // v1.7: Partner-API-URL (liftaroPartnerApi mit REST-Routes) statt Vorabcheck-Proxy
+  let _cachedPartnerUrl = null;
+  async function getPartnerApiUrl() {
+    if (_cachedPartnerUrl !== null) return _cachedPartnerUrl;
     try {
-      const filter = "AND({project_id}='" + PROJECT_ID + "',{key_name}='vorabcheckProxyUrl')";
+      const filter = "AND({project_id}='" + PROJECT_ID + "',{key_name}='partnerApiUrl')";
       const recs = await atRead('Keys', filter, MASTER_BASE_ID);
       const v = recs[0] && recs[0].fields && recs[0].fields.key_value;
-      _cachedProxyUrl = v ? String(v).trim() : '';
-      if (!_cachedProxyUrl) console.warn('[lv-anfrage] vorabcheckProxyUrl in Master-Base/Keys nicht gefunden');
+      _cachedPartnerUrl = v ? String(v).trim().replace(/\/+$/, '') : '';
+      if (!_cachedPartnerUrl) console.warn('[lv-anfrage] partnerApiUrl in Master-Base/Keys nicht gefunden');
     } catch (e) {
-      console.error('[lv-anfrage] getProxyUrl failed:', e);
-      _cachedProxyUrl = '';
+      console.error('[lv-anfrage] getPartnerApiUrl failed:', e);
+      _cachedPartnerUrl = '';
     }
-    return _cachedProxyUrl;
+    return _cachedPartnerUrl;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -644,10 +643,10 @@
       bestaetigungText = 'Hiermit gebe ich mein Angebot zu den vorstehenden Preisen und Konditionen verbindlich ab. Ich bestätige rechtsverbindlich, im Namen meines Unternehmens zur Abgabe dieses Angebots befugt zu sein.';
     }
 
-    // Submit via Proxy
+    // v1.7: Submit via Partner-API REST (POST /api/lv-anfragen/:token/submit)
     setBusy('Sende …');
-    const proxyUrl = await getProxyUrl();
-    if (!proxyUrl) {
+    const base = await getPartnerApiUrl();
+    if (!base) {
       resetBtn();
       alert('Konfigurationsfehler: kein Submit-Endpoint vorhanden. Bitte den Absender kontaktieren.');
       return;
@@ -657,32 +656,21 @@
       return acc + (r.preis_eur * menge);
     }, 0);
     const payload = {
-      action: 'lv_anfrage_submit',
-      token: ctx.token,
       response_json: JSON.stringify(response),
       signatur_dataurl: signaturDataUrl,
       signatur_name: sigName,
-      signatur_methode: sigMode,            // 'digital' | 'drawn'
-      bestaetigung_text: bestaetigungText,  // Klausel-Text bei Digital
+      signatur_methode: sigMode,
+      bestaetigung_text: bestaetigungText,
       summe_netto_eur: Math.round(sum * 100) / 100,
       lieferzeit_gesamt: lieferzeitGesamt,
     };
     try {
-      const r = await fetch(proxyUrl, {
+      const r = await fetch(base + '/api/lv-anfragen/' + encodeURIComponent(ctx.token) + '/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) {
-        // v1.6: Wenn der Proxy "Einwilligung fehlt" wirft, ist die lv_anfrage_submit-Action
-        // im val.town nicht installiert — der POST fällt durch zum Default-Vorabcheck-Handler.
-        const errMsg = String(j.error || ('HTTP ' + r.status));
-        if (/einwilligung/i.test(errMsg) || /consent/i.test(errMsg)) {
-          throw new Error('Server-Backend nicht für LV-Anfragen konfiguriert (Action „lv_anfrage_submit" fehlt im val.town). Bitte den Empfänger der Anfrage informieren.');
-        }
-        throw new Error(errMsg);
-      }
-      // Success
+      if (!r.ok || j.error) throw new Error(String(j.error || ('HTTP ' + r.status)));
       renderSubmittedView(ctx.anf, ctx.lv, response, ctx.snap, ctx.wn, sum);
     } catch (e) {
       console.error('Submit:', e);
