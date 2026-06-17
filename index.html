@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.409';
+const APP_VERSION = 'V12.410';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33754,11 +33754,11 @@ function _eiErgebnisRenderModal() {
     +   '<textarea id="ergEmpfehlung" rows="3" placeholder="Wird per KI generiert — oder manuell schreiben …" oninput="window._eiErgebnisState.empfehlung=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box">' + esc(s.empfehlung || '') + '</textarea>'
     // 4) Anschreiben + Beauftragung (editierbar, collapsible)
     +   '<details style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:10px 14px">'
-    +     '<summary style="cursor:pointer;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">4 · Anschreiben & Beauftragungstext anpassen</summary>'
+    +     '<summary style="cursor:pointer;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">4 · Anschreiben & Zustimmungstext anpassen</summary>'
     +     '<div style="margin-top:12px">'
     +       '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Anschreiben (Sehr geehrte …)</div>'
     +       '<textarea id="ergAnschreiben" rows="5" oninput="window._eiErgebnisState.anschreiben=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">' + esc(s.anschreiben || _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis)) + '</textarea>'
-    +       '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Beauftragungstext (über dem Unterschriftsfeld)</div>'
+    +       '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Zustimmungstext: Angebotsannahme & Liftaro-Vergütung (über dem Unterschriftsfeld)</div>'
     +       '<textarea id="ergBeauftragung" rows="5" oninput="window._eiErgebnisState.beauftragung=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box">' + esc(s.beauftragung || _eiErgDefaultBeauftragung(s, chosen)) + '</textarea>'
     +     '</div>'
     +   '</details>'
@@ -34183,10 +34183,10 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   y -= 4; ensure(28);
   for (const l of wrap('Im Anhang dieser E-Mail finden Sie das vollstandige Original-Angebot sowie das empfohlene Alternativangebot zur Einsicht.', helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
   y -= 10;
-  // Beauftragung + Unterschriftsfeld (editierbar)
+  // Zustimmung zum Angebot + Liftaro-Beraterverguetung (editierbar) — KEINE Reparatur-Beauftragung
   const beauftr = s.beauftragung || _eiErgDefaultBeauftragung(s, chosen);
   ensure(40);
-  draw('Beauftragung', M, y, bold, 12, INK); y -= 4;
+  draw('Zustimmung zum Angebot & Liftaro-Vergutung', M, y, bold, 12, INK); y -= 4;
   page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 90, y: y - 2 }, thickness: 1.2, color: INK }); y -= 16;
   for (const l of wrap(beauftr, helv, 10, W - 2*M)) { if (l === '') { y -= 7; continue; } ensure(14); draw(l, M, y, helv, 10, INK); y -= 13; }
   y -= 26;
@@ -34196,7 +34196,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   draw('Ort, Datum', M, y - 14, helv, 9, MUTE);
   const sigX2 = M + colW + 40;
   page.drawLine({ start: { x: sigX2, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.6, color: INK });
-  draw('Unterschrift / Stempel Hausverwaltung', sigX2, y - 14, helv, 9, MUTE);
+  draw('Unterschrift / Stempel Hausverwaltung (Betreiber)', sigX2, y - 14, helv, 9, MUTE);
   y -= 44;
   ensure(20);
   draw('Name in Druckbuchstaben:', M, y, helv, 9, MUTE); y -= 14;
@@ -34230,8 +34230,9 @@ function _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis) {
     + 'Auf Basis eines neutralen Leistungsverzeichnisses wurden die angefragten Leistungen an qualifizierte Fachbetriebe ubermittelt. Das nachstehende Ergebnis stellt das empfohlene Angebot dem ursprunglich vorliegenden Angebot gegenuber.';
 }
 function _eiErgDefaultBeauftragung(s, chosen) {
-  return 'Hiermit beauftragt die Hausverwaltung ' + (s.hvName || '') + ' den Fachbetrieb ' + (chosen ? chosen.wnFirma : '') + ' mit der Durchfuhrung der vorstehend aufgefuhrten Reparaturleistungen zu den genannten Preisen und Konditionen.\n\n'
-    + 'Die Hausverwaltung erklart, zur Erteilung dieses Auftrags im Namen der Eigentumergemeinschaft bzw. des Eigentumers bevollmachtigt zu sein. Mit der Unterschrift wird der Auftrag verbindlich erteilt. Die Abwicklung erfolgt uber Liftaro.';
+  return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Alternativangebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
+    + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + LV_LIFTARO_PROVISION_PCT + ' % der realisierten Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
+    + 'Die verbindliche Beauftragung der Reparaturleistungen gegenuber dem Fachbetrieb erfolgt separat im Rahmen des angenommenen Angebots. Diese Bestatigung betrifft ausschliesslich die Annahme des Angebots und die Zustimmung zur Liftaro-Beraterverguetung.';
 }
 window._eiErgDefaultAnschreiben = _eiErgDefaultAnschreiben;
 window._eiErgDefaultBeauftragung = _eiErgDefaultBeauftragung;
