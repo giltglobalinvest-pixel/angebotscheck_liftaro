@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.395';
+const APP_VERSION = 'V12.396';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35948,6 +35948,70 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
 }
 window._eiLvRenderAnfrageBubble = _eiLvRenderAnfrageBubble;
 
+// V12.396: Antwort-Kachel (links, grün) — wenn Wartungsnehmer auf der Landing das Angebot abgegeben hat
+function _eiLvRenderAntwortBubble(it, emailId) {
+  const sender = it.from_name || it.chat_partner_firma || it.from_email || 'Wartungsnehmer';
+  const when = it.created_at ? (typeof formatDateTimeShort === 'function' ? formatDateTimeShort(it.created_at) : String(it.created_at).slice(0, 16).replace('T', ' ')) : '';
+  // Anfrage finden für Summe + Lieferzeit
+  const anfList = (window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[emailId])) ? window._eiLvAnfragenByEmail[emailId] : [];
+  const anf = anfList.find(a =>
+    (it.lv_anfrage_id && String(a.id) === String(it.lv_anfrage_id)) ||
+    (it.lv_anfrage_token && String(a.token) === String(it.lv_anfrage_token))
+  ) || null;
+  const lvs = (window._eiLvByEmail && Array.isArray(window._eiLvByEmail[emailId])) ? window._eiLvByEmail[emailId] : [];
+  const lv = anf ? lvs.find(x => String(x.id) === String(anf.lv_id)) : null;
+  const lvTitel = lv ? String(lv.titel || '(LV)') : '(LV-Antwort)';
+  // Response parsen für Summe-Berechnung
+  let posCount = 0; let sumNetto = null;
+  if (anf && anf.response_json) {
+    try {
+      const arr = JSON.parse(anf.response_json) || [];
+      posCount = arr.length;
+      sumNetto = arr.reduce((acc, p) => {
+        const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+        return acc + ((Number(p.preis_eur) || 0) * menge);
+      }, 0);
+    } catch (_) {}
+  }
+  const sumStr = (sumNetto != null && sumNetto > 0)
+    ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(sumNetto)
+    : '—';
+  const lieferzeit = anf && anf.lieferzeit_gesamt ? String(anf.lieferzeit_gesamt) : '';
+  const onOpenLv = lv ? "openLvForEmail('" + emailId + "','" + _esc(String(lv.id)) + "')" : '';
+  const _delTok = (it.id && !it._synthetic) ? ('chat:' + it.id) : '';
+  const _delBtn = _delTok
+    ? '<button class="ei-chat-del" onclick="event.stopPropagation();deleteChatBubble(\'' + emailId + '\',\'' + _delTok + '\')" title="Chat-Eintrag löschen" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:2px 6px;border-radius:5px;opacity:0;transition:opacity .15s,background .15s,color .15s" onmouseover="this.style.background=\'#fee2e2\';this.style.color=\'#9F1B1F\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'#94a3b8\'">✕</button>'
+    : '';
+  const sigInfo = anf && anf.signatur_name
+    ? ((anf.signatur_methode === 'digital' ? '✓ Digital bestätigt' : '✍ Unterschrieben') + ' von ' + String(anf.signatur_name))
+    : '';
+  return ''
+    + '<div class="ei-chat-row" style="display:flex;justify-content:flex-start;margin-bottom:8px;align-items:flex-start;gap:4px">'
+    +   '<div style="max-width:78%">'
+    +     '<div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px">' + _esc(sender) + (when ? ' · ' + _esc(when) : '') + '</div>'
+    +     '<div ' + (onOpenLv ? 'onclick="' + onOpenLv + '" style="cursor:pointer;' : 'style="') + 'background:#fff;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:14px;border-bl-radius:4px;padding:12px 14px;font-family:inherit;box-shadow:0 2px 10px rgba(22,163,74,.12)" ' + (onOpenLv ? 'title="Klicken zum LV öffnen"' : '') + '>'
+    +       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    +         '<span style="font-size:16px">💰</span>'
+    +         '<span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#15803d">Angebot eingegangen</span>'
+    +         '<span style="background:#dcfce7;color:#166534;border-radius:9px;padding:2px 8px;font-size:9.5px;font-weight:700;margin-left:auto;white-space:nowrap">verbindlich</span>'
+    +       '</div>'
+    +       '<div style="font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.35;margin-bottom:8px">' + _esc(lvTitel) + '</div>'
+    +       '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;padding:9px 11px;background:#f0fdf4;border-radius:8px;margin-bottom:6px">'
+    +         '<span style="font-size:10.5px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.05em">Gesamtsumme (netto)</span>'
+    +         '<span style="font-size:17px;font-weight:700;color:#15803d;font-family:var(--dr-f-mono)">' + _esc(sumStr) + '</span>'
+    +       '</div>'
+    +       '<div style="font-size:11.5px;color:#475569;line-height:1.5">'
+    +         (posCount ? '📋 ' + posCount + ' Position' + (posCount === 1 ? '' : 'en') : '')
+    +         (lieferzeit ? '<br>📅 Lieferzeit: ' + _esc(lieferzeit) : '')
+    +         (sigInfo ? '<br>' + _esc(sigInfo) : '')
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
+    +   _delBtn
+    + '</div>';
+}
+window._eiLvRenderAntwortBubble = _eiLvRenderAntwortBubble;
+
 async function loadWartungsnehmerChat(emailId) {
   if (!emailId) return [];
   try {
@@ -36825,6 +36889,10 @@ function _eiRenderWartungsnehmerSection(r, wn) {
           const partnerLabel = cls.firma || cls.email || (itPartnerTyp === 'wartungsnehmer' ? 'Wartungsnehmer' : 'Servicebetrieb');
           const acc = itPartnerTyp === 'wartungsnehmer' ? '#7c3aed' : '#0891b2';
           const accDeep = itPartnerTyp === 'wartungsnehmer' ? '#5b21b6' : '#0e7490';
+          // V12.396: LV-Antwort (incoming) als eigene grüne Kachel
+          if (String(it.nachricht_typ || '') === 'lv_antwort' && typeof _eiLvRenderAntwortBubble === 'function') {
+            return _eiLvRenderAntwortBubble(it, emailId);
+          }
           // V12.390: LV-Anfrage als kompakte Kachel (auch synthetisch via Token im Body)
           if ((String(it.nachricht_typ || '') === 'lv_anfrage' || String(it.lv_anfrage_token || '')) && typeof _eiLvRenderAnfrageBubble === 'function') {
             return _eiLvRenderAnfrageBubble(it, emailId, isOut, acc, accDeep);
@@ -36962,6 +37030,10 @@ function _eiRenderWartungsnehmerSection(r, wn) {
   const bubbles = filteredItems.length
     ? filteredItems.map(it => {
         const isOut = String(it.direction || 'out') === 'out';
+        // V12.396: LV-Antwort (incoming) als eigene grüne Kachel
+        if (String(it.nachricht_typ || '') === 'lv_antwort' && typeof _eiLvRenderAntwortBubble === 'function') {
+          return _eiLvRenderAntwortBubble(it, emailId);
+        }
         // V12.390: LV-Anfrage als kompakte Kachel (auch synthetisch via Token im Body)
         if ((String(it.nachricht_typ || '') === 'lv_anfrage' || String(it.lv_anfrage_token || '')) && typeof _eiLvRenderAnfrageBubble === 'function') {
           return _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep);
