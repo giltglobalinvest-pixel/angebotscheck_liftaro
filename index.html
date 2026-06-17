@@ -6426,7 +6426,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.402';
+const APP_VERSION = 'V12.403';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33725,13 +33725,9 @@ function _eiErgebnisRenderModal() {
     +     '<input type="text" inputmode="decimal" id="ergOrigInput" value="' + (orig > 0 ? String(orig).replace('.', ',') : '') + '" placeholder="0,00" oninput="_eiErgebnisOrigEdit(this.value)" style="width:120px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--dr-f-mono);font-size:13px;text-align:right;outline:none">'
     +     '<span style="color:#94a3b8;font-size:13px">€</span>'
     +   '</div>'
-    // 3) Ersparnis-Vorschau
-    +   '<div style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">'
-    +     '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Original-Angebot</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</span></div>'
-    +     '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Empfohlenes Angebot (' + esc(chosen ? chosen.wnFirma : '') + ')</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(ang)) + '</span></div>'
-    +     '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#15803d"><span>Ersparnis</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(ersparnis)) + '</span></div>'
-    +     '<div style="display:flex;justify-content:space-between;font-size:12px;color:#166534;margin-top:4px"><span>davon Liftaro-Vergütung (' + LV_LIFTARO_PROVISION_PCT + ' %)</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(provision)) + '</span></div>'
-    +   '</div>'
+    // 3) Ersparnis-Vorschau (in-place updatebar via id)
+    +   (orig <= 0 ? '<div style="margin-top:8px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ Original-Preis nicht hinterlegt — bitte oben eintragen (bei alten LVs wurde der Vergleichspreis noch nicht gespeichert). Bei neuen LVs wird er automatisch aus dem Anhang übernommen.</div>' : '')
+    +   '<div id="ergErsparnisBox" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">' + _eiErgebnisErsparnisInner(orig, ang, chosen ? chosen.wnFirma : '') + '</div>'
     // 4) KI-Prompt
     +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">3 · KI-Einschätzung</div>'
     +   '<div class="field" style="margin-bottom:8px"><input type="text" id="ergPromptInput" placeholder="Optionaler Hinweis an die KI — z. B. „Lieferzeit betonen", „kurz halten"" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box"></div>'
@@ -33765,20 +33761,29 @@ function _eiErgebnisChooseAnf(anfId) {
 }
 window._eiErgebnisChooseAnf = _eiErgebnisChooseAnf;
 
+function _eiErgebnisErsparnisInner(orig, ang, chosenFirma) {
+  const esc = _esc;
+  const ersparnis = Math.max(0, orig - ang);
+  const provision = ersparnis * (LV_LIFTARO_PROVISION_PCT / 100);
+  const pct = orig > 0 ? Math.round((ersparnis / orig) * 100) : 0;
+  return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Original-Angebot</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Empfohlenes Angebot (' + esc(chosenFirma || '') + ')</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(ang)) + '</span></div>'
+    + '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#15803d"><span>Ersparnis' + (pct ? ' (' + pct + ' %)' : '') + '</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(ersparnis)) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:12px;color:#166534;margin-top:4px"><span>davon Liftaro-Vergütung (' + LV_LIFTARO_PROVISION_PCT + ' %)</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(provision)) + '</span></div>';
+}
+window._eiErgebnisErsparnisInner = _eiErgebnisErsparnisInner;
+
 function _eiErgebnisOrigEdit(v) {
   const s = window._eiErgebnisState; if (!s) return;
   const raw = String(v || '').replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
   const n = parseFloat(raw);
   s.originalEur = (isNaN(n) || n < 0) ? 0 : n;
-  // Nur die Ersparnis-Box live aktualisieren wäre aufwendig — debounced Full-Render
-  clearTimeout(window._eiErgOrigTimer);
-  window._eiErgOrigTimer = setTimeout(() => {
-    const ein = document.getElementById('ergEinschaetzung'); if (ein) s.einschaetzung = ein.value;
-    const emp = document.getElementById('ergEmpfehlung'); if (emp) s.empfehlung = emp.value;
-    const prompt = document.getElementById('ergPromptInput')?.value || '';
-    _eiErgebnisRenderModal();
-    const pf = document.getElementById('ergPromptInput'); if (pf) pf.value = prompt;
-  }, 600);
+  // V12.403: NUR die Ersparnis-Box in-place updaten — kein Full-Re-Render, kein Fokus-Verlust
+  const box = document.getElementById('ergErsparnisBox');
+  if (box) {
+    const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '');
+  }
 }
 window._eiErgebnisOrigEdit = _eiErgebnisOrigEdit;
 
