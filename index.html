@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.396';
+const APP_VERSION = 'V12.397';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35926,6 +35926,37 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
   const _delBtn = _delTok
     ? '<button class="ei-chat-del" onclick="event.stopPropagation();deleteChatBubble(\'' + emailId + '\',\'' + _delTok + '\')" title="Chat-Eintrag löschen" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:2px 6px;border-radius:5px;opacity:0;transition:opacity .15s,background .15s,color .15s" onmouseover="this.style.background=\'#fee2e2\';this.style.color=\'#9F1B1F\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'#94a3b8\'">✕</button>'
     : '';
+  // V12.397: Wenn die Anfrage submitted ist → Antwort-Details + PDF-Download in der Kachel
+  let antwortHtml = '';
+  if (stat === 'submitted' && anf) {
+    let posArr = []; let sumNetto = 0;
+    if (anf.response_json) {
+      try {
+        posArr = JSON.parse(anf.response_json) || [];
+        sumNetto = posArr.reduce((acc, p) => {
+          const m = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+          return acc + ((Number(p.preis_eur) || 0) * m);
+        }, 0);
+      } catch (_) {}
+    }
+    const sumStr = sumNetto > 0 ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(sumNetto) : '—';
+    const lz = anf.lieferzeit_gesamt ? String(anf.lieferzeit_gesamt) : '';
+    const sigName = String(anf.signatur_name || '');
+    const sigMeth = String(anf.signatur_methode || '');
+    const sigInfo = sigName ? ((sigMeth === 'digital' ? '✓ Digital bestätigt' : '✍ Unterschrieben') + ' von ' + sigName) : '';
+    antwortHtml = ''
+      + '<div style="background:rgba(255,255,255,.14);border-radius:9px;padding:10px 12px;margin-top:10px">'
+      +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">'
+      +     '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.85">Antwort vom Wartungsnehmer</span>'
+      +     '<span style="font-size:15px;font-weight:700;font-family:var(--dr-f-mono)">' + _esc(sumStr) + '</span>'
+      +   '</div>'
+      +   (lz ? '<div style="font-size:11px;opacity:.85;margin-bottom:3px">📅 Lieferzeit: ' + _esc(lz) + '</div>' : '')
+      +   (sigInfo ? '<div style="font-size:11px;opacity:.85;margin-bottom:3px">' + _esc(sigInfo) + '</div>' : '')
+      + '</div>'
+      + '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">'
+      +   (anf.id ? '<button onclick="event.stopPropagation();_eiLvDownloadAntwortPdf(\'' + _esc(anf.id) + '\')" title="Antwort-PDF herunterladen" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:4px 10px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit">📄 Antwort-PDF</button>' : '')
+      + '</div>';
+  }
   const grad = 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')';
   return ''
     + '<div class="ei-chat-row" style="display:flex;justify-content:' + (isOut ? 'flex-end' : 'flex-start') + ';margin-bottom:8px;align-items:flex-start;gap:4px">'
@@ -35940,7 +35971,8 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
     +       '</div>'
     +       '<div style="font-size:14px;font-weight:700;line-height:1.35;margin-bottom:3px">' + _esc(lvTitel) + '</div>'
     +       '<div style="font-size:11.5px;opacity:.85;font-family:var(--dr-f-mono)">' + _esc(lvIdShort) + (posCount ? ' · ' + posCount + ' Position' + (posCount === 1 ? '' : 'en') : '') + '</div>'
-    +       (linkBtn ? '<div style="display:flex;justify-content:flex-end;margin-top:8px">' + linkBtn + '</div>' : '')
+    +       antwortHtml
+    +       (linkBtn && stat !== 'submitted' ? '<div style="display:flex;justify-content:flex-end;margin-top:8px">' + linkBtn + '</div>' : '')
     +     '</div>'
     +   '</div>'
     +   (!isOut ? _delBtn : '')
@@ -36011,6 +36043,264 @@ function _eiLvRenderAntwortBubble(it, emailId) {
     + '</div>';
 }
 window._eiLvRenderAntwortBubble = _eiLvRenderAntwortBubble;
+
+// V12.397: Antwort-PDF aus LV_Anfragen-Record bauen + downloaden (gleiches Layout wie auf der Landing)
+async function _eiLvDownloadAntwortPdf(anfId) {
+  if (!window.PDFLib) { showToast('PDF-Bibliothek nicht verfügbar', 'error', 3500); return; }
+  // Anfrage im Cache finden (über alle Email-Caches)
+  let anf = null, emailId = null;
+  const bag = window._eiLvAnfragenByEmail || {};
+  for (const eid of Object.keys(bag)) {
+    const arr = bag[eid] || [];
+    const f = arr.find(a => String(a.id) === String(anfId));
+    if (f) { anf = f; emailId = eid; break; }
+  }
+  if (!anf) { showToast('Anfrage nicht im Cache — bitte Email neu laden', 'error', 4000); return; }
+  // LV holen
+  const lvs = (window._eiLvByEmail && window._eiLvByEmail[emailId]) || [];
+  const lv = lvs.find(x => String(x.id) === String(anf.lv_id)) || null;
+  // Snapshots parsen
+  let snap = {}; try { snap = JSON.parse(lv && lv.kontext_snapshot_json || '{}'); } catch(_) {}
+  let wn = {}; try { wn = JSON.parse(anf.servicebetrieb_snapshot_json || '{}'); } catch(_) {}
+  let response = []; try { response = JSON.parse(anf.response_json || '[]'); } catch(_) {}
+  const sum = response.reduce((acc, p) => {
+    const m = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+    return acc + ((Number(p.preis_eur) || 0) * m);
+  }, 0);
+  const sub = {
+    anf, lv, snap, wn, response, sum,
+    sigMode: String(anf.signatur_methode || 'digital'),
+    sigName: String(anf.signatur_name || ''),
+    signaturDataUrl: String(anf.signatur_dataurl || ''),
+    lieferzeitGesamt: String(anf.lieferzeit_gesamt || ''),
+    klauseln: String(anf.klauseln_snapshot_html || ''),
+  };
+  try {
+    showToast('⏳ PDF wird erstellt …', 'info', 2500);
+    const blob = await _eiLvBuildAntwortPdf(sub);
+    const wnSlug = String(wn.firma || 'Wartungsnehmer').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 30);
+    const fn = 'Angebot_' + (snap.fabriknummer || anf.id || 'LV') + '_' + wnSlug + '.pdf';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fn;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) {
+    console.error('[V12.397] PDF-Build:', e);
+    showToast('PDF-Erstellung fehlgeschlagen: ' + (e.message || e), 'error', 5000);
+  }
+}
+window._eiLvDownloadAntwortPdf = _eiLvDownloadAntwortPdf;
+
+function _eiLvHtmlToText(html) {
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html);
+  tmp.querySelectorAll('h1,h2,h3,h4,h5,p,li,br,div').forEach(el => {
+    if (el.tagName === 'BR') el.replaceWith('\n');
+    else el.insertAdjacentText('beforeend', '\n');
+  });
+  return (tmp.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+async function _eiLvBuildAntwortPdf(sub) {
+  // Layout identisch zum Landing-Builder (Aszendio-Stil)
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const doc = await PDFDocument.create();
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const W = 595, H = 842, M = 56;
+  const COL_INK    = rgb(0.06, 0.10, 0.19);
+  const COL_MUTE   = rgb(0.42, 0.49, 0.61);
+  const COL_LIGHT  = rgb(0.86, 0.89, 0.92);
+  const COL_BG_LIGHT = rgb(0.96, 0.97, 0.98);
+  const VAT = 0.19;
+  const sumNetto = sub.sum || 0;
+  const sumVat   = Math.round(sumNetto * VAT * 100) / 100;
+  const sumBrutto = Math.round((sumNetto + sumVat) * 100) / 100;
+  const dat = new Date(sub.anf.submitted_at || Date.now()).toISOString().slice(0, 10);
+  const fmtEurStr = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' EUR';
+  const angNr = sub.anf.id || 'LV';
+  const totalPagesHolder = { total: 0 };
+  let page = doc.addPage([W, H]);
+  let y = H - M;
+  const allPages = [page];
+  function newPage() { page = doc.addPage([W, H]); allPages.push(page); y = H - M; drawHeader(false); }
+  function safe(s) { return String(s == null ? '' : s).replace(/[^\x00-\xff]/g, '?'); }
+  function tw(font, sz, txt) { return font.widthOfTextAtSize(safe(txt), sz); }
+  function wrap(txt, font, sz, maxW) {
+    const out = [];
+    String(txt || '').split('\n').forEach(ln => {
+      const words = ln.split(/(\s+)/);
+      let line = '';
+      for (const w of words) {
+        const test = line + w;
+        if (font.widthOfTextAtSize(safe(test), sz) > maxW && line.trim()) { out.push(line.trimEnd()); line = w.trimStart(); }
+        else line = test;
+      }
+      if (line.trim() || ln === '') out.push(line.trimEnd());
+    });
+    return out;
+  }
+  function draw(txt, x, yy, font, sz, color) { page.drawText(safe(txt), { x, y: yy, size: sz, font: font || helv, color: color || COL_INK }); }
+  function drawRight(txt, xRight, yy, font, sz, color) { draw(txt, xRight - tw(font || helv, sz, txt), yy, font, sz, color); }
+  function ensureSpace(h) { if (y - h < M + 80) newPage(); }
+  function drawHeader(firstPage) {
+    const wnName = String(sub.wn.firma || 'Wartungsnehmer').toLowerCase();
+    const logoTxt = wnName.replace(/\s+/g, '').slice(0, 24);
+    const padX = 12, padY = 8;
+    const tw_ = bold.widthOfTextAtSize(safe(logoTxt), 10);
+    const boxW = tw_ + 2*padX, boxH = 10 + 2*padY;
+    const boxX = W - M - boxW, boxY = H - M - boxH;
+    page.drawRectangle({ x: boxX, y: boxY, width: boxW, height: boxH, borderColor: COL_INK, borderWidth: 0.8 });
+    draw(logoTxt, boxX + padX, boxY + padY + 1, bold, 10, COL_INK);
+    if (!firstPage) draw('Angebot - ' + (sub.wn.firma || 'Angebot'), M, H - M - boxH + padY + 1, helv, 9, COL_MUTE);
+    page.drawLine({ start: { x: M, y: H - M - boxH - 10 }, end: { x: W - M, y: H - M - boxH - 10 }, thickness: 0.5, color: COL_LIGHT });
+    y = Math.min(y, H - M - boxH - 28);
+  }
+  drawHeader(true);
+  draw(sub.wn.firma || '—', M, H - M - 22, helv, 9, COL_INK);
+  const yMetaStart = y;
+  draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
+  draw(sub.snap.hv_name || '(Hausverwaltung)', M, y, bold, 11, COL_INK); y -= 13;
+  if (sub.snap.hv_email) { draw('z.Hd. ' + sub.snap.hv_email, M, y, helv, 10, COL_INK); y -= 12; }
+  const metaX1 = W - M - 200, metaX2 = W - M;
+  let yMeta = yMetaStart;
+  const metaRow = (lbl, val, vBold) => { draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE); drawRight(val, metaX2, yMeta, vBold ? bold : helv, 10, COL_INK); yMeta -= 16; };
+  metaRow('Datum:', dat);
+  metaRow('Angebot-Nr.:', angNr, true);
+  metaRow('Bearbeiter:', sub.sigName || '—');
+  y = Math.min(y, yMeta) - 14;
+  draw('Angebot ' + angNr, M, y, bold, 22, COL_INK); y -= 28;
+  const anlContent = [];
+  if (sub.snap.standort)     anlContent.push(['Anlage-Standort:', sub.snap.standort]);
+  if (sub.snap.fabriknummer) anlContent.push(['Fabriknummer:', sub.snap.fabriknummer]);
+  if (sub.snap.hersteller && sub.snap.hersteller !== 'OTIS') anlContent.push(['Hersteller:', sub.snap.hersteller]);
+  if (anlContent.length) {
+    const anlH = anlContent.length * 14 + 4;
+    page.drawRectangle({ x: M, y: y - anlH, width: 2.5, height: anlH, color: COL_INK });
+    let ya = y - 4;
+    for (const [lbl, val] of anlContent) { draw(lbl, M + 14, ya - 8, helv, 9, COL_MUTE); draw(val, M + 140, ya - 8, helv, 10, COL_INK); ya -= 14; }
+    y -= anlH + 10;
+  }
+  y -= 4;
+  draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 18;
+  const intro1 = wrap('vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen nachfolgendes Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + '.', helv, 10, W - 2*M);
+  for (const l of intro1) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  y -= 4;
+  const intro2 = wrap('Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen.', helv, 10, W - 2*M);
+  for (const l of intro2) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  y -= 14;
+  const colNr = M + 6, colTit = M + 38, colMen = 350, colEp = 430, colSum = W - M;
+  page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: COL_LIGHT });
+  draw('NR.', colNr, y - 8, bold, 8.5, COL_MUTE);
+  draw('TECHNISCHE SPEZIFIKATION', colTit, y - 8, bold, 8.5, COL_MUTE);
+  drawRight('MENGE', colMen + 30, y - 8, bold, 8.5, COL_MUTE);
+  drawRight('EINZELPREIS', colEp + 50, y - 8, bold, 8.5, COL_MUTE);
+  drawRight('GESAMT', colSum, y - 8, bold, 8.5, COL_MUTE);
+  y -= 18;
+  page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
+  y -= 6;
+  for (const p of sub.response) {
+    const titel = String(p.titel || '').trim();
+    const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+    const einheit = String(p.einheit || '').trim();
+    const preis = Number(p.preis_eur || 0);
+    const summe = preis * menge;
+    const titelLines = wrap(titel, bold, 10, 290);
+    const bemerk = String(p.bemerkung || '').trim();
+    const bulletLines = [];
+    if (bemerk) { bemerk.split(/\n+/).filter(Boolean).forEach(ln => bulletLines.push(...wrap('* ' + ln, helv, 9, 285))); }
+    const blockH = 14 + Math.max(0, (titelLines.length - 1) * 12) + (bulletLines.length ? bulletLines.length * 11 + 6 : 0) + 10;
+    ensureSpace(blockH);
+    const yTop = y;
+    draw(String(p.pos_nr || ''), colNr, y, helv, 10, COL_INK);
+    for (let i = 0; i < titelLines.length; i++) draw(titelLines[i], colTit, y - i * 12, bold, 10, COL_INK);
+    let yBul = y - titelLines.length * 12 - 2;
+    for (const bl of bulletLines) { draw(bl, colTit, yBul, helv, 9, COL_MUTE); yBul -= 11; }
+    drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
+    drawRight(preis > 0 ? fmtEurStr(preis).replace(' EUR', '') : '—', colEp + 50, yTop, helv, 10, COL_INK);
+    drawRight(summe > 0 ? fmtEurStr(summe) : '—', colSum, yTop, bold, 10, COL_INK);
+    y -= blockH;
+    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: COL_LIGHT });
+    y -= 4;
+  }
+  y -= 6; ensureSpace(60);
+  const sumLblX = W - M - 220;
+  const drawSumRow = (lbl, val, big) => { draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK); drawRight(val, colSum, y, big ? bold : helv, big ? 12 : 10, COL_INK); y -= big ? 18 : 15; };
+  drawSumRow('Gesamtnettopreis', fmtEurStr(sumNetto));
+  drawSumRow('Zuzüglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
+  page.drawLine({ start: { x: sumLblX, y: y + 4 }, end: { x: colSum, y: y + 4 }, thickness: 0.6, color: COL_INK });
+  y -= 6;
+  drawSumRow('Gesamtbruttopreis', fmtEurStr(sumBrutto), true);
+  y -= 6; ensureSpace(120);
+  draw('Konditionen', M, y, bold, 14, COL_INK); y -= 4;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 80, y: y - 2 }, thickness: 1.2, color: COL_INK });
+  y -= 18;
+  const kondBox = (titel, body) => {
+    if (!body) return;
+    const bodyLines = wrap(body, helv, 10, W - 2*M - 24);
+    const h = 18 + bodyLines.length * 13 + 8;
+    ensureSpace(h + 8);
+    page.drawRectangle({ x: M, y: y - h, width: W - 2*M, height: h, color: COL_BG_LIGHT });
+    draw(titel, M + 12, y - 14, bold, 10.5, COL_INK);
+    let yy = y - 28;
+    for (const l of bodyLines) { draw(l, M + 12, yy, helv, 10, COL_INK); yy -= 13; }
+    y -= h + 6;
+  };
+  if (sub.lieferzeitGesamt) kondBox('Lieferzeit', sub.lieferzeitGesamt);
+  kondBox('Preisbasis', 'Festpreis, gültig 60 Tage ab Angebotsdatum');
+  kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
+  kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
+  y -= 10; ensureSpace(80);
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
+  y -= 14;
+  draw('VERBINDLICHE BESTÄTIGUNG', M, y, bold, 8.5, COL_MUTE); y -= 16;
+  if (sub.sigMode === 'drawn' && sub.signaturDataUrl) {
+    try { const png = await doc.embedPng(sub.signaturDataUrl); page.drawImage(png, { x: M, y: y - 50, width: 180, height: 50 }); y -= 56; } catch(_) {}
+  } else { draw('✓ Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, COL_INK); y -= 14; }
+  draw('Unterzeichnet von: ' + (sub.sigName || '—'), M, y, bold, 10, COL_INK); y -= 13;
+  draw('Datum: ' + dat, M, y, helv, 10, COL_MUTE);
+  const klauselnText = _eiLvHtmlToText(sub.klauseln);
+  if (klauselnText) {
+    newPage();
+    draw('Allgemeine Geschaeftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
+    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
+    y -= 22;
+    const lines = klauselnText.split('\n');
+    for (const ln of lines) {
+      const t = ln.trim();
+      if (!t) { y -= 6; continue; }
+      const isHeader = t.length < 50 && !/[.,:]$/.test(t) && /^[A-ZÄÖÜ]/.test(t);
+      if (isHeader) { y -= 4; ensureSpace(20); draw(t, M, y, bold, 11, COL_INK); y -= 14; }
+      else { const wr = wrap(t, helv, 10, W - 2*M); for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; } }
+    }
+  }
+  totalPagesHolder.total = allPages.length;
+  allPages.forEach((pg, idx) => {
+    const fY = 70;
+    pg.drawLine({ start: { x: M, y: fY + 32 }, end: { x: W - M, y: fY + 32 }, thickness: 0.5, color: COL_LIGHT });
+    const colW = (W - 2*M) / 3;
+    const xCol = [M, M + colW, M + 2 * colW];
+    const drawCol = (xi, lblTitel, lines) => {
+      pg.drawText(safe(lblTitel), { x: xCol[xi], y: fY + 18, size: 9, font: bold, color: COL_INK });
+      let yy = fY + 6;
+      for (const l of lines) { if (!l) continue; pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8.5, font: helv, color: COL_MUTE }); yy -= 10; }
+    };
+    drawCol(0, sub.wn.firma || '—', [sub.wn.strasse || '', [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' ')]);
+    drawCol(1, 'Kontakt', [sub.wn.email || '', sub.wn.web || '']);
+    drawCol(2, 'Rechtliches', [
+      sub.wn.hrb_nummer ? (sub.wn.hrb_nummer + (sub.wn.hrb_gericht ? ' AG ' + sub.wn.hrb_gericht : '')) : '',
+      sub.wn.ust_id ? ('USt-IdNr. ' + sub.wn.ust_id) : '',
+      sub.wn.geschaeftsfuehrer ? ('GF: ' + sub.wn.geschaeftsfuehrer) : '',
+    ]);
+    const pn = 'Angebot ' + angNr + ' - Seite ' + (idx + 1) + ' / ' + totalPagesHolder.total;
+    const pnW = helv.widthOfTextAtSize(safe(pn), 8);
+    pg.drawText(safe(pn), { x: W - M - pnW, y: 36, size: 8, font: helv, color: COL_MUTE });
+  });
+  const bytes = await doc.save();
+  return new Blob([bytes], { type: 'application/pdf' });
+}
 
 async function loadWartungsnehmerChat(emailId) {
   if (!emailId) return [];
