@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.412';
+const APP_VERSION = 'V12.413';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7809,6 +7809,9 @@ async function setupTables() {
       // V12.368: Letzte generierte Zusammenfassung — wird als Kontext in den Reply-Komposer-
       // KI-Helper injiziert ("Folgende Fakten wurden aus den Anhängen extrahiert: ...").
       { name: 'attachment_qa_summary',         type: 'multilineText' },
+      // V12.413: Gespeicherter Ergebnis-Check (LV) — Auswahl, Beträge, Provision, Texte als JSON,
+      // damit der Ergebnis-Check-Dialog mit allen Anpassungen wieder geöffnet werden kann.
+      { name: 'ergebnis_check_json',           type: 'multilineText' },
     ]);
   } catch(e) { console.warn('[V12.137] ensureFields(Emails) failed:', e.message); }
   // V12.211: Chat-Tabelle für Kommunikation mit Wartungsnehmern (eigener Thread pro Email)
@@ -33592,12 +33595,13 @@ function _renderEmailLvSection(r) {
   let ergebnisBanner = '';
   if (typeof _eiLvEmailHasSubmitted === 'function' && _eiLvEmailHasSubmitted(r._id)) {
     const cnt = (typeof _eiLvEmailSubmittedCount === 'function') ? _eiLvEmailSubmittedCount(r._id) : 0;
+    const hasSavedCheck = !!String(r.ergebnis_check_json || '').trim();   // V12.413: gespeicherter Check vorhanden?
     ergebnisBanner = '<div style="margin-top:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
       + '<div style="min-width:0">'
-      +   '<div style="font-size:12.5px;font-weight:700;color:#15803d">💰 ' + cnt + ' Angebot' + (cnt === 1 ? '' : 'e') + ' eingegangen</div>'
-      +   '<div style="font-size:11.5px;color:#166534;margin-top:1px">Ergebnis-Check für die Hausverwaltung erstellen — Vergleich, Ersparnis & Empfehlung als PDF.</div>'
+      +   '<div style="font-size:12.5px;font-weight:700;color:#15803d">💰 ' + cnt + ' Angebot' + (cnt === 1 ? '' : 'e') + ' eingegangen' + (hasSavedCheck ? ' · <span style="color:#0369a1">💾 Check gespeichert</span>' : '') + '</div>'
+      +   '<div style="font-size:11.5px;color:#166534;margin-top:1px">' + (hasSavedCheck ? 'Gespeicherten Ergebnis-Check öffnen und weiterbearbeiten oder senden.' : 'Ergebnis-Check für die Hausverwaltung erstellen — Vergleich, Ersparnis & Empfehlung als PDF.') + '</div>'
       + '</div>'
-      + '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 Ergebnis erstellen</button>'
+      + '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 ' + (hasSavedCheck ? 'Ergebnis bearbeiten' : 'Ergebnis erstellen') + '</button>'
       + '</div>';
   }
   return '<div class="dr-section" data-feature="ei_lv" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">'
@@ -33690,8 +33694,29 @@ async function openErgebnisCheckModal(emailId) {
     origAnbieter: String(snap.orig_anbieter || '').trim(),       // V12.412: Anbieter des Original-Angebots (editierbar)
     origAngebotNr: String(snap.orig_angebot_nr || '').trim(),    // V12.412: Angebots-Nr. des Original-Angebots (editierbar)
     einschaetzung: '', empfehlung: '',
-    anschreiben: '', beauftragung: '',
+    anschreiben: '', beauftragung: '', kiHint: '',
   };
+
+  // V12.413: Gespeicherten Ergebnis-Check wiederherstellen (falls vorhanden)
+  try {
+    if (r.ergebnis_check_json) {
+      const saved = JSON.parse(r.ergebnis_check_json);
+      if (saved && typeof saved === 'object') {
+        const st = window._eiErgebnisState;
+        if (saved.chosenAnfId && enriched.some(e => e.anfId === saved.chosenAnfId)) st.chosenAnfId = saved.chosenAnfId;
+        if (saved.originalEur != null) st.originalEur = Number(saved.originalEur) || 0;
+        if (saved.provisionPct !== undefined) st.provisionPct = saved.provisionPct;
+        if (saved.origAnbieter != null) st.origAnbieter = String(saved.origAnbieter);
+        if (saved.origAngebotNr != null) st.origAngebotNr = String(saved.origAngebotNr);
+        if (saved.einschaetzung != null) st.einschaetzung = String(saved.einschaetzung);
+        if (saved.empfehlung != null) st.empfehlung = String(saved.empfehlung);
+        if (saved.anschreiben != null) st.anschreiben = String(saved.anschreiben);
+        if (saved.beauftragung != null) st.beauftragung = String(saved.beauftragung);
+        if (saved.kiHint != null) st.kiHint = String(saved.kiHint);
+        showToast('↩ Gespeicherten Ergebnis-Check geladen', 'info', 2500);
+      }
+    }
+  } catch (e) { console.warn('[V12.413] Ergebnis-Check restore:', e.message); }
 
   let ov = document.getElementById('eiErgebnisModal');
   if (ov) ov.remove();
@@ -33756,8 +33781,11 @@ function _eiErgebnisRenderModal() {
     +   '<div style="margin-top:6px;font-size:11px;color:#94a3b8">Die Liftaro-Vergütung ist im Feld oben (Standard ' + LV_LIFTARO_PROVISION_PCT + ' %) anpassbar — alle Werte rechnen sich automatisch neu.</div>'
     // 4) KI-Prompt
     +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">3 · KI-Einschätzung</div>'
-    +   '<div class="field" style="margin-bottom:8px"><input type="text" id="ergPromptInput" placeholder="Optionaler Hinweis an die KI — z. B. „Lieferzeit betonen", „kurz halten"" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box"></div>'
-    +   '<button id="ergKiBtn" onclick="_eiErgebnisGenerateKI()" style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px">🤖 Einschätzung generieren</button>'
+    +   '<div class="field" style="margin-bottom:8px"><input type="text" id="ergPromptInput" value="' + esc(s.kiHint || '') + '" placeholder="Optionaler Hinweis an die KI — z. B. „Lieferzeit betonen", „kurz halten"" oninput="window._eiErgebnisState.kiHint=this.value" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box"></div>'
+    +   '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    +     '<button id="ergKiBtn" onclick="_eiErgebnisGenerateKI(\'fresh\')" style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Einschätzung generieren</button>'
+    +     '<button id="ergKiRefineBtn" onclick="_eiErgebnisGenerateKI(\'refine\')" title="Überarbeitet die aktuellen Texte (auch manuell geänderte) gemäß deinem Hinweis oben" style="background:#fff;color:#7c3aed;border:1.5px solid #c4b5fd;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Mit KI überarbeiten</button>'
+    +   '</div>'
     +   '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Einschätzung (editierbar)</div>'
     +   '<textarea id="ergEinschaetzung" rows="4" placeholder="Wird per KI generiert — oder manuell schreiben …" oninput="window._eiErgebnisState.einschaetzung=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:8px">' + esc(s.einschaetzung || '') + '</textarea>'
     +   '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Empfehlung (editierbar)</div>'
@@ -33776,6 +33804,7 @@ function _eiErgebnisRenderModal() {
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:13px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
     +   '<div style="font-size:11.5px;color:#64748b">Empfänger: <b>' + esc(s.hvEmail || '⚠ keine HV-Email') + '</b></div>'
     +   '<div style="display:flex;gap:8px">'
+    +     '<button id="ergSaveBtn" onclick="_eiErgebnisSaveCheck()" title="Auswahl, Beträge und Texte speichern — der Ergebnis-Check kann später wieder geöffnet werden" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">💾 Speichern</button>'
     +     '<button onclick="_eiErgebnisCreateAndSend(false)" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">📄 Nur PDF</button>'
     +     '<button id="ergSendBtn" onclick="_eiErgebnisCreateAndSend(true)" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 PDF erstellen & an HV senden</button>'
     +   '</div>'
@@ -33847,16 +33876,22 @@ function _eiErgebnisProvisionEdit(v) {
 }
 window._eiErgebnisProvisionEdit = _eiErgebnisProvisionEdit;
 
-async function _eiErgebnisGenerateKI() {
+async function _eiErgebnisGenerateKI(mode) {
   const s = window._eiErgebnisState; if (!s) return;
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error', 3500); return; }
-  const btn = document.getElementById('ergKiBtn');
+  // Aktuelle (ggf. manuell editierte) Texte ins State übernehmen, damit Überarbeiten sie berücksichtigt
+  const curEin = document.getElementById('ergEinschaetzung'); if (curEin) s.einschaetzung = curEin.value;
+  const curEmp = document.getElementById('ergEmpfehlung'); if (curEmp) s.empfehlung = curEmp.value;
+  const isRefine = (mode === 'refine') && (String(s.einschaetzung || '').trim() || String(s.empfehlung || '').trim());
+  const btn = document.getElementById(isRefine ? 'ergKiRefineBtn' : 'ergKiBtn');
+  const btnLabel = isRefine ? '✏️ Mit KI überarbeiten' : '🤖 Einschätzung generieren';
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
   const ersparnis = Math.max(0, orig - ang);
   const userHint = document.getElementById('ergPromptInput')?.value || '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generiere …'; }
+  if (mode === 'refine' && !isRefine) { showToast('Noch keine Texte vorhanden — zuerst „Einschätzung generieren"', 'info', 3500); return; }
+  if (btn) { btn.disabled = true; btn.textContent = isRefine ? '⏳ Überarbeite …' : '⏳ Generiere …'; }
   try {
     const leistListe = ((chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || [])).map((p, i) => (i + 1) + '. ' + (p.titel || '') + (p.beschreibung ? ' — ' + String(p.beschreibung).slice(0, 160) : '')).join('\n');
     const sys = 'Du bist Berater bei Liftaro, einer neutralen Vermittlungsplattform für Aufzug-Reparaturen. '
@@ -33873,7 +33908,13 @@ async function _eiErgebnisGenerateKI() {
       + (chosen.lieferzeit ? 'Lieferzeit: ' + chosen.lieferzeit + '\n' : '')
       + 'Differenz zugunsten der HV: ' + _eiErgFmtEur(ersparnis) + '\n\n'
       + 'Leistungsumfang (neutral erstellt):\n' + leistListe + '\n\n'
-      + (userHint ? 'Zusätzlicher Hinweis des Bearbeiters: ' + userHint + '\n\n' : '')
+      + (isRefine
+          ? ('AKTUELLE TEXTE (vom Bearbeiter ggf. manuell angepasst), die du ÜBERARBEITEN sollst:\n'
+             + 'Einschaetzung: ' + (String(s.einschaetzung || '').trim() || '(leer)') + '\n'
+             + 'Empfehlung: ' + (String(s.empfehlung || '').trim() || '(leer)') + '\n\n'
+             + (userHint ? 'Anweisung des Bearbeiters zur Überarbeitung: ' + userHint + '\n\n' : 'Verbessere Klarheit, Ton und Prägnanz, ohne Fakten zu erfinden.\n\n')
+             + 'Überarbeite beide Texte gemäß der Anweisung. Behalte korrekte Fakten/Zahlen bei und bleibe neutral.\n')
+          : (userHint ? 'Zusätzlicher Hinweis des Bearbeiters: ' + userHint + '\n\n' : ''))
       + '"einschaetzung": 2-4 Sätze neutrale Bewertung — Preis-Leistung, Vergleichbarkeit des Leistungsumfangs, Plausibilität. '
       + '"empfehlung": 1-2 Sätze, die die VORTEILE sachlich zusammenfassen und die Entscheidung der Hausverwaltung überlassen (NICHT drängen, keine Aufforderung wie „beauftragen Sie jetzt").';
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -33893,23 +33934,74 @@ async function _eiErgebnisGenerateKI() {
     // Prompt erhalten beim Re-Render
     _eiErgebnisRenderModal();
     const pf = document.getElementById('ergPromptInput'); if (pf) pf.value = userHint;
-    showToast('✓ KI-Einschätzung erstellt — bei Bedarf editieren', 'success', 3000);
+    showToast(isRefine ? '✓ Texte per KI überarbeitet — bei Bedarf editieren' : '✓ KI-Einschätzung erstellt — bei Bedarf editieren', 'success', 3000);
   } catch (e) {
     console.error('[V12.402] KI-Einschätzung:', e);
     showToast('KI-Generierung fehlgeschlagen: ' + e.message, 'error', 6000);
-    if (btn) { btn.disabled = false; btn.textContent = '🤖 Einschätzung generieren'; }
+    const rb = document.getElementById(isRefine ? 'ergKiRefineBtn' : 'ergKiBtn'); if (rb) { rb.disabled = false; rb.textContent = btnLabel; }
   }
 }
 window._eiErgebnisGenerateKI = _eiErgebnisGenerateKI;
 
+// V12.413: Alle editierbaren Felder aus dem DOM ins State übernehmen (gemeinsam für Speichern + Senden)
+function _eiErgebnisCollectState() {
+  const s = window._eiErgebnisState; if (!s) return null;
+  const g = (id) => { const el = document.getElementById(id); return el ? el.value : null; };
+  const ein = g('ergEinschaetzung'); if (ein != null) s.einschaetzung = ein.trim();
+  const emp = g('ergEmpfehlung'); if (emp != null) s.empfehlung = emp.trim();
+  const ansch = g('ergAnschreiben'); if (ansch != null) s.anschreiben = ansch.trim();
+  const beauf = g('ergBeauftragung'); if (beauf != null) s.beauftragung = beauf.trim();
+  const oa = g('ergOrigAnbieter'); if (oa != null) s.origAnbieter = oa.trim();
+  const onr = g('ergOrigAngebotNr'); if (onr != null) s.origAngebotNr = onr.trim();
+  const hint = g('ergPromptInput'); if (hint != null) s.kiHint = hint;
+  return s;
+}
+window._eiErgebnisCollectState = _eiErgebnisCollectState;
+
+// V12.413: Persistierbares Abbild des Ergebnis-Checks
+function _eiErgebnisBuildPayload() {
+  const s = window._eiErgebnisState; if (!s) return null;
+  return {
+    v: 1,
+    chosenAnfId: s.chosenAnfId,
+    originalEur: Number(s.originalEur) || 0,
+    provisionPct: (s.provisionPct == null ? null : Number(s.provisionPct)),
+    origAnbieter: String(s.origAnbieter || ''),
+    origAngebotNr: String(s.origAngebotNr || ''),
+    einschaetzung: String(s.einschaetzung || ''),
+    empfehlung: String(s.empfehlung || ''),
+    anschreiben: String(s.anschreiben || ''),
+    beauftragung: String(s.beauftragung || ''),
+    kiHint: String(s.kiHint || ''),
+    savedAt: new Date().toISOString(),
+  };
+}
+
+// V12.413: Ergebnis-Check speichern (Auswahl, Beträge, Texte) → Emails.ergebnis_check_json
+async function _eiErgebnisSaveCheck() {
+  const s = window._eiErgebnisState; if (!s) return;
+  _eiErgebnisCollectState();
+  const btn = document.getElementById('ergSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Speichere …'; }
+  try {
+    const json = JSON.stringify(_eiErgebnisBuildPayload());
+    await atUpdate('Emails', s.emailId, { ergebnis_check_json: json }, { typecast: true });
+    const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) rr.ergebnis_check_json = json;
+    showToast('✓ Ergebnis-Check gespeichert', 'success', 3000);
+  } catch (e) {
+    console.error('[V12.413] Ergebnis-Check speichern:', e);
+    showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 6000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Speichern'; }
+  }
+}
+window._eiErgebnisSaveCheck = _eiErgebnisSaveCheck;
+
 async function _eiErgebnisCreateAndSend(doSend) {
   const s = window._eiErgebnisState; if (!s) return;
   if (!window.PDFLib) { showToast('PDF-Bibliothek nicht verfügbar', 'error', 3500); return; }
-  // Texte aus Editoren übernehmen
-  const ein = document.getElementById('ergEinschaetzung'); if (ein) s.einschaetzung = ein.value.trim();
-  const emp = document.getElementById('ergEmpfehlung'); if (emp) s.empfehlung = emp.value.trim();
-  const ansch = document.getElementById('ergAnschreiben'); if (ansch) s.anschreiben = ansch.value.trim();
-  const beauf = document.getElementById('ergBeauftragung'); if (beauf) s.beauftragung = beauf.value.trim();
+  // Texte + Felder aus Editoren übernehmen
+  _eiErgebnisCollectState();
   const btn = document.getElementById('ergSendBtn');
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   if (doSend && !s.hvEmail) { showToast('Keine HV-Email vorhanden — „Nur PDF" nutzen oder HV-Email ergänzen', 'warning', 5000); return; }
@@ -33990,8 +34082,10 @@ async function _eiErgebnisCreateAndSend(doSend) {
       });
     } catch (e) { console.warn('[V12.402] Outgoing-Record:', e.message); }
     try {
-      await atUpdate('Emails', s.emailId, { status: 'geantwortet', status_at: sentAt }, { typecast: true });
-      const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) rr.status = 'geantwortet';
+      // V12.413: Beim Senden den Ergebnis-Check gleich mitspeichern (Auswahl + Texte persistieren)
+      const ergJson = JSON.stringify(_eiErgebnisBuildPayload());
+      await atUpdate('Emails', s.emailId, { status: 'geantwortet', status_at: sentAt, ergebnis_check_json: ergJson }, { typecast: true });
+      const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) { rr.status = 'geantwortet'; rr.ergebnis_check_json = ergJson; }
     } catch (e) { console.warn('[V12.402] Status-Update:', e.message); }
     document.getElementById('eiErgebnisModal')?.remove();
     showToast('✓ Ergebnis an „' + s.hvEmail + '" gesendet', 'success', 5000);
