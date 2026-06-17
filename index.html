@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.404';
+const APP_VERSION = 'V12.405';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -36595,8 +36595,11 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
   ) || null;
   let lv = null;
   if (anf) lv = lvs.find(x => String(x.id) === String(anf.lv_id)) || null;
-  // Fallback wenn anf nicht geladen — versuche über it.lv_anfrage_id ähnlich zu matchen (LV nicht 1:1 möglich)
-  const lvTitel = lv ? String(lv.titel || '(LV)') : '(LV-Anfrage)';
+  // V12.405: Fallback — wenn anf/lv nicht aufgelöst, aber nur EIN LV für die Email existiert, nimm das
+  if (!lv && lvs.length === 1) lv = lvs[0];
+  // Empfänger aus dem Chat-Item (für sauberen Fallback-Titel)
+  const recFirma = String(it.chat_partner_firma || it.to_email || '').trim();
+  const lvTitel = lv ? String(lv.titel || '(LV)') : (recFirma ? ('LV-Anfrage · ' + recFirma) : 'LV-Anfrage versendet');
   let posCount = 0;
   if (lv) { try { const a = JSON.parse(lv.positionen_json || '[]'); posCount = Array.isArray(a) ? a.length : 0; } catch (_) {} }
   // Status: von Anfrage (sent/opened/submitted) — übergeordnet über lv.status (versendet)
@@ -37289,6 +37292,11 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
         _lvToken = m[1];
         _lvNachrichtTyp = 'lv_anfrage';
       }
+    }
+    // V12.405: Wenn schon ein echter WartungsnehmerChat-Record mit diesem LV-Token existiert,
+    // KEINE synthetische Dublette aus der Outgoing-Email erzeugen (sonst leere zweite Kachel).
+    if (_lvToken && Array.isArray(existingItems) && existingItems.some(it => String(it.lv_anfrage_token || '') === _lvToken)) {
+      continue;
     }
     synthetic.push({
       id:                           'synthetic_' + e._id,
