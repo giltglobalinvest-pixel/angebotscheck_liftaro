@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.413';
+const APP_VERSION = 'V12.414';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12080,7 +12080,43 @@ async function _eiLvExtractPositions() {
     }
     s.positionen = norm;
     _eiLvRenderEditorBody();
-    let toast = '✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus PDF extrahiert';
+    // V12.414: Kopfdaten (Anbieter, Angebotsnummer, Netto-Gesamtpreis) zusätzlich extrahieren
+    // und im Kontext-Snapshot ablegen → der Ergebnis-Check füllt damit Original-Anbieter/-Nr. automatisch.
+    let metaInfo = '';
+    try {
+      setBtn('⏳ Lese Anbieter / Angebotsnr. …', true);
+      const metaSys = 'Du extrahierst die Kopfdaten aus einem Reparatur-/Erneuerungs-Angebot für eine Aufzugsanlage. '
+        + 'Antworte AUSSCHLIESSLICH mit gültigem JSON: {"anbieter":"...","angebotsnummer":"...","gesamtpreis_eur":<zahl oder null>}. '
+        + 'anbieter = Name des anbietenden Fachbetriebs/Unternehmens (das das Angebot stellt), NICHT der Kunde/die Hausverwaltung. '
+        + 'angebotsnummer = Angebots-/Referenznummer des Angebots (z. B. „AN-2024-1234"). '
+        + 'gesamtpreis_eur = Netto-Gesamtbetrag des gesamten Angebots (exkl. MwSt.) als Zahl, sonst null. '
+        + 'Wenn ein Feld nicht erkennbar ist: leerer String bzw. null. Kein Vortext, keine Markdown-Fences.';
+      const metaResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': APP_KEYS.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 300, system: metaSys, messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: 'Extrahiere die Kopfdaten (Anbieter, Angebotsnummer, Netto-Gesamtpreis) aus den obigen Angebots-PDFs.' }]) }] }),
+      });
+      if (metaResp.ok) {
+        const md = await metaResp.json();
+        const mrawFull = (md.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+        const mraw = mrawFull.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+        let mp = null;
+        try { mp = JSON.parse(mraw); } catch (_) { const mm = mrawFull.match(/\{[\s\S]*\}/); if (mm) { try { mp = JSON.parse(mm[0]); } catch (_) {} } }
+        if (mp && typeof mp === 'object') {
+          if (!s.snap) s.snap = {};
+          const anb = String(mp.anbieter || '').trim();
+          const anr = String(mp.angebotsnummer || '').trim();
+          const gp = parseNum(mp.gesamtpreis_eur);
+          if (anb) s.snap.orig_anbieter = anb;
+          if (anr) s.snap.orig_angebot_nr = anr;
+          if (gp != null) s.snap.orig_gesamtpreis_eur = gp;
+          window._eiLvLastDiagnostics.meta = { anbieter: anb, angebotsnummer: anr, gesamtpreis_eur: gp };
+          const parts = []; if (anb) parts.push(anb); if (anr) parts.push('Nr. ' + anr);
+          if (parts.length) metaInfo = ' · ' + parts.join(' · ');
+        }
+      }
+    } catch (e) { console.warn('[V12.414] LV-Meta-Extraktion:', e.message); }
+    let toast = '✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus PDF extrahiert' + metaInfo;
     if (promptWarning) toast += ' · ⚠ ' + promptWarning;
     const skipMsg = (skipped.length) ? ' · ⚠ ' + skipped.length + ' Anhang übersprungen: ' + skipped.join(' · ') : '';
     toast += skipMsg;
@@ -33689,7 +33725,7 @@ async function openErgebnisCheckModal(emailId) {
   window._eiErgebnisState = {
     emailId, enriched, snap, hvEmail, hvName, hvAnsprech, hvStrasse, hvPlzOrt,
     chosenAnfId: chosen.anfId,
-    originalEur: chosen.originalSumme || 0,
+    originalEur: chosen.originalSumme || Number(snap.orig_gesamtpreis_eur) || 0,   // V12.414: Fallback auf extrahierten Netto-Gesamtpreis
     provisionPct: LV_LIFTARO_PROVISION_PCT,   // editierbare Liftaro-Vergütung in % (Default 25)
     origAnbieter: String(snap.orig_anbieter || '').trim(),       // V12.412: Anbieter des Original-Angebots (editierbar)
     origAngebotNr: String(snap.orig_angebot_nr || '').trim(),    // V12.412: Angebots-Nr. des Original-Angebots (editierbar)
