@@ -6426,7 +6426,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.400';
+const APP_VERSION = 'V12.401';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -37230,50 +37230,40 @@ async function sendWartungsnehmerMessage(emailId) {
       // V12.351: Bubble zeigt damit was mitgeschickt wurde
       attachment_filenames: attachmentFilenamesCsv,
     };
-    let writeOk = false;
-    try {
-      await atWrite('WartungsnehmerChat', chatItemData);
-      writeOk = true;
-    } catch (e) {
-      console.warn('[V12.211] Chat-Eintrag fehlgeschlagen:', e.message);
-      // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
-      showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
-    }
-    // V12.230/231/326: Zusätzlich als outgoing Emails-Record sichern. message_id ist
-    // wichtig, damit die nächste eingehende Antwort über In-Reply-To unsere Mail findet.
-    try {
-      await atWrite('Emails', {
-        direction:        'outgoing',
-        from_email:       'check@liftaro.de',
-        to_email:         toAddr,
-        subject:          subject,
-        body:             finalBody,
-        sent_at:          sentAt,
-        message_id:       ourMsgId,
-        in_reply_to:      inReplyTo || '',
-        bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
-        // V12.231: Eindeutige Thread-Zuordnung — diese outgoing-Mail gehört zu DIESER Email
-        chat_email_id:    emailId,
-        // V12.351: Anhang-Filenames synchron zum Chat-Record
-        attachment_filenames: attachmentFilenamesCsv,
-      });
-    } catch (eEmails) { console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
+    // V12.401: Optimistic-Update — Cache + UI SOFORT updaten (vor atWrite).
+    // atWrite läuft im Hintergrund; bei Fehler wird die Bubble wieder entfernt.
+    window._eiWnChatCache = window._eiWnChatCache || {};
+    window._eiWnChatCache[emailId] = (window._eiWnChatCache[emailId] || []).concat([chatItemData]);
     if (ta) ta.value = '';
-    // V12.228: Anhänge nach erfolgreichem Send leeren
     if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
     const attCountWn = pendingAttsWn.length;
     showToast('✓ Nachricht an ' + (wn.ansprechperson || wn.firma || toAddr) + ' gesendet' + (attCountWn ? ' (' + attCountWn + ' Anhang' + (attCountWn === 1 ? '' : 'änge') + ')' : ''), 'success', 3200);
-    // V12.227: Sofortiger lokaler Cache-Push — UI updated direkt, vermeidet Race condition mit Airtable-Eventual-Consistency
-    if (writeOk) {
-      window._eiWnChatCache = window._eiWnChatCache || {};
-      window._eiWnChatCache[emailId] = (window._eiWnChatCache[emailId] || []).concat([chatItemData]);
-      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-      // Im Hintergrund nochmal aktualisieren — bringt evtl. eingehende synthetische Items (.catch silent)
-      loadWartungsnehmerChat(emailId).catch(() => {});
-    } else {
-      // Bei Schreib-Fehler trotzdem rendern (zeigt evtl. alte Items, lokaler Push war nicht möglich)
-      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    // atWrite Chat-Record im Hintergrund — bei Fehler aus Cache entfernen
+    atWrite('WartungsnehmerChat', chatItemData)
+      .then(() => { loadWartungsnehmerChat(emailId).catch(() => {}); })
+      .catch(e => {
+        console.warn('[V12.211] Chat-Eintrag fehlgeschlagen:', e.message);
+        showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
+        // Aus Cache entfernen damit Stand korrekt bleibt
+        const cache = window._eiWnChatCache[emailId] || [];
+        window._eiWnChatCache[emailId] = cache.filter(it => it.id !== chatItemData.id);
+        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      });
+    // Outgoing Emails-Record auch im Hintergrund
+    atWrite('Emails', {
+      direction:        'outgoing',
+      from_email:       'check@liftaro.de',
+      to_email:         toAddr,
+      subject:          subject,
+      body:             finalBody,
+      sent_at:          sentAt,
+      message_id:       ourMsgId,
+      in_reply_to:      inReplyTo || '',
+      bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      chat_email_id:    emailId,
+      attachment_filenames: attachmentFilenamesCsv,
+    }).catch(eEmails => console.warn('[V12.230] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message));
   } catch (e) {
     showToast('Senden fehlgeschlagen: ' + e.message, 'error', 5000);
     if (sendBtn) {
@@ -37340,21 +37330,8 @@ function _eiRenderWartungsnehmerSection(r, wn) {
   }
   const sbList = Array.from(sbMap.values());
 
-  // Aktiven Tab bestimmen — Default: WN wenn vorhanden, sonst erster SB, sonst keiner
-  const stored = window._eiActiveChatTab && window._eiActiveChatTab[emailId];
-  let activeTyp = stored && stored.typ;
-  let activeId  = stored && stored.id;
-  // V12.235: "Alle"-Tab entfernt — Chats sollen pro Partner getrennt bleiben
-  if (!activeTyp || activeTyp === 'all' || (activeTyp === 'wartungsnehmer' && !hasWn) ||
-      (activeTyp === 'servicebetrieb' && !sbMap.has(activeId))) {
-    if (hasWn) { activeTyp = 'wartungsnehmer'; activeId = String(wn.id || ''); }
-    else if (sbList.length) { activeTyp = 'servicebetrieb'; activeId = sbList[0].id; }
-    else { activeTyp = ''; activeId = ''; }
-    window._eiActiveChatTab = window._eiActiveChatTab || {};
-    window._eiActiveChatTab[emailId] = { typ: activeTyp, id: activeId };
-  }
-
-  // V12.224/226: Pro-Tab Anzahl berechnen für Badge — via Classify-Helper (robust gegen leere Felder)
+  // V12.401: Counts zuerst berechnen — damit Default-Tab den Partner mit den
+  // meisten Nachrichten wählt (statt zufällig den ersten WN/SB).
   let countWn = 0;
   const countPerSb = {};
   for (const it of allItems) {
@@ -37364,6 +37341,34 @@ function _eiRenderWartungsnehmerSection(r, wn) {
       const key = cls.partner_id || ('email:' + cls.email);
       countPerSb[key] = (countPerSb[key] || 0) + 1;
     }
+  }
+
+  // Aktiven Tab bestimmen — Default: Partner mit den meisten Nachrichten,
+  // sonst WN (wenn am Aufzug), sonst erster SB, sonst keiner.
+  const stored = window._eiActiveChatTab && window._eiActiveChatTab[emailId];
+  let activeTyp = stored && stored.typ;
+  let activeId  = stored && stored.id;
+  if (!activeTyp || activeTyp === 'all' || (activeTyp === 'wartungsnehmer' && !hasWn) ||
+      (activeTyp === 'servicebetrieb' && !sbMap.has(activeId))) {
+    // Bester SB nach Count
+    let bestSb = null, bestSbCount = 0;
+    for (const sb of sbList) {
+      const c = countPerSb[sb.id] || countPerSb['email:' + String(sb.email || '').toLowerCase()] || 0;
+      if (c > bestSbCount) { bestSbCount = c; bestSb = sb; }
+    }
+    if (countWn > 0 && hasWn) {
+      // WN hat Nachrichten und ist am Aufzug zugeordnet → WN
+      activeTyp = 'wartungsnehmer'; activeId = String(wn.id || '');
+    } else if (bestSb && bestSbCount >= countWn) {
+      // SB hat mehr oder gleich viele Nachrichten → SB mit den meisten
+      activeTyp = 'servicebetrieb'; activeId = bestSb.id;
+    } else if (hasWn) {
+      activeTyp = 'wartungsnehmer'; activeId = String(wn.id || '');
+    } else if (sbList.length) {
+      activeTyp = 'servicebetrieb'; activeId = sbList[0].id;
+    } else { activeTyp = ''; activeId = ''; }
+    window._eiActiveChatTab = window._eiActiveChatTab || {};
+    window._eiActiveChatTab[emailId] = { typ: activeTyp, id: activeId };
   }
 
   // Tabs-Pille-Reihe
@@ -37842,49 +37847,37 @@ async function sendServicebetriebMessage(emailId, sbId) {
       in_reply_to:                   inReplyTo || '',
       bearbeiter_name:               (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
     };
-    let writeOk = false;
-    try {
-      await atWrite('WartungsnehmerChat', chatItemData);
-      writeOk = true;
-    } catch (e) {
-      console.warn('[V12.219] SB-Chat-Eintrag fehlgeschlagen:', e.message);
-      // V12.221: Speicher-Fehler sichtbar machen — sonst sieht der User die Nachricht später nicht im Verlauf
-      showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
-    }
-    // V12.230/231/326: Zusätzlich als outgoing Emails-Record sichern (Persistenz +
-    // Thread-Verknüpfung). message_id ist wichtig — die nächste eingehende Aszendio-
-    // Antwort referenziert sie im In-Reply-To-Header, und unser Threading-Helper
-    // baut darüber die References-Kette für künftige Antworten.
-    try {
-      const emailsPayload = {
-        direction:        'outgoing',
-        from_email:       'check@liftaro.de',
-        to_email:         toAddr,
-        subject:          subject,
-        body:             finalBody,
-        sent_at:          sentAt,
-        message_id:       ourMsgId,
-        in_reply_to:      inReplyTo || '',
-        bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
-        chat_email_id:    emailId,
-      };
-      await atWrite('Emails', emailsPayload);
-    } catch (eEmails) { console.warn('[V12.326] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message); }
+    // V12.401: Optimistic-Update — Cache + UI SOFORT updaten (vor atWrite)
+    window._eiWnChatCache = window._eiWnChatCache || {};
+    window._eiWnChatCache[emailId] = (window._eiWnChatCache[emailId] || []).concat([chatItemData]);
     if (ta) ta.value = '';
-    // V12.228: Anhänge nach erfolgreichem Send leeren
     if (window._eiChatAttachments) window._eiChatAttachments[emailId] = [];
     const attCount = pendingAtts.length;
     showToast('✓ Nachricht an ' + (sb.ansprechperson || sb.firma || toAddr) + ' gesendet' + (attCount ? ' (' + attCount + ' Anhang' + (attCount === 1 ? '' : 'änge') + ')' : ''), 'success', 3200);
-    // V12.227: Sofortiger lokaler Cache-Push — UI updated direkt, vermeidet Race condition mit Airtable-Eventual-Consistency
-    if (writeOk) {
-      window._eiWnChatCache = window._eiWnChatCache || {};
-      window._eiWnChatCache[emailId] = (window._eiWnChatCache[emailId] || []).concat([chatItemData]);
-      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-      // Im Hintergrund nochmal aktualisieren — bringt evtl. eingehende synthetische Items
-      loadWartungsnehmerChat(emailId).catch(() => {});
-    } else {
-      if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
-    }
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    // atWrite Chat-Record im Hintergrund — bei Fehler aus Cache entfernen
+    atWrite('WartungsnehmerChat', chatItemData)
+      .then(() => { loadWartungsnehmerChat(emailId).catch(() => {}); })
+      .catch(e => {
+        console.warn('[V12.219] SB-Chat-Eintrag fehlgeschlagen:', e.message);
+        showToast('⚠ Email gesendet — aber Chat-Verlauf konnte nicht in Airtable gespeichert werden: ' + e.message, 'warning', 9000);
+        const cache = window._eiWnChatCache[emailId] || [];
+        window._eiWnChatCache[emailId] = cache.filter(it => it.id !== chatItemData.id);
+        if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+      });
+    // Outgoing Emails-Record auch im Hintergrund
+    atWrite('Emails', {
+      direction:        'outgoing',
+      from_email:       'check@liftaro.de',
+      to_email:         toAddr,
+      subject:          subject,
+      body:             finalBody,
+      sent_at:          sentAt,
+      message_id:       ourMsgId,
+      in_reply_to:      inReplyTo || '',
+      bearbeiter_name:  (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Bearbeiter',
+      chat_email_id:    emailId,
+    }).catch(eEmails => console.warn('[V12.326] outgoing Email-Persistenz fehlgeschlagen:', eEmails.message));
   } catch (e) {
     showToast('Senden fehlgeschlagen: ' + e.message, 'error', 5000);
     if (sendBtn) {
