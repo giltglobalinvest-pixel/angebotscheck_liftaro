@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.407';
+const APP_VERSION = 'V12.409';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33844,21 +33844,24 @@ async function _eiErgebnisGenerateKI() {
   const userHint = document.getElementById('ergPromptInput')?.value || '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generiere …'; }
   try {
-    const posListe = (chosen.resp || []).map((p, i) => (i + 1) + '. ' + (p.titel || '') + ' — ' + _eiErgFmtEur((Number(p.preis_eur)||0) * (parseFloat(String(p.menge||'1').replace(',','.'))||1))).join('\n');
+    const leistListe = ((chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || [])).map((p, i) => (i + 1) + '. ' + (p.titel || '') + (p.beschreibung ? ' — ' + String(p.beschreibung).slice(0, 160) : '')).join('\n');
     const sys = 'Du bist Berater bei Liftaro, einer neutralen Vermittlungsplattform für Aufzug-Reparaturen. '
-      + 'Du schreibst für eine Hausverwaltung eine kurze, sachliche Einschätzung und Empfehlung zu einem eingeholten Reparatur-Angebot. '
-      + 'Schreibstil: professionell, vertrauensvoll, knapp, kein Marketing-Geschwafel. Anrede in 3. Person/neutral (keine direkte „Sie"-Ansprache nötig). '
+      + 'Du schreibst für eine Hausverwaltung eine kurze, NEUTRALE und sachliche Einschätzung zu einem eingeholten Alternativangebot. '
+      + 'WICHTIG: Du DRÄNGST den Kunden NICHT und gibst KEINE Verkaufs-/Abschluss-Aufforderung. '
+      + 'Du beurteilst neutral und weist die VORTEILE des Angebots sachlich aus (z. B. Preisvorteil, Lieferzeit, geprüfter Leistungsumfang). '
+      + 'Die Entscheidung liegt ausdrücklich bei der Hausverwaltung. '
+      + 'Schreibstil: professionell, vertrauensvoll, knapp, kein Marketing-Geschwafel, keine Superlative. Neutrale 3. Person. '
       + 'Antworte AUSSCHLIESSLICH mit gültigem JSON: {"einschaetzung":"...","empfehlung":"..."} — keine Markdown-Fences, kein Vortext.';
     const usr = 'Aufzug Fn ' + (s.snap.fabriknummer || '?') + ' am Standort ' + (s.snap.standort || '?') + '.\n'
       + 'Hausverwaltung: ' + (s.hvName || '?') + '\n\n'
       + 'Original-Angebot (vorliegend): ' + _eiErgFmtEur(orig) + ' netto\n'
-      + 'Empfohlenes Alternativ-Angebot von ' + chosen.wnFirma + ': ' + _eiErgFmtEur(ang) + ' netto\n'
+      + 'Eingeholtes Alternativangebot von ' + chosen.wnFirma + ': ' + _eiErgFmtEur(ang) + ' netto\n'
       + (chosen.lieferzeit ? 'Lieferzeit: ' + chosen.lieferzeit + '\n' : '')
-      + 'Ersparnis: ' + _eiErgFmtEur(ersparnis) + '\n\n'
-      + 'Leistungspositionen:\n' + posListe + '\n\n'
+      + 'Differenz zugunsten der HV: ' + _eiErgFmtEur(ersparnis) + '\n\n'
+      + 'Leistungsumfang (neutral erstellt):\n' + leistListe + '\n\n'
       + (userHint ? 'Zusätzlicher Hinweis des Bearbeiters: ' + userHint + '\n\n' : '')
-      + '"einschaetzung": 2-4 Sätze zur Bewertung (Preis-Leistung, Vergleich, Plausibilität). '
-      + '"empfehlung": 1-2 Sätze klare Handlungsempfehlung für die Hausverwaltung.';
+      + '"einschaetzung": 2-4 Sätze neutrale Bewertung — Preis-Leistung, Vergleichbarkeit des Leistungsumfangs, Plausibilität. '
+      + '"empfehlung": 1-2 Sätze, die die VORTEILE sachlich zusammenfassen und die Entscheidung der Hausverwaltung überlassen (NICHT drängen, keine Aufforderung wie „beauftragen Sie jetzt").';
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': APP_KEYS.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
@@ -33898,26 +33901,12 @@ async function _eiErgebnisCreateAndSend(doSend) {
   if (doSend && !s.hvEmail) { showToast('Keine HV-Email vorhanden — „Nur PDF" nutzen oder HV-Email ergänzen', 'warning', 5000); return; }
   if (btn && doSend) { btn.disabled = true; btn.textContent = '⏳ Erstelle …'; }
   try {
-    const blob = await _eiBuildErgebnisCheckPDF(s, chosen);
-    const fnSafe = 'Liftaro_Ergebnis_' + String(s.snap.fabriknummer || s.emailId).replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf';
-    // Immer Download anbieten
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = fnSafe;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    if (!doSend) { showToast('✓ Ergebnis-PDF erstellt', 'success', 3000); return; }
-    // Senden via email-sender
-    if (btn) btn.textContent = '⏳ Sende an HV …';
-    if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) throw new Error('Email-Sender nicht konfiguriert');
     const _arrB64 = (view) => { let bin = ''; for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000)); return btoa(bin); };
-    const base64 = _arrB64(new Uint8Array(await blob.arrayBuffer()));
-    const orig = Number(s.originalEur) || 0;
-    const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - chosen.angebotSumme);
-    const betreff = 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
-    // V12.404: Anhänge — Ergebnis + Alternativangebot + Original-Angebot
-    const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
-    if (btn) btn.textContent = '⏳ Baue Anhänge …';
-    // Alternativangebot (Wartungsnehmer-Angebot als PDF)
+    // V12.408: Ergebnis + Alternativangebot + Original-Angebot zu EINER PDF mergen
+    if (btn) btn.textContent = '⏳ Erstelle PDF …';
+    const ergBytes = new Uint8Array(await (await _eiBuildErgebnisCheckPDF(s, chosen)).arrayBuffer());
+    // Alternativangebot (Wartungsnehmer-Angebot)
+    let altBytes = null;
     try {
       const a = chosen.rawAnf || {};
       const subAlt = {
@@ -33926,29 +33915,50 @@ async function _eiErgebnisCreateAndSend(doSend) {
         signaturDataUrl: String(a.signatur_dataurl || ''), lieferzeitGesamt: String(a.lieferzeit_gesamt || ''),
         klauseln: String(a.klauseln_snapshot_html || ''),
       };
-      if (typeof _eiLvBuildAntwortPdf === 'function') {
-        const altBlob = await _eiLvBuildAntwortPdf(subAlt);
-        attachments.push({ filename: 'Alternativangebot_' + String(chosen.wnFirma || 'WN').replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf', contentType: 'application/pdf', contentBase64: _arrB64(new Uint8Array(await altBlob.arrayBuffer())) });
-      }
-    } catch (e) { console.warn('[V12.404] Alternativangebot-Anhang:', e.message); }
+      if (typeof _eiLvBuildAntwortPdf === 'function') altBytes = new Uint8Array(await (await _eiLvBuildAntwortPdf(subAlt)).arrayBuffer());
+    } catch (e) { console.warn('[V12.408] Alternativangebot:', e.message); }
     // Original-Angebot (PDF-Anhang der Email)
+    let origBytes = null;
     try {
       const rEmail = (_eiAllRecords || []).find(x => x._id === s.emailId);
       const pdfs = (rEmail && Array.isArray(rEmail.attachments) ? rEmail.attachments : []).filter(at => /\.pdf$/i.test(at.filename || at.name || ''));
-      if (pdfs[0] && pdfs[0].url) {
-        const r2 = await fetch(pdfs[0].url);
-        if (r2.ok) attachments.push({ filename: 'Original-Angebot.pdf', contentType: 'application/pdf', contentBase64: _arrB64(new Uint8Array(await r2.arrayBuffer())) });
-      }
-    } catch (e) { console.warn('[V12.404] Original-Anhang:', e.message); }
+      if (pdfs[0] && pdfs[0].url) { const r2 = await fetch(pdfs[0].url); if (r2.ok) origBytes = new Uint8Array(await r2.arrayBuffer()); }
+    } catch (e) { console.warn('[V12.408] Original-Angebot:', e.message); }
+    // Merge zu EINER Datei
+    if (btn) btn.textContent = '⏳ Füge PDF zusammen …';
+    const { PDFDocument } = window.PDFLib;
+    const merged = await PDFDocument.create();
+    for (const bytes of [ergBytes, altBytes, origBytes]) {
+      if (!bytes) continue;
+      try { const src = await PDFDocument.load(bytes, { ignoreEncryption: true }); const ps = await merged.copyPages(src, src.getPageIndices()); ps.forEach(p => merged.addPage(p)); }
+      catch (e) { console.warn('[V12.408] Merge übersprungen:', e.message); }
+    }
+    const mergedBytes = await merged.save();
+    const mergedBlob = new Blob([mergedBytes], { type: 'application/pdf' });
+    const fnSafe = 'Liftaro_Ergebnis_' + String(s.snap.fabriknummer || s.emailId).replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf';
+    // Immer Download anbieten
+    const url = URL.createObjectURL(mergedBlob);
+    const a = document.createElement('a'); a.href = url; a.download = fnSafe;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    if (!doSend) { showToast('✓ Ergebnis-PDF erstellt (inkl. beider Angebote)', 'success', 3500); return; }
+    if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) throw new Error('Email-Sender nicht konfiguriert');
+    const base64 = _arrB64(mergedBytes);
+    const orig = Number(s.originalEur) || 0;
+    const diff = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - chosen.angebotSumme);
+    const provision = diff * (LV_LIFTARO_PROVISION_PCT / 100);
+    const ersparnis = Math.max(0, diff - provision);   // tatsächliche Ersparnis nach Liftaro
+    const betreff = 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
+    const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
     if (btn) btn.textContent = '⏳ Sende an HV …';
     const body = 'Sehr geehrte Damen und Herren,\n\n'
       + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
       + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
       + '· Original-Angebot: ' + _eiErgFmtEur(orig) + ' netto\n'
       + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
-      + '· Ihre Ersparnis: ' + _eiErgFmtEur(ersparnis) + '\n\n'
+      + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
       + (s.empfehlung ? s.empfehlung + '\n\n' : '')
-      + 'Das vollständige Ergebnis mit allen Positionen finden Sie im beigefügten PDF.\n\n'
+      + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot und das Original-Angebot.\n\n'
       + 'Mit freundlichen Grüßen\nIhr Liftaro-Team';
     const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
     const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig:'', htmlBody:'' };
@@ -34086,7 +34096,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     } else {
       draw('LIFTARO', M, lineY + 16, bold, 13, BRAND);
     }
-    dr('Ergebnis Reparatur-Vergleich', W - M, lineY + 16, helv, 9.5, MUTE);
+    dr('Ergebnis Angebots-Check', W - M, lineY + 16, helv, 9.5, MUTE);
     page.drawLine({ start: { x: M, y: lineY }, end: { x: W - M, y: lineY }, thickness: 0.6, color: LIGHT });
     y = first ? (lineY - 22) : (lineY - 36);
     if (!first) draw('Ergebnis ' + angNr, M, lineY - 16, helv, 9, MUTE);
@@ -34107,7 +34117,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   draw('Aufzug:', W - M - 200, yM, helv, 9, MUTE); dr('Fn ' + (s.snap.fabriknummer || '-'), W - M, yM, helv, 10, INK); yM -= 16;
   if (s.snap.standort) { const sl = wrap(s.snap.standort, helv, 9, 200); for (const l of sl) { dr(l, W - M, yM, helv, 9, MUTE); yM -= 12; } }
   y = Math.min(y, yM) - 18;
-  draw('Ergebnis der Reparatur-Anfrage', M, y, bold, 19, INK); y -= 28;
+  draw('Ergebnis des Angebots-Checks', M, y, bold, 19, INK); y -= 28;
   // Anschreiben (editierbar)
   const anschreiben = s.anschreiben || _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis);
   for (const l of wrap(anschreiben, helv, 10, W - 2*M)) {
@@ -34131,29 +34141,26 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 1.2, color: GREEN }); by -= 20;
   draw('Ihre tatsachliche Ersparnis' + (nettoPct ? ' (' + nettoPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(netto), W - M - 16, by, bold, 16, GREEN);
   y -= boxH + 30;
-  // Positionen
-  ensure(40);
-  draw('Positionen des empfohlenen Angebots', M, y, bold, 12, INK); y -= 16;
-  page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: LIGHT });
-  draw('NR.', M + 4, y - 8, bold, 8.5, MUTE); draw('LEISTUNG', M + 34, y - 8, bold, 8.5, MUTE);
-  dr('MENGE', 410, y - 8, bold, 8.5, MUTE); dr('GESAMT', W - M, y - 8, bold, 8.5, MUTE);
-  y -= 16; page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: LIGHT }); y -= 6;
-  for (const p of (chosen.resp || [])) {
+  // V12.409: Leistungsumfang — nur Titel + Beschreibung aus dem extrahierten LV, KEINE Preise/Mengen
+  ensure(46);
+  draw('Leistungsumfang der Angebote', M, y, bold, 12, INK); y -= 4;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 130, y: y - 2 }, thickness: 1.2, color: INK }); y -= 8;
+  for (const l of wrap('Beide Angebote umfassen denselben, von Liftaro neutral erstellten Leistungsumfang:', helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+  y -= 6;
+  // Quelle: bevorzugt das neutrale LV (Titel + Beschreibung), sonst die Antwort-Positionen (nur Titel)
+  const leistPos = (chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || []);
+  for (let pi = 0; pi < leistPos.length; pi++) {
+    const p = leistPos[pi];
     const titel = String(p.titel || '').trim();
-    const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
-    const einheit = String(p.einheit || '').trim();
-    const summe = (Number(p.preis_eur) || 0) * menge;
-    const tl = wrap(titel, bold, 10, 340);
-    const blk = 14 + Math.max(0, (tl.length - 1) * 12) + 8;
-    ensure(blk);
-    const t0 = y;
-    draw(String(p.pos_nr || ''), M + 4, y, helv, 10, INK);
-    for (let i = 0; i < tl.length; i++) draw(tl[i], M + 34, y - i*12, bold, 10, INK);
-    dr(menge + (einheit ? ' ' + einheit : ''), 410, t0, helv, 10, INK);
-    dr(summe > 0 ? fmtEur(summe) : '-', W - M, t0, bold, 10, INK);
-    y -= blk; page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: LIGHT }); y -= 4;
+    const besch = String(p.beschreibung || '').trim();
+    const nr = String(p.pos_nr || (pi + 1));
+    const tl = wrap(nr + '. ' + titel, bold, 10.5, W - 2*M);
+    ensure(tl.length * 13 + 6);
+    for (const l of tl) { draw(l, M, y, bold, 10.5, INK); y -= 13; }
+    if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
+    y -= 8;
   }
-  if (chosen.lieferzeit) { y -= 6; ensure(20); draw('Lieferzeit: ' + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
+  if (chosen.lieferzeit) { y -= 2; ensure(20); draw('Lieferzeit (empfohlenes Angebot): ' + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
   // Einschätzung
   if (s.einschaetzung) {
     y -= 10; ensure(40);
