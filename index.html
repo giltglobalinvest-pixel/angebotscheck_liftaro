@@ -4123,6 +4123,8 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="chat_antwort"   onclick="setEiFilter('chat_antwort')"  ><span class="ei-side-dot" style="background:#0891b2;animation:eiNeuPulse 1.6s ease-in-out infinite"></span><span class="ei-side-lbl">💬 Chat-Antworten</span><span class="ei-side-cnt" id="eiSideCnt_chat_antwort">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:6px 10px"></div>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
+            <!-- V12.399: „Offen" = Email hat eine submitted LV-Anfrage (Angebot vom Wartungsnehmer eingegangen) -->
+            <button class="ei-side-item" data-status="offen"          onclick="setEiFilter('offen')"         ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">💰 Offen · Angebot eingegangen</span><span class="ei-side-cnt" id="eiSideCnt_offen">0</span></button>
             <!-- V12.371: „Gesichtet" + „Geantwortet" entfernt — werden in „In Bearbeitung" zusammengefasst -->
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
             <button class="ei-side-item" data-status="wartend"        onclick="setEiFilter('wartend')"       ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Wartend</span><span class="ei-side-cnt" id="eiSideCnt_wartend">0</span></button>
@@ -6424,7 +6426,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.398';
+const APP_VERSION = 'V12.399';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11597,6 +11599,49 @@ async function _eiLvAnfragenLoadForEmail(emailId, forceReload) {
   return p;
 }
 window._eiLvAnfragenLoadForEmail = _eiLvAnfragenLoadForEmail;
+
+// V12.399: Globaler Cache aller submitted LV-Anfragen, gruppiert nach email_id.
+// Wird beim Inbox-Refresh + bei Posteingang-Render frisch geladen.
+async function _eiLvLoadSubmittedAll(forceReload) {
+  window._eiLvSubmittedByEmail = window._eiLvSubmittedByEmail || {};
+  if (window._eiLvSubmittedAllInflight) return window._eiLvSubmittedAllInflight;
+  if (!forceReload && window._eiLvSubmittedAllLoaded) return window._eiLvSubmittedByEmail;
+  const p = (async () => {
+    try {
+      const recs = await atRead('LV_Anfragen', "{status}='submitted'", { sort: false });
+      const map = {};
+      for (const r of (recs || [])) {
+        const f = r.fields || {};
+        const eid = String(f.email_id || '').trim();
+        if (!eid) continue;
+        (map[eid] = map[eid] || []).push({ _recordId: r.id, ...f });
+      }
+      window._eiLvSubmittedByEmail = map;
+      window._eiLvSubmittedAllLoaded = true;
+      return map;
+    } catch (e) {
+      console.warn('[V12.399] _eiLvLoadSubmittedAll:', e.message);
+      return window._eiLvSubmittedByEmail || {};
+    } finally {
+      delete window._eiLvSubmittedAllInflight;
+    }
+  })();
+  window._eiLvSubmittedAllInflight = p;
+  return p;
+}
+window._eiLvLoadSubmittedAll = _eiLvLoadSubmittedAll;
+function _eiLvEmailHasSubmitted(emailId) {
+  const bag = window._eiLvSubmittedByEmail || {};
+  const arr = bag[emailId];
+  return arr && arr.length > 0;
+}
+function _eiLvEmailSubmittedCount(emailId) {
+  const bag = window._eiLvSubmittedByEmail || {};
+  const arr = bag[emailId];
+  return arr ? arr.length : 0;
+}
+window._eiLvEmailHasSubmitted = _eiLvEmailHasSubmitted;
+window._eiLvEmailSubmittedCount = _eiLvEmailSubmittedCount;
 
 // Kontext-Snapshot bauen — HV, Standort, Fn, Hersteller, Aufzug-ID
 function _eiLvBuildKontextSnapshot(r) {
@@ -27973,6 +28018,8 @@ async function openDashboardData() {
       _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
         .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
     }
+    // V12.399: submitted LV-Anfragen-Cache füllen (für „💰 Angebot eingegangen"-Badge)
+    if (typeof _eiLvLoadSubmittedAll === 'function') _eiLvLoadSubmittedAll(false).catch(() => {});
   } catch(e) { console.warn('Emails Dashboard-load:', e.message); }
 
   window._dashAllChecks = checks;
@@ -28815,7 +28862,11 @@ async function refreshDashboardInbox(silent) {
   if (icon) icon.style.animation = 'spin .9s linear infinite';
   if (lbl && !silent) lbl.textContent = 'Lädt …';
   try {
-    const recs = await atRead('Emails', null, { sort: false });
+    // V12.399: Emails + submitted LV-Anfragen parallel laden
+    const [recs] = await Promise.all([
+      atRead('Emails', null, { sort: false }),
+      (typeof _eiLvLoadSubmittedAll === 'function' ? _eiLvLoadSubmittedAll(true) : Promise.resolve()).catch(() => {}),
+    ]);
     _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
     if (typeof _refreshEmailInboxBadge === 'function') _refreshEmailInboxBadge();
@@ -28931,6 +28982,7 @@ function _renderPosteingangCard(e) {
         <span style="background:${s.col};color:#fff;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;text-align:center;letter-spacing:.02em">${s.label}</span>
         <span style="background:${clsCol};color:#fff;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;text-align:center;text-transform:capitalize">${cls}</span>
         ${linkedCount > 0 ? `<span style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:999px;padding:1px 7px;font-size:9.5px;font-weight:700;text-align:center;font-family:var(--dr-f-mono)">✓ ${linkedCount} Check</span>` : ''}
+        ${(typeof _eiLvEmailSubmittedCount === 'function' && _eiLvEmailSubmittedCount(e._id) > 0) ? `<span title="Angebot vom Wartungsnehmer eingegangen" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:999px;padding:1px 7px;font-size:9.5px;font-weight:700;text-align:center">💰 ${_eiLvEmailSubmittedCount(e._id)} Angebot</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13.5px;font-weight:700;color:var(--dr-ink);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(subj)}</div>
@@ -30658,8 +30710,11 @@ async function loadEmailInbox(silent) {
     if (reloadLabel) reloadLabel.textContent = 'Lädt …';
   }
   try {
-    // Tabelle existiert ggf. noch nicht — atRead wirft dann; wir fangen das ab.
-    const recs = await atRead('Emails', null, { sort: false });
+    // V12.399: Emails + submitted LV-Anfragen parallel laden
+    const [recs] = await Promise.all([
+      atRead('Emails', null, { sort: false }),
+      (typeof _eiLvLoadSubmittedAll === 'function' ? _eiLvLoadSubmittedAll(true) : Promise.resolve()).catch(() => {}),
+    ]);
     _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
     // V12.284: Erst rendern, dann Ersparnis-Pillen nachreichen (kein zusätzlicher Spin).
@@ -30833,6 +30888,18 @@ function _eiUpdateSidebarCounts() {
     }
   }
   set('eiSideCnt_neu',            byStatus.neu);
+  // V12.399: Counter „Offen" = Emails mit submitted LV-Anfrage
+  try {
+    const bag = window._eiLvSubmittedByEmail || {};
+    let cntOffen = 0;
+    for (const r of all) {
+      if (!r || r.direction === 'outgoing') continue;
+      if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
+      const eid = String(r._id || '');
+      if (bag[eid] && bag[eid].length) cntOffen++;
+    }
+    set('eiSideCnt_offen', cntOffen);
+  } catch (_) { set('eiSideCnt_offen', 0); }
   set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
   set('eiSideCnt_wartend',        byStatus.wartend);
   set('eiSideCnt_wiedervorlage',  byStatus.wiedervorlage);
@@ -31628,6 +31695,9 @@ function _eiFiltered() {
     // V12.235: Nur Emails mit eingehenden Chat-Antworten (von Wartungsnehmer/Servicebetrieb)
     if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r));
+  } else if (_eiFilter === 'offen') {
+    // V12.399: Nur Emails mit submitted LV-Anfrage (Angebot vom Wartungsnehmer eingegangen)
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiLvEmailHasSubmitted(r._id));
   } else {
     // V12.371: Normalisierung — alte „gesichtet"/„geantwortet"-Records erscheinen unter „in_bearbeitung"
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiNormStatus(r.status || 'neu') === _eiFilter);
