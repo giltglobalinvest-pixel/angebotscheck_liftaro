@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.405';
+const APP_VERSION = 'V12.406';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34053,23 +34053,25 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const wrap = (t, f, sz, mw) => { const out = []; String(t||'').split('\n').forEach(ln => { const ws = ln.split(/(\s+)/); let l = ''; for (const w of ws) { const tt = l + w; if ((f||helv).widthOfTextAtSize(safe(tt), sz) > mw && l.trim()) { out.push(l.trimEnd()); l = w.trimStart(); } else l = tt; } if (l.trim() || ln === '') out.push(l.trimEnd()); }); return out; };
   const ensure = (h) => { if (y - h < M + 80) { page = doc.addPage([W, H]); pages.push(page); y = H - M; header(false); } };
   function header(first) {
+    const lineY = H - M - 46;  // Trennlinie tiefer → Logo hat Luft
     if (logo) {
-      const maxW = 110, ratio = logo.width / logo.height, lw = maxW, lh = maxW / ratio;
-      page.drawImage(logo, { x: M, y: H - M - lh + 2, width: lw, height: lh });
+      const maxW = 104, ratio = logo.width / logo.height, lh = maxW / ratio;
+      page.drawImage(logo, { x: M, y: lineY + 10, width: maxW, height: lh });  // Unterkante 10px über der Linie
     } else {
-      draw('LIFTARO', M, H - M - 10, bold, 13, BRAND);
+      draw('LIFTARO', M, lineY + 16, bold, 13, BRAND);
     }
-    dr('Ergebnis Reparatur-Vergleich', W - M, H - M - 10, helv, 9.5, MUTE);
-    page.drawLine({ start: { x: M, y: H - M - 26 }, end: { x: W - M, y: H - M - 26 }, thickness: 0.6, color: LIGHT });
-    y = first ? (H - M - 48) : (H - M - 62);
-    if (!first) draw('Ergebnis ' + angNr, M, H - M - 42, helv, 9, MUTE);
+    dr('Ergebnis Reparatur-Vergleich', W - M, lineY + 16, helv, 9.5, MUTE);
+    page.drawLine({ start: { x: M, y: lineY }, end: { x: W - M, y: lineY }, thickness: 0.6, color: LIGHT });
+    y = first ? (lineY - 22) : (lineY - 36);
+    if (!first) draw('Ergebnis ' + angNr, M, lineY - 16, helv, 9, MUTE);
   }
   header(true);
   // Empfänger-Adresse (links) + Meta (rechts)
   const yTop = y;
+  const leftColW = (W - M - 210) - M;  // bis zum Meta-Block rechts, mit Puffer
   draw('FUR DIE HAUSVERWALTUNG', M, y, bold, 8.5, MUTE); y -= 14;
-  draw(s.hvName || '(Hausverwaltung)', M, y, bold, 11, INK); y -= 13;
-  if (s.hvAnsprech) { draw('z.Hd. ' + s.hvAnsprech, M, y, helv, 10, INK); y -= 12; }
+  for (const l of wrap(s.hvName || '(Hausverwaltung)', bold, 11, leftColW)) { draw(l, M, y, bold, 11, INK); y -= 13; }
+  if (s.hvAnsprech) { for (const l of wrap('z.Hd. ' + s.hvAnsprech, helv, 10, leftColW)) { draw(l, M, y, helv, 10, INK); y -= 12; } }
   if (s.hvStrasse) { draw(s.hvStrasse, M, y, helv, 10, INK); y -= 12; }
   if (s.hvPlzOrt) { draw(s.hvPlzOrt, M, y, helv, 10, INK); y -= 12; }
   if (s.hvEmail) { draw(s.hvEmail, M, y, helv, 9.5, MUTE); y -= 12; }
