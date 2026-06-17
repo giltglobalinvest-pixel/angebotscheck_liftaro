@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.406';
+const APP_VERSION = 'V12.407';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33679,6 +33679,7 @@ async function openErgebnisCheckModal(emailId) {
     emailId, enriched, snap, hvEmail, hvName, hvAnsprech, hvStrasse, hvPlzOrt,
     chosenAnfId: chosen.anfId,
     originalEur: chosen.originalSumme || 0,
+    ersparnisOverride: null,   // null = automatisch (Original − Empfehlung)
     einschaetzung: '', empfehlung: '',
     anschreiben: '', beauftragung: '',
   };
@@ -33702,7 +33703,7 @@ function _eiErgebnisRenderModal() {
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   const orig = Number(s.originalEur) || 0;
   const ang  = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = Math.max(0, orig - ang);
+  const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - ang);
   const provision = ersparnis * (LV_LIFTARO_PROVISION_PCT / 100);
 
   const offerCards = s.enriched.map(e => {
@@ -33737,7 +33738,12 @@ function _eiErgebnisRenderModal() {
     +   '</div>'
     // 3) Ersparnis-Vorschau (in-place updatebar via id)
     +   (orig <= 0 ? '<div style="margin-top:8px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ Original-Preis nicht hinterlegt — bitte oben eintragen (bei alten LVs wurde der Vergleichspreis noch nicht gespeichert). Bei neuen LVs wird er automatisch aus dem Anhang übernommen.</div>' : '')
-    +   '<div id="ergErsparnisBox" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">' + _eiErgebnisErsparnisInner(orig, ang, chosen ? chosen.wnFirma : '') + '</div>'
+    +   '<div id="ergErsparnisBox" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">' + _eiErgebnisErsparnisInner(orig, ang, chosen ? chosen.wnFirma : '', s.ersparnisOverride) + '</div>'
+    +   '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:10px 14px;margin-top:8px">'
+    +     '<span style="font-size:12px;color:#475569;flex:1">Ersparnis manuell überschreiben <span style="color:#94a3b8">(leer = automatisch)</span></span>'
+    +     '<input type="text" inputmode="decimal" id="ergErsparnisInput" value="' + (s.ersparnisOverride != null ? String(s.ersparnisOverride).replace('.', ',') : '') + '" placeholder="auto" oninput="_eiErgebnisErsparnisEdit(this.value)" style="width:120px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--dr-f-mono);font-size:13px;text-align:right;outline:none">'
+    +     '<span style="color:#94a3b8;font-size:13px">€</span>'
+    +   '</div>'
     // 4) KI-Prompt
     +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">3 · KI-Einschätzung</div>'
     +   '<div class="field" style="margin-bottom:8px"><input type="text" id="ergPromptInput" placeholder="Optionaler Hinweis an die KI — z. B. „Lieferzeit betonen", „kurz halten"" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box"></div>'
@@ -33781,15 +33787,17 @@ function _eiErgebnisChooseAnf(anfId) {
 }
 window._eiErgebnisChooseAnf = _eiErgebnisChooseAnf;
 
-function _eiErgebnisErsparnisInner(orig, ang, chosenFirma) {
+function _eiErgebnisErsparnisInner(orig, ang, chosenFirma, override) {
   const esc = _esc;
-  const ersparnis = Math.max(0, orig - ang);
-  const provision = ersparnis * (LV_LIFTARO_PROVISION_PCT / 100);
-  const pct = orig > 0 ? Math.round((ersparnis / orig) * 100) : 0;
+  const diff = (override != null) ? Math.max(0, override) : Math.max(0, orig - ang);   // Brutto-Differenz
+  const provision = diff * (LV_LIFTARO_PROVISION_PCT / 100);
+  const netto = Math.max(0, diff - provision);                                          // tatsächliche Ersparnis nach Liftaro
+  const pct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
   return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Original-Angebot</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</span></div>'
     + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Empfohlenes Angebot (' + esc(chosenFirma || '') + ')</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(ang)) + '</span></div>'
-    + '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#15803d"><span>Ersparnis' + (pct ? ' (' + pct + ' %)' : '') + '</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(ersparnis)) + '</span></div>'
-    + '<div style="display:flex;justify-content:space-between;font-size:12px;color:#166534;margin-top:4px"><span>davon Liftaro-Vergütung (' + LV_LIFTARO_PROVISION_PCT + ' %)</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(provision)) + '</span></div>';
+    + '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:12.5px;color:#166534"><span>Differenz</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(diff)) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Liftaro-Vergütung (' + LV_LIFTARO_PROVISION_PCT + ' % der Differenz)</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(provision)) + '</span></div>'
+    + '<div style="border-top:2px solid #16a34a;margin:6px 0 0;padding-top:7px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#15803d"><span>Ihre tatsächliche Ersparnis' + (pct ? ' (' + pct + ' %)' : '') + '</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(netto)) + '</span></div>';
 }
 window._eiErgebnisErsparnisInner = _eiErgebnisErsparnisInner;
 
@@ -33802,10 +33810,28 @@ function _eiErgebnisOrigEdit(v) {
   const box = document.getElementById('ergErsparnisBox');
   if (box) {
     const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
-    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '');
+    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '', s.ersparnisOverride);
   }
 }
 window._eiErgebnisOrigEdit = _eiErgebnisOrigEdit;
+
+// V12.407: Ersparnis manuell überschreiben
+function _eiErgebnisErsparnisEdit(v) {
+  const s = window._eiErgebnisState; if (!s) return;
+  const t = String(v || '').trim();
+  if (t === '') { s.ersparnisOverride = null; }
+  else {
+    const raw = t.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(raw);
+    s.ersparnisOverride = (isNaN(n) || n < 0) ? null : n;
+  }
+  const box = document.getElementById('ergErsparnisBox');
+  if (box) {
+    const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '', s.ersparnisOverride);
+  }
+}
+window._eiErgebnisErsparnisEdit = _eiErgebnisErsparnisEdit;
 
 async function _eiErgebnisGenerateKI() {
   const s = window._eiErgebnisState; if (!s) return;
@@ -33814,7 +33840,7 @@ async function _eiErgebnisGenerateKI() {
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = Math.max(0, orig - ang);
+  const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - ang);
   const userHint = document.getElementById('ergPromptInput')?.value || '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generiere …'; }
   try {
@@ -33886,7 +33912,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const _arrB64 = (view) => { let bin = ''; for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000)); return btoa(bin); };
     const base64 = _arrB64(new Uint8Array(await blob.arrayBuffer()));
     const orig = Number(s.originalEur) || 0;
-    const ersparnis = Math.max(0, orig - chosen.angebotSumme);
+    const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - chosen.angebotSumme);
     const betreff = 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
     // V12.404: Anhänge — Ergebnis + Alternativangebot + Original-Angebot
     const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
@@ -34035,7 +34061,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const BRAND = rgb(0.49, 0.23, 0.93), GREEN = rgb(0.08, 0.5, 0.2), GREEN_BG = rgb(0.94, 0.99, 0.96);
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = Math.max(0, orig - ang);
+  const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - ang);
   const provision = ersparnis * (LV_LIFTARO_PROVISION_PCT / 100);
   const ersparnisPct = orig > 0 ? Math.round((ersparnis / orig) * 100) : 0;
   const dat = new Date().toLocaleDateString('de-DE');
@@ -34089,18 +34115,22 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     ensure(14); draw(l, M, y, helv, 10, INK); y -= 13;
   }
   y -= 12;
-  // Preisvergleich-Box
-  ensure(110);
+  // Preisvergleich-Box (Netto-Ersparnis nach Liftaro-Abzug als fette Schlusszeile)
+  const netto = Math.max(0, ersparnis - provision);
+  const nettoPct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
+  ensure(140);
   draw('Preisvergleich', M, y, bold, 12, INK); y -= 18;
-  const boxH = 92;
+  const boxH = 124;
   page.drawRectangle({ x: M, y: y - boxH, width: W - 2*M, height: boxH, color: GREEN_BG, borderColor: rgb(0.53, 0.94, 0.67), borderWidth: 1 });
   let by = y - 18;
-  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 20;
-  draw('Empfohlenes Angebot - ' + chosen.wnFirma, M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 8;
-  page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.6, color: rgb(0.53, 0.94, 0.67) }); by -= 18;
-  draw('Ihre Ersparnis' + (ersparnisPct ? ' (' + ersparnisPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(ersparnis), W - M - 16, by, bold, 16, GREEN); by -= 18;
-  draw('davon Liftaro-Vergutung (' + LV_LIFTARO_PROVISION_PCT + ' % der Ersparnis)', M + 16, by, helv, 9.5, MUTE); dr(fmtEur(provision), W - M - 16, by, helv, 9.5, MUTE);
-  y -= boxH + 18;
+  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 19;
+  draw('Empfohlenes Angebot - ' + chosen.wnFirma, M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 9;
+  page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.5, color: rgb(0.53, 0.94, 0.67) }); by -= 17;
+  draw('Differenz', M + 16, by, helv, 11, INK); dr(fmtEur(ersparnis), W - M - 16, by, helv, 11, INK); by -= 18;
+  draw('Liftaro-Vergutung (' + LV_LIFTARO_PROVISION_PCT + ' % der Differenz)', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(provision), W - M - 16, by, helv, 11, INK); by -= 11;
+  page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 1.2, color: GREEN }); by -= 20;
+  draw('Ihre tatsachliche Ersparnis' + (nettoPct ? ' (' + nettoPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(netto), W - M - 16, by, bold, 16, GREEN);
+  y -= boxH + 30;
   // Positionen
   ensure(40);
   draw('Positionen des empfohlenen Angebots', M, y, bold, 12, INK); y -= 16;
