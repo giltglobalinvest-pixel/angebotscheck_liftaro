@@ -6426,7 +6426,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.399';
+const APP_VERSION = 'V12.400';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11618,6 +11618,27 @@ async function _eiLvLoadSubmittedAll(forceReload) {
       }
       window._eiLvSubmittedByEmail = map;
       window._eiLvSubmittedAllLoaded = true;
+      // V12.400: Status auf 'offen' persistieren — nur für Emails die noch auf 'neu' stehen.
+      // Manuell gesetzte Status wie 'verworfen' oder 'wartend' werden nicht überschrieben.
+      try {
+        const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+        const updates = [];
+        for (const eid of Object.keys(map)) {
+          const rec = all.find(r => r && r._id === eid);
+          if (!rec) continue;
+          const cur = String(rec.status || 'neu');
+          if (cur === 'neu' || cur === '') {
+            rec.status = 'offen';
+            updates.push(eid);
+          }
+        }
+        // Async DB-Updates (best effort, typecast für neue Option)
+        for (const eid of updates) {
+          atUpdate('Emails', eid, { status: 'offen' }, { typecast: true })
+            .catch(e => console.warn('[V12.400] Email→offen fail:', eid, e.message));
+        }
+        if (updates.length) console.log('[V12.400] ' + updates.length + ' Email(s) auf Status offen gesetzt');
+      } catch (e) { console.warn('[V12.400] Status-Persist:', e.message); }
       return map;
     } catch (e) {
       console.warn('[V12.399] _eiLvLoadSubmittedAll:', e.message);
@@ -28945,6 +28966,7 @@ function _renderPosteingangCard(e) {
   const st = (e.status || 'neu');
   const stMap = {
     neu:            { col: '#2456E5', label: 'Neu',         bg: 'var(--dr-blue-soft)' },
+    offen:          { col: '#16a34a', label: '💰 Offen',    bg: 'var(--dr-green-soft)' },
     gesichtet:      { col: '#5C6E87', label: 'Gesichtet',   bg: 'var(--dr-surface-alt)' },
     in_bearbeitung: { col: '#D97706', label: 'In Bearb.',   bg: 'var(--dr-amber-soft)' },
     geantwortet:    { col: '#16A34A', label: 'Geantw.',     bg: 'var(--dr-green-soft)' },
@@ -30855,7 +30877,7 @@ function _eiUpdateSidebarCounts() {
   }
   // V12.371: 'gesichtet' und 'geantwortet' werden in 'in_bearbeitung' zusammengefasst
   // V12.373: Wiedervorlage-Status mitzählen + abgelaufene auf 'neu' zurücksetzen
-  let cAlle = 0, cSent = 0, byStatus = { neu:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, verworfen:0 };
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, offen:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, verworfen:0 };
   const todayIso = new Date().toISOString().slice(0, 10);
   const expireWvIds = []; // { recId, oldDatum }
   for (const r of all) {
@@ -36194,11 +36216,10 @@ async function _eiLvBuildAntwortPdf(sub) {
   const dat = subDate.toLocaleDateString('de-DE');
   const datIso = subDate.toISOString().slice(0, 10);
   const fmtEurStr = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' EUR';
-  // Einfachere Angebots-Nummer: LV-YYYYMMDD-XXXX (4 Zeichen aus Token)
+  // Einfache Angebotsnummer: Liftaro-XXXXX (5-stelliger Token-Slug)
   const tokenRaw = String(sub.anf.token || sub.anf.id || '').replace(/^(lva|lv)_/i, '');
-  const tokenShort = tokenRaw.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
-  const ymd = datIso.replace(/-/g, '');
-  const angNr = 'LV-' + ymd + '-' + (tokenShort || 'XXXX');
+  const tokenShort = tokenRaw.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
+  const angNr = 'Liftaro-' + (tokenShort || 'XXXXX');
   const totalPagesHolder = { total: 0 };
   const allPages = [];
   let page = doc.addPage([W, H]);
@@ -36244,14 +36265,17 @@ async function _eiLvBuildAntwortPdf(sub) {
     drawHeader(false);
   }
   function drawHeader(firstPage) {
-    // Liftaro-Branding-Banner ganz oben, neutral ohne Logo-Box
-    draw('LIFTARO', M, H - M - 4, bold, 11, COL_BRAND);
-    drawRight('Reparaturangebot', W - M, H - M - 4, helv, 9.5, COL_MUTE);
-    page.drawLine({ start: { x: M, y: H - M - 14 }, end: { x: W - M, y: H - M - 14 }, thickness: 0.6, color: COL_LIGHT });
+    // Liftaro-Branding-Banner: Titel + Untertitel auf Folgeseiten klar getrennt
+    draw('LIFTARO', M, H - M - 8, bold, 12, COL_BRAND);
+    drawRight('Reparaturangebot', W - M, H - M - 8, helv, 9.5, COL_MUTE);
+    page.drawLine({ start: { x: M, y: H - M - 18 }, end: { x: W - M, y: H - M - 18 }, thickness: 0.6, color: COL_LIGHT });
     if (!firstPage) {
-      draw('Angebot ' + angNr, M, H - M - 28, helv, 9, COL_MUTE);
+      // Untertitel deutlich UNTER der Linie, plus extra Abstand zum nächsten Inhalt
+      draw('Angebot ' + angNr, M, H - M - 34, helv, 9, COL_MUTE);
+      y = H - M - 56;
+    } else {
+      y = H - M - 42;
     }
-    y = H - M - 36;
   }
   drawHeader(true);
 
@@ -36322,13 +36346,12 @@ async function _eiLvBuildAntwortPdf(sub) {
   }
   y -= 16;
 
-  // Positionen-Tabelle
-  const colNr = M + 6, colTit = M + 38, colMen = 350, colEp = 430, colSum = W - M;
+  // Positionen-Tabelle — ohne Einzelpreis (vereinfacht, nur Gesamt)
+  const colNr = M + 6, colTit = M + 38, colMen = 400, colSum = W - M;
   page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: COL_LIGHT });
   draw('NR.', colNr, y - 8, bold, 8.5, COL_MUTE);
   draw('TECHNISCHE SPEZIFIKATION', colTit, y - 8, bold, 8.5, COL_MUTE);
   drawRight('MENGE', colMen + 30, y - 8, bold, 8.5, COL_MUTE);
-  drawRight('EINZELPREIS', colEp + 50, y - 8, bold, 8.5, COL_MUTE);
   drawRight('GESAMT', colSum, y - 8, bold, 8.5, COL_MUTE);
   y -= 18;
   page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
@@ -36339,10 +36362,10 @@ async function _eiLvBuildAntwortPdf(sub) {
     const einheit = String(p.einheit || '').trim();
     const preis = Number(p.preis_eur || 0);
     const summe = preis * menge;
-    const titelLines = wrap(titel, bold, 10, 290);
+    const titelLines = wrap(titel, bold, 10, 340);
     const bemerk = String(p.bemerkung || '').trim();
     const bulletLines = [];
-    if (bemerk) { bemerk.split(/\n+/).filter(Boolean).forEach(ln => bulletLines.push(...wrap('* ' + ln, helv, 9, 285))); }
+    if (bemerk) { bemerk.split(/\n+/).filter(Boolean).forEach(ln => bulletLines.push(...wrap('* ' + ln, helv, 9, 335))); }
     const blockH = 14 + Math.max(0, (titelLines.length - 1) * 12) + (bulletLines.length ? bulletLines.length * 11 + 6 : 0) + 10;
     ensureSpace(blockH);
     const yTop = y;
@@ -36351,7 +36374,6 @@ async function _eiLvBuildAntwortPdf(sub) {
     let yBul = y - titelLines.length * 12 - 2;
     for (const bl of bulletLines) { draw(bl, colTit, yBul, helv, 9, COL_MUTE); yBul -= 11; }
     drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
-    drawRight(preis > 0 ? fmtEurStr(preis).replace(' EUR', '') : '-', colEp + 50, yTop, helv, 10, COL_INK);
     drawRight(summe > 0 ? fmtEurStr(summe) : '-', colSum, yTop, bold, 10, COL_INK);
     y -= blockH;
     page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: COL_LIGHT });
