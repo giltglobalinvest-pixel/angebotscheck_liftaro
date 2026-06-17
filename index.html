@@ -6424,7 +6424,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.397';
+const APP_VERSION = 'V12.398';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -36104,29 +36104,51 @@ function _eiLvHtmlToText(html) {
 }
 
 async function _eiLvBuildAntwortPdf(sub) {
-  // Layout identisch zum Landing-Builder (Aszendio-Stil)
+  // V12.398: Redesign — neutrales Layout, Liftaro-Branding, mehr Einleitung,
+  // ASCII-only Bestätigung, HV-Beauftragungs-Block am Ende
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const doc = await PDFDocument.create();
   const helv = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const W = 595, H = 842, M = 56;
-  const COL_INK    = rgb(0.06, 0.10, 0.19);
-  const COL_MUTE   = rgb(0.42, 0.49, 0.61);
-  const COL_LIGHT  = rgb(0.86, 0.89, 0.92);
-  const COL_BG_LIGHT = rgb(0.96, 0.97, 0.98);
+  const COL_INK = rgb(0.06, 0.10, 0.19);
+  const COL_MUTE = rgb(0.42, 0.49, 0.61);
+  const COL_LIGHT = rgb(0.86, 0.89, 0.92);
+  const COL_BG = rgb(0.96, 0.97, 0.98);
+  const COL_BRAND = rgb(0.49, 0.23, 0.93);
   const VAT = 0.19;
   const sumNetto = sub.sum || 0;
-  const sumVat   = Math.round(sumNetto * VAT * 100) / 100;
+  const sumVat = Math.round(sumNetto * VAT * 100) / 100;
   const sumBrutto = Math.round((sumNetto + sumVat) * 100) / 100;
-  const dat = new Date(sub.anf.submitted_at || Date.now()).toISOString().slice(0, 10);
+  const subDate = new Date(sub.anf.submitted_at || Date.now());
+  const dat = subDate.toLocaleDateString('de-DE');
+  const datIso = subDate.toISOString().slice(0, 10);
   const fmtEurStr = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' EUR';
-  const angNr = sub.anf.id || 'LV';
+  // Einfachere Angebots-Nummer: LV-YYYYMMDD-XXXX (4 Zeichen aus Token)
+  const tokenRaw = String(sub.anf.token || sub.anf.id || '').replace(/^(lva|lv)_/i, '');
+  const tokenShort = tokenRaw.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
+  const ymd = datIso.replace(/-/g, '');
+  const angNr = 'LV-' + ymd + '-' + (tokenShort || 'XXXX');
   const totalPagesHolder = { total: 0 };
+  const allPages = [];
   let page = doc.addPage([W, H]);
+  allPages.push(page);
   let y = H - M;
-  const allPages = [page];
-  function newPage() { page = doc.addPage([W, H]); allPages.push(page); y = H - M; drawHeader(false); }
-  function safe(s) { return String(s == null ? '' : s).replace(/[^\x00-\xff]/g, '?'); }
+
+  // Helpers ----------------------------------------------------------------
+  function safe(s) {
+    // Latin1 + bekannte typographische Zeichen → durch nutzbare ersetzen
+    return String(s == null ? '' : s)
+      .replace(/[„""]/g, '"')
+      .replace(/['']/g, "'")
+      .replace(/[–—]/g, '-')
+      .replace(/[•●]/g, '*')
+      .replace(/[→]/g, '->')
+      .replace(/[✓✔]/g, 'OK')
+      .replace(/[✕✖]/g, 'X')
+      .replace(/…/g, '...')
+      .replace(/[^\x00-\xff]/g, '?');
+  }
   function tw(font, sz, txt) { return font.widthOfTextAtSize(safe(txt), sz); }
   function wrap(txt, font, sz, maxW) {
     const out = [];
@@ -36144,53 +36166,93 @@ async function _eiLvBuildAntwortPdf(sub) {
   }
   function draw(txt, x, yy, font, sz, color) { page.drawText(safe(txt), { x, y: yy, size: sz, font: font || helv, color: color || COL_INK }); }
   function drawRight(txt, xRight, yy, font, sz, color) { draw(txt, xRight - tw(font || helv, sz, txt), yy, font, sz, color); }
-  function ensureSpace(h) { if (y - h < M + 80) newPage(); }
+  function ensureSpace(h) { if (y - h < M + 90) newPage(); }
+  function newPage() {
+    page = doc.addPage([W, H]);
+    allPages.push(page);
+    y = H - M;
+    drawHeader(false);
+  }
   function drawHeader(firstPage) {
-    const wnName = String(sub.wn.firma || 'Wartungsnehmer').toLowerCase();
-    const logoTxt = wnName.replace(/\s+/g, '').slice(0, 24);
-    const padX = 12, padY = 8;
-    const tw_ = bold.widthOfTextAtSize(safe(logoTxt), 10);
-    const boxW = tw_ + 2*padX, boxH = 10 + 2*padY;
-    const boxX = W - M - boxW, boxY = H - M - boxH;
-    page.drawRectangle({ x: boxX, y: boxY, width: boxW, height: boxH, borderColor: COL_INK, borderWidth: 0.8 });
-    draw(logoTxt, boxX + padX, boxY + padY + 1, bold, 10, COL_INK);
-    if (!firstPage) draw('Angebot - ' + (sub.wn.firma || 'Angebot'), M, H - M - boxH + padY + 1, helv, 9, COL_MUTE);
-    page.drawLine({ start: { x: M, y: H - M - boxH - 10 }, end: { x: W - M, y: H - M - boxH - 10 }, thickness: 0.5, color: COL_LIGHT });
-    y = Math.min(y, H - M - boxH - 28);
+    // Liftaro-Branding-Banner ganz oben, neutral ohne Logo-Box
+    draw('LIFTARO', M, H - M - 4, bold, 11, COL_BRAND);
+    drawRight('Reparaturangebot', W - M, H - M - 4, helv, 9.5, COL_MUTE);
+    page.drawLine({ start: { x: M, y: H - M - 14 }, end: { x: W - M, y: H - M - 14 }, thickness: 0.6, color: COL_LIGHT });
+    if (!firstPage) {
+      draw('Angebot ' + angNr, M, H - M - 28, helv, 9, COL_MUTE);
+    }
+    y = H - M - 36;
   }
   drawHeader(true);
-  draw(sub.wn.firma || '—', M, H - M - 22, helv, 9, COL_INK);
+
+  // Generiert von Liftaro - Hinweis links oben
+  draw('Im Auftrag von ' + (sub.snap.hv_name || 'Hausverwaltung'), M, y, helv, 9, COL_MUTE);
+  y -= 22;
+
+  // EMPFÄNGER + Meta-Block nebeneinander
   const yMetaStart = y;
-  draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
-  draw(sub.snap.hv_name || '(Hausverwaltung)', M, y, bold, 11, COL_INK); y -= 13;
+  draw('EMPFANGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
+  draw(sub.snap.hv_name || '(Hausverwaltung)', M, y, bold, 11, COL_INK); y -= 14;
   if (sub.snap.hv_email) { draw('z.Hd. ' + sub.snap.hv_email, M, y, helv, 10, COL_INK); y -= 12; }
-  const metaX1 = W - M - 200, metaX2 = W - M;
+
+  // Meta-Block rechts
+  const metaX1 = W - M - 220, metaX2 = W - M;
   let yMeta = yMetaStart;
-  const metaRow = (lbl, val, vBold) => { draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE); drawRight(val, metaX2, yMeta, vBold ? bold : helv, 10, COL_INK); yMeta -= 16; };
+  const metaRow = (lbl, val, vBold) => {
+    draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE);
+    drawRight(val, metaX2, yMeta, vBold ? bold : helv, 10, COL_INK);
+    yMeta -= 16;
+  };
   metaRow('Datum:', dat);
   metaRow('Angebot-Nr.:', angNr, true);
-  metaRow('Bearbeiter:', sub.sigName || '—');
-  y = Math.min(y, yMeta) - 14;
-  draw('Angebot ' + angNr, M, y, bold, 22, COL_INK); y -= 28;
+  metaRow('Anbieter:', sub.wn.firma || '—');
+  metaRow('Unterzeichner:', sub.sigName || '—');
+
+  y = Math.min(y, yMeta) - 22;
+
+  // Großer Titel
+  draw('Angebot', M, y, bold, 22, COL_INK);
+  draw(angNr, M, y - 28, helv, 13, COL_MUTE);
+  y -= 50;
+
+  // Anlage-Block mit linker Akzent-Linie und besserem Spacing
   const anlContent = [];
   if (sub.snap.standort)     anlContent.push(['Anlage-Standort:', sub.snap.standort]);
   if (sub.snap.fabriknummer) anlContent.push(['Fabriknummer:', sub.snap.fabriknummer]);
   if (sub.snap.hersteller && sub.snap.hersteller !== 'OTIS') anlContent.push(['Hersteller:', sub.snap.hersteller]);
   if (anlContent.length) {
-    const anlH = anlContent.length * 14 + 4;
-    page.drawRectangle({ x: M, y: y - anlH, width: 2.5, height: anlH, color: COL_INK });
-    let ya = y - 4;
-    for (const [lbl, val] of anlContent) { draw(lbl, M + 14, ya - 8, helv, 9, COL_MUTE); draw(val, M + 140, ya - 8, helv, 10, COL_INK); ya -= 14; }
-    y -= anlH + 10;
+    const rowH = 16;
+    const padTop = 8;
+    const anlH = anlContent.length * rowH + 2 * padTop;
+    page.drawRectangle({ x: M, y: y - anlH, width: 3, height: anlH, color: COL_INK });
+    let ya = y - padTop;
+    for (const [lbl, val] of anlContent) {
+      draw(lbl, M + 16, ya - 10, helv, 9, COL_MUTE);
+      draw(val, M + 150, ya - 10, helv, 10, COL_INK);
+      ya -= rowH;
+    }
+    y -= anlH + 22;
   }
-  y -= 4;
-  draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 18;
-  const intro1 = wrap('vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen nachfolgendes Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + '.', helv, 10, W - 2*M);
-  for (const l of intro1) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
-  y -= 4;
-  const intro2 = wrap('Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen.', helv, 10, W - 2*M);
-  for (const l of intro2) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
-  y -= 14;
+
+  // Erweiterte Einleitung
+  draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 20;
+  const intro = [
+    'vielen Dank fur die Ubermittlung Ihrer Reparaturanfrage uber die Liftaro-Plattform.',
+    '',
+    'Im Auftrag der Hausverwaltung ' + (sub.snap.hv_name || '') + ' wurde von Liftaro ein neutrales Leistungsverzeichnis fur die angefragten Reparaturarbeiten am Aufzug Fn ' + (sub.snap.fabriknummer || '') + ' erstellt und dem Wartungsnehmer ' + (sub.wn.firma || '') + ' zur Preiskalkulation ubermittelt.',
+    '',
+    'Der Wartungsnehmer hat die einzelnen Positionen gepruft, mit seinen Preisen und Lieferzeiten versehen und das Angebot rechtsverbindlich bestatigt. Das nachstehende Angebot ist somit unmittelbar von ' + (sub.wn.firma || 'dem Wartungsnehmer') + ' abgegeben und basiert eins-zu-eins auf den von der Hausverwaltung angefragten Leistungen.',
+    '',
+    'Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehorigen Preise den nachstehenden Positionen. Fur Ruckfragen stehen wir Ihnen jederzeit gerne zur Verfugung.',
+  ];
+  for (const para of intro) {
+    if (para === '') { y -= 8; continue; }
+    const wr = wrap(para, helv, 10, W - 2*M);
+    for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  }
+  y -= 16;
+
+  // Positionen-Tabelle
   const colNr = M + 6, colTit = M + 38, colMen = 350, colEp = 430, colSum = W - M;
   page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: COL_LIGHT });
   draw('NR.', colNr, y - 8, bold, 8.5, COL_MUTE);
@@ -36219,21 +36281,28 @@ async function _eiLvBuildAntwortPdf(sub) {
     let yBul = y - titelLines.length * 12 - 2;
     for (const bl of bulletLines) { draw(bl, colTit, yBul, helv, 9, COL_MUTE); yBul -= 11; }
     drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
-    drawRight(preis > 0 ? fmtEurStr(preis).replace(' EUR', '') : '—', colEp + 50, yTop, helv, 10, COL_INK);
-    drawRight(summe > 0 ? fmtEurStr(summe) : '—', colSum, yTop, bold, 10, COL_INK);
+    drawRight(preis > 0 ? fmtEurStr(preis).replace(' EUR', '') : '-', colEp + 50, yTop, helv, 10, COL_INK);
+    drawRight(summe > 0 ? fmtEurStr(summe) : '-', colSum, yTop, bold, 10, COL_INK);
     y -= blockH;
     page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: COL_LIGHT });
     y -= 4;
   }
   y -= 6; ensureSpace(60);
   const sumLblX = W - M - 220;
-  const drawSumRow = (lbl, val, big) => { draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK); drawRight(val, colSum, y, big ? bold : helv, big ? 12 : 10, COL_INK); y -= big ? 18 : 15; };
+  const drawSumRow = (lbl, val, big) => {
+    draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK);
+    drawRight(val, colSum, y, big ? bold : helv, big ? 12 : 10, COL_INK);
+    y -= big ? 18 : 15;
+  };
   drawSumRow('Gesamtnettopreis', fmtEurStr(sumNetto));
-  drawSumRow('Zuzüglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
+  drawSumRow('Zuzuglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
   page.drawLine({ start: { x: sumLblX, y: y + 4 }, end: { x: colSum, y: y + 4 }, thickness: 0.6, color: COL_INK });
   y -= 6;
   drawSumRow('Gesamtbruttopreis', fmtEurStr(sumBrutto), true);
-  y -= 6; ensureSpace(120);
+  y -= 8;
+
+  // Konditionen
+  ensureSpace(120);
   draw('Konditionen', M, y, bold, 14, COL_INK); y -= 4;
   page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 80, y: y - 2 }, thickness: 1.2, color: COL_INK });
   y -= 18;
@@ -36242,29 +36311,77 @@ async function _eiLvBuildAntwortPdf(sub) {
     const bodyLines = wrap(body, helv, 10, W - 2*M - 24);
     const h = 18 + bodyLines.length * 13 + 8;
     ensureSpace(h + 8);
-    page.drawRectangle({ x: M, y: y - h, width: W - 2*M, height: h, color: COL_BG_LIGHT });
+    page.drawRectangle({ x: M, y: y - h, width: W - 2*M, height: h, color: COL_BG });
     draw(titel, M + 12, y - 14, bold, 10.5, COL_INK);
     let yy = y - 28;
     for (const l of bodyLines) { draw(l, M + 12, yy, helv, 10, COL_INK); yy -= 13; }
     y -= h + 6;
   };
   if (sub.lieferzeitGesamt) kondBox('Lieferzeit', sub.lieferzeitGesamt);
-  kondBox('Preisbasis', 'Festpreis, gültig 60 Tage ab Angebotsdatum');
+  kondBox('Preisbasis', 'Festpreis, gultig 60 Tage ab Angebotsdatum');
   kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
-  kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
-  y -= 10; ensureSpace(80);
+  kondBox('Gewahrleistung', '24 Monate auf neu eingebaute Teile gemass § 634a BGB');
+
+  // Bestätigung des Wartungsnehmers (mit erläuterndem Satz, ohne ?-Zeichen)
+  y -= 10; ensureSpace(110);
   page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
-  y -= 14;
-  draw('VERBINDLICHE BESTÄTIGUNG', M, y, bold, 8.5, COL_MUTE); y -= 16;
+  y -= 16;
+  draw('Bestatigung des Wartungsnehmers', M, y, bold, 12, COL_INK); y -= 18;
+  const bestSatz = sub.sigMode === 'drawn'
+    ? ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben und mit handschriftlicher Unterschrift bestatigt.')
+    : ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben. Die Bestatigung erfolgte digital gemass § 127 i.V.m. § 126b BGB (Textform).');
+  const bestLines = wrap(bestSatz, helv, 10, W - 2*M);
+  for (const l of bestLines) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  y -= 8;
   if (sub.sigMode === 'drawn' && sub.signaturDataUrl) {
     try { const png = await doc.embedPng(sub.signaturDataUrl); page.drawImage(png, { x: M, y: y - 50, width: 180, height: 50 }); y -= 56; } catch(_) {}
-  } else { draw('✓ Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, COL_INK); y -= 14; }
-  draw('Unterzeichnet von: ' + (sub.sigName || '—'), M, y, bold, 10, COL_INK); y -= 13;
+  }
+  draw('Unterzeichnet von: ' + (sub.sigName || '-'), M, y, bold, 10, COL_INK); y -= 13;
   draw('Datum: ' + dat, M, y, helv, 10, COL_MUTE);
+
+  // HV-Beauftragungs-Block auf neuer Seite
+  newPage();
+  draw('Beauftragung durch die Hausverwaltung', M, y, bold, 14, COL_INK); y -= 4;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 200, y: y - 2 }, thickness: 1.2, color: COL_INK });
+  y -= 22;
+  const beaufrText = [
+    'Hiermit beauftragt die Hausverwaltung ' + (sub.snap.hv_name || '') + ' den Wartungsnehmer ' + (sub.wn.firma || '') + ' mit der Durchfuhrung der vorstehend angebotenen Leistungen zu den genannten Preisen und Konditionen.',
+    '',
+    'Die Hausverwaltung erklart, zur Erteilung dieses Auftrags im Namen der Eigentumergemeinschaft / des Eigentumers bevollmachtigt zu sein. Mit der Unterschrift wird der Auftrag verbindlich erteilt und das vorstehende Angebot zur Grundlage der vertraglichen Vereinbarung gemacht.',
+    '',
+    'Der Auftrag wird wirksam mit Zugang der unterzeichneten Bestatigung beim Wartungsnehmer.',
+  ];
+  for (const para of beaufrText) {
+    if (para === '') { y -= 8; continue; }
+    const wr = wrap(para, helv, 10, W - 2*M);
+    for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  }
+  y -= 30;
+
+  // Unterschriftsfeld (zwei Spalten: Ort/Datum | Unterschrift)
+  const colWidthSig = (W - 2*M - 40) / 2;
+  const sigYTop = y;
+  // Spalte 1: Ort, Datum
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWidthSig, y: y - 2 }, thickness: 0.6, color: COL_INK });
+  draw('Ort, Datum', M, y - 14, helv, 9, COL_MUTE);
+  // Spalte 2: Unterschrift HV
+  const sigCol2X = M + colWidthSig + 40;
+  page.drawLine({ start: { x: sigCol2X, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.6, color: COL_INK });
+  draw('Unterschrift Hausverwaltung', sigCol2X, y - 14, helv, 9, COL_MUTE);
+  y = sigYTop - 50;
+
+  // Name in Druckbuchstaben darunter
+  draw('Name in Druckbuchstaben:', M, y, helv, 9, COL_MUTE); y -= 14;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWidthSig + 40 + colWidthSig, y: y - 2 }, thickness: 0.5, color: COL_LIGHT });
+  y -= 22;
+  draw('Funktion / Position:', M, y, helv, 9, COL_MUTE); y -= 14;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWidthSig + 40 + colWidthSig, y: y - 2 }, thickness: 0.5, color: COL_LIGHT });
+
+  // AGB auf neue Seite
   const klauselnText = _eiLvHtmlToText(sub.klauseln);
   if (klauselnText) {
     newPage();
-    draw('Allgemeine Geschaeftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
+    draw('Allgemeine Geschaftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
     page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
     y -= 22;
     const lines = klauselnText.split('\n');
@@ -36276,6 +36393,8 @@ async function _eiLvBuildAntwortPdf(sub) {
       else { const wr = wrap(t, helv, 10, W - 2*M); for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; } }
     }
   }
+
+  // Footer auf jeder Seite — Liftaro-Branding zentral, Wartungsnehmer-Daten rechts
   totalPagesHolder.total = allPages.length;
   allPages.forEach((pg, idx) => {
     const fY = 70;
@@ -36287,8 +36406,12 @@ async function _eiLvBuildAntwortPdf(sub) {
       let yy = fY + 6;
       for (const l of lines) { if (!l) continue; pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8.5, font: helv, color: COL_MUTE }); yy -= 10; }
     };
-    drawCol(0, sub.wn.firma || '—', [sub.wn.strasse || '', [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' ')]);
-    drawCol(1, 'Kontakt', [sub.wn.email || '', sub.wn.web || '']);
+    drawCol(0, 'Liftaro', ['Vermittelt uber check.liftaro.de', 'check@liftaro.de']);
+    drawCol(1, sub.wn.firma || '-', [
+      sub.wn.strasse || '',
+      [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' '),
+      sub.wn.email || '',
+    ]);
     drawCol(2, 'Rechtliches', [
       sub.wn.hrb_nummer ? (sub.wn.hrb_nummer + (sub.wn.hrb_gericht ? ' AG ' + sub.wn.hrb_gericht : '')) : '',
       sub.wn.ust_id ? ('USt-IdNr. ' + sub.wn.ust_id) : '',
