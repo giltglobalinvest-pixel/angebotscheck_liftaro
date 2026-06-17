@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.8.0';
+  const APP_VERSION = 'v1.9.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -759,189 +759,321 @@
   }
 
   async function buildAngebotPdf(sub) {
+    // v1.9: Layout am Aszendio-Beispiel (Frequenzumrichter-Angebot ANG-2487) orientiert
     const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
     const doc = await PDFDocument.create();
     const helv = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-    const W = 595, H = 842, M = 50;     // A4
-    const ink = rgb(0.06, 0.10, 0.19);
-    const mute = rgb(0.36, 0.43, 0.55);
-    const accent = rgb(0.49, 0.23, 0.93);
+    const W = 595, H = 842, M = 56;
+    const COL_INK    = rgb(0.06, 0.10, 0.19);
+    const COL_MUTE   = rgb(0.42, 0.49, 0.61);
+    const COL_LIGHT  = rgb(0.86, 0.89, 0.92);
+    const COL_BG_LIGHT = rgb(0.96, 0.97, 0.98);
+    const COL_ACCENT = rgb(0.06, 0.10, 0.19);
+    // Brutto-Berechnung
+    const VAT = 0.19;
+    const sumNetto = sub.sum || 0;
+    const sumVat   = Math.round(sumNetto * VAT * 100) / 100;
+    const sumBrutto = Math.round((sumNetto + sumVat) * 100) / 100;
+    const today = new Date(sub.anf.submitted_at || Date.now());
+    const dat = today.toISOString().slice(0, 10);
+    const fmtEurStr = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' EUR';
+    const angNr = sub.anf.id || 'LV';
+    const totalPagesHolder = { total: 0 };  // wird am Ende gesetzt
+
     let page = doc.addPage([W, H]);
     let y = H - M;
-    const wrap = (s, font, sz, maxW) => {
-      const words = String(s || '').replace(/\r/g,'').split(/(\s+)/);
-      const out = []; let line = '';
-      for (const w of words) {
-        const test = line + w;
-        if (font.widthOfTextAtSize(test, sz) > maxW && line.trim()) { out.push(line.trimEnd()); line = w.trimStart(); }
-        else line = test;
-      }
-      if (line.trim()) out.push(line.trimEnd());
-      return out;
-    };
-    const drawText = (s, x, ypos, font, sz, color) => page.drawText(String(s || '').replace(/[^\x00-\xff]/g, '?'), { x, y: ypos, size: sz, font: font || helv, color: color || ink });
-    const ensure = (need) => {
-      if (y - need < M) { page = doc.addPage([W, H]); y = H - M; }
-    };
-    const para = (s, font, sz, color, x, maxW) => {
-      const lines = String(s || '').split('\n');
-      for (const ln of lines) {
-        const wrapped = wrap(ln, font || helv, sz, maxW);
-        if (!wrapped.length) { ensure(sz + 4); y -= sz + 4; continue; }
-        for (const w of wrapped) {
-          ensure(sz + 4);
-          drawText(w, x, y, font, sz, color);
-          y -= sz + 4;
-        }
-      }
-    };
+    let currentPageIdx = 0;
+    const allPages = [page];
 
-    // Header
-    page.drawRectangle({ x: 0, y: H - 80, width: W, height: 80, color: rgb(0.055, 0.137, 0.349) });
-    drawText('ANGEBOT', M, H - 38, bold, 18, rgb(1,1,1));
-    drawText('Liftaro · Angebotsanfrage Fn ' + (sub.snap.fabriknummer || '—'), M, H - 60, helv, 10, rgb(0.85, 0.93, 1));
-    drawText(sub.anf.id || '', W - M - bold.widthOfTextAtSize(sub.anf.id || '', 9), H - 38, bold, 9, rgb(0.85, 0.93, 1));
-    y = H - 110;
-
-    // Brief-Kopf: Absender (WN) | Empfänger (HV)
-    const halfW = (W - 2*M - 20) / 2;
-    const yStart = y;
-    // Absender (Wartungsnehmer)
-    drawText('ABSENDER', M, y, bold, 9, accent); y -= 14;
-    drawText(sub.wn.firma || '—', M, y, bold, 11, ink); y -= 13;
-    if (sub.wn.ansprechperson) { drawText(sub.wn.ansprechperson, M, y, helv, 10, ink); y -= 12; }
-    if (sub.wn.strasse) { drawText(sub.wn.strasse, M, y, helv, 10, ink); y -= 12; }
-    const plzort = [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' ');
-    if (plzort) { drawText(plzort, M, y, helv, 10, ink); y -= 12; }
-    if (sub.wn.email) { drawText(sub.wn.email, M, y, helv, 9, mute); y -= 11; }
-    if (sub.wn.telefon) { drawText(sub.wn.telefon, M, y, helv, 9, mute); y -= 11; }
-    const yAbsenderEnd = y;
-    // Empfänger (HV) — rechte Spalte
-    let yR = yStart;
-    const xR = M + halfW + 20;
-    drawText('EMPFÄNGER', xR, yR, bold, 9, accent); yR -= 14;
-    drawText(sub.snap.hv_name || '(Hausverwaltung)', xR, yR, bold, 11, ink); yR -= 13;
-    if (sub.snap.hv_email) { drawText(sub.snap.hv_email, xR, yR, helv, 10, ink); yR -= 12; }
-    if (sub.snap.standort) {
-      const wrapped = wrap('Objekt: ' + sub.snap.standort, helv, 10, halfW);
-      for (const w of wrapped) { drawText(w, xR, yR, helv, 10, ink); yR -= 12; }
+    function newPage() {
+      page = doc.addPage([W, H]);
+      allPages.push(page);
+      currentPageIdx++;
+      y = H - M;
+      drawHeader(false);
     }
-    if (sub.snap.fabriknummer) { drawText('Aufzug: Fn ' + sub.snap.fabriknummer + (sub.snap.hersteller ? ' · ' + sub.snap.hersteller : ''), xR, yR, helv, 10, ink); yR -= 12; }
-    y = Math.min(yAbsenderEnd, yR) - 18;
+    // Helpers ----------------------------------------------------------------
+    function safe(s) { return String(s == null ? '' : s).replace(/[^\x00-\xff]/g, '?'); }
+    function tw(font, sz, txt) { return font.widthOfTextAtSize(safe(txt), sz); }
+    function wrap(txt, font, sz, maxW) {
+      const out = [];
+      String(txt || '').split('\n').forEach(ln => {
+        const words = ln.split(/(\s+)/);
+        let line = '';
+        for (const w of words) {
+          const test = line + w;
+          if (font.widthOfTextAtSize(safe(test), sz) > maxW && line.trim()) { out.push(line.trimEnd()); line = w.trimStart(); }
+          else line = test;
+        }
+        if (line.trim() || ln === '') out.push(line.trimEnd());
+      });
+      return out;
+    }
+    function draw(txt, x, yy, font, sz, color) {
+      page.drawText(safe(txt), { x, y: yy, size: sz, font: font || helv, color: color || COL_INK });
+    }
+    function drawRight(txt, xRight, yy, font, sz, color) {
+      const w = tw(font || helv, sz, txt);
+      draw(txt, xRight - w, yy, font, sz, color);
+    }
+    function ensureSpace(h) {
+      if (y - h < M + 80) newPage();
+    }
 
-    // Datum + Angebots-Nr
-    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: rgb(0.88, 0.91, 0.94) });
-    y -= 16;
-    const dat = new Date(sub.anf.submitted_at || Date.now()).toLocaleDateString('de-DE');
-    drawText('Angebot vom ' + dat, M, y, bold, 12, ink);
-    drawText('Anfrage-ID: ' + (sub.anf.id || '—'), W - M - helv.widthOfTextAtSize('Anfrage-ID: ' + (sub.anf.id || '—'), 9), y, helv, 9, mute);
-    y -= 22;
+    // Header (oben rechts: Logo-Box mit WN-Name, oben links: WN-Name als kleiner Text)
+    function drawHeader(firstPage) {
+      // Logo-Box rechts oben mit dünnem Rahmen
+      const wnName = String(sub.wn.firma || 'Wartungsnehmer').toLowerCase();
+      const logoTxt = wnName.replace(/\s+/g, '').slice(0, 24);
+      const logoSz = 10;
+      const padX = 12, padY = 8;
+      const tw_ = bold.widthOfTextAtSize(safe(logoTxt), logoSz);
+      const boxW = tw_ + 2*padX;
+      const boxH = logoSz + 2*padY;
+      const boxX = W - M - boxW;
+      const boxY = H - M - boxH;
+      page.drawRectangle({ x: boxX, y: boxY, width: boxW, height: boxH, borderColor: COL_INK, borderWidth: 0.8 });
+      draw(logoTxt, boxX + padX, boxY + padY + 1, bold, logoSz, COL_INK);
+      if (!firstPage) {
+        // Folgeseiten: links oben "Angebot - <Firma>"
+        const t = 'Angebot - ' + (sub.wn.firma || 'Angebot');
+        draw(t, M, H - M - boxH + padY + 1, helv, 9, COL_MUTE);
+      }
+      // Trennlinie unter Header
+      page.drawLine({ start: { x: M, y: H - M - boxH - 10 }, end: { x: W - M, y: H - M - boxH - 10 }, thickness: 0.5, color: COL_LIGHT });
+      y = Math.min(y, H - M - boxH - 28);
+    }
+    drawHeader(true);
+
+    // Auf Seite 1: zusätzlich "Firma" links oben
+    draw(sub.wn.firma || '—', M, H - M - 22, helv, 9, COL_INK);
+
+    // EMPFÄNGER + Meta-Block
+    const yMetaStart = y;
+    draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
+    draw(sub.snap.hv_name || '(Hausverwaltung)', M, y, bold, 11, COL_INK); y -= 13;
+    if (sub.snap.hv_email) { draw('z.Hd. ' + (sub.snap.hv_email || ''), M, y, helv, 10, COL_INK); y -= 12; }
+    // Adresse (falls in snap vorhanden)
+    const hvAdr = String(sub.snap.hv_strasse || '').trim();
+    if (hvAdr) { draw(hvAdr, M, y, helv, 10, COL_INK); y -= 12; }
+    const hvPlzOrt = [sub.snap.hv_plz, sub.snap.hv_ort].filter(Boolean).join(' ').trim();
+    if (hvPlzOrt) { draw(hvPlzOrt, M, y, helv, 10, COL_INK); y -= 12; }
+
+    // Meta rechts: Datum / Angebot-Nr / Bearbeiter
+    const metaX1 = W - M - 200, metaX2 = W - M;
+    let yMeta = yMetaStart;
+    const metaRow = (lbl, val, vBold) => {
+      draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE);
+      drawRight(val, metaX2, yMeta, vBold ? bold : helv, 10, COL_INK);
+      yMeta -= 16;
+    };
+    metaRow('Datum:', dat);
+    metaRow('Angebot-Nr.:', angNr, true);
+    metaRow('Bearbeiter:', sub.sigName || '—');
+
+    y = Math.min(y, yMeta) - 14;
+
+    // Großer Titel
+    draw('Angebot ' + angNr, M, y, bold, 22, COL_INK); y -= 28;
+
+    // Anlagen-Block mit linker Vertical-Linie
+    const anlBoxY = y;
+    const anlContent = [];
+    if (sub.snap.standort)     anlContent.push(['Anlage-Standort:', sub.snap.standort]);
+    if (sub.snap.fabriknummer) anlContent.push(['Fabriknummer:', sub.snap.fabriknummer]);
+    if (sub.snap.hersteller && sub.snap.hersteller !== 'OTIS') anlContent.push(['Hersteller:', sub.snap.hersteller]);
+    if (anlContent.length) {
+      const anlH = anlContent.length * 14 + 4;
+      page.drawRectangle({ x: M, y: y - anlH, width: 2.5, height: anlH, color: COL_INK });
+      let ya = y - 4;
+      for (const [lbl, val] of anlContent) {
+        draw(lbl, M + 14, ya - 8, helv, 9, COL_MUTE);
+        draw(val, M + 140, ya - 8, helv, 10, COL_INK);
+        ya -= 14;
+      }
+      y -= anlH + 10;
+    }
 
     // Anschreiben
-    para('Sehr geehrte Damen und Herren,', helv, 10, ink, M, W - 2*M);
     y -= 4;
-    para('wir freuen uns, Ihnen das nachstehende Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + ' unterbreiten zu dürfen. Alle Preise verstehen sich zzgl. der gesetzlichen Mehrwertsteuer.', helv, 10, ink, M, W - 2*M);
+    draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 18;
+    const intro1 = wrap('vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen nachfolgendes Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + '.', helv, 10, W - 2*M);
+    for (const l of intro1) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+    y -= 4;
+    const intro2 = wrap('Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen. Für Rückfragen stehen wir Ihnen jederzeit gerne zur Verfügung.', helv, 10, W - 2*M);
+    for (const l of intro2) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
     y -= 14;
 
-    // Positionen — Tabelle
-    drawText('POSITIONEN', M, y, bold, 9, accent); y -= 14;
-    page.drawRectangle({ x: M, y: y - 4, width: W - 2*M, height: 18, color: rgb(0.96, 0.97, 0.98) });
-    drawText('Nr.', M + 6, y + 2, bold, 9, mute);
-    drawText('Leistung', M + 36, y + 2, bold, 9, mute);
-    drawText('Menge', M + 330, y + 2, bold, 9, mute);
-    drawText('Einzelpreis', W - M - 100, y + 2, bold, 9, mute);
-    drawText('Summe', W - M - 50, y + 2, bold, 9, mute);
-    y -= 22;
+    // Positionen-Tabelle
+    const colNr = M + 6, colTit = M + 38, colMen = 350, colEp = 430, colSum = W - M;
+    // Header-Zeile
+    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: COL_LIGHT });
+    draw('NR.',                  colNr, y - 8, bold, 8.5, COL_MUTE);
+    draw('TECHNISCHE SPEZIFIKATION', colTit, y - 8, bold, 8.5, COL_MUTE);
+    drawRight('MENGE',           colMen + 30, y - 8, bold, 8.5, COL_MUTE);
+    drawRight('EINZELPREIS',     colEp + 50, y - 8, bold, 8.5, COL_MUTE);
+    drawRight('GESAMT',          colSum, y - 8, bold, 8.5, COL_MUTE);
+    y -= 18;
+    page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
+    y -= 6;
 
+    // Positionen
     for (const p of sub.response) {
-      const titel = String(p.titel || '');
-      const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
-      const einheit = String(p.einheit || '');
-      const preis = Number(p.preis_eur || 0);
-      const summe = preis * menge;
-      const titelLines = wrap(titel, bold, 10, 280);
+      const titel  = String(p.titel || '').trim();
+      const menge  = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+      const einheit = String(p.einheit || '').trim();
+      const preis  = Number(p.preis_eur || 0);
+      const summe  = preis * menge;
+      const titelLines = wrap(titel, bold, 10, 290);
+      // Bemerkung als Bullet-Liste
       const bemerk = String(p.bemerkung || '').trim();
-      const bemerkLines = bemerk ? wrap('Bemerkung: ' + bemerk, helv, 9, 280) : [];
-      const blockH = 14 + (titelLines.length - 1) * 12 + bemerkLines.length * 11 + 8;
-      ensure(blockH);
-      drawText(String(p.pos_nr || ''), M + 6, y, helv, 10, mute);
+      const bulletLines = [];
+      if (bemerk) {
+        const lines = bemerk.split(/\n+/).filter(Boolean);
+        for (const ln of lines) {
+          const wr = wrap('* ' + ln, helv, 9, 285);
+          bulletLines.push(...wr);
+        }
+      }
+      const blockH = 14 + Math.max(0, (titelLines.length - 1) * 12) + (bulletLines.length ? bulletLines.length * 11 + 6 : 0) + 10;
+      ensureSpace(blockH);
+
+      const yTop = y;
+      draw(String(p.pos_nr || ''), colNr, y, helv, 10, COL_INK);
       for (let i = 0; i < titelLines.length; i++) {
-        drawText(titelLines[i], M + 36, y - i * 12, bold, 10, ink);
+        draw(titelLines[i], colTit, y - i * 12, bold, 10, COL_INK);
       }
-      for (let i = 0; i < bemerkLines.length; i++) {
-        drawText(bemerkLines[i], M + 36, y - titelLines.length * 12 + 2 - i * 11, helv, 9, mute);
+      let yBul = y - titelLines.length * 12 - 2;
+      for (const bl of bulletLines) {
+        draw(bl, colTit, yBul, helv, 9, COL_MUTE);
+        yBul -= 11;
       }
-      drawText(menge.toString() + (einheit ? ' ' + einheit : ''), M + 330, y, helv, 10, ink);
-      drawText(preis > 0 ? preis.toFixed(2).replace('.', ',') + ' €' : '—', W - M - 100, y, helv, 10, ink);
-      const summeStr = summe > 0 ? summe.toFixed(2).replace('.', ',') + ' €' : '—';
-      drawText(summeStr, W - M - helv.widthOfTextAtSize(summeStr, 10), y, bold, 10, ink);
-      y -= blockH + 4;
-      page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.3, color: rgb(0.92, 0.94, 0.96) });
+      drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
+      drawRight(preis > 0 ? fmtEurStr(preis).replace(' EUR', '') : '—', colEp + 50, yTop, helv, 10, COL_INK);
+      drawRight(summe > 0 ? fmtEurStr(summe) : '—', colSum, yTop, bold, 10, COL_INK);
+
+      y -= blockH;
+      page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: COL_LIGHT });
+      y -= 4;
     }
 
-    // Gesamtsumme
-    y -= 8;
-    ensure(36);
-    page.drawRectangle({ x: M, y: y - 22, width: W - 2*M, height: 28, color: rgb(0.96, 0.95, 1) });
-    drawText('Gesamtsumme netto', M + 10, y - 12, bold, 11, accent);
-    const sumStr = (sub.sum || 0).toFixed(2).replace('.', ',') + ' €';
-    drawText(sumStr, W - M - bold.widthOfTextAtSize(sumStr, 13) - 10, y - 14, bold, 13, accent);
-    y -= 38;
+    // Summen-Block (rechtsbündig: Netto / MwSt / Brutto)
+    y -= 6;
+    ensureSpace(60);
+    const sumLblX = W - M - 220;
+    const drawSumRow = (lbl, val, big) => {
+      draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK);
+      drawRight(val, colSum, y, big ? bold : helv, big ? 12 : 10, COL_INK);
+      y -= big ? 18 : 15;
+    };
+    drawSumRow('Gesamtnettopreis', fmtEurStr(sumNetto));
+    drawSumRow('Zuzüglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
+    page.drawLine({ start: { x: sumLblX, y: y + 4 }, end: { x: colSum, y: y + 4 }, thickness: 0.6, color: COL_INK });
+    y -= 6;
+    drawSumRow('Gesamtbruttopreis', fmtEurStr(sumBrutto), true);
+    y -= 6;
 
-    // Lieferzeit
-    if (sub.lieferzeitGesamt) {
-      ensure(28);
-      drawText('Lieferzeit / Ausführungstermin:', M, y, bold, 10, ink); y -= 13;
-      para(sub.lieferzeitGesamt, helv, 10, ink, M, W - 2*M);
-      y -= 8;
-    }
+    // Konditionen-Block
+    ensureSpace(120);
+    draw('Konditionen', M, y, bold, 14, COL_INK); y -= 4;
+    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 80, y: y - 2 }, thickness: 1.2, color: COL_INK });
+    y -= 18;
 
-    // Klauseln (AGB) — auf neue Seite wenn nicht genug Platz
-    const klauselnText = htmlToText(sub.klauseln);
-    if (klauselnText) {
-      ensure(40);
-      drawText('ALLGEMEINE GESCHÄFTSBEDINGUNGEN', M, y, bold, 9, accent); y -= 14;
-      para(klauselnText, helv, 9, ink, M, W - 2*M);
-      y -= 8;
-    }
+    const kondBox = (titel, body) => {
+      if (!body) return;
+      const bodyLines = wrap(body, helv, 10, W - 2*M - 24);
+      const h = 18 + bodyLines.length * 13 + 8;
+      ensureSpace(h + 8);
+      page.drawRectangle({ x: M, y: y - h, width: W - 2*M, height: h, color: COL_BG_LIGHT });
+      draw(titel, M + 12, y - 14, bold, 10.5, COL_INK);
+      let yy = y - 28;
+      for (const l of bodyLines) { draw(l, M + 12, yy, helv, 10, COL_INK); yy -= 13; }
+      y -= h + 6;
+    };
+    if (sub.lieferzeitGesamt) kondBox('Lieferzeit', sub.lieferzeitGesamt);
+    kondBox('Preisbasis', 'Festpreis, gültig 60 Tage ab Angebotsdatum');
+    kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
+    kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
 
-    // Unterschrift
-    ensure(80);
-    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: rgb(0.88, 0.91, 0.94) });
-    y -= 16;
-    drawText('VERBINDLICHE BESTÄTIGUNG', M, y, bold, 9, accent); y -= 14;
+    // Unterschrift-Block
+    y -= 10;
+    ensureSpace(80);
+    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
+    y -= 14;
+    draw('VERBINDLICHE BESTÄTIGUNG', M, y, bold, 8.5, COL_MUTE); y -= 16;
     if (sub.sigMode === 'drawn' && sub.signaturDataUrl) {
       try {
         const png = await doc.embedPng(sub.signaturDataUrl);
-        const sigW = 200, sigH = 60;
+        const sigW = 180, sigH = 50;
         page.drawImage(png, { x: M, y: y - sigH, width: sigW, height: sigH });
         y -= sigH + 6;
       } catch (_) {}
     } else {
-      drawText('✓ Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, ink); y -= 14;
+      draw('✓ Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, COL_INK); y -= 14;
     }
-    drawText('Unterzeichnet von: ' + (sub.sigName || '—'), M, y, bold, 10, ink); y -= 13;
-    drawText('Datum: ' + dat, M, y, helv, 10, mute); y -= 12;
+    draw('Unterzeichnet von: ' + (sub.sigName || '—'), M, y, bold, 10, COL_INK); y -= 13;
+    draw('Datum: ' + dat, M, y, helv, 10, COL_MUTE);
 
-    // Footer — Fußzeile mit USt-IdNr etc.
-    const footerY = 60;
-    page.drawLine({ start: { x: M, y: footerY + 30 }, end: { x: W - M, y: footerY + 30 }, thickness: 0.5, color: rgb(0.88, 0.91, 0.94) });
-    let fy = footerY + 18;
-    const f1 = [sub.wn.firma, sub.wn.geschaeftsfuehrer ? 'GF: ' + sub.wn.geschaeftsfuehrer : ''].filter(Boolean).join(' · ');
-    const f2 = [
-      sub.wn.hrb_nummer ? (sub.wn.hrb_nummer + (sub.wn.hrb_gericht ? ' AG ' + sub.wn.hrb_gericht : '')) : '',
-      sub.wn.ust_id ? ('USt-IdNr: ' + sub.wn.ust_id) : '',
-      sub.wn.web || '',
-    ].filter(Boolean).join(' · ');
-    const f3 = [
-      sub.wn.bank,
-      sub.wn.iban ? ('IBAN: ' + sub.wn.iban) : '',
-      sub.wn.bic ? ('BIC: ' + sub.wn.bic) : '',
-    ].filter(Boolean).join(' · ');
-    if (f1) { drawText(f1, M, fy, helv, 8, mute); fy -= 10; }
-    if (f2) { drawText(f2, M, fy, helv, 8, mute); fy -= 10; }
-    if (f3) { drawText(f3, M, fy, helv, 8, mute); }
+    // AGB auf neue Seite
+    const klauselnText = htmlToText(sub.klauseln);
+    if (klauselnText) {
+      newPage();
+      draw('Allgemeine Geschaeftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
+      page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
+      y -= 22;
+      // Render strukturiert (H4 als Bold-Header, P als Body)
+      const lines = klauselnText.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i].trim();
+        if (!ln) { y -= 6; continue; }
+        // Heuristik: kurze Zeilen ohne Punkt am Ende als Header behandeln
+        const isHeader = ln.length < 50 && !/[.,:]$/.test(ln) && /^[A-ZÄÖÜ]/.test(ln);
+        if (isHeader) {
+          y -= 4;
+          ensureSpace(20);
+          draw(ln, M, y, bold, 11, COL_INK); y -= 14;
+        } else {
+          const wr = wrap(ln, helv, 10, W - 2*M);
+          for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+        }
+      }
+    }
+
+    // Footer auf jeder Seite (3 Spalten)
+    totalPagesHolder.total = allPages.length;
+    allPages.forEach((pg, idx) => {
+      const fY = 70;
+      pg.drawLine({ start: { x: M, y: fY + 32 }, end: { x: W - M, y: fY + 32 }, thickness: 0.5, color: COL_LIGHT });
+      const colW = (W - 2*M) / 3;
+      const xCol = [M, M + colW, M + 2 * colW];
+      const drawCol = (xi, lblTitel, lines) => {
+        pg.drawText(safe(lblTitel), { x: xCol[xi], y: fY + 18, size: 9, font: bold, color: COL_INK });
+        let yy = fY + 6;
+        for (const l of lines) {
+          if (!l) continue;
+          pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8.5, font: helv, color: COL_MUTE });
+          yy -= 10;
+        }
+      };
+      // Spalte 1: Firma + Anschrift
+      drawCol(0, sub.wn.firma || '—', [
+        sub.wn.strasse || '',
+        [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' '),
+      ]);
+      // Spalte 2: Kontakt
+      drawCol(1, 'Kontakt', [sub.wn.email || '', sub.wn.web || '']);
+      // Spalte 3: Rechtliches
+      drawCol(2, 'Rechtliches', [
+        sub.wn.hrb_nummer ? (sub.wn.hrb_nummer + (sub.wn.hrb_gericht ? ' AG ' + sub.wn.hrb_gericht : '')) : '',
+        sub.wn.ust_id ? ('USt-IdNr. ' + sub.wn.ust_id) : '',
+        sub.wn.geschaeftsfuehrer ? ('GF: ' + sub.wn.geschaeftsfuehrer) : '',
+      ]);
+      // Seitenzahl rechts unten
+      const pn = 'Angebot ' + angNr + ' - Seite ' + (idx + 1) + ' / ' + totalPagesHolder.total;
+      const pnW = helv.widthOfTextAtSize(safe(pn), 8);
+      pg.drawText(safe(pn), { x: W - M - pnW, y: 36, size: 8, font: helv, color: COL_MUTE });
+    });
 
     const bytes = await doc.save();
     return new Blob([bytes], { type: 'application/pdf' });
