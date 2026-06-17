@@ -4154,6 +4154,11 @@ const pdfWorkerReady = Promise.resolve();</script>
             <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">🛠</span>
             <span class="ei-side-lbl">Wartungsnehmer</span>
           </button>
+          <!-- V12.404: Liftaro-Fußzeile für Ergebnis-PDFs -->
+          <button class="ei-side-item" onclick="openPdfFooterEditor()" title="Fußzeile & Stammdaten für Ergebnis-PDFs (Liftaro)">
+            <span class="ei-side-dot" style="background:transparent;width:auto;height:auto;font-size:13px;line-height:1">📄</span>
+            <span class="ei-side-lbl">PDF-Fußzeile</span>
+          </button>
         </div>
       </div>
       <!-- Inhalts-Pane: Sub-Header + 2-Spalten (Liste | Detail) -->
@@ -6426,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.403';
+const APP_VERSION = 'V12.404';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33648,7 +33653,7 @@ async function openErgebnisCheckModal(emailId) {
     const lv = lvs.find(x => String(x.id) === String(a.lv_id)) || null;
     let origPos = []; if (lv) { try { origPos = JSON.parse(lv.positionen_json || '[]'); } catch(_) {} }
     return {
-      anfId: a.id, recordId: a._recordId,
+      anfId: a.id, recordId: a._recordId, rawAnf: a,
       wnFirma: String(wn.firma || a.servicebetrieb_id || 'Wartungsnehmer'),
       wn, resp, lv, origPos,
       angebotSumme: _eiErgSumOfPositions(resp),
@@ -33662,15 +33667,20 @@ async function openErgebnisCheckModal(emailId) {
   if (firstLv) { try { snap = JSON.parse(firstLv.lv.kontext_snapshot_json || '{}'); } catch(_) {} }
   const hvEmail = String(snap.hv_email || r.from_email || '').trim();
   const hvName  = String(snap.hv_name || r.real_hv_firma || '').trim();
+  // HV-Adresse (sofern bekannt) aus Snapshot/Email
+  const hvAnsprech = String(snap.hv_ansprechperson || r.real_hv_ansprechperson || r.from_name || '').trim();
+  const hvStrasse  = String(snap.hv_strasse || r.real_hv_strasse || '').trim();
+  const hvPlzOrt   = [String(snap.hv_plz || r.real_hv_plz || '').trim(), String(snap.hv_ort || r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
   // Default: günstigstes Angebot vorauswählen
   enriched.sort((a, b) => a.angebotSumme - b.angebotSumme);
   const chosen = enriched[0];
 
   window._eiErgebnisState = {
-    emailId, enriched, snap, hvEmail, hvName,
+    emailId, enriched, snap, hvEmail, hvName, hvAnsprech, hvStrasse, hvPlzOrt,
     chosenAnfId: chosen.anfId,
     originalEur: chosen.originalSumme || 0,
     einschaetzung: '', empfehlung: '',
+    anschreiben: '', beauftragung: '',
   };
 
   let ov = document.getElementById('eiErgebnisModal');
@@ -33736,6 +33746,16 @@ function _eiErgebnisRenderModal() {
     +   '<textarea id="ergEinschaetzung" rows="4" placeholder="Wird per KI generiert — oder manuell schreiben …" oninput="window._eiErgebnisState.einschaetzung=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:8px">' + esc(s.einschaetzung || '') + '</textarea>'
     +   '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Empfehlung (editierbar)</div>'
     +   '<textarea id="ergEmpfehlung" rows="3" placeholder="Wird per KI generiert — oder manuell schreiben …" oninput="window._eiErgebnisState.empfehlung=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box">' + esc(s.empfehlung || '') + '</textarea>'
+    // 4) Anschreiben + Beauftragung (editierbar, collapsible)
+    +   '<details style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:10px 14px">'
+    +     '<summary style="cursor:pointer;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">4 · Anschreiben & Beauftragungstext anpassen</summary>'
+    +     '<div style="margin-top:12px">'
+    +       '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Anschreiben (Sehr geehrte …)</div>'
+    +       '<textarea id="ergAnschreiben" rows="5" oninput="window._eiErgebnisState.anschreiben=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">' + esc(s.anschreiben || _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis)) + '</textarea>'
+    +       '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Beauftragungstext (über dem Unterschriftsfeld)</div>'
+    +       '<textarea id="ergBeauftragung" rows="5" oninput="window._eiErgebnisState.beauftragung=this.value" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box">' + esc(s.beauftragung || _eiErgDefaultBeauftragung(s, chosen)) + '</textarea>'
+    +     '</div>'
+    +   '</details>'
     + '</div>'
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:13px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
     +   '<div style="font-size:11.5px;color:#64748b">Empfänger: <b>' + esc(s.hvEmail || '⚠ keine HV-Email') + '</b></div>'
@@ -33845,6 +33865,8 @@ async function _eiErgebnisCreateAndSend(doSend) {
   // Texte aus Editoren übernehmen
   const ein = document.getElementById('ergEinschaetzung'); if (ein) s.einschaetzung = ein.value.trim();
   const emp = document.getElementById('ergEmpfehlung'); if (emp) s.empfehlung = emp.value.trim();
+  const ansch = document.getElementById('ergAnschreiben'); if (ansch) s.anschreiben = ansch.value.trim();
+  const beauf = document.getElementById('ergBeauftragung'); if (beauf) s.beauftragung = beauf.value.trim();
   const btn = document.getElementById('ergSendBtn');
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   if (doSend && !s.hvEmail) { showToast('Keine HV-Email vorhanden — „Nur PDF" nutzen oder HV-Email ergänzen', 'warning', 5000); return; }
@@ -33861,13 +33883,38 @@ async function _eiErgebnisCreateAndSend(doSend) {
     // Senden via email-sender
     if (btn) btn.textContent = '⏳ Sende an HV …';
     if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) throw new Error('Email-Sender nicht konfiguriert');
-    const bytes = await blob.arrayBuffer();
-    let bin = ''; const view = new Uint8Array(bytes);
-    for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000));
-    const base64 = btoa(bin);
+    const _arrB64 = (view) => { let bin = ''; for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000)); return btoa(bin); };
+    const base64 = _arrB64(new Uint8Array(await blob.arrayBuffer()));
     const orig = Number(s.originalEur) || 0;
     const ersparnis = Math.max(0, orig - chosen.angebotSumme);
     const betreff = 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
+    // V12.404: Anhänge — Ergebnis + Alternativangebot + Original-Angebot
+    const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
+    if (btn) btn.textContent = '⏳ Baue Anhänge …';
+    // Alternativangebot (Wartungsnehmer-Angebot als PDF)
+    try {
+      const a = chosen.rawAnf || {};
+      const subAlt = {
+        anf: a, lv: chosen.lv, snap: s.snap, wn: chosen.wn || {}, response: chosen.resp || [], sum: chosen.angebotSumme,
+        sigMode: String(a.signatur_methode || 'digital'), sigName: String(a.signatur_name || ''),
+        signaturDataUrl: String(a.signatur_dataurl || ''), lieferzeitGesamt: String(a.lieferzeit_gesamt || ''),
+        klauseln: String(a.klauseln_snapshot_html || ''),
+      };
+      if (typeof _eiLvBuildAntwortPdf === 'function') {
+        const altBlob = await _eiLvBuildAntwortPdf(subAlt);
+        attachments.push({ filename: 'Alternativangebot_' + String(chosen.wnFirma || 'WN').replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf', contentType: 'application/pdf', contentBase64: _arrB64(new Uint8Array(await altBlob.arrayBuffer())) });
+      }
+    } catch (e) { console.warn('[V12.404] Alternativangebot-Anhang:', e.message); }
+    // Original-Angebot (PDF-Anhang der Email)
+    try {
+      const rEmail = (_eiAllRecords || []).find(x => x._id === s.emailId);
+      const pdfs = (rEmail && Array.isArray(rEmail.attachments) ? rEmail.attachments : []).filter(at => /\.pdf$/i.test(at.filename || at.name || ''));
+      if (pdfs[0] && pdfs[0].url) {
+        const r2 = await fetch(pdfs[0].url);
+        if (r2.ok) attachments.push({ filename: 'Original-Angebot.pdf', contentType: 'application/pdf', contentBase64: _arrB64(new Uint8Array(await r2.arrayBuffer())) });
+      }
+    } catch (e) { console.warn('[V12.404] Original-Anhang:', e.message); }
+    if (btn) btn.textContent = '⏳ Sende an HV …';
     const body = 'Sehr geehrte Damen und Herren,\n\n'
       + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
       + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
@@ -33882,7 +33929,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
     const payload = {
       to: s.hvEmail, subject: betreff, text: finalText, replyTo: 'check@liftaro.de',
-      attachments: [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }],
+      attachments: attachments,
     };
     if (sig.htmlBody) payload.html = sig.htmlBody;
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
@@ -33896,7 +33943,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
       await atWrite('Emails', {
         direction: 'outgoing', from_email: 'check@liftaro.de', to_email: s.hvEmail,
         subject: betreff, body: finalText, sent_at: sentAt, bearbeiter_name: userName,
-        chat_email_id: s.emailId, attachment_filenames: fnSafe,
+        chat_email_id: s.emailId, attachment_filenames: attachments.map(a => a.filename).join(', '),
       });
     } catch (e) { console.warn('[V12.402] Outgoing-Record:', e.message); }
     try {
@@ -33915,11 +33962,74 @@ async function _eiErgebnisCreateAndSend(doSend) {
 }
 window._eiErgebnisCreateAndSend = _eiErgebnisCreateAndSend;
 
+// V12.404: Liftaro-Fußzeilen-Stammdaten für Ergebnis-PDFs (localStorage)
+function _eiPdfFooterDefault() {
+  return { firma: 'Liftaro GmbH', strasse: 'Gustavburger Weg 6', plzort: '55116 Mainz',
+    tel: '0158 8863 4515', email: 'check@liftaro.de', web: 'check.liftaro.de',
+    ustid: '', hrb: '', gf: '' };
+}
+function _eiPdfFooterGet() {
+  try { const o = JSON.parse(localStorage.getItem('liftaroPdfFooter') || 'null'); return o && typeof o === 'object' ? Object.assign(_eiPdfFooterDefault(), o) : _eiPdfFooterDefault(); }
+  catch (_) { return _eiPdfFooterDefault(); }
+}
+function openPdfFooterEditor() {
+  const f = _eiPdfFooterGet();
+  let m = document.getElementById('eiPdfFooterModal');
+  if (!m) { m = document.createElement('div'); m.id = 'eiPdfFooterModal'; document.body.appendChild(m); }
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:6400;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  const fld = (id, lbl, val, ph) => '<div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">' + lbl + '</label><input id="pf_' + id + '" type="text" value="' + _esc(val || '') + '" placeholder="' + _esc(ph || '') + '" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box"></div>';
+  m.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(600px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4)">'
+    + '<div style="background:#7c3aed;color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:15px;font-weight:700">📄 PDF-Fußzeile (Liftaro)</span><button onclick="document.getElementById(\'eiPdfFooterModal\').remove()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer">✕</button></div>'
+    + '<div style="padding:18px 22px;overflow-y:auto;flex:1">'
+    +   '<div style="font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.5">Diese Daten erscheinen in der Fußzeile der Ergebnis-PDFs, die an die Hausverwaltung gehen.</div>'
+    +   fld('firma', 'Firma', f.firma, 'Liftaro GmbH')
+    +   '<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">' + fld('strasse', 'Straße + Nr.', f.strasse) + fld('plzort', 'PLZ + Ort', f.plzort) + '</div>'
+    +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' + fld('tel', 'Telefon', f.tel) + fld('email', 'E-Mail', f.email) + '</div>'
+    +   fld('web', 'Web', f.web)
+    +   '<div style="height:1px;background:#e2e8f0;margin:8px 0 14px"></div>'
+    +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' + fld('ustid', 'USt-IdNr', f.ustid, 'DE…') + fld('hrb', 'HRB / Amtsgericht', f.hrb) + '</div>'
+    +   fld('gf', 'Geschäftsführer', f.gf)
+    + '</div>'
+    + '<div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px">'
+    +   '<button onclick="document.getElementById(\'eiPdfFooterModal\').remove()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Abbrechen</button>'
+    +   '<button onclick="_eiPdfFooterSaveFromEditor()" style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>'
+    + '</div></div>';
+  m.onclick = (e) => { if (e.target === m) m.remove(); };
+}
+window.openPdfFooterEditor = openPdfFooterEditor;
+function _eiPdfFooterSaveFromEditor() {
+  const g = (id) => document.getElementById('pf_' + id)?.value?.trim() || '';
+  const obj = { firma: g('firma'), strasse: g('strasse'), plzort: g('plzort'), tel: g('tel'), email: g('email'), web: g('web'), ustid: g('ustid'), hrb: g('hrb'), gf: g('gf') };
+  localStorage.setItem('liftaroPdfFooter', JSON.stringify(obj));
+  document.getElementById('eiPdfFooterModal')?.remove();
+  showToast('✓ PDF-Fußzeile gespeichert', 'success', 2200);
+}
+window._eiPdfFooterSaveFromEditor = _eiPdfFooterSaveFromEditor;
+
+// Liftaro-Logo für PDF laden (gleiche Quelle wie EuC-Vertrag)
+async function _eiLoadLiftaroLogoForPdf(doc) {
+  try {
+    const img = document.querySelector('.fh-logo img');
+    if (!img || !img.src) return null;
+    let bytes;
+    if (img.src.startsWith('data:image/png;base64,')) {
+      const b64 = img.src.substring('data:image/png;base64,'.length);
+      const bin = atob(b64); bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else {
+      const r = await fetch(img.src); bytes = new Uint8Array(await r.arrayBuffer());
+    }
+    return await doc.embedPng(bytes);
+  } catch (e) { console.warn('[V12.404] Logo-Embed:', e.message); return null; }
+}
+
 async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const doc = await PDFDocument.create();
   const helv = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const logo = await _eiLoadLiftaroLogoForPdf(doc);
+  const foot = _eiPdfFooterGet();
   const W = 595, H = 842, M = 56;
   const INK = rgb(0.06, 0.10, 0.19), MUTE = rgb(0.42, 0.49, 0.61), LIGHT = rgb(0.86, 0.89, 0.92);
   const BRAND = rgb(0.49, 0.23, 0.93), GREEN = rgb(0.08, 0.5, 0.2), GREEN_BG = rgb(0.94, 0.99, 0.96);
@@ -33931,52 +34041,65 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const dat = new Date().toLocaleDateString('de-DE');
   const tokenShort = String(chosen.anfId || '').replace(/^lva?_/i, '').slice(0, 5).toUpperCase();
   const angNr = 'Liftaro-' + (tokenShort || 'XXXXX');
+  // V12.404: EUR-Formatter ohne €-Symbol (WinAnsi-sicher) — "3.000,00 EUR"
+  const fmtEur = (n) => { if (n == null || isNaN(n)) return '-'; const p = (Math.round(n*100)/100).toFixed(2).split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); return p[0] + ',' + p[1] + ' EUR'; };
   const totalP = { n: 0 };
   const pages = [];
   let page = doc.addPage([W, H]); pages.push(page);
   let y = H - M;
-  const safe = (t) => String(t == null ? '' : t).replace(/[„""]/g, '"').replace(/['']/g, "'").replace(/[–—]/g, '-').replace(/[•]/g, '*').replace(/…/g, '...').replace(/[^\x00-\xff]/g, '?');
+  const safe = (t) => String(t == null ? '' : t).replace(/[„""]/g, '"').replace(/['']/g, "'").replace(/[–—]/g, '-').replace(/[•]/g, '*').replace(/[→]/g, '->').replace(/…/g, '...').replace(/€/g, 'EUR').replace(/[^\x00-\xff]/g, '?');
   const draw = (t, x, yy, f, sz, c) => page.drawText(safe(t), { x, y: yy, size: sz, font: f || helv, color: c || INK });
   const dr = (t, xR, yy, f, sz, c) => draw(t, xR - (f || helv).widthOfTextAtSize(safe(t), sz), yy, f, sz, c);
   const wrap = (t, f, sz, mw) => { const out = []; String(t||'').split('\n').forEach(ln => { const ws = ln.split(/(\s+)/); let l = ''; for (const w of ws) { const tt = l + w; if ((f||helv).widthOfTextAtSize(safe(tt), sz) > mw && l.trim()) { out.push(l.trimEnd()); l = w.trimStart(); } else l = tt; } if (l.trim() || ln === '') out.push(l.trimEnd()); }); return out; };
-  const ensure = (h) => { if (y - h < M + 70) { page = doc.addPage([W, H]); pages.push(page); y = H - M; header(false); } };
+  const ensure = (h) => { if (y - h < M + 80) { page = doc.addPage([W, H]); pages.push(page); y = H - M; header(false); } };
   function header(first) {
-    draw('LIFTARO', M, H - M - 8, bold, 12, BRAND);
-    dr('Ergebnis Reparatur-Vergleich', W - M, H - M - 8, helv, 9.5, MUTE);
-    page.drawLine({ start: { x: M, y: H - M - 18 }, end: { x: W - M, y: H - M - 18 }, thickness: 0.6, color: LIGHT });
-    y = first ? (H - M - 40) : (H - M - 54);
-    if (!first) draw('Ergebnis ' + angNr, M, H - M - 34, helv, 9, MUTE);
+    if (logo) {
+      const maxW = 110, ratio = logo.width / logo.height, lw = maxW, lh = maxW / ratio;
+      page.drawImage(logo, { x: M, y: H - M - lh + 2, width: lw, height: lh });
+    } else {
+      draw('LIFTARO', M, H - M - 10, bold, 13, BRAND);
+    }
+    dr('Ergebnis Reparatur-Vergleich', W - M, H - M - 10, helv, 9.5, MUTE);
+    page.drawLine({ start: { x: M, y: H - M - 26 }, end: { x: W - M, y: H - M - 26 }, thickness: 0.6, color: LIGHT });
+    y = first ? (H - M - 48) : (H - M - 62);
+    if (!first) draw('Ergebnis ' + angNr, M, H - M - 42, helv, 9, MUTE);
   }
   header(true);
-  // Empfänger + Meta
+  // Empfänger-Adresse (links) + Meta (rechts)
   const yTop = y;
   draw('FUR DIE HAUSVERWALTUNG', M, y, bold, 8.5, MUTE); y -= 14;
   draw(s.hvName || '(Hausverwaltung)', M, y, bold, 11, INK); y -= 13;
-  if (s.hvEmail) { draw(s.hvEmail, M, y, helv, 10, INK); y -= 12; }
+  if (s.hvAnsprech) { draw('z.Hd. ' + s.hvAnsprech, M, y, helv, 10, INK); y -= 12; }
+  if (s.hvStrasse) { draw(s.hvStrasse, M, y, helv, 10, INK); y -= 12; }
+  if (s.hvPlzOrt) { draw(s.hvPlzOrt, M, y, helv, 10, INK); y -= 12; }
+  if (s.hvEmail) { draw(s.hvEmail, M, y, helv, 9.5, MUTE); y -= 12; }
   let yM = yTop;
   draw('Datum:', W - M - 200, yM, helv, 9, MUTE); dr(dat, W - M, yM, helv, 10, INK); yM -= 16;
   draw('Ergebnis-Nr.:', W - M - 200, yM, helv, 9, MUTE); dr(angNr, W - M, yM, bold, 10, INK); yM -= 16;
   draw('Aufzug:', W - M - 200, yM, helv, 9, MUTE); dr('Fn ' + (s.snap.fabriknummer || '-'), W - M, yM, helv, 10, INK); yM -= 16;
-  y = Math.min(y, yM) - 16;
-  draw('Ergebnis der Reparatur-Anfrage', M, y, bold, 19, INK); y -= 30;
-  // Ausgangslage
-  draw('Ausgangslage', M, y, bold, 12, INK); y -= 16;
-  const ausgang = 'Fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' lag der Hausverwaltung ein Reparatur-Angebot uber ' + _eiErgFmtEur(orig) + ' (netto) vor. Liftaro hat auf Basis eines neutralen Leistungsverzeichnisses ein vergleichbares Alternativangebot eingeholt.';
-  for (const l of wrap(ausgang, helv, 10, W - 2*M)) { ensure(14); draw(l, M, y, helv, 10, INK); y -= 13; }
-  y -= 14;
-  // Vergleichs-Box
+  if (s.snap.standort) { const sl = wrap(s.snap.standort, helv, 9, 200); for (const l of sl) { dr(l, W - M, yM, helv, 9, MUTE); yM -= 12; } }
+  y = Math.min(y, yM) - 18;
+  draw('Ergebnis der Reparatur-Anfrage', M, y, bold, 19, INK); y -= 28;
+  // Anschreiben (editierbar)
+  const anschreiben = s.anschreiben || _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis);
+  for (const l of wrap(anschreiben, helv, 10, W - 2*M)) {
+    if (l === '') { y -= 7; continue; }
+    ensure(14); draw(l, M, y, helv, 10, INK); y -= 13;
+  }
+  y -= 12;
+  // Preisvergleich-Box
   ensure(110);
   draw('Preisvergleich', M, y, bold, 12, INK); y -= 18;
   const boxH = 92;
   page.drawRectangle({ x: M, y: y - boxH, width: W - 2*M, height: boxH, color: GREEN_BG, borderColor: rgb(0.53, 0.94, 0.67), borderWidth: 1 });
   let by = y - 18;
-  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(_eiErgFmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 20;
-  draw('Empfohlenes Angebot - ' + chosen.wnFirma, M + 16, by, helv, 11, INK); dr('- ' + _eiErgFmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 8;
+  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 20;
+  draw('Empfohlenes Angebot - ' + chosen.wnFirma, M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 8;
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.6, color: rgb(0.53, 0.94, 0.67) }); by -= 18;
-  draw('Ihre Ersparnis' + (ersparnisPct ? ' (' + ersparnisPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(_eiErgFmtEur(ersparnis), W - M - 16, by, bold, 16, GREEN); by -= 18;
-  draw('davon Liftaro-Vergutung (' + LV_LIFTARO_PROVISION_PCT + ' % der Ersparnis)', M + 16, by, helv, 9.5, MUTE); dr(_eiErgFmtEur(provision), W - M - 16, by, helv, 9.5, MUTE);
+  draw('Ihre Ersparnis' + (ersparnisPct ? ' (' + ersparnisPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(ersparnis), W - M - 16, by, bold, 16, GREEN); by -= 18;
+  draw('davon Liftaro-Vergutung (' + LV_LIFTARO_PROVISION_PCT + ' % der Ersparnis)', M + 16, by, helv, 9.5, MUTE); dr(fmtEur(provision), W - M - 16, by, helv, 9.5, MUTE);
   y -= boxH + 18;
-  // Positionen des empfohlenen Angebots
+  // Positionen
   ensure(40);
   draw('Positionen des empfohlenen Angebots', M, y, bold, 12, INK); y -= 16;
   page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: LIGHT });
@@ -33995,7 +34118,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     draw(String(p.pos_nr || ''), M + 4, y, helv, 10, INK);
     for (let i = 0; i < tl.length; i++) draw(tl[i], M + 34, y - i*12, bold, 10, INK);
     dr(menge + (einheit ? ' ' + einheit : ''), 410, t0, helv, 10, INK);
-    dr(summe > 0 ? _eiErgFmtEur(summe) : '-', W - M, t0, bold, 10, INK);
+    dr(summe > 0 ? fmtEur(summe) : '-', W - M, t0, bold, 10, INK);
     y -= blk; page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: LIGHT }); y -= 4;
   }
   if (chosen.lieferzeit) { y -= 6; ensure(20); draw('Lieferzeit: ' + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
@@ -34006,7 +34129,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     for (const l of wrap(s.einschaetzung, helv, 10, W - 2*M)) { ensure(14); draw(l, M, y, helv, 10, INK); y -= 13; }
     y -= 8;
   }
-  // Empfehlung (hervorgehoben)
+  // Empfehlung-Box
   if (s.empfehlung) {
     ensure(60);
     const el = wrap(s.empfehlung, bold, 10.5, W - 2*M - 28);
@@ -34015,21 +34138,64 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     draw('EMPFEHLUNG', M + 14, y - 14, bold, 8.5, BRAND);
     let ey = y - 30;
     for (const l of el) { draw(l, M + 14, ey, bold, 10.5, INK); ey -= 14; }
-    y -= ebH + 10;
+    y -= ebH + 12;
   }
-  // Footer auf jeder Seite
+  // Hinweis auf Anhänge
+  y -= 4; ensure(28);
+  for (const l of wrap('Im Anhang dieser E-Mail finden Sie das vollstandige Original-Angebot sowie das empfohlene Alternativangebot zur Einsicht.', helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+  y -= 10;
+  // Beauftragung + Unterschriftsfeld (editierbar)
+  const beauftr = s.beauftragung || _eiErgDefaultBeauftragung(s, chosen);
+  ensure(40);
+  draw('Beauftragung', M, y, bold, 12, INK); y -= 4;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 90, y: y - 2 }, thickness: 1.2, color: INK }); y -= 16;
+  for (const l of wrap(beauftr, helv, 10, W - 2*M)) { if (l === '') { y -= 7; continue; } ensure(14); draw(l, M, y, helv, 10, INK); y -= 13; }
+  y -= 26;
+  ensure(60);
+  const colW = (W - 2*M - 40) / 2;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colW, y: y - 2 }, thickness: 0.6, color: INK });
+  draw('Ort, Datum', M, y - 14, helv, 9, MUTE);
+  const sigX2 = M + colW + 40;
+  page.drawLine({ start: { x: sigX2, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.6, color: INK });
+  draw('Unterschrift / Stempel Hausverwaltung', sigX2, y - 14, helv, 9, MUTE);
+  y -= 44;
+  ensure(20);
+  draw('Name in Druckbuchstaben:', M, y, helv, 9, MUTE); y -= 14;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.5, color: LIGHT });
+  // Footer (3 Spalten aus Settings) auf jeder Seite
   totalP.n = pages.length;
   pages.forEach((pg, idx) => {
-    const fY = 60;
-    pg.drawLine({ start: { x: M, y: fY + 22 }, end: { x: W - M, y: fY + 22 }, thickness: 0.5, color: LIGHT });
-    pg.drawText(safe('Liftaro - neutrale Vermittlung von Aufzug-Reparaturen - check.liftaro.de - check@liftaro.de'), { x: M, y: fY + 8, size: 8, font: helv, color: MUTE });
+    const fY = 56;
+    pg.drawLine({ start: { x: M, y: fY + 30 }, end: { x: W - M, y: fY + 30 }, thickness: 0.5, color: LIGHT });
+    const cW = (W - 2*M) / 3, xCol = [M, M + cW, M + 2*cW];
+    const col = (xi, title, lines) => {
+      pg.drawText(safe(title), { x: xCol[xi], y: fY + 18, size: 9, font: bold, color: INK });
+      let yy = fY + 6;
+      for (const l of lines) { if (!l) continue; pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8, font: helv, color: MUTE }); yy -= 10; }
+    };
+    col(0, foot.firma || 'Liftaro GmbH', [foot.strasse, foot.plzort]);
+    col(1, 'Kontakt', [foot.tel ? 'Tel: ' + foot.tel : '', foot.email, foot.web]);
+    col(2, 'Rechtliches', [foot.hrb, foot.ustid ? 'USt-IdNr. ' + foot.ustid : '', foot.gf ? 'GF: ' + foot.gf : '']);
     const pn = 'Ergebnis ' + angNr + ' - Seite ' + (idx + 1) + ' / ' + totalP.n;
-    pg.drawText(safe(pn), { x: W - M - helv.widthOfTextAtSize(safe(pn), 8), y: fY - 4, size: 8, font: helv, color: MUTE });
+    pg.drawText(safe(pn), { x: W - M - helv.widthOfTextAtSize(safe(pn), 8), y: 30, size: 8, font: helv, color: MUTE });
   });
   const out = await doc.save();
   return new Blob([out], { type: 'application/pdf' });
 }
 window._eiBuildErgebnisCheckPDF = _eiBuildErgebnisCheckPDF;
+
+// Default-Texte für das Ergebnis-PDF (in der UI editierbar)
+function _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis) {
+  return 'Sehr geehrte Damen und Herren,\n\n'
+    + 'im Auftrag der Hausverwaltung ' + (s.hvName || '') + ' hat Liftaro fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' ein vergleichbares Alternativangebot zur vorliegenden Reparatur eingeholt.\n\n'
+    + 'Auf Basis eines neutralen Leistungsverzeichnisses wurden die angefragten Leistungen an qualifizierte Fachbetriebe ubermittelt. Das nachstehende Ergebnis stellt das empfohlene Angebot dem ursprunglich vorliegenden Angebot gegenuber.';
+}
+function _eiErgDefaultBeauftragung(s, chosen) {
+  return 'Hiermit beauftragt die Hausverwaltung ' + (s.hvName || '') + ' den Fachbetrieb ' + (chosen ? chosen.wnFirma : '') + ' mit der Durchfuhrung der vorstehend aufgefuhrten Reparaturleistungen zu den genannten Preisen und Konditionen.\n\n'
+    + 'Die Hausverwaltung erklart, zur Erteilung dieses Auftrags im Namen der Eigentumergemeinschaft bzw. des Eigentumers bevollmachtigt zu sein. Mit der Unterschrift wird der Auftrag verbindlich erteilt. Die Abwicklung erfolgt uber Liftaro.';
+}
+window._eiErgDefaultAnschreiben = _eiErgDefaultAnschreiben;
+window._eiErgDefaultBeauftragung = _eiErgDefaultBeauftragung;
 
 // V12.313: Lazy-Sync — wenn der Aufzug in der Aufzuege-Tabelle bereits einem
 // EuC-Vertrag angehört (z. B. weil er direkt im EuC-Editor hinzugefügt wurde),
