@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.410';
+const APP_VERSION = 'V12.411';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33621,6 +33621,13 @@ window._renderEmailLvSection = _renderEmailLvSection;
 // ============================================================================
 const LV_LIFTARO_PROVISION_PCT = 25;
 
+// V12.411: Vergütungs-% aus State auflösen (editierbar, Default 25). Clamp 0..100.
+function _eiErgProvPct(s) {
+  const p = s && s.provisionPct;
+  return (p == null || isNaN(p)) ? LV_LIFTARO_PROVISION_PCT : Math.max(0, Math.min(100, Number(p)));
+}
+window._eiErgProvPct = _eiErgProvPct;
+
 function _eiErgSumOfPositions(arr) {
   if (!Array.isArray(arr)) return 0;
   return arr.reduce((acc, p) => {
@@ -33679,7 +33686,7 @@ async function openErgebnisCheckModal(emailId) {
     emailId, enriched, snap, hvEmail, hvName, hvAnsprech, hvStrasse, hvPlzOrt,
     chosenAnfId: chosen.anfId,
     originalEur: chosen.originalSumme || 0,
-    ersparnisOverride: null,   // null = automatisch (Original − Empfehlung)
+    provisionPct: LV_LIFTARO_PROVISION_PCT,   // editierbare Liftaro-Vergütung in % (Default 25)
     einschaetzung: '', empfehlung: '',
     anschreiben: '', beauftragung: '',
   };
@@ -33703,8 +33710,8 @@ function _eiErgebnisRenderModal() {
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   const orig = Number(s.originalEur) || 0;
   const ang  = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - ang);
-  const provision = ersparnis * (LV_LIFTARO_PROVISION_PCT / 100);
+  const ersparnis = Math.max(0, orig - ang);
+  const provision = ersparnis * (_eiErgProvPct(s) / 100);
 
   const offerCards = s.enriched.map(e => {
     const active = e.anfId === s.chosenAnfId;
@@ -33738,12 +33745,8 @@ function _eiErgebnisRenderModal() {
     +   '</div>'
     // 3) Ersparnis-Vorschau (in-place updatebar via id)
     +   (orig <= 0 ? '<div style="margin-top:8px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ Original-Preis nicht hinterlegt — bitte oben eintragen (bei alten LVs wurde der Vergleichspreis noch nicht gespeichert). Bei neuen LVs wird er automatisch aus dem Anhang übernommen.</div>' : '')
-    +   '<div id="ergErsparnisBox" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">' + _eiErgebnisErsparnisInner(orig, ang, chosen ? chosen.wnFirma : '', s.ersparnisOverride) + '</div>'
-    +   '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:10px 14px;margin-top:8px">'
-    +     '<span style="font-size:12px;color:#475569;flex:1">Ersparnis manuell überschreiben <span style="color:#94a3b8">(leer = automatisch)</span></span>'
-    +     '<input type="text" inputmode="decimal" id="ergErsparnisInput" value="' + (s.ersparnisOverride != null ? String(s.ersparnisOverride).replace('.', ',') : '') + '" placeholder="auto" oninput="_eiErgebnisErsparnisEdit(this.value)" style="width:120px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--dr-f-mono);font-size:13px;text-align:right;outline:none">'
-    +     '<span style="color:#94a3b8;font-size:13px">€</span>'
-    +   '</div>'
+    +   '<div id="ergErsparnisBox" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">' + _eiErgebnisErsparnisInner(orig, ang, chosen ? chosen.wnFirma : '', _eiErgProvPct(s)) + '</div>'
+    +   '<div style="margin-top:6px;font-size:11px;color:#94a3b8">Die Liftaro-Vergütung ist im Feld oben (Standard ' + LV_LIFTARO_PROVISION_PCT + ' %) anpassbar — alle Werte rechnen sich automatisch neu.</div>'
     // 4) KI-Prompt
     +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">3 · KI-Einschätzung</div>'
     +   '<div class="field" style="margin-bottom:8px"><input type="text" id="ergPromptInput" placeholder="Optionaler Hinweis an die KI — z. B. „Lieferzeit betonen", „kurz halten"" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box"></div>'
@@ -33787,17 +33790,19 @@ function _eiErgebnisChooseAnf(anfId) {
 }
 window._eiErgebnisChooseAnf = _eiErgebnisChooseAnf;
 
-function _eiErgebnisErsparnisInner(orig, ang, chosenFirma, override) {
+function _eiErgebnisErsparnisInner(orig, ang, chosenFirma, pct) {
   const esc = _esc;
-  const diff = (override != null) ? Math.max(0, override) : Math.max(0, orig - ang);   // Brutto-Differenz
-  const provision = diff * (LV_LIFTARO_PROVISION_PCT / 100);
+  const p = (pct == null || isNaN(pct)) ? LV_LIFTARO_PROVISION_PCT : Math.max(0, Math.min(100, Number(pct)));
+  const diff = Math.max(0, orig - ang);                                                 // Brutto-Differenz
+  const provision = diff * (p / 100);
   const netto = Math.max(0, diff - provision);                                          // tatsächliche Ersparnis nach Liftaro
-  const pct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
+  const npct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
+  const pctStr = String(p).replace('.', ',');
   return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Original-Angebot</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</span></div>'
     + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Empfohlenes Angebot (' + esc(chosenFirma || '') + ')</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(ang)) + '</span></div>'
     + '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:12.5px;color:#166534"><span>Differenz</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(diff)) + '</span></div>'
-    + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Liftaro-Vergütung (' + LV_LIFTARO_PROVISION_PCT + ' % der Differenz)</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(provision)) + '</span></div>'
-    + '<div style="border-top:2px solid #16a34a;margin:6px 0 0;padding-top:7px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#15803d"><span>Ihre tatsächliche Ersparnis' + (pct ? ' (' + pct + ' %)' : '') + '</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(netto)) + '</span></div>';
+    + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#166534;margin-bottom:5px"><span style="display:inline-flex;align-items:center;gap:4px">Liftaro-Vergütung (<input type="text" inputmode="decimal" id="ergProvPctInput" value="' + esc(pctStr) + '" oninput="_eiErgebnisProvisionEdit(this.value)" onclick="this.select()" title="Liftaro-Vergütung in % der Differenz — anpassbar" style="width:44px;padding:2px 5px;border:1px solid #16a34a;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;outline:none;background:#fff;color:#15803d;font-weight:700"> % der Differenz)</span><span id="ergProvAmount" style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(provision)) + '</span></div>'
+    + '<div style="border-top:2px solid #16a34a;margin:6px 0 0;padding-top:7px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#15803d"><span id="ergNettoLabel">Ihre tatsächliche Ersparnis' + (npct ? ' (' + npct + ' %)' : '') + '</span><span id="ergNettoAmount" style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(netto)) + '</span></div>';
 }
 window._eiErgebnisErsparnisInner = _eiErgebnisErsparnisInner;
 
@@ -33810,28 +33815,30 @@ function _eiErgebnisOrigEdit(v) {
   const box = document.getElementById('ergErsparnisBox');
   if (box) {
     const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
-    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '', s.ersparnisOverride);
+    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '', _eiErgProvPct(s));
   }
 }
 window._eiErgebnisOrigEdit = _eiErgebnisOrigEdit;
 
-// V12.407: Ersparnis manuell überschreiben
-function _eiErgebnisErsparnisEdit(v) {
+// V12.411: Liftaro-Vergütung in % editieren — nur die abhängigen Werte updaten,
+// das Input-Feld selbst NICHT neu rendern (sonst Fokus-/Cursor-Verlust beim Tippen).
+function _eiErgebnisProvisionEdit(v) {
   const s = window._eiErgebnisState; if (!s) return;
-  const t = String(v || '').trim();
-  if (t === '') { s.ersparnisOverride = null; }
-  else {
-    const raw = t.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
-    const n = parseFloat(raw);
-    s.ersparnisOverride = (isNaN(n) || n < 0) ? null : n;
-  }
-  const box = document.getElementById('ergErsparnisBox');
-  if (box) {
-    const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
-    box.innerHTML = _eiErgebnisErsparnisInner(s.originalEur, chosen ? chosen.angebotSumme : 0, chosen ? chosen.wnFirma : '', s.ersparnisOverride);
-  }
+  const t = String(v || '').trim().replace('%', '').replace(',', '.');
+  const n = parseFloat(t);
+  s.provisionPct = (t === '' || isNaN(n)) ? null : Math.max(0, Math.min(100, n));
+  const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+  const orig = Number(s.originalEur) || 0;
+  const ang = chosen ? chosen.angebotSumme : 0;
+  const diff = Math.max(0, orig - ang);
+  const provision = diff * (_eiErgProvPct(s) / 100);
+  const netto = Math.max(0, diff - provision);
+  const npct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
+  const pa = document.getElementById('ergProvAmount'); if (pa) pa.textContent = '− ' + _eiErgFmtEur(provision);
+  const na = document.getElementById('ergNettoAmount'); if (na) na.textContent = _eiErgFmtEur(netto);
+  const nl = document.getElementById('ergNettoLabel'); if (nl) nl.textContent = 'Ihre tatsächliche Ersparnis' + (npct ? ' (' + npct + ' %)' : '');
 }
-window._eiErgebnisErsparnisEdit = _eiErgebnisErsparnisEdit;
+window._eiErgebnisProvisionEdit = _eiErgebnisProvisionEdit;
 
 async function _eiErgebnisGenerateKI() {
   const s = window._eiErgebnisState; if (!s) return;
@@ -33840,7 +33847,7 @@ async function _eiErgebnisGenerateKI() {
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - ang);
+  const ersparnis = Math.max(0, orig - ang);
   const userHint = document.getElementById('ergPromptInput')?.value || '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generiere …'; }
   try {
@@ -33945,8 +33952,8 @@ async function _eiErgebnisCreateAndSend(doSend) {
     if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) throw new Error('Email-Sender nicht konfiguriert');
     const base64 = _arrB64(mergedBytes);
     const orig = Number(s.originalEur) || 0;
-    const diff = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - chosen.angebotSumme);
-    const provision = diff * (LV_LIFTARO_PROVISION_PCT / 100);
+    const diff = Math.max(0, orig - chosen.angebotSumme);
+    const provision = diff * (_eiErgProvPct(s) / 100);
     const ersparnis = Math.max(0, diff - provision);   // tatsächliche Ersparnis nach Liftaro
     const betreff = 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
     const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
@@ -34071,8 +34078,9 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const BRAND = rgb(0.49, 0.23, 0.93), GREEN = rgb(0.08, 0.5, 0.2), GREEN_BG = rgb(0.94, 0.99, 0.96);
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = (s.ersparnisOverride != null) ? Math.max(0, s.ersparnisOverride) : Math.max(0, orig - ang);
-  const provision = ersparnis * (LV_LIFTARO_PROVISION_PCT / 100);
+  const provPct = _eiErgProvPct(s);
+  const ersparnis = Math.max(0, orig - ang);
+  const provision = ersparnis * (provPct / 100);
   const ersparnisPct = orig > 0 ? Math.round((ersparnis / orig) * 100) : 0;
   const dat = new Date().toLocaleDateString('de-DE');
   const tokenShort = String(chosen.anfId || '').replace(/^lva?_/i, '').slice(0, 5).toUpperCase();
@@ -34137,7 +34145,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   draw('Empfohlenes Angebot - ' + chosen.wnFirma, M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 9;
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.5, color: rgb(0.53, 0.94, 0.67) }); by -= 17;
   draw('Differenz', M + 16, by, helv, 11, INK); dr(fmtEur(ersparnis), W - M - 16, by, helv, 11, INK); by -= 18;
-  draw('Liftaro-Vergutung (' + LV_LIFTARO_PROVISION_PCT + ' % der Differenz)', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(provision), W - M - 16, by, helv, 11, INK); by -= 11;
+  draw('Liftaro-Vergutung (' + String(provPct).replace('.', ',') + ' % der Differenz)', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(provision), W - M - 16, by, helv, 11, INK); by -= 11;
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 1.2, color: GREEN }); by -= 20;
   draw('Ihre tatsachliche Ersparnis' + (nettoPct ? ' (' + nettoPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(netto), W - M - 16, by, bold, 16, GREEN);
   y -= boxH + 30;
@@ -34231,7 +34239,7 @@ function _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis) {
 }
 function _eiErgDefaultBeauftragung(s, chosen) {
   return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Alternativangebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
-    + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + LV_LIFTARO_PROVISION_PCT + ' % der realisierten Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
+    + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + String(_eiErgProvPct(s)).replace('.', ',') + ' % der realisierten Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
     + 'Die verbindliche Beauftragung der Reparaturleistungen gegenuber dem Fachbetrieb erfolgt separat im Rahmen des angenommenen Angebots. Diese Bestatigung betrifft ausschliesslich die Annahme des Angebots und die Zustimmung zur Liftaro-Beraterverguetung.';
 }
 window._eiErgDefaultAnschreiben = _eiErgDefaultAnschreiben;
