@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.411';
+const APP_VERSION = 'V12.412';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33687,6 +33687,8 @@ async function openErgebnisCheckModal(emailId) {
     chosenAnfId: chosen.anfId,
     originalEur: chosen.originalSumme || 0,
     provisionPct: LV_LIFTARO_PROVISION_PCT,   // editierbare Liftaro-Vergütung in % (Default 25)
+    origAnbieter: String(snap.orig_anbieter || '').trim(),       // V12.412: Anbieter des Original-Angebots (editierbar)
+    origAngebotNr: String(snap.orig_angebot_nr || '').trim(),    // V12.412: Angebots-Nr. des Original-Angebots (editierbar)
     einschaetzung: '', empfehlung: '',
     anschreiben: '', beauftragung: '',
   };
@@ -33742,6 +33744,11 @@ function _eiErgebnisRenderModal() {
     +     '<span style="font-size:12.5px;color:#475569;flex:1">Summe des vorliegenden Original-Angebots (netto)</span>'
     +     '<input type="text" inputmode="decimal" id="ergOrigInput" value="' + (orig > 0 ? String(orig).replace('.', ',') : '') + '" placeholder="0,00" oninput="_eiErgebnisOrigEdit(this.value)" style="width:120px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--dr-f-mono);font-size:13px;text-align:right;outline:none">'
     +     '<span style="color:#94a3b8;font-size:13px">€</span>'
+    +   '</div>'
+    // V12.412: Anbieter + Angebots-Nr. des Original-Angebots (werden im PDF genannt, editierbar)
+    +   '<div style="display:flex;gap:8px;margin-top:8px">'
+    +     '<div style="flex:2"><input type="text" id="ergOrigAnbieter" value="' + esc(s.origAnbieter || '') + '" placeholder="Anbieter des Original-Angebots" oninput="window._eiErgebnisState.origAnbieter=this.value" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px;outline:none;box-sizing:border-box"></div>'
+    +     '<div style="flex:1"><input type="text" id="ergOrigAngebotNr" value="' + esc(s.origAngebotNr || '') + '" placeholder="Angebots-Nr." oninput="window._eiErgebnisState.origAngebotNr=this.value" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px;outline:none;box-sizing:border-box"></div>'
     +   '</div>'
     // 3) Ersparnis-Vorschau (in-place updatebar via id)
     +   (orig <= 0 ? '<div style="margin-top:8px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ Original-Preis nicht hinterlegt — bitte oben eintragen (bei alten LVs wurde der Vergleichspreis noch nicht gespeichert). Bei neuen LVs wird er automatisch aus dem Anhang übernommen.</div>' : '')
@@ -33909,7 +33916,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
   if (btn && doSend) { btn.disabled = true; btn.textContent = '⏳ Erstelle …'; }
   try {
     const _arrB64 = (view) => { let bin = ''; for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000)); return btoa(bin); };
-    // V12.408: Ergebnis + Alternativangebot + Original-Angebot zu EINER PDF mergen
+    // V12.412: Ergebnis + Alternativangebot zu EINER PDF mergen (Original-Angebot wird nur erwähnt, NICHT mehr angehängt)
     if (btn) btn.textContent = '⏳ Erstelle PDF …';
     const ergBytes = new Uint8Array(await (await _eiBuildErgebnisCheckPDF(s, chosen)).arrayBuffer());
     // Alternativangebot (Wartungsnehmer-Angebot)
@@ -33923,19 +33930,12 @@ async function _eiErgebnisCreateAndSend(doSend) {
         klauseln: String(a.klauseln_snapshot_html || ''),
       };
       if (typeof _eiLvBuildAntwortPdf === 'function') altBytes = new Uint8Array(await (await _eiLvBuildAntwortPdf(subAlt)).arrayBuffer());
-    } catch (e) { console.warn('[V12.408] Alternativangebot:', e.message); }
-    // Original-Angebot (PDF-Anhang der Email)
-    let origBytes = null;
-    try {
-      const rEmail = (_eiAllRecords || []).find(x => x._id === s.emailId);
-      const pdfs = (rEmail && Array.isArray(rEmail.attachments) ? rEmail.attachments : []).filter(at => /\.pdf$/i.test(at.filename || at.name || ''));
-      if (pdfs[0] && pdfs[0].url) { const r2 = await fetch(pdfs[0].url); if (r2.ok) origBytes = new Uint8Array(await r2.arrayBuffer()); }
-    } catch (e) { console.warn('[V12.408] Original-Angebot:', e.message); }
-    // Merge zu EINER Datei
+    } catch (e) { console.warn('[V12.412] Alternativangebot:', e.message); }
+    // Merge zu EINER Datei (Original-Angebot bewusst NICHT mehr enthalten)
     if (btn) btn.textContent = '⏳ Füge PDF zusammen …';
     const { PDFDocument } = window.PDFLib;
     const merged = await PDFDocument.create();
-    for (const bytes of [ergBytes, altBytes, origBytes]) {
+    for (const bytes of [ergBytes, altBytes]) {
       if (!bytes) continue;
       try { const src = await PDFDocument.load(bytes, { ignoreEncryption: true }); const ps = await merged.copyPages(src, src.getPageIndices()); ps.forEach(p => merged.addPage(p)); }
       catch (e) { console.warn('[V12.408] Merge übersprungen:', e.message); }
@@ -33965,7 +33965,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
       + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
       + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
       + (s.empfehlung ? s.empfehlung + '\n\n' : '')
-      + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot und das Original-Angebot.\n\n'
+      + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot.\n\n'
       + 'Mit freundlichen Grüßen\nIhr Liftaro-Team';
     const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
     const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig:'', htmlBody:'' };
@@ -34136,14 +34136,19 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   // Preisvergleich-Box (Netto-Ersparnis nach Liftaro-Abzug als fette Schlusszeile)
   const netto = Math.max(0, ersparnis - provision);
   const nettoPct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
-  ensure(140);
+  // V12.412: Original- und empfohlenes Angebot je mit Anbieter + Angebots-Nr. (Unterzeile)
+  const origSub = [String(s.origAnbieter || '').trim(), String(s.origAngebotNr || '').trim() ? 'Angebot-Nr. ' + String(s.origAngebotNr).trim() : ''].filter(Boolean).join(' · ');
+  const recSub  = [String(chosen.wnFirma || '').trim(), 'Liftaro-Angebot ' + angNr].filter(Boolean).join(' · ');
+  ensure(168);
   draw('Preisvergleich', M, y, bold, 12, INK); y -= 18;
-  const boxH = 124;
+  const boxH = 146;
   page.drawRectangle({ x: M, y: y - boxH, width: W - 2*M, height: boxH, color: GREEN_BG, borderColor: rgb(0.53, 0.94, 0.67), borderWidth: 1 });
-  let by = y - 18;
-  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 19;
-  draw('Empfohlenes Angebot - ' + chosen.wnFirma, M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 9;
-  page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.5, color: rgb(0.53, 0.94, 0.67) }); by -= 17;
+  let by = y - 16;
+  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 13;
+  if (origSub) draw(origSub, M + 16, by, helv, 8.5, MUTE); by -= 16;
+  draw('Empfohlenes Angebot', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 13;
+  if (recSub) draw(recSub, M + 16, by, helv, 8.5, MUTE); by -= 13;
+  page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.5, color: rgb(0.53, 0.94, 0.67) }); by -= 16;
   draw('Differenz', M + 16, by, helv, 11, INK); dr(fmtEur(ersparnis), W - M - 16, by, helv, 11, INK); by -= 18;
   draw('Liftaro-Vergutung (' + String(provPct).replace('.', ',') + ' % der Differenz)', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(provision), W - M - 16, by, helv, 11, INK); by -= 11;
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 1.2, color: GREEN }); by -= 20;
@@ -34151,9 +34156,12 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   y -= boxH + 30;
   // V12.409: Leistungsumfang — nur Titel + Beschreibung aus dem extrahierten LV, KEINE Preise/Mengen
   ensure(46);
-  draw('Leistungsumfang der Angebote', M, y, bold, 12, INK); y -= 4;
-  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 130, y: y - 2 }, thickness: 1.2, color: INK }); y -= 8;
-  for (const l of wrap('Beide Angebote umfassen denselben, von Liftaro neutral erstellten Leistungsumfang:', helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+  draw('Leistungsumfang der Angebote', M, y, bold, 12, INK); y -= 16;
+  const _origFirma = String(s.origAnbieter || '').trim();
+  const leistIntro = _origFirma
+    ? 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Angebot der Firma ' + _origFirma + ' per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:'
+    : 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Original-Angebot per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:';
+  for (const l of wrap(leistIntro, helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
   y -= 6;
   // Quelle: bevorzugt das neutrale LV (Titel + Beschreibung), sonst die Antwort-Positionen (nur Titel)
   const leistPos = (chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || []);
@@ -34189,7 +34197,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   }
   // Hinweis auf Anhänge
   y -= 4; ensure(28);
-  for (const l of wrap('Im Anhang dieser E-Mail finden Sie das vollstandige Original-Angebot sowie das empfohlene Alternativangebot zur Einsicht.', helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+  for (const l of wrap('Das empfohlene Alternativangebot finden Sie vollstandig im Anhang dieser E-Mail. Das ursprungliche Angebot' + (_origFirma ? ' der Firma ' + _origFirma : '') + ' liegt Ihnen bereits vor und ist hier nur zum Vergleich aufgefuhrt.', helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
   y -= 10;
   // Zustimmung zum Angebot + Liftaro-Beraterverguetung (editierbar) — KEINE Reparatur-Beauftragung
   const beauftr = s.beauftragung || _eiErgDefaultBeauftragung(s, chosen);
