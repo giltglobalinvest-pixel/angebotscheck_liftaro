@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.444';
+const APP_VERSION = 'V12.445';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12883,6 +12883,21 @@ function _eiWvRenderEditorBody(body, s) {
   s.wvOptionen = s.wvOptionen || _eiWvDefaultOptions();
   const o = s.wvOptionen;
   const snap = s.snap || {};
+  // V12.445: HV-Adresse einmalig laden — aus HV_Adressen (zentral pro Org), Fallback Snapshot
+  if (s.hvAdresse === undefined) {
+    s.hvAdresse = { strasse: String(snap.hv_strasse || '').trim(), plz: String(snap.hv_plz || '').trim(), ort: String(snap.hv_ort || '').trim(), quelle: '' };
+    const _oid = String(snap.hv_pipedrive_org_id || '').trim();
+    if (_oid && typeof _eiHvAdresseGet === 'function') {
+      _eiHvAdresseGet(_oid).then(a => {
+        if (a && (a.strasse || a.plz || a.ort)) {
+          s.hvAdresse = { strasse: a.strasse, plz: a.plz, ort: a.ort, quelle: a.quelle || 'gespeichert' };
+          if (s.vorlage && s.vorlage.typ === 'wartungsvertrag') _eiLvRenderEditorBody();
+        }
+      });
+    }
+  }
+  const adr = s.hvAdresse || {};
+  const adrMissing = !String(adr.strasse || '').trim();
   const esc = (typeof _esc === 'function') ? _esc : (x => String(x == null ? '' : x));
   const kCard = (icon, label, val) => '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;min-width:0">'
     + '<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">' + icon + ' ' + label + '</div>'
@@ -12900,6 +12915,17 @@ function _eiWvRenderEditorBody(body, s) {
   const check = (checked, label, handler, disabled) => '<label style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid ' + (checked ? '#2456E5' : '#e2e8f0') + ';border-radius:8px;cursor:' + (disabled ? 'not-allowed' : 'pointer') + ';background:' + (checked ? '#eff6ff' : '#fff') + ';opacity:' + (disabled ? '.55' : '1') + ';font-size:13.5px;color:#0f172a"><input type="checkbox"' + (checked ? ' checked' : '') + (disabled ? ' disabled' : '') + ' onchange="' + handler + '" style="accent-color:#2456E5;width:16px;height:16px">' + label + '</label>';
   const yearsOpts = [];
   for (let i = 1; i <= 10; i++) yearsOpts.push([i, String(i)]);
+  const adrSection = '<div style="background:#fffdf5;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:14px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+    +   '<div style="font-size:13px;font-weight:700;color:#92400e">📍 Adresse Hausverwaltung <span style="font-weight:400;color:#b45309;font-size:11px">· Pflicht · zentral pro HV gespeichert</span></div>'
+    +   '<button onclick="_eiWvAdresseAusSignatur()" style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Aus Signatur holen</button>'
+    + '</div>'
+    + '<input type="text" value="' + esc(adr.strasse || '') + '" oninput="_eiWvAdrSet(\'strasse\',this.value)" placeholder="Straße + Hausnummer" style="' + inStyle + '">'
+    + '<div style="display:flex;gap:8px;margin-top:6px"><input type="text" value="' + esc(adr.plz || '') + '" oninput="_eiWvAdrSet(\'plz\',this.value)" placeholder="PLZ" style="' + inStyle + ';width:120px;flex:none"><input type="text" value="' + esc(adr.ort || '') + '" oninput="_eiWvAdrSet(\'ort\',this.value)" placeholder="Ort" style="' + inStyle + '"></div>'
+    + (adrMissing
+        ? '<div style="font-size:11.5px;color:#b91c1c;margin-top:7px;font-weight:600">⚠ Straße fehlt — bitte ergänzen oder „Aus Signatur holen". Wird beim Speichern zentral an der HV hinterlegt.</div>'
+        : (adr.quelle ? '<div style="font-size:11px;color:#5b7a66;margin-top:7px">Quelle: ' + esc(adr.quelle) + ' · wird beim Speichern an der HV gesichert</div>' : ''))
+    + '</div>';
   const wiz = '<div style="background:#f7fbf8;border:1px solid #cfe9d8;border-radius:12px;padding:18px 20px">'
     + '<div style="font-size:13px;font-weight:800;color:#15803d;letter-spacing:.02em;margin-bottom:4px">✨ Wartungsvertrag — Leistungsoptionen</div>'
     + '<div style="font-size:12px;color:#5b7a66;margin-bottom:8px">Liftaro legt diese Optionen als verbindliche Spec fest. Der Wartungsnehmer trägt später nur den Jahrespreis ein.</div>'
@@ -12923,7 +12949,7 @@ function _eiWvRenderEditorBody(body, s) {
       + radio('wv_turnus', o.abrechnung_turnus === 'quartalsweise', 'Quartalsweise — vier Rechnungen pro Jahr', "_eiWvSet('abrechnung_turnus','quartalsweise')")
     + '</div>'
     + '<div style="margin-top:12px;font-size:12px;color:#64748b;line-height:1.5">Tipp: <strong>🤖 KI: Optionen aus Vertrag</strong> füllt diese Felder aus dem angehängten Alt-Vertrag. <strong>📄 Vertrag-Vorschau</strong> zeigt den fertigen Vertragstext.</div>';
-  body.innerHTML = ctx + titelHtml + wiz;
+  body.innerHTML = ctx + titelHtml + adrSection + wiz;
 }
 window._eiWvRenderEditorBody = _eiWvRenderEditorBody;
 
@@ -12935,8 +12961,10 @@ async function _eiWvShowVorschau() {
   // V12.441: HV-Adresse aus dem Snapshot, Fallback auf den Email-Record (gleiche Quelle wie Ergebnis-Check)
   const _r = (typeof _eiAllRecords !== 'undefined' ? (_eiAllRecords || []).find(x => x._id === s.emailId) : null) || {};
   const hvName = String(snap.hv_name || '').trim() || '—';
-  const hvStrasse = String(snap.hv_strasse || _r.real_hv_strasse || '').trim();
-  const hvPlzOrt = [String(snap.hv_plz || _r.real_hv_plz || '').trim(), String(snap.hv_ort || _r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
+  // V12.445: HV-Adresse bevorzugt aus dem Wizard-Feld (s.hvAdresse), dann Snapshot, dann Email-Record
+  const _adr = s.hvAdresse || {};
+  const hvStrasse = String(_adr.strasse || snap.hv_strasse || _r.real_hv_strasse || '').trim();
+  const hvPlzOrt = [String(_adr.plz || snap.hv_plz || _r.real_hv_plz || '').trim(), String(_adr.ort || snap.hv_ort || _r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
   // V12.443: WEG → Auftraggeber = „WEG <Standort>" + Hausverwaltung (Name + Adresse); sonst HV direkt
   let kundeName, kundeAdresse;
   if (o.ist_weg) {
@@ -13005,6 +13033,13 @@ async function _eiWvSave() {
     else { const result = await atWrite('Leistungsverzeichnisse', fields); if (result && result.id) s.recordId = result.id; }
     s.status = newStatus;
     const sh = document.getElementById('lvEdHeaderStatus'); if (sh) sh.textContent = newStatus;
+    // V12.445: HV-Adresse zentral an der HV (Pipedrive-Org-ID) in Airtable sichern
+    try {
+      const _oid = String((s.snap && s.snap.hv_pipedrive_org_id) || '').trim();
+      if (_oid && s.hvAdresse && typeof _eiHvAdresseSave === 'function') {
+        await _eiHvAdresseSave(_oid, { hv_name: (s.snap && s.snap.hv_name) || '', strasse: s.hvAdresse.strasse || '', plz: s.hvAdresse.plz || '', ort: s.hvAdresse.ort || '', quelle: s.hvAdresse.quelle || 'manuell' });
+      }
+    } catch (e) { console.warn('[V12.445] HV-Adresse-Save:', e.message); }
     if (typeof _eiLvLoadForEmail === 'function') await _eiLvLoadForEmail(s.emailId, true);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
     showToast('✓ Wartungsvertrag-LV gespeichert', 'success', 3000);
@@ -13185,6 +13220,88 @@ async function _eiWvBuildVertragPdf(opts, parties) {
   return await doc.save();
 }
 window._eiWvBuildVertragPdf = _eiWvBuildVertragPdf;
+
+// ════════════════════════════════════════════════════════════════════════════
+// V12.445: HV-Adressen — zentral pro Hausverwaltung in Airtable (Tabelle HV_Adressen,
+// Key = Pipedrive-Org-ID). Quelle: Email-Signatur (KI) oder manuell. KEIN Pipedrive-Write.
+// ════════════════════════════════════════════════════════════════════════════
+let _hvAdresseEnsured = false;
+async function _eiHvAdresseEnsure() {
+  if (_hvAdresseEnsured) return;
+  if (typeof ensureTable !== 'function') return;
+  try {
+    await ensureTable('HV_Adressen', [
+      { name: 'org_id',     type: 'singleLineText' },
+      { name: 'hv_name',    type: 'singleLineText' },
+      { name: 'strasse',    type: 'singleLineText' },
+      { name: 'plz',        type: 'singleLineText' },
+      { name: 'ort',        type: 'singleLineText' },
+      { name: 'quelle',     type: 'singleLineText' },
+      { name: 'updated_at', type: 'singleLineText' },
+    ]);
+    _hvAdresseEnsured = true;
+  } catch (e) { console.warn('[V12.445] HV_Adressen ensure:', e.message); }
+}
+async function _eiHvAdresseGet(orgId) {
+  orgId = String(orgId || '').trim();
+  if (!orgId) return null;
+  try {
+    await _eiHvAdresseEnsure();
+    const recs = await atRead('HV_Adressen', "{org_id}='" + orgId.replace(/'/g, "\\'") + "'", { sort: false });
+    if (recs && recs.length) {
+      const f = recs[0].fields || {};
+      return { _recordId: recs[0].id, strasse: String(f.strasse || ''), plz: String(f.plz || ''), ort: String(f.ort || ''), hv_name: String(f.hv_name || ''), quelle: String(f.quelle || '') };
+    }
+    return null;
+  } catch (e) { console.warn('[V12.445] HV_Adresse get:', e.message); return null; }
+}
+window._eiHvAdresseGet = _eiHvAdresseGet;
+async function _eiHvAdresseSave(orgId, data) {
+  orgId = String(orgId || '').trim();
+  if (!orgId) return false;
+  try {
+    await _eiHvAdresseEnsure();
+    const fields = {
+      org_id: orgId, hv_name: String(data.hv_name || ''),
+      strasse: String(data.strasse || ''), plz: String(data.plz || ''), ort: String(data.ort || ''),
+      quelle: String(data.quelle || 'manuell'), updated_at: new Date().toISOString(),
+    };
+    const existing = await atRead('HV_Adressen', "{org_id}='" + orgId.replace(/'/g, "\\'") + "'", { sort: false });
+    if (existing && existing.length) await atUpdate('HV_Adressen', existing[0].id, fields);
+    else await atWrite('HV_Adressen', fields);
+    return true;
+  } catch (e) { console.warn('[V12.445] HV_Adresse save:', e.message); return false; }
+}
+window._eiHvAdresseSave = _eiHvAdresseSave;
+
+// Editor-Binding: HV-Adresse im WV-Wizard
+function _eiWvAdrSet(key, val) {
+  const s = window._eiLvEditorState; if (!s) return;
+  s.hvAdresse = s.hvAdresse || {};
+  s.hvAdresse[key] = val;   // kein Re-Render (Fokus beim Tippen halten)
+}
+window._eiWvAdrSet = _eiWvAdrSet;
+async function _eiWvAdresseAusSignatur() {
+  const s = window._eiLvEditorState; if (!s) return;
+  if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error', 4000); return; }
+  const r = (_eiAllRecords || []).find(x => x._id === s.emailId);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
+  const body = String(r.body_text || (typeof _stripHtml === 'function' ? _stripHtml(r.body_html || '') : '') || '').slice(0, 4000);
+  if (!body.trim()) { showToast('Kein Email-Text für die Signatur-Extraktion', 'warning', 4500); return; }
+  showToast('🤖 KI liest die Signatur …', 'info', 2500);
+  try {
+    const ex = (typeof _eiExtractHvFromBody === 'function') ? await _eiExtractHvFromBody((s.snap && s.snap.hv_name) || '', {}, body) : null;
+    if (!ex || (!ex.strasse && !ex.plz && !ex.ort)) { showToast('Keine Adresse in der Signatur gefunden — bitte manuell ergänzen', 'warning', 6000); return; }
+    s.hvAdresse = s.hvAdresse || {};
+    if (ex.strasse) s.hvAdresse.strasse = String(ex.strasse);
+    if (ex.plz)     s.hvAdresse.plz = String(ex.plz);
+    if (ex.ort)     s.hvAdresse.ort = String(ex.ort);
+    s.hvAdresse.quelle = 'signatur';
+    _eiLvRenderEditorBody();
+    showToast('✓ Adresse aus Signatur übernommen — bitte prüfen', 'success', 4000);
+  } catch (e) { console.error('[V12.445] Adresse-Signatur:', e); showToast('Extraktion fehlgeschlagen: ' + e.message, 'error', 6000); }
+}
+window._eiWvAdresseAusSignatur = _eiWvAdresseAusSignatur;
 
 // ============================================================================
 // V12.381: LV-Versand (Phase 2) — Token, Anfragen-Tabelle, Servicebetrieb-Picker
