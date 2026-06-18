@@ -6439,7 +6439,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.431';
+const APP_VERSION = 'V12.432';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6490,8 +6490,8 @@ const FEATURE_REGISTRY = [
   },
   {
     key:    'ei_aktionen',
-    label:  'Aktionen-Footer im Email-Detail',
-    desc:   'Versteckt die untere „Aktionen"-Kachel mit „Als gesichtet markieren / In Bearbeitung / Archivieren".',
+    label:  'Kopie-erstellen-Kachel im Email-Detail',
+    desc:   'Versteckt die untere „Kopie erstellen"-Kachel mit dem Button „📑 Kopie für weiteren Aufzug".',
     icon:   '⚙️',
   },
   // V12.345: Manuell-Check-Anlegen-Kachel + KI-Antwortentwurf-Kachel separat ausblendbar
@@ -40143,25 +40143,12 @@ function renderEmailInboxDetail() {
 
   // V12.187: Body + Anhänge wurden bereits oben nach dem Header gerendert (Lesefluss)
 
-  // Status- & Aktions-Buttons
-  const canReply = (r.from_email && (r.linked_check_ids || r.reply_draft || vorgaenge.length === 0));
+  // V12.432: „Aktionen"-Block auf „Kopie erstellen" reduziert. Status-Buttons (gesichtet /
+  // In Bearbeitung / Archivieren), „Antwort senden" und „Sim-Check (Demo)" entfernt — Status
+  // wird über die Dropdowns in Liste/Header gesetzt, Antworten laufen über Chat/Reply-Modal.
   html += `<div class="dr-section" data-feature="ei_aktionen" style="padding:14px 18px">
-    <div class="dr-section-title" style="margin-bottom:12px">Aktionen</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">`;
-  if (canReply && r.status !== 'geantwortet') {
-    html += `<button onclick="openEmailReplyModal('${r._id}')" style="background:var(--dr-green);color:#fff;border:none;border-radius:var(--dr-r-md);padding:9px 18px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 2px rgba(22,163,74,.2),0 6px 16px rgba(22,163,74,.16)">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-      Antwort senden
-    </button>`;
-  }
-  if (r.status === 'geantwortet') {
-    html += `<div style="background:var(--dr-green-soft);color:var(--dr-green-deep);border:1px solid #8FD4A6;border-radius:var(--dr-r-md);padding:9px 14px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px">✓ Bereits geantwortet${r.replied_at ? ' · ' + String(r.replied_at).slice(0,16).replace('T',' ') : ''}</div>`;
-  }
-  html += `<button class="dr-pill" onclick="setEmailStatus('${r._id}','gesichtet')">Als gesichtet markieren</button>
-    <button class="dr-pill" onclick="setEmailStatus('${r._id}','in_bearbeitung')">In Bearbeitung</button>
-    <button class="dr-pill dr-pill--reset" onclick="setEmailStatus('${r._id}','verworfen')" title="Email archivieren (aus der Liste ausblenden)">📦 Archivieren</button>
-    <!-- V12.330: Demo-Check zum Testen des Workflows ohne echte Eingaben -->
-    <button class="dr-pill" onclick="simulateCheckFromEmail('${r._id}')" title="Erstellt einen echten Check mit Demo-Werten (alter Partner, Vergleichsangebote, Erfolgsbeteiligung) — perfekt um zu sehen wie das fertige Ergebnis-PDF aussieht. Im Subject mit „🧪 SIM" markiert." style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;font-weight:700">🧪 Sim-Check (Demo)</button>
+    <div class="dr-section-title" style="margin-bottom:12px">Kopie erstellen</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
     <!-- V12.331: Email für einen weiteren Aufzug duplizieren — HV bleibt, Aufzug-Zuordnung leer für manuelle Auswahl -->
     <button class="dr-pill" onclick="duplicateEmailForAnotherAufzug('${r._id}')" title="Erstellt eine Kopie dieser Email mit gleicher HV-Zuordnung, aber leerem Aufzug-Slot — damit du für jeden Aufzug einen eigenen Check anlegen kannst, wenn die HV mehrere Verträge in einer Mail geschickt hat." style="background:#ede9fe;border:1px solid #c4b5fd;color:#5b21b6;font-weight:700">📑 Kopie für weiteren Aufzug</button>
     </div>
