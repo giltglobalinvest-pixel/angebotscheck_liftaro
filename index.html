@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.417';
+const APP_VERSION = 'V12.418';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12049,9 +12049,10 @@ async function _eiLvExtractPositions() {
     const userText = 'Analysiere die obigen PDF-Anhänge sorgfältig und extrahiere die Reparatur-/Erneuerungs-Positionen exakt nach deiner Anweisung.\n\n'
       + 'WICHTIG:\n'
       + '- Liefere für jede Position UNBEDINGT die Felder `titel` (Substantiv-Phrase) und `beschreibung` (Fließtext mit allen Unter-Schritten).\n'
+      + '- Trage zu JEDER Position den Netto-Einzelpreis als Zahl ins Feld `preis_eur` ein, sofern im PDF ein Einzelpreis für diesen Posten erkennbar ist (z. B. 489.50). Nur wenn kein Einzelpreis existiert: preis_eur=null (NICHT raten, NICHT aus einer Gesamtsumme aufteilen).\n'
       + '- Fasse Unter-Bullets (Konfektionierung, Demontage, Montage, Entsorgung, Inbetriebnahme) IMMER zu einer Position zusammen.\n'
       + '- Wenn das PDF kein Reparatur-Angebot ist (Wartungsvertrag, Rechnung, Korrespondenz, leere/unlesbare Datei): gib AUSDRÜCKLICH `[]` zurück.\n\n'
-      + 'Antworte AUSSCHLIESSLICH mit gültigem JSON-Array.';
+      + 'Antworte AUSSCHLIESSLICH mit GENAU EINEM gültigen JSON-Array — kein vorangestelltes leeres Array, kein Text oder Markdown davor/danach.';
     const reqBody = {
       model: 'claude-haiku-4-5',
       max_tokens: 2500,
@@ -12079,9 +12080,17 @@ async function _eiLvExtractPositions() {
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
     let parsed = null; let parseError = '';
     try { parsed = JSON.parse(cleaned); }
-    catch (e1) {
-      parseError = String(e1.message || e1);
-      const m = raw.match(/\[[\s\S]*\]/);
+    catch (e1) { parseError = String(e1.message || e1); }
+    // V12.418: Robustes Fallback. Haiku schickt gelegentlich ein leeres "[]" voran
+    // (z.B. "[]\n[{...}]") oder Text drumherum → striktes JSON.parse scheitert und das
+    // gierige /\[[\s\S]*\]/-Regex fängt BEIDE Arrays. Daher bevorzugt das Array-mit-Objekten
+    // extrahieren (überspringt vorangestelltes leeres []).
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      const mObj = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (mObj) { try { const p2 = JSON.parse(mObj[0]); if (Array.isArray(p2) && p2.length) { parsed = p2; parseError = ''; } } catch (_) {} }
+    }
+    if (!Array.isArray(parsed)) {
+      const m = cleaned.match(/\[[\s\S]*\]/);
       if (m) { try { parsed = JSON.parse(m[0]); parseError = ''; } catch (e2) { parseError = String(e2.message || e2); } }
     }
     // V12.379: Diagnose-State immer speichern, auch bei Fehler
