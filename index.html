@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.416';
+const APP_VERSION = 'V12.417';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12419,7 +12419,7 @@ function _eiLvBuildSendEmail(s, sb, landingUrl) {
     + 'Vielen Dank im Voraus.\n\n'
     + 'Mit freundlichen Grüßen\n'
     + 'Liftaro · im Auftrag von ' + hv;
-  const betreff = 'Angebotsanfrage Fn ' + fn + ' · ' + hv + ' · ' + posCount + ' Position' + (posCount === 1 ? '' : 'en');
+  const betreff = 'Angebotsanfrage Fn ' + fn + ' - ' + hv + ' - ' + posCount + ' Position' + (posCount === 1 ? '' : 'en');
   return { betreff, body };
 }
 
@@ -34205,7 +34205,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const diff = Math.max(0, orig - chosen.angebotSumme);
     const provision = diff * (_eiErgProvPct(s) / 100);
     const ersparnis = Math.max(0, diff - provision);   // tatsächliche Ersparnis nach Liftaro
-    const betreff = (isTest ? '[TEST] ' : '') + 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
+    const betreff = (isTest ? '[TEST] ' : '') + 'Ihr Reparatur-Angebot - Aufzug Fn ' + (s.snap.fabriknummer || '') + ' - Ersparnis ' + _eiErgFmtEur(ersparnis).replace(/\s*€/, ' EUR');
     const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
     if (btn) btn.textContent = isTest ? '⏳ Sende Test …' : '⏳ Sende an HV …';
     const body = 'Sehr geehrte Damen und Herren,\n\n'
