@@ -6439,7 +6439,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.432';
+const APP_VERSION = 'V12.433';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -39685,14 +39685,25 @@ function renderEmailInboxDetail() {
       <button onclick="fixEmailUmlauts('${r._id}')" style="background:#d97706;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0;display:inline-flex;align-items:center;gap:6px">🔧 Umlaute fixen</button>
     </div>`;
   }
-  html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
-    <div class="dr-section-head" style="margin-bottom:10px">
-      <div class="dr-section-title">Email-Inhalt${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}</div>
-      ${hasHtml ? `<button class="dr-pill" onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" style="font-size:11px">Als Text anzeigen</button>` : ''}
-    </div>
-    <div id="eiBodyText_${r._id}" style="display:${htmlDefault ? 'none' : 'block'};font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
-    ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:block;width:100%;max-height:620px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--dr-ink)"></div>` : ''}
-  </div>`;
+  // V12.433: Email-Inhalt einklappbar (Default: eingeklappt) + per String-Marker nach unten
+  // direkt vor den Verlauf-Abschnitt gezogen (EI_BODY_START/END → EI_BODY_SLOT).
+  // Open-State pro Email gemerkt, damit Re-Renders die Sektion nicht wieder zuklappen.
+  window._eiBodyOpen = window._eiBodyOpen || {};
+  const _bodyOpen = window._eiBodyOpen[r._id] === true;
+  html += `<!--EI_BODY_START--><div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#fff">
+    <details ${_bodyOpen ? 'open' : ''} ontoggle="window._eiBodyOpen=window._eiBodyOpen||{};window._eiBodyOpen['${r._id}']=this.open;const c=this.querySelector('.ei-body-caret');if(c)c.style.transform=this.open?'rotate(90deg)':'rotate(0deg)';if(this.open&&typeof _eiHydrateHtmlBodies==='function')_eiHydrateHtmlBodies(this);">
+      <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;outline:none;user-select:none;flex-wrap:wrap">
+        <svg class="ei-body-caret" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#64748b;transition:transform .15s ease;transform:${_bodyOpen ? 'rotate(90deg)' : 'rotate(0deg)'}"><polyline points="9 18 15 12 9 6"/></svg>
+        <span style="font-size:14px;font-weight:700;color:#0f172a">📧 Email-Inhalt</span>
+        ${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}
+        ${hasHtml ? `<button onclick="event.preventDefault();event.stopPropagation();_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" class="dr-pill" style="font-size:11px;margin-left:auto">Als Text anzeigen</button>` : ''}
+      </summary>
+      <div style="margin-top:12px">
+        <div id="eiBodyText_${r._id}" style="display:${htmlDefault ? 'none' : 'block'};font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
+        ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:block;width:100%;max-height:620px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--dr-ink)"></div>` : ''}
+      </div>
+    </details>
+  </div><!--EI_BODY_END-->`;
 
   // V12.187: Anhänge prominent direkt unter dem Body
   // V12.253: pro PDF-Anhang ein "🕶 Neutralisieren"-Button
@@ -40157,6 +40168,9 @@ function renderEmailInboxDetail() {
   // V12.187: Toggle-Container schließen (Zuordnungen, KI, Vorgänge, Aktionen — eingeklappt)
   html += `</div></details><!--EI_DETAILS_END-->`;
 
+  // V12.433: Slot für den einklappbaren Email-Inhalt — landet direkt VOR dem Verlauf.
+  html += `<!--EI_BODY_SLOT-->`;
+
   // V12.187: Verlauf — Notizen + ausgehende Antworten chronologisch (Ticketsystem-Stil)
   html += _renderEmailTimeline(r);
 
@@ -40178,6 +40192,22 @@ function renderEmailInboxDetail() {
       html = html.replace(_sl, '');
     }
   } catch (_) { html = html.replace('<!--EI_DETAILS_SLOT-->', ''); }
+  // V12.433: Email-Inhalt-Block aus seiner Original-Position (oben) rausschneiden und in den
+  // EI_BODY_SLOT (direkt vor dem Verlauf) einsetzen, sodass er ganz unten einklappbar steht.
+  try {
+    const _bS = '<!--EI_BODY_START-->';
+    const _bE = '<!--EI_BODY_END-->';
+    const _bSl = '<!--EI_BODY_SLOT-->';
+    const _bsi = html.indexOf(_bS);
+    const _bei = html.indexOf(_bE);
+    if (_bsi !== -1 && _bei !== -1 && _bei > _bsi) {
+      const _bBlock = html.slice(_bsi + _bS.length, _bei);
+      html = html.slice(0, _bsi) + html.slice(_bei + _bE.length);
+      html = html.replace(_bSl, _bBlock);
+    } else {
+      html = html.replace(_bSl, '');
+    }
+  } catch (_) { html = html.replace('<!--EI_BODY_SLOT-->', ''); }
   detEl.innerHTML = html;
   // V12.259: HTML-Bodies sofort hydratisieren (statt lazy beim Toggle), damit
   // das Original-HTML standardmäßig sichtbar ist.
