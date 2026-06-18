@@ -4134,6 +4134,11 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
             <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#fff"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
+            <!-- V12.426: Filter nach Check-Status -->
+            <div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;padding:12px 10px 4px">Check-Status</div>
+            <button class="ei-side-item" data-status="check:gecheckt"    onclick="setEiFilter('check:gecheckt')"   ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">✓ Gecheckt</span><span class="ei-side-cnt" id="eiSideCnt_check_gecheckt">0</span></button>
+            <button class="ei-side-item" data-status="check:beauftragt"  onclick="setEiFilter('check:beauftragt')" ><span class="ei-side-dot" style="background:#2d5f96"></span><span class="ei-side-lbl">📤 Beauftragt</span><span class="ei-side-cnt" id="eiSideCnt_check_beauftragt">0</span></button>
+            <button class="ei-side-item" data-status="check:abgerechnet" onclick="setEiFilter('check:abgerechnet')"><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">🧾 Abgerechnet</span><span class="ei-side-cnt" id="eiSideCnt_check_abgerechnet">0</span></button>
           </div>
           <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em;padding:18px 10px 8px">Werkzeuge</div>
           <button class="ei-side-item" onclick="openEiDuplicatesModal()" title="Identische Emails finden und archivieren">
@@ -6431,7 +6436,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.425';
+const APP_VERSION = 'V12.426';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -30899,6 +30904,7 @@ function setEiFilter(status, skipRender) {
   if (chipEl) {
     const label = (status === 'in_bearbeitung') ? 'In Bearbeitung'
       : (status === 'neue_antwort') ? '↶ Neue Antworten'
+      : (typeof status === 'string' && status.indexOf('check:') === 0) ? ('Check: ' + ({ gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet', in_bearbeitung: 'In Bearbeitung' }[status.slice(6)] || status.slice(6)))
       : (status === 'alle') ? 'Alle' : status.charAt(0).toUpperCase() + status.slice(1);
     const palette = {
       neu:           { bg:'#fef3c7', fg:'#92400e' },
@@ -31049,6 +31055,18 @@ function _eiUpdateSidebarCounts() {
   if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
   const chatReplyCnt = all.filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r)).length;
   set('eiSideCnt_chat_antwort', chatReplyCnt);
+  // V12.426: Check-Status-Zähler
+  try {
+    let cG = 0, cB = 0, cA = 0;
+    for (const r of all) {
+      if (!r || r.direction === 'outgoing') continue;
+      const cs = String(r.check_status || '');
+      if (cs === 'gecheckt') cG++; else if (cs === 'beauftragt') cB++; else if (cs === 'abgerechnet') cA++;
+    }
+    set('eiSideCnt_check_gecheckt', cG);
+    set('eiSideCnt_check_beauftragt', cB);
+    set('eiSideCnt_check_abgerechnet', cA);
+  } catch (_) {}
 }
 
 // V12.191/192: Threading — finde den Thread-Parent einer eingehenden Antwort
@@ -31834,6 +31852,10 @@ function _eiFiltered() {
   } else if (_eiFilter === 'offen') {
     // V12.399: Nur Emails mit submitted LV-Anfrage (Angebot vom Wartungsnehmer eingegangen)
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiLvEmailHasSubmitted(r._id));
+  } else if (typeof _eiFilter === 'string' && _eiFilter.indexOf('check:') === 0) {
+    // V12.426: Filter nach Check-Status (gecheckt / beauftragt / abgerechnet …)
+    const _cs = _eiFilter.slice(6);
+    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && String(r.check_status || '') === _cs);
   } else {
     // V12.371: Normalisierung — alte „gesichtet"/„geantwortet"-Records erscheinen unter „in_bearbeitung"
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiNormStatus(r.status || 'neu') === _eiFilter);
@@ -34283,8 +34305,9 @@ async function _eiErgebnisCreateAndSend(doSend) {
     try {
       // V12.413: Beim Senden den Ergebnis-Check gleich mitspeichern (Auswahl + Texte persistieren)
       const ergJson = JSON.stringify(_eiErgebnisBuildPayload());
-      await atUpdate('Emails', s.emailId, { status: 'geantwortet', status_at: sentAt, ergebnis_check_json: ergJson }, { typecast: true });
-      const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) { rr.status = 'geantwortet'; rr.ergebnis_check_json = ergJson; }
+      // V12.426: Check an HV gesendet → Check-Status auf 'gecheckt'
+      await atUpdate('Emails', s.emailId, { status: 'geantwortet', status_at: sentAt, ergebnis_check_json: ergJson, check_status: 'gecheckt' }, { typecast: true });
+      const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) { rr.status = 'geantwortet'; rr.ergebnis_check_json = ergJson; rr.check_status = 'gecheckt'; }
     } catch (e) { console.warn('[V12.402] Status-Update:', e.message); }
     // V12.423: Gesendete HV-Email als Notiz im Verlauf hinterlegen (volltext, was dem Verwalter ging)
     try {
@@ -36861,9 +36884,17 @@ function _eiHasChatReply(r) {
   const emailId = r._id;
   if (window._eiChatReplyCache[emailId] !== undefined) return window._eiChatReplyCache[emailId];
   const compute = () => {
-    // (1) Erst aus geladenem Chat-Cache: gibt es ein 'in' Item?
+    const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+    const seenAt = String(r.chat_replies_seen_at || '').trim();
+    // V12.426: gemeinsame "neuer als gelesen?"-Prüfung. Ohne Timestamp gilt: nur neu,
+    // solange noch NICHTS als gelesen markiert wurde — so lässt sich die Pille wegklicken.
+    const newerThanSeen = (t) => { const s = String(t || ''); if (!s) return !seenAt; return seenAt ? (s > seenAt) : true; };
+    // (0) Eingegangene LV-Antworten (submitted) — respektieren jetzt chat_replies_seen_at
+    const subs = (window._eiLvSubmittedByEmail && window._eiLvSubmittedByEmail[emailId]) || [];
+    if (subs.some(a => newerThanSeen(a.submitted_at || a.savedAt))) return true;
+    // (1) Chat-Cache: 'in'/synthetische Items (mit Timestamp-Respekt)
     const cached = (window._eiWnChatCache && window._eiWnChatCache[emailId]) || [];
-    if (cached.some(it => String(it.direction || '') === 'in' || it._synthetic)) return true;
+    if (cached.some(it => (String(it.direction || '') === 'in' || it._synthetic) && newerThanSeen(it.created_at || it.received_at))) return true;
     // (2) Sammele alle Partner-Email-Adressen für DIESE Email
     const partnerEmails = new Set();
     const wnEmail = String(r.wartungsnehmer_email || '').toLowerCase().trim();
@@ -36872,7 +36903,6 @@ function _eiHasChatReply(r) {
       const pe = String(it.chat_partner_email || '').toLowerCase().trim();
       if (pe) partnerEmails.add(pe);
     }
-    const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
     for (const e of all) {
       if (e && e.direction === 'outgoing' && String(e.chat_email_id || '').trim() === emailId) {
         const to = String(e.to_email || '').toLowerCase().trim();
@@ -36890,18 +36920,12 @@ function _eiHasChatReply(r) {
       if (se) partnerEmails.add(se);
     }
     if (partnerEmails.size === 0) return false;
-    // V12.236: "Gesehen"-Timestamp — Antworten DAVOR zählen nicht mehr als neu
-    const seenAt = String(r.chat_replies_seen_at || '').trim();
-    // (3) Check ob eingehende Email von einem dieser Partner existiert UND nach seenAt empfangen
+    // (3) eingehende Email von einem dieser Partner, neuer als seenAt
     for (const e of all) {
       if (!e || e._id === emailId || e.direction === 'outgoing') continue;
       const fromE = String(e.from_email || '').toLowerCase().trim();
       if (!partnerEmails.has(fromE)) continue;
-      if (seenAt) {
-        const recvAt = String(e.received_at || e.created_at || '');
-        if (recvAt && recvAt <= seenAt) continue;
-      }
-      return true;
+      if (newerThanSeen(e.received_at || e.created_at)) return true;
     }
     return false;
   };
