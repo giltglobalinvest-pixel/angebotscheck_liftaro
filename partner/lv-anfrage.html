@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.11.3';
+  const APP_VERSION = 'v1.12.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -642,6 +642,7 @@
       titel:      String(p.titel || ''),
       menge:      String(p.menge || '1'),
       einheit:    String(p.einheit || 'Pauschal'),
+      beschreibung: String(p.beschreibung || ''),
       preis_eur:  parseEur($('preis_' + idx)?.value),
       bemerkung:  String($('bemerkung_' + idx)?.value || '').trim(),
     }));
@@ -791,320 +792,364 @@
     return (tmp.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
   }
 
-  async function buildAngebotPdf(sub) {
-    // v1.9: Layout am Aszendio-Beispiel (Frequenzumrichter-Angebot ANG-2487) orientiert
-    const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
-    const doc = await PDFDocument.create();
-    const helv = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-    const W = 595, H = 842, M = 56;
-    const COL_INK    = rgb(0.06, 0.10, 0.19);
-    const COL_MUTE   = rgb(0.42, 0.49, 0.61);
-    const COL_LIGHT  = rgb(0.86, 0.89, 0.92);
-    const COL_BG_LIGHT = rgb(0.96, 0.97, 0.98);
-    const COL_ACCENT = rgb(0.06, 0.10, 0.19);
-    // Brutto-Berechnung
-    const VAT = 0.19;
-    const sumNetto = sub.sum || 0;
-    const sumVat   = Math.round(sumNetto * VAT * 100) / 100;
-    const sumBrutto = Math.round((sumNetto + sumVat) * 100) / 100;
-    const today = new Date(sub.anf.submitted_at || Date.now());
-    const dat = today.toISOString().slice(0, 10);
-    const fmtEurStr = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' EUR';
-    // v1.10: Einfache Angebotsnummer Liftaro-XXXXX
-    const _tokenRaw = String(sub.anf.token || sub.anf.id || '').replace(/^(lva|lv)_/i, '');
-    const _tokenShort = _tokenRaw.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
-    const angNr = 'L-' + (_tokenShort || 'XXXXX');
-    const totalPagesHolder = { total: 0 };  // wird am Ende gesetzt
-
-    let page = doc.addPage([W, H]);
-    let y = H - M;
-    let currentPageIdx = 0;
-    const allPages = [page];
-
-    function newPage() {
-      page = doc.addPage([W, H]);
-      allPages.push(page);
-      currentPageIdx++;
-      y = H - M;
-      drawHeader(false);
-    }
-    // Helpers ----------------------------------------------------------------
-    function safe(s) { return String(s == null ? '' : s).replace(/[^\x00-\xff]/g, '?'); }
-    function tw(font, sz, txt) { return font.widthOfTextAtSize(safe(txt), sz); }
-    function wrap(txt, font, sz, maxW) {
-      const out = [];
-      String(txt || '').split('\n').forEach(ln => {
-        const words = ln.split(/(\s+)/);
-        let line = '';
-        for (const w of words) {
-          const test = line + w;
-          if (font.widthOfTextAtSize(safe(test), sz) > maxW && line.trim()) { out.push(line.trimEnd()); line = w.trimStart(); }
-          else line = test;
-        }
-        if (line.trim() || ln === '') out.push(line.trimEnd());
-      });
-      return out;
-    }
-    function draw(txt, x, yy, font, sz, color) {
-      page.drawText(safe(txt), { x, y: yy, size: sz, font: font || helv, color: color || COL_INK });
-    }
-    function drawRight(txt, xRight, yy, font, sz, color) {
-      const w = tw(font || helv, sz, txt);
-      draw(txt, xRight - w, yy, font, sz, color);
-    }
-    function ensureSpace(h) {
-      if (y - h < M + 80) newPage();
-    }
-
-    // v1.11: Header = Wartungsfirma als Absender (kein „LIFTARO" mehr darüber)
-    const COL_BRAND = rgb(0.49, 0.23, 0.93);
-    function drawHeader(firstPage) {
-      draw(sub.wn.firma || 'Reparaturbetrieb', M, H - M - 8, bold, 12, COL_INK);
-      drawRight('Reparaturangebot', W - M, H - M - 8, helv, 9.5, COL_MUTE);
-      page.drawLine({ start: { x: M, y: H - M - 18 }, end: { x: W - M, y: H - M - 18 }, thickness: 0.6, color: COL_LIGHT });
-      if (!firstPage) {
-        draw('Angebot ' + angNr, M, H - M - 34, helv, 9, COL_MUTE);
-        y = H - M - 56;
-      } else {
-        y = H - M - 42;
-      }
-    }
-    drawHeader(true);
-
-    // EMPFÄNGER + Meta-Block
-    const yMetaStart = y;
-    draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
-    // v1.11: HV-Name umbrechen, damit er nicht in den Meta-Block rechts läuft
-    for (const rl of wrap(sub.snap.hv_name || '(Hausverwaltung)', bold, 11, (W - M - 200) - M - 14)) { draw(rl, M, y, bold, 11, COL_INK); y -= 13; }
-    if (sub.snap.hv_email) { draw('z.Hd. ' + (sub.snap.hv_email || ''), M, y, helv, 10, COL_INK); y -= 12; }
-    // Adresse (falls in snap vorhanden)
-    const hvAdr = String(sub.snap.hv_strasse || '').trim();
-    if (hvAdr) { draw(hvAdr, M, y, helv, 10, COL_INK); y -= 12; }
-    const hvPlzOrt = [sub.snap.hv_plz, sub.snap.hv_ort].filter(Boolean).join(' ').trim();
-    if (hvPlzOrt) { draw(hvPlzOrt, M, y, helv, 10, COL_INK); y -= 12; }
-
-    // Meta rechts: Datum / Angebot-Nr / Bearbeiter
-    const metaX1 = W - M - 200, metaX2 = W - M;
-    let yMeta = yMetaStart;
-    const metaRow = (lbl, val, vBold) => {
-      draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE);
-      drawRight(val, metaX2, yMeta, vBold ? bold : helv, 10, COL_INK);
-      yMeta -= 16;
-    };
-    metaRow('Datum:', dat);
-    metaRow('Angebot-Nr.:', angNr, true);
-    metaRow('Bearbeiter:', sub.sigName || '—');
-
-    y = Math.min(y, yMeta) - 14;
-
-    // Großer Titel
-    draw('Angebot ' + angNr, M, y, bold, 22, COL_INK); y -= 28;
-
-    // Anlagen-Block mit linker Vertical-Linie
-    const anlBoxY = y;
-    const anlContent = [];
-    if (sub.snap.standort)     anlContent.push(['Anlage-Standort:', sub.snap.standort]);
-    if (sub.snap.fabriknummer) anlContent.push(['Fabriknummer:', sub.snap.fabriknummer]);
-    if (sub.snap.hersteller && sub.snap.hersteller !== 'OTIS') anlContent.push(['Hersteller:', sub.snap.hersteller]);
-    if (anlContent.length) {
-      const anlH = anlContent.length * 14 + 4;
-      page.drawRectangle({ x: M, y: y - anlH, width: 2.5, height: anlH, color: COL_INK });
-      let ya = y - 4;
-      for (const [lbl, val] of anlContent) {
-        draw(lbl, M + 14, ya - 8, helv, 9, COL_MUTE);
-        draw(val, M + 140, ya - 8, helv, 10, COL_INK);
-        ya -= 14;
-      }
-      y -= anlH + 10;
-    }
-
-    // Anschreiben (v1.11.2: mehr Abstand zum Anlage-Block darüber)
-    y -= 20;
-    draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 18;
-    const intro1 = wrap('vielen Dank für Ihre Anfrage. Das nachfolgende Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + ' ist in Kooperation mit der Liftaro GmbH entstanden und wurde auf Basis der gelieferten Daten automatisch generiert.', helv, 10, W - 2*M);
-    for (const l of intro1) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
-    y -= 4;
-    const intro2 = wrap('Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen. Für Rückfragen stehen wir Ihnen jederzeit gerne zur Verfügung.', helv, 10, W - 2*M);
-    for (const l of intro2) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
-    y -= 14;
-
-    // Positionen-Tabelle
-    // v1.10: Tabelle ohne Einzelpreis — Nr · Spezifikation · Menge · Gesamt
-    const colNr = M + 6, colTit = M + 38, colMen = 400, colSum = W - M;
-    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: COL_LIGHT });
-    draw('NR.',                     colNr, y - 8, bold, 8.5, COL_MUTE);
-    draw('TECHNISCHE SPEZIFIKATION', colTit, y - 8, bold, 8.5, COL_MUTE);
-    drawRight('MENGE',              colMen + 30, y - 8, bold, 8.5, COL_MUTE);
-    drawRight('GESAMT',             colSum, y - 8, bold, 8.5, COL_MUTE);
-    y -= 18;
-    page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
-    y -= 8;
-    // v1.11: Hinweis zur Herkunft der technischen Spezifikation
-    for (const l of wrap('Die technische Spezifikation wurde aus dem vorliegenden Angebot zur Reparatur am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + ' extrahiert.', helv, 8.5, W - 2*M)) { draw(l, M, y, helv, 8.5, COL_MUTE); y -= 11; }
-    y -= 5;
-
-    for (const p of sub.response) {
-      const titel   = String(p.titel || '').trim();
-      const menge   = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
-      const einheit = String(p.einheit || '').trim();
-      const preis   = Number(p.preis_eur || 0);
-      const summe   = preis * menge;
-      const titelLines = wrap(titel, bold, 10, 340);
-      const bemerk = String(p.bemerkung || '').trim();
-      const bulletLines = [];
-      if (bemerk) {
-        for (const ln of bemerk.split(/\n+/).filter(Boolean)) {
-          const wr = wrap('* ' + ln, helv, 9, 335);
-          bulletLines.push(...wr);
-        }
-      }
-      const blockH = 14 + Math.max(0, (titelLines.length - 1) * 12) + (bulletLines.length ? bulletLines.length * 11 + 6 : 0) + 10;
-      ensureSpace(blockH);
-      const yTop = y;
-      draw(String(p.pos_nr || ''), colNr, y, helv, 10, COL_INK);
-      for (let i = 0; i < titelLines.length; i++) draw(titelLines[i], colTit, y - i * 12, bold, 10, COL_INK);
-      let yBul = y - titelLines.length * 12 - 2;
-      for (const bl of bulletLines) { draw(bl, colTit, yBul, helv, 9, COL_MUTE); yBul -= 11; }
-      drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
-      drawRight(summe > 0 ? fmtEurStr(summe) : '-', colSum, yTop, bold, 10, COL_INK);
-      y -= blockH;
-      page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: COL_LIGHT });
-      y -= 4;
-    }
-
-    // Summen-Block (rechtsbündig: Netto / MwSt / Brutto)
-    y -= 6;
-    ensureSpace(60);
-    const sumLblX = W - M - 220;
-    const drawSumRow = (lbl, val, big) => {
-      draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK);
-      drawRight(val, colSum, y, big ? bold : helv, big ? 12 : 10, COL_INK);
-      y -= big ? 18 : 15;
-    };
-    drawSumRow('Gesamtnettopreis', fmtEurStr(sumNetto));
-    drawSumRow('Zuzüglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
-    page.drawLine({ start: { x: sumLblX, y: y + 4 }, end: { x: colSum, y: y + 4 }, thickness: 0.6, color: COL_INK });
-    y -= 6;
-    drawSumRow('Gesamtbruttopreis', fmtEurStr(sumBrutto), true);
-    y -= 6;
-
-    // Konditionen-Block
-    ensureSpace(120);
-    draw('Konditionen', M, y, bold, 14, COL_INK); y -= 4;
-    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 80, y: y - 2 }, thickness: 1.2, color: COL_INK });
-    y -= 18;
-
-    const kondBox = (titel, body) => {
-      if (!body) return;
-      const bodyLines = wrap(body, helv, 10, W - 2*M - 24);
-      const h = 18 + bodyLines.length * 13 + 8;
-      ensureSpace(h + 8);
-      page.drawRectangle({ x: M, y: y - h, width: W - 2*M, height: h, color: COL_BG_LIGHT });
-      draw(titel, M + 12, y - 14, bold, 10.5, COL_INK);
-      let yy = y - 28;
-      for (const l of bodyLines) { draw(l, M + 12, yy, helv, 10, COL_INK); yy -= 13; }
-      y -= h + 6;
-    };
-    if (sub.lieferzeitGesamt) kondBox('Lieferzeit', sub.lieferzeitGesamt);
-    kondBox('Preisbasis', 'Festpreis, gültig 60 Tage ab Angebotsdatum');
-    kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
-    kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
-
-    // v1.11: AGB direkt unterhalb der Gewährleistung (KEINE eigene Seite mehr)
-    const klauselnText = htmlToText(sub.klauseln);
-    if (klauselnText) {
-      y -= 24; ensureSpace(48);
-      draw('Allgemeine Geschäftsbedingungen', M, y, bold, 13, COL_INK); y -= 4;
-      page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
-      y -= 18;
-      const lines = klauselnText.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        const ln = lines[i].trim();
-        if (!ln) { y -= 6; continue; }
-        const isHeader = ln.length < 50 && !/[.,:]$/.test(ln) && /^[A-ZÄÖÜ]/.test(ln);
-        if (isHeader) { y -= 4; ensureSpace(20); draw(ln, M, y, bold, 11, COL_INK); y -= 14; }
-        else { const wr = wrap(ln, helv, 10, W - 2*M); for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; } }
-      }
-    }
-
-    // Verbindliche Bestätigung des Wartungsnehmers (v1.11: ohne ✓-Symbol → kein „?")
-    y -= 12; ensureSpace(90);
-    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
-    y -= 14;
-    draw('VERBINDLICHE BESTÄTIGUNG', M, y, bold, 8.5, COL_MUTE); y -= 16;
-    if (sub.sigMode === 'drawn' && sub.signaturDataUrl) {
-      try {
-        const png = await doc.embedPng(sub.signaturDataUrl);
-        const sigW = 180, sigH = 50;
-        page.drawImage(png, { x: M, y: y - sigH, width: sigW, height: sigH });
-        y -= sigH + 6;
-      } catch (_) {}
-    } else {
-      draw('Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, COL_INK); y -= 14;
-    }
-    draw('Unterzeichnet von: ' + (sub.sigName || '—'), M, y, bold, 10, COL_INK); y -= 13;
-    draw('Datum: ' + dat, M, y, helv, 10, COL_MUTE);
-    y -= 24;
-
-    // v1.11: Beauftragung durch die Hausverwaltung (Unterschriftsfeld)
-    ensureSpace(150);
-    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
-    y -= 16;
-    draw('Beauftragung durch die Hausverwaltung', M, y, bold, 12, COL_INK); y -= 16;
-    const beaufLines = wrap('Hiermit beauftragt die Hausverwaltung ' + (sub.snap.hv_name || '') + ' den Betrieb ' + (sub.wn.firma || '') + ' mit der Durchführung der vorstehend angebotenen Leistungen zu den genannten Preisen und Konditionen. Mit der Unterschrift wird der Auftrag verbindlich erteilt.', helv, 10, W - 2*M);
-    for (const l of beaufLines) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
-    y -= 32;
-    ensureSpace(54);
-    const colWsig = (W - 2*M - 40) / 2;
-    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWsig, y: y - 2 }, thickness: 0.6, color: COL_INK });
-    draw('Ort, Datum', M, y - 14, helv, 9, COL_MUTE);
-    const sig2X = M + colWsig + 40;
-    page.drawLine({ start: { x: sig2X, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.6, color: COL_INK });
-    draw('Unterschrift / Stempel Hausverwaltung', sig2X, y - 14, helv, 9, COL_MUTE);
-    y -= 42;
-    ensureSpace(20);
-    draw('Name in Druckbuchstaben:', M, y, helv, 9, COL_MUTE); y -= 14;
-    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.5, color: COL_LIGHT });
-
-    // Footer auf jeder Seite (3 Spalten)
-    totalPagesHolder.total = allPages.length;
-    allPages.forEach((pg, idx) => {
-      const fY = 70;
-      pg.drawLine({ start: { x: M, y: fY + 32 }, end: { x: W - M, y: fY + 32 }, thickness: 0.5, color: COL_LIGHT });
-      const colW = (W - 2*M) / 3;
-      const xCol = [M, M + colW, M + 2 * colW];
-      const drawCol = (xi, lblTitel, lines) => {
-        pg.drawText(safe(lblTitel), { x: xCol[xi], y: fY + 18, size: 9, font: bold, color: COL_INK });
-        let yy = fY + 6;
-        for (const l of lines) {
-          if (!l) continue;
-          pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8.5, font: helv, color: COL_MUTE });
-          yy -= 10;
-        }
-      };
-      // Spalte 1: Firma + Anschrift
-      drawCol(0, sub.wn.firma || '—', [
-        sub.wn.strasse || '',
-        [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' '),
-      ]);
-      // Spalte 2: Kontakt
-      drawCol(1, 'Kontakt', [sub.wn.email || '', sub.wn.web || '']);
-      // Spalte 3: Rechtliches
-      drawCol(2, 'Rechtliches', [
-        sub.wn.hrb_nummer ? (sub.wn.hrb_nummer + (sub.wn.hrb_gericht ? ' AG ' + sub.wn.hrb_gericht : '')) : '',
-        sub.wn.ust_id ? ('USt-IdNr. ' + sub.wn.ust_id) : '',
-        sub.wn.geschaeftsfuehrer ? ('GF: ' + sub.wn.geschaeftsfuehrer) : '',
-      ]);
-      // Seitenzahl rechts unten
-      const pn = 'Angebot ' + angNr + ' - Seite ' + (idx + 1) + ' / ' + totalPagesHolder.total;
-      const pnW = helv.widthOfTextAtSize(safe(pn), 8);
-      pg.drawText(safe(pn), { x: W - M - pnW, y: 36, size: 8, font: helv, color: COL_MUTE });
-    });
-
-    const bytes = await doc.save();
-    return new Blob([bytes], { type: 'application/pdf' });
+    // v1.12: Liftaro-Logo eingebettet (identisch zur App), damit der Header dem Chat-PDF entspricht
+  const LIFTARO_LOGO_DATAURI = "data:image/png;base64,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";
+  async function _lvLoadLiftaroLogo(doc) {
+    try {
+      const b64 = (LIFTARO_LOGO_DATAURI.split(",")[1] || "");
+      const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return await doc.embedPng(bytes);
+    } catch (e) { console.warn("[lv] Logo embed:", e && e.message); return null; }
   }
+
+async function buildAngebotPdf(sub) {
+    // v1.12: 1:1-Port des App-Builders _eiLvBuildAntwortPdf — identisches PDF wie im Chat
+  // V12.398: Redesign — neutrales Layout, Liftaro-Branding, mehr Einleitung,
+  // ASCII-only Bestätigung, HV-Beauftragungs-Block am Ende
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const doc = await PDFDocument.create();
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const W = 595, H = 842, M = 56;
+  const COL_INK = rgb(0.06, 0.10, 0.19);
+  const COL_MUTE = rgb(0.42, 0.49, 0.61);
+  const COL_LIGHT = rgb(0.86, 0.89, 0.92);
+  const COL_BG = rgb(0.96, 0.97, 0.98);
+  const COL_BRAND = rgb(0.49, 0.23, 0.93);
+  // V12.415: echtes Liftaro-Logo + LV-Positions-Map (für Detailbeschreibung je Position)
+  const logo = await _lvLoadLiftaroLogo(doc);
+  const lvPosMap = {};
+  try { (JSON.parse((sub.lv && sub.lv.positionen_json) || '[]') || []).forEach(p => { lvPosMap[String(p.pos_nr)] = p; }); } catch (_) {}
+  const VAT = 0.19;
+  const sumNetto = sub.sum || 0;
+  const sumVat = Math.round(sumNetto * VAT * 100) / 100;
+  const sumBrutto = Math.round((sumNetto + sumVat) * 100) / 100;
+  const subDate = new Date(sub.anf.submitted_at || Date.now());
+  const dat = subDate.toLocaleDateString('de-DE');
+  const datIso = subDate.toISOString().slice(0, 10);
+  const fmtEurStr = (n) => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' EUR';
+  // Einfache Angebotsnummer: Liftaro-XXXXX (5-stelliger Token-Slug)
+  const tokenRaw = String(sub.anf.token || sub.anf.id || '').replace(/^(lva|lv)_/i, '');
+  const tokenShort = tokenRaw.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
+  const angNr = 'L-' + (tokenShort || 'XXXXX');
+  const totalPagesHolder = { total: 0 };
+  const allPages = [];
+  let page = doc.addPage([W, H]);
+  allPages.push(page);
+  let y = H - M;
+
+  // Helpers ----------------------------------------------------------------
+  function safe(s) {
+    // Latin1 + bekannte typographische Zeichen → durch nutzbare ersetzen
+    return String(s == null ? '' : s)
+      .replace(/[„""]/g, '"')
+      .replace(/['']/g, "'")
+      .replace(/[–—]/g, '-')
+      .replace(/[•●]/g, '*')
+      .replace(/[→]/g, '->')
+      .replace(/[✓✔]/g, 'OK')
+      .replace(/[✕✖]/g, 'X')
+      .replace(/…/g, '...')
+      .replace(/[^\x00-\xff]/g, '?');
+  }
+  function tw(font, sz, txt) { return font.widthOfTextAtSize(safe(txt), sz); }
+  function wrap(txt, font, sz, maxW) {
+    const out = [];
+    String(txt || '').split('\n').forEach(ln => {
+      const words = ln.split(/(\s+)/);
+      let line = '';
+      for (const w of words) {
+        const test = line + w;
+        if (font.widthOfTextAtSize(safe(test), sz) > maxW && line.trim()) { out.push(line.trimEnd()); line = w.trimStart(); }
+        else line = test;
+      }
+      if (line.trim() || ln === '') out.push(line.trimEnd());
+    });
+    return out;
+  }
+  function draw(txt, x, yy, font, sz, color) { page.drawText(safe(txt), { x, y: yy, size: sz, font: font || helv, color: color || COL_INK }); }
+  function drawRight(txt, xRight, yy, font, sz, color) { draw(txt, xRight - tw(font || helv, sz, txt), yy, font, sz, color); }
+  function ensureSpace(h) { if (y - h < M + 90) newPage(); }
+  function newPage() {
+    page = doc.addPage([W, H]);
+    allPages.push(page);
+    y = H - M;
+    drawHeader(false);
+  }
+  function drawHeader(firstPage) {
+    // V12.415: Echtes Liftaro-Logo links (Fallback: Wortmarke), Trennlinie tiefer für Logo-Platz
+    const lineY = H - M - 40;
+    if (logo) {
+      const ratio = (logo.width / logo.height) || 4;
+      let lh = 24, lw = lh * ratio;
+      if (lw > 130) { lw = 130; lh = lw / ratio; }
+      page.drawImage(logo, { x: M, y: lineY + 10, width: lw, height: lh });
+    } else {
+      draw('LIFTARO', M, lineY + 14, bold, 14, COL_BRAND);
+    }
+    drawRight('Reparaturangebot', W - M, lineY + 16, helv, 9.5, COL_MUTE);
+    page.drawLine({ start: { x: M, y: lineY }, end: { x: W - M, y: lineY }, thickness: 0.6, color: COL_LIGHT });
+    if (!firstPage) {
+      draw('Angebot ' + angNr, M, lineY - 16, helv, 9, COL_MUTE);
+      y = lineY - 38;
+    } else {
+      y = lineY - 24;
+    }
+  }
+  drawHeader(true);
+
+  // Generiert von Liftaro - Hinweis links oben
+  draw('Im Auftrag von ' + (sub.snap.hv_name || 'Hausverwaltung'), M, y, helv, 9, COL_MUTE);
+  y -= 22;
+
+  // EMPFÄNGER + Meta-Block nebeneinander
+  const metaX1 = W - M - 220, metaX2 = W - M;
+  const yMetaStart = y;
+  // V12.415: Name umbrechen, damit er nicht in den Meta-Block rechts läuft
+  draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
+  const recvName = sub.snap.hv_name || '(Hausverwaltung)';
+  for (const rl of wrap(recvName, bold, 11, metaX1 - M - 16)) { draw(rl, M, y, bold, 11, COL_INK); y -= 14; }
+  if (sub.snap.hv_email) { draw('z.Hd. ' + sub.snap.hv_email, M, y, helv, 10, COL_INK); y -= 12; }
+
+  // Meta-Block rechts
+  let yMeta = yMetaStart;
+  const metaRow = (lbl, val, vBold) => {
+    draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE);
+    drawRight(val, metaX2, yMeta, vBold ? bold : helv, 10, COL_INK);
+    yMeta -= 16;
+  };
+  metaRow('Datum:', dat);
+  metaRow('Angebot-Nr.:', angNr, true);
+  metaRow('Anbieter:', sub.wn.firma || '—');
+  metaRow('Unterzeichner:', sub.sigName || '—');
+
+  y = Math.min(y, yMeta) - 22;
+
+  // Großer Titel
+  draw('Angebot', M, y, bold, 22, COL_INK);
+  draw(angNr, M, y - 28, helv, 13, COL_MUTE);
+  y -= 50;
+
+  // Anlage-Block mit linker Akzent-Linie und besserem Spacing
+  const anlContent = [];
+  if (sub.snap.standort)     anlContent.push(['Anlage-Standort:', sub.snap.standort]);
+  if (sub.snap.fabriknummer) anlContent.push(['Fabriknummer:', sub.snap.fabriknummer]);
+  if (sub.snap.hersteller && sub.snap.hersteller !== 'OTIS') anlContent.push(['Hersteller:', sub.snap.hersteller]);
+  if (anlContent.length) {
+    const rowH = 16;
+    const padTop = 8;
+    const anlH = anlContent.length * rowH + 2 * padTop;
+    page.drawRectangle({ x: M, y: y - anlH, width: 3, height: anlH, color: COL_INK });
+    let ya = y - padTop;
+    for (const [lbl, val] of anlContent) {
+      draw(lbl, M + 16, ya - 10, helv, 9, COL_MUTE);
+      draw(val, M + 150, ya - 10, helv, 10, COL_INK);
+      ya -= rowH;
+    }
+    y -= anlH + 22;
+  }
+
+  // Erweiterte Einleitung
+  draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 20;
+  const intro = [
+    'vielen Dank für die Übermittlung Ihrer Reparaturanfrage über die Liftaro-Plattform.',
+    '',
+    'Im Auftrag der Hausverwaltung ' + (sub.snap.hv_name || '') + ' wurde von Liftaro ein neutrales Leistungsverzeichnis für die angefragten Reparaturarbeiten am Aufzug Fn ' + (sub.snap.fabriknummer || '') + ' erstellt und dem Wartungsnehmer ' + (sub.wn.firma || '') + ' zur Preiskalkulation übermittelt.',
+    '',
+    'Der Wartungsnehmer hat die einzelnen Positionen geprüft, mit seinen Preisen und Lieferzeiten versehen und das Angebot rechtsverbindlich bestätigt. Das nachstehende Angebot ist somit unmittelbar von ' + (sub.wn.firma || 'dem Wartungsnehmer') + ' abgegeben und basiert eins-zu-eins auf den von der Hausverwaltung angefragten Leistungen.',
+    '',
+    'Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen. Für Rückfragen stehen wir Ihnen jederzeit gerne zur Verfügung.',
+  ];
+  for (const para of intro) {
+    if (para === '') { y -= 8; continue; }
+    const wr = wrap(para, helv, 10, W - 2*M);
+    for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  }
+  y -= 16;
+
+  // Positionen-Tabelle — ohne Einzelpreis (vereinfacht, nur Gesamt)
+  const colNr = M + 6, colTit = M + 38, colMen = 400, colSum = W - M;
+  page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.4, color: COL_LIGHT });
+  draw('NR.', colNr, y - 8, bold, 8.5, COL_MUTE);
+  draw('TECHNISCHE SPEZIFIKATION', colTit, y - 8, bold, 8.5, COL_MUTE);
+  drawRight('MENGE', colMen + 30, y - 8, bold, 8.5, COL_MUTE);
+  drawRight('GESAMT', colSum, y - 8, bold, 8.5, COL_MUTE);
+  y -= 18;
+  page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
+  y -= 8;
+  // V12.420: Hinweis zur Herkunft der technischen Spezifikation
+  for (const l of wrap('Die technische Spezifikation wurde aus dem vorliegenden Angebot zur Reparatur am Aufzug Fn ' + (sub.snap.fabriknummer || '-') + ' extrahiert.', helv, 8.5, W - 2*M)) { draw(l, M, y, helv, 8.5, COL_MUTE); y -= 11; }
+  y -= 7;
+  const txtW = colMen - colTit - 14;   // Textbreite Titel/Beschreibung (läuft nicht in Mengen-Spalte)
+  for (const p of sub.response) {
+    const titel = String(p.titel || '').trim();
+    const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+    const einheit = String(p.einheit || '').trim();
+    const preis = Number(p.preis_eur || 0);
+    const summe = preis * menge;
+    // V12.415: Detaillierten Leistungsumfang aus dem neutralen LV (oder Antwort) ergänzen
+    const lvPos = lvPosMap[String(p.pos_nr)] || {};
+    const beschreibung = String(p.beschreibung || lvPos.beschreibung || '').trim();
+    const bemerk = String(p.bemerkung || '').trim();
+    const titelLines = wrap(titel, bold, 10.5, txtW);
+    const beschrLines = beschreibung ? wrap(beschreibung, helv, 9, txtW) : [];
+    const bemerkLines = bemerk ? wrap('Anmerkung des Wartungsnehmers: ' + bemerk, helv, 9, txtW) : [];
+    let contentH = titelLines.length * 13;
+    if (beschrLines.length) contentH += 4 + beschrLines.length * 12;
+    if (bemerkLines.length) contentH += 4 + bemerkLines.length * 12;
+    ensureSpace(contentH + 34);
+    const yTop = y;
+    draw(String(p.pos_nr || ''), colNr, yTop, helv, 10, COL_INK);
+    let yc = yTop;
+    for (const tl of titelLines) { draw(tl, colTit, yc, bold, 10.5, COL_INK); yc -= 13; }
+    if (beschrLines.length) { yc -= 4; for (const bl of beschrLines) { draw(bl, colTit, yc, helv, 9, COL_MUTE); yc -= 12; } }
+    if (bemerkLines.length) { yc -= 4; for (const bl of bemerkLines) { draw(bl, colTit, yc, helv, 9, COL_MUTE); yc -= 12; } }
+    drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
+    drawRight(summe > 0 ? fmtEurStr(summe) : '-', colSum, yTop, bold, 10, COL_INK);
+    y = yTop - contentH - 12;   // Bodenabstand vor der Trennlinie
+    page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.3, color: COL_LIGHT });
+    y -= 16;                    // großzügiger Abstand oberhalb der nächsten Position
+  }
+  y -= 4; ensureSpace(60);
+  const sumLblX = W - M - 220;
+  const drawSumRow = (lbl, val, big) => {
+    draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK);
+    drawRight(val, colSum, y, big ? bold : helv, big ? 12 : 10, COL_INK);
+    y -= big ? 18 : 15;
+  };
+  drawSumRow('Gesamtnettopreis', fmtEurStr(sumNetto));
+  drawSumRow('Zuzüglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
+  page.drawLine({ start: { x: sumLblX, y: y + 4 }, end: { x: colSum, y: y + 4 }, thickness: 0.6, color: COL_INK });
+  y -= 6;
+  drawSumRow('Gesamtbruttopreis', fmtEurStr(sumBrutto), true);
+  y -= 8;
+
+  // Konditionen
+  ensureSpace(120);
+  draw('Konditionen', M, y, bold, 14, COL_INK); y -= 4;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 80, y: y - 2 }, thickness: 1.2, color: COL_INK });
+  y -= 18;
+  const kondBox = (titel, body) => {
+    if (!body) return;
+    const bodyLines = wrap(body, helv, 10, W - 2*M - 24);
+    const h = 18 + bodyLines.length * 13 + 8;
+    ensureSpace(h + 8);
+    page.drawRectangle({ x: M, y: y - h, width: W - 2*M, height: h, color: COL_BG });
+    draw(titel, M + 12, y - 14, bold, 10.5, COL_INK);
+    let yy = y - 28;
+    for (const l of bodyLines) { draw(l, M + 12, yy, helv, 10, COL_INK); yy -= 13; }
+    y -= h + 6;
+  };
+  if (sub.lieferzeitGesamt) kondBox('Lieferzeit', sub.lieferzeitGesamt);
+  kondBox('Preisbasis', 'Festpreis, gültig 60 Tage ab Angebotsdatum');
+  kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
+  kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
+  kondBox('Material', 'Verbautes oder geliefertes Material bleibt bis zur vollständigen Rechnungsbegleichung im Besitz des Auftragnehmers.');
+  kondBox('Ausgebautes Material', 'Defektes Material geht nach dem Ausbau in den Besitz des Auftragnehmers über oder wird direkt verschrottet.');
+
+  // Bestätigung des Wartungsnehmers (mit erläuterndem Satz, ohne ?-Zeichen)
+  y -= 10; ensureSpace(110);
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
+  y -= 16;
+  draw('Bestätigung des Wartungsnehmers', M, y, bold, 12, COL_INK); y -= 18;
+  const bestSatz = sub.sigMode === 'drawn'
+    ? ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben und mit handschriftlicher Unterschrift bestätigt.')
+    : ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben. Die Bestätigung erfolgte digital gemäß § 127 i.V.m. § 126b BGB (Textform).');
+  const bestLines = wrap(bestSatz, helv, 10, W - 2*M);
+  for (const l of bestLines) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  y -= 8;
+  if (sub.sigMode === 'drawn' && sub.signaturDataUrl) {
+    try { const png = await doc.embedPng(sub.signaturDataUrl); page.drawImage(png, { x: M, y: y - 50, width: 180, height: 50 }); y -= 56; } catch(_) {}
+  }
+  draw('Unterzeichnet von: ' + (sub.sigName || '-'), M, y, bold, 10, COL_INK); y -= 13;
+  draw('Datum: ' + dat, M, y, helv, 10, COL_MUTE);
+
+  // HV-Beauftragungs-Block auf neuer Seite
+  newPage();
+  draw('Beauftragung durch die Hausverwaltung', M, y, bold, 14, COL_INK); y -= 4;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 200, y: y - 2 }, thickness: 1.2, color: COL_INK });
+  y -= 22;
+  const beaufrText = [
+    'Hiermit beauftragt die Hausverwaltung ' + (sub.snap.hv_name || '') + ' den Wartungsnehmer ' + (sub.wn.firma || '') + ' mit der Durchführung der vorstehend angebotenen Leistungen zu den genannten Preisen und Konditionen.',
+    '',
+    'Die Hausverwaltung erklärt, zur Erteilung dieses Auftrags im Namen der Eigentümergemeinschaft / des Eigentümers bevollmächtigt zu sein. Mit der Unterschrift wird der Auftrag verbindlich erteilt und das vorstehende Angebot zur Grundlage der vertraglichen Vereinbarung gemacht.',
+    '',
+    'Der Auftrag wird wirksam mit Zugang der unterzeichneten Bestätigung beim Wartungsnehmer.',
+  ];
+  for (const para of beaufrText) {
+    if (para === '') { y -= 8; continue; }
+    const wr = wrap(para, helv, 10, W - 2*M);
+    for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+  }
+  y -= 30;
+
+  // Unterschriftsfeld (zwei Spalten: Ort/Datum | Unterschrift)
+  const colWidthSig = (W - 2*M - 40) / 2;
+  const sigYTop = y;
+  // Spalte 1: Ort, Datum
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWidthSig, y: y - 2 }, thickness: 0.6, color: COL_INK });
+  draw('Ort, Datum', M, y - 14, helv, 9, COL_MUTE);
+  // Spalte 2: Unterschrift HV
+  const sigCol2X = M + colWidthSig + 40;
+  page.drawLine({ start: { x: sigCol2X, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.6, color: COL_INK });
+  draw('Unterschrift Hausverwaltung', sigCol2X, y - 14, helv, 9, COL_MUTE);
+  y = sigYTop - 50;
+
+  // Name in Druckbuchstaben darunter
+  draw('Name in Druckbuchstaben:', M, y, helv, 9, COL_MUTE); y -= 14;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWidthSig + 40 + colWidthSig, y: y - 2 }, thickness: 0.5, color: COL_LIGHT });
+  y -= 22;
+  draw('Funktion / Position:', M, y, helv, 9, COL_MUTE); y -= 14;
+  page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWidthSig + 40 + colWidthSig, y: y - 2 }, thickness: 0.5, color: COL_LIGHT });
+
+  // AGB auf neue Seite
+  const klauselnText = htmlToText(sub.klauseln);
+  if (klauselnText) {
+    newPage();
+    draw('Allgemeine Geschäftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
+    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
+    y -= 22;
+    const lines = klauselnText.split('\n');
+    for (const ln of lines) {
+      const t = ln.trim();
+      if (!t) { y -= 6; continue; }
+      const isHeader = t.length < 50 && !/[.,:]$/.test(t) && /^[A-ZÄÖÜ]/.test(t);
+      if (isHeader) { y -= 4; ensureSpace(20); draw(t, M, y, bold, 11, COL_INK); y -= 14; }
+      else { const wr = wrap(t, helv, 10, W - 2*M); for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; } }
+    }
+  }
+
+  // Footer auf jeder Seite — Liftaro-Branding zentral, Wartungsnehmer-Daten rechts
+  totalPagesHolder.total = allPages.length;
+  allPages.forEach((pg, idx) => {
+    const fY = 70;
+    pg.drawLine({ start: { x: M, y: fY + 32 }, end: { x: W - M, y: fY + 32 }, thickness: 0.5, color: COL_LIGHT });
+    const colW = (W - 2*M) / 3;
+    const xCol = [M, M + colW, M + 2 * colW];
+    const drawCol = (xi, lblTitel, lines) => {
+      pg.drawText(safe(lblTitel), { x: xCol[xi], y: fY + 18, size: 9, font: bold, color: COL_INK });
+      let yy = fY + 6;
+      for (const l of lines) { if (!l) continue; pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8.5, font: helv, color: COL_MUTE }); yy -= 10; }
+    };
+    drawCol(0, 'Liftaro', ['Vermittelt über check.liftaro.de', 'check@liftaro.de']);
+    drawCol(1, sub.wn.firma || '-', [
+      sub.wn.strasse || '',
+      [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' '),
+      sub.wn.email || '',
+    ]);
+    drawCol(2, 'Rechtliches', [
+      sub.wn.hrb_nummer ? (sub.wn.hrb_nummer + (sub.wn.hrb_gericht ? ' AG ' + sub.wn.hrb_gericht : '')) : '',
+      sub.wn.ust_id ? ('USt-IdNr. ' + sub.wn.ust_id) : '',
+      sub.wn.geschaeftsfuehrer ? ('GF: ' + sub.wn.geschaeftsfuehrer) : '',
+    ]);
+    const pn = 'Angebot ' + angNr + ' - Seite ' + (idx + 1) + ' / ' + totalPagesHolder.total;
+    const pnW = helv.widthOfTextAtSize(safe(pn), 8);
+    pg.drawText(safe(pn), { x: W - M - pnW, y: 36, size: 8, font: helv, color: COL_MUTE });
+  });
+  const bytes = await doc.save();
+  return new Blob([bytes], { type: 'application/pdf' });
+}
 
   // Start
   load().catch(e => { console.error(e); renderError('Unerwarteter Fehler: ' + e.message); });
