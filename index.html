@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.423';
+const APP_VERSION = 'V12.424';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33743,7 +33743,10 @@ function _renderEmailLvSection(r) {
       +   '<div style="font-size:12.5px;font-weight:700;color:#15803d">💰 ' + cnt + ' Angebot' + (cnt === 1 ? '' : 'e') + ' eingegangen' + (hasSavedCheck ? ' · <span style="color:#0369a1">💾 Check gespeichert</span>' : '') + '</div>'
       +   '<div style="font-size:11.5px;color:#166534;margin-top:1px">' + (hasSavedCheck ? 'Gespeicherten Ergebnis-Check öffnen und weiterbearbeiten oder senden.' : 'Ergebnis-Check für die Hausverwaltung erstellen — Vergleich, Ersparnis & Empfehlung als PDF.') + '</div>'
       + '</div>'
-      + '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 ' + (hasSavedCheck ? 'Ergebnis bearbeiten' : 'Ergebnis erstellen') + '</button>'
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      +   (hasSavedCheck ? '<button onclick="_eiErgebnisDownloadSaved(\'' + r._id + '\')" title="Gespeichertes Ergebnis-PDF direkt herunterladen" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">📄 PDF herunterladen</button>' : '')
+      +   '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 ' + (hasSavedCheck ? 'Ergebnis bearbeiten' : 'Ergebnis erstellen') + '</button>'
+      + '</div>'
       + '</div>';
   }
   return '<div class="dr-section" data-feature="ei_lv" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">'
@@ -33787,17 +33790,17 @@ function _eiErgFmtEur(n) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
 }
 
-async function openErgebnisCheckModal(emailId) {
+// V12.424: State-Assemblierung extrahiert — wiederverwendbar für Modal UND Direkt-Download
+async function _eiErgebnisAssembleState(emailId) {
   const r = (_eiAllRecords || []).find(x => x._id === emailId);
-  if (!r) { showToast('Email nicht gefunden', 'error'); return; }
-  showToast('⏳ Lade Angebote …', 'info', 2000);
+  if (!r) { showToast('Email nicht gefunden', 'error'); return false; }
   // Anfragen (submitted) + LVs frisch laden
   let anfragen = [], lvs = [];
   try {
     const recs = await atRead('LV_Anfragen', "AND({email_id}='" + String(emailId).replace(/'/g, "\\'") + "',{status}='submitted')", { sort: false });
     anfragen = (recs || []).map(x => ({ _recordId: x.id, ...x.fields })).filter(x => String(x.archiviert || '') !== '1');  // V12.416: archivierte ausblenden
   } catch (e) { console.warn('[V12.402] Anfragen-Load:', e.message); }
-  if (!anfragen.length) { showToast('Keine eingegangenen Angebote gefunden', 'warning', 4000); return; }
+  if (!anfragen.length) { showToast('Keine eingegangenen Angebote gefunden', 'warning', 4000); return false; }
   try { lvs = await _eiLvLoadForEmail(emailId, false); } catch (_) {}
 
   // Pro Anfrage: Wartungsnehmer-Daten + Angebots-Summe + zugehöriges LV (Original)
@@ -33863,7 +33866,13 @@ async function openErgebnisCheckModal(emailId) {
       }
     }
   } catch (e) { console.warn('[V12.413] Ergebnis-Check restore:', e.message); }
+  return true;
+}
+window._eiErgebnisAssembleState = _eiErgebnisAssembleState;
 
+async function openErgebnisCheckModal(emailId) {
+  showToast('⏳ Lade Angebote …', 'info', 2000);
+  if (!(await _eiErgebnisAssembleState(emailId))) return;
   let ov = document.getElementById('eiErgebnisModal');
   if (ov) ov.remove();
   ov = document.createElement('div');
@@ -33874,6 +33883,14 @@ async function openErgebnisCheckModal(emailId) {
   _eiErgebnisRenderModal();
 }
 window.openErgebnisCheckModal = openErgebnisCheckModal;
+
+// V12.424: Gespeicherten Ergebnis-Check direkt herunterladen (ohne Modal-Umweg)
+async function _eiErgebnisDownloadSaved(emailId) {
+  showToast('⏳ Ergebnis-PDF wird erstellt …', 'info', 2500);
+  if (!(await _eiErgebnisAssembleState(emailId))) return;
+  if (typeof _eiErgebnisCreateAndSend === 'function') await _eiErgebnisCreateAndSend(false);
+}
+window._eiErgebnisDownloadSaved = _eiErgebnisDownloadSaved;
 
 function _eiErgebnisRenderModal() {
   const s = window._eiErgebnisState;
