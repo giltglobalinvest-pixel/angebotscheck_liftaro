@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.420';
+const APP_VERSION = 'V12.421';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34359,7 +34359,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const ersparnisPct = orig > 0 ? Math.round((ersparnis / orig) * 100) : 0;
   const dat = new Date().toLocaleDateString('de-DE');
   const tokenShort = String(chosen.anfId || '').replace(/^lva?_/i, '').slice(0, 5).toUpperCase();
-  const angNr = 'Liftaro-' + (tokenShort || 'XXXXX');
+  const angNr = 'L-' + (tokenShort || 'XXXXX');
   // V12.404: EUR-Formatter ohne €-Symbol (WinAnsi-sicher) — "3.000,00 EUR"
   const fmtEur = (n) => { if (n == null || isNaN(n)) return '-'; const p = (Math.round(n*100)/100).toFixed(2).split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); return p[0] + ',' + p[1] + ' EUR'; };
   const totalP = { n: 0 };
@@ -37157,7 +37157,7 @@ async function _eiLvBuildAntwortPdf(sub) {
   // Einfache Angebotsnummer: Liftaro-XXXXX (5-stelliger Token-Slug)
   const tokenRaw = String(sub.anf.token || sub.anf.id || '').replace(/^(lva|lv)_/i, '');
   const tokenShort = tokenRaw.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
-  const angNr = 'Liftaro-' + (tokenShort || 'XXXXX');
+  const angNr = 'L-' + (tokenShort || 'XXXXX');
   const totalPagesHolder = { total: 0 };
   const allPages = [];
   let page = doc.addPage([W, H]);
