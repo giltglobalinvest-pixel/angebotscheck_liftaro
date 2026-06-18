@@ -6474,7 +6474,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.436';
+const APP_VERSION = 'V12.437';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -39899,7 +39899,10 @@ function renderEmailInboxDetail() {
         renderEmailInboxDetail();
       }).catch(() => {});
     }
-    html += _eiRenderWartungsnehmerSection(r, _wnImmediate);
+    // V12.437: CHATS als verschieb-/einklappbarer Block (Wrapper, da die Section mehrere Return-Pfade hat)
+    html += `<div class="ei-block" data-eiblock="chats" data-eiblock-title="Chats" style="margin-bottom:14px">`
+      + _eiRenderWartungsnehmerSection(r, _wnImmediate)
+      + `</div>`;
   } else {
     // V12.349: Dezenter Hinweis, warum der Chat hier (noch) fehlt — sonst wundert
     // sich der Bearbeiter, wo der Chat-Block geblieben ist. Klick auf den Hinweis
@@ -40334,9 +40337,15 @@ function _eiReorderBlocks(host, order) {
   if (blocks.length < 2) return;
   const byKey = {};
   blocks.forEach(b => { byKey[b.getAttribute('data-eiblock')] = b; });
-  const seq = [];
-  (order || []).forEach(k => { if (byKey[k] && seq.indexOf(byKey[k]) === -1) seq.push(byKey[k]); });
-  blocks.forEach(b => { if (seq.indexOf(b) === -1) seq.push(b); });
+  const orderArr = Array.isArray(order) ? order : [];
+  // Stabiler Merge: bekannte Blöcke folgen der gespeicherten Reihenfolge, NEUE/unbekannte
+  // Blöcke (nicht in `order`) behalten ihren DOM-Slot → kein Key-Bump bei neuem Block nötig.
+  const knownSeq = orderArr.filter(k => byKey[k]);
+  let kp = 0;
+  const seq = blocks.map(b => {
+    const k = b.getAttribute('data-eiblock');
+    return (orderArr.indexOf(k) !== -1 && kp < knownSeq.length) ? byKey[knownSeq[kp++]] : b;
+  });
   // Platzhalter an den aktuellen Block-Slots → Banner dazwischen bleiben fix
   const placeholders = blocks.map(b => { const ph = document.createComment('eib'); host.insertBefore(ph, b); host.removeChild(b); return ph; });
   placeholders.forEach((ph, i) => { host.insertBefore(seq[i], ph); host.removeChild(ph); });
