@@ -4913,6 +4913,41 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
   padding:2px 8px; font-size:10px; font-weight:800; letter-spacing:.05em;
   margin-right:6px; animation: eiNeuPulse 1.4s ease-in-out infinite;
 }
+/* V12.434: Verschieb- & einklappbare Email-Detail-Blöcke (Layout-Manager) */
+.ei-block { position: relative; }
+.ei-block-bar {
+  display:flex; align-items:center; gap:6px;
+  padding:7px 12px; cursor:pointer; user-select:none;
+  background:rgba(15,23,42,.035); border-bottom:1px solid rgba(15,23,42,.06);
+  border-top-left-radius:inherit; border-top-right-radius:inherit;
+  font-family:'DM Sans',sans-serif;
+}
+.ei-block-bar:hover { background:rgba(15,23,42,.06); }
+.ei-block.ei-collapsed .ei-block-bar { border-bottom-color:transparent; }
+.ei-block-caret {
+  width:14px; height:14px; flex-shrink:0; color:#64748b;
+  transition:transform .15s ease; transform:rotate(90deg);
+}
+.ei-block.ei-collapsed .ei-block-caret { transform:rotate(0deg); }
+.ei-block-name {
+  font-size:11.5px; font-weight:800; color:#334155;
+  text-transform:uppercase; letter-spacing:.05em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0;
+}
+.ei-block-move { display:inline-flex; gap:2px; margin-left:auto; flex-shrink:0; }
+.ei-block-move button {
+  width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center;
+  background:#fff; border:1px solid #d1d5db; border-radius:5px; color:#475569;
+  font-size:11px; cursor:pointer; padding:0; line-height:1; transition:all .12s;
+}
+.ei-block-move button:hover:not(:disabled) { border-color:#1a3a5c; color:#1a3a5c; background:#f1f5f9; }
+.ei-block-move button:disabled { opacity:.3; cursor:default; }
+.ei-block.ei-collapsed > .ei-block-content { display:none; }
+/* Layout-Toolbar */
+#eiLayoutToolbar .ei-layout-save.dirty {
+  background:#16a34a; color:#fff; border-color:#16a34a;
+  animation:eiNeuPulse 1.4s ease-in-out infinite;
+}
 /* V12.187: <details> Aufklapp-Pfeil-Animation */
 #emailExtraDetails[open] #emailExtraDetailsCaret { transform: rotate(90deg); }
 #emailExtraDetails summary::-webkit-details-marker { display:none; }
@@ -6439,7 +6474,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.433';
+const APP_VERSION = 'V12.434';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32613,22 +32648,18 @@ function _renderEmailTimeline(r) {
           cntIncoming ? cntIncoming + ' Antwort'    + (cntIncoming === 1 ? '' : 'en') + ' eingegangen' : '',
         ].filter(Boolean).join(' · ')}</span>`
     : '';
-  return `<div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #1a3a5c;background:#fff">
-    <details ${_verlaufOpen ? 'open' : ''} ontoggle="window._eiVerlaufOpen=window._eiVerlaufOpen||{};window._eiVerlaufOpen['${r._id}']=this.open;const c=this.querySelector('.ei-verlauf-caret');if(c)c.style.transform=this.open?'rotate(90deg)':'rotate(0deg)';" style="margin-bottom:12px">
-      <summary style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none;outline:none;user-select:none;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:10px">
-          <svg class="ei-verlauf-caret" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#64748b;transition:transform .15s ease;transform:${_verlaufOpen ? 'rotate(90deg)' : 'rotate(0deg)'}"><polyline points="9 18 15 12 9 6"/></svg>
-          <span style="font-size:14px;font-weight:700;color:#0f172a">💬 Verlauf</span>
-          ${_summaryMeta}
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-left:auto" onclick="event.stopPropagation()">
-          <button onclick="event.preventDefault();openLinkEmailModal('${r._id}')" title="Diese Email mit einer anderen verknüpfen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">🔗 Verknüpfen</button>
+  return `<div class="ei-block" data-eiblock="verlauf" data-eiblock-title="💬 Verlauf" data-eiblock-collapsed="1" style="margin-bottom:14px;border-left:3px solid #1a3a5c;background:#fff">
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        ${_summaryMeta}
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+          <button onclick="openLinkEmailModal('${r._id}')" title="Diese Email mit einer anderen verknüpfen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">🔗 Verknüpfen</button>
           <span style="font-size:11px;color:#94a3b8">chronologisch · älteste zuerst</span>
         </div>
-      </summary>
-      <div style="margin-top:12px">${itemsHtml}</div>
-    </details>
-    ${_renderEmailComposer(r)}
+      </div>
+      <div>${itemsHtml}</div>
+      ${_renderEmailComposer(r)}
+    </div>
   </div>`;
 }
 
@@ -39550,6 +39581,12 @@ function renderEmailInboxDetail() {
     <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
     <span>Zurück zur Liste</span>
   </button>`;
+  // V12.434: Layout-Toolbar — Blöcke verschieben (▲▼) / ein-/ausklappen, „Speichern" merkt die Konfig global.
+  html += `<div id="eiLayoutToolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:11px;color:#94a3b8;margin-right:auto;display:inline-flex;align-items:center;gap:6px">🧩 Blöcke mit ▲▼ verschieben · Kopf klicken = ein-/ausklappen</span>
+    <button onclick="_eiResetDetailLayout()" title="Block-Reihenfolge & Auf/Zu auf Standard zurücksetzen" style="background:#fff;border:1px solid #d1d5db;color:#475569;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↺ Standard</button>
+    <button class="ei-layout-save" onclick="_eiSaveDetailLayout()" title="Aktuelle Reihenfolge + Auf/Zu-Zustand als Standard für alle Emails speichern" style="background:#fff;border:1px solid #16a34a;color:#15803d;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💾 Layout speichern</button>
+  </div>`;
   // V12.429: Prominenter Ergebnis-Check-Banner GANZ OBEN — wenn ein Ergebnis-Check erstellt/versendet wurde
   if (String(r.ergebnis_check_json || '').trim()) {
     const _ergSent = (r.status === 'geantwortet') || (String(r.check_status || '') === 'gecheckt');
@@ -39685,24 +39722,14 @@ function renderEmailInboxDetail() {
       <button onclick="fixEmailUmlauts('${r._id}')" style="background:#d97706;border:none;color:#fff;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0;display:inline-flex;align-items:center;gap:6px">🔧 Umlaute fixen</button>
     </div>`;
   }
-  // V12.433: Email-Inhalt einklappbar (Default: eingeklappt) + per String-Marker nach unten
-  // direkt vor den Verlauf-Abschnitt gezogen (EI_BODY_START/END → EI_BODY_SLOT).
-  // Open-State pro Email gemerkt, damit Re-Renders die Sektion nicht wieder zuklappen.
-  window._eiBodyOpen = window._eiBodyOpen || {};
-  const _bodyOpen = window._eiBodyOpen[r._id] === true;
-  html += `<!--EI_BODY_START--><div class="dr-section" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#fff">
-    <details ${_bodyOpen ? 'open' : ''} ontoggle="window._eiBodyOpen=window._eiBodyOpen||{};window._eiBodyOpen['${r._id}']=this.open;const c=this.querySelector('.ei-body-caret');if(c)c.style.transform=this.open?'rotate(90deg)':'rotate(0deg)';if(this.open&&typeof _eiHydrateHtmlBodies==='function')_eiHydrateHtmlBodies(this);">
-      <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;outline:none;user-select:none;flex-wrap:wrap">
-        <svg class="ei-body-caret" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#64748b;transition:transform .15s ease;transform:${_bodyOpen ? 'rotate(90deg)' : 'rotate(0deg)'}"><polyline points="9 18 15 12 9 6"/></svg>
-        <span style="font-size:14px;font-weight:700;color:#0f172a">📧 Email-Inhalt</span>
-        ${hasHtml ? '<span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span>' : ''}
-        ${hasHtml ? `<button onclick="event.preventDefault();event.stopPropagation();_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" class="dr-pill" style="font-size:11px;margin-left:auto">Als Text anzeigen</button>` : ''}
-      </summary>
-      <div style="margin-top:12px">
-        <div id="eiBodyText_${r._id}" style="display:${htmlDefault ? 'none' : 'block'};font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
-        ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:block;width:100%;max-height:620px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--dr-ink)"></div>` : ''}
-      </div>
-    </details>
+  // V12.434: Email-Inhalt als verschieb-/einklappbarer Block (Default: eingeklappt).
+  // Per String-Marker (EI_BODY_START/END → EI_BODY_SLOT) direkt vor den Verlauf gezogen.
+  html += `<!--EI_BODY_START--><div class="ei-block" data-eiblock="body" data-eiblock-title="Email-Inhalt" data-eiblock-collapsed="1" style="margin-bottom:14px;border-left:3px solid #7c3aed;background:#fff">
+    <div style="padding:14px 16px">
+      ${hasHtml ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span class="dr-section-title__count" style="background:var(--dr-purple-soft);color:var(--dr-purple-deep);text-transform:none;letter-spacing:0">HTML</span><button onclick="_eiToggleHtml('${r._id}')" id="eiHtmlToggle_${r._id}" class="dr-pill" style="font-size:11px;margin-left:auto">Als Text anzeigen</button></div>` : ''}
+      <div id="eiBodyText_${r._id}" style="display:${htmlDefault ? 'none' : 'block'};font-size:13px;line-height:1.7;color:var(--dr-ink);white-space:pre-wrap;max-height:480px;overflow-y:auto;background:#fff;padding:14px 16px;border-radius:var(--dr-r-sm);border:1px solid var(--dr-border)">${_esc(bodyText)}</div>
+      ${hasHtml ? `<div id="eiBodyHtml_${r._id}" data-html="${_esc(r.body_html)}" style="display:block;width:100%;max-height:620px;overflow-y:auto;border:1px solid var(--dr-border);border-radius:var(--dr-r-sm);background:#fff;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--dr-ink)"></div>` : ''}
+    </div>
   </div><!--EI_BODY_END-->`;
 
   // V12.187: Anhänge prominent direkt unter dem Body
@@ -39725,7 +39752,8 @@ function renderEmailInboxDetail() {
     const _allBtn = _pdfCount >= 2
       ? `<button onclick="openAllAttachmentsQaModal('${r._id}')" title="🔍 Fragen über ALLE PDF-Anhänge dieser Email gleichzeitig stellen — z.B. um Verträge/Angebote zu vergleichen. Nutzt die bereits extrahierten Texte aus dem Cache." style="background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px;margin-right:6px">🔍 Über alle ${_pdfCount} fragen</button>`
       : '';
-    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+    html += `<div class="ei-block dr-section" data-eiblock="anhaenge" data-eiblock-title="Anhänge" style="margin-bottom:14px;padding:0">
+      <div class="ei-block-pad" style="padding:16px 18px">
       <div class="dr-section-head" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
         <div class="dr-section-title">📎 Anhänge${_attList.length ? `<span class="dr-section-title__count">${_attList.length}</span>` : ''}</div>
         <div style="display:inline-flex;align-items:center">${_allBtn}${_uploadBtn}</div>
@@ -39733,7 +39761,7 @@ function renderEmailInboxDetail() {
     if (!_attList.length) {
       html += `<div style="background:var(--dr-surface-alt);border:1px dashed var(--dr-border);border-radius:var(--dr-r-sm);padding:18px;text-align:center;color:var(--dr-ink-mute);font-size:12.5px;line-height:1.5">
         Diese Email hat keine Anhänge. Klicke <strong>„Hinzufügen"</strong>, um manuell Dateien hochzuladen.
-      </div></div>`;
+      </div></div></div>`;
     } else {
       html += `<div style="display:flex;flex-direction:column;gap:6px">`;
       _attList.forEach((a, idx) => {
@@ -39764,7 +39792,7 @@ function renderEmailInboxDetail() {
           </button>
         </div>`;
       });
-      html += `</div></div>`;
+      html += `</div></div></div>`;
     }
   }
   // V12.253: Neutralisierte Anhänge — separater Bereich nach den Originalen
@@ -39888,13 +39916,8 @@ function renderEmailInboxDetail() {
   // V12.314: Marker um den Details-Block → wird am Ende nach oben in den EI_DETAILS_SLOT verschoben
   window._eiExtraDetailsOpen = window._eiExtraDetailsOpen || {};
   const _extraOpen = window._eiExtraDetailsOpen[r._id] === true;
-  html += `<!--EI_DETAILS_START--><details id="emailExtraDetails" ${_extraOpen ? 'open' : ''} ontoggle="window._eiExtraDetailsOpen=window._eiExtraDetailsOpen||{};window._eiExtraDetailsOpen['${r._id}']=this.open" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
-    <summary style="cursor:pointer;padding:12px 16px;font-size:12.5px;font-weight:700;color:#475569;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;outline:none">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .15s ease" id="emailExtraDetailsCaret"><polyline points="9 18 15 12 9 6"/></svg>
-      <span>Zuordnungen, KI-Analyse, Vorgänge &amp; Aktionen</span>
-      <span style="color:#94a3b8;font-weight:400;margin-left:auto;font-size:11.5px">${_extraOpen ? 'einklappen' : 'aufklappen'}</span>
-    </summary>
-    <div style="padding:0 14px 14px">
+  html += `<!--EI_DETAILS_START--><div id="emailExtraDetails" class="ei-block" data-eiblock="details" data-eiblock-title="Zuordnung · KI · Vorgänge" data-eiblock-collapsed="1" style="margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0">
+    <div style="padding:14px 14px 14px">
 
   // V12.179: Zuordnung-Sektion — Verwaltung & Aufzug als zwei eigene Kacheln
   `;
@@ -40165,8 +40188,8 @@ function renderEmailInboxDetail() {
     </div>
   </div>`;
 
-  // V12.187: Toggle-Container schließen (Zuordnungen, KI, Vorgänge, Aktionen — eingeklappt)
-  html += `</div></details><!--EI_DETAILS_END-->`;
+  // V12.187/434: Block-Container schließen (Zuordnungen, KI, Vorgänge, Aktionen) — jetzt ei-block statt <details>
+  html += `</div></div><!--EI_DETAILS_END-->`;
 
   // V12.433: Slot für den einklappbaren Email-Inhalt — landet direkt VOR dem Verlauf.
   html += `<!--EI_BODY_SLOT-->`;
@@ -40227,6 +40250,149 @@ function renderEmailInboxDetail() {
       el.appendChild(hint);
     });
   } catch (_) {}
+  // V12.434: Verschieb-/Einklapp-Chrome + gespeichertes Layout auf die Blöcke anwenden
+  if (typeof _eiApplyDetailLayout === 'function') _eiApplyDetailLayout(detEl, r._id);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V12.434: Layout-Manager für Email-Detail-Blöcke
+// Verschiebbare (▲▼) + ein-/ausklappbare Blöcke; globale Konfig in localStorage.
+// Movable Blöcke tragen data-eiblock="<key>" + data-eiblock-title; optional
+// data-eiblock-collapsed="1" als Default-Auf/Zu (greift nur ohne gespeicherte Konfig).
+// ════════════════════════════════════════════════════════════════════════
+const EI_LAYOUT_KEY = 'eiDetailLayout_v1';
+function _eiLoadDetailLayout() {
+  try {
+    const raw = localStorage.getItem(EI_LAYOUT_KEY);
+    if (!raw) return null;
+    const cfg = JSON.parse(raw);
+    if (!cfg || typeof cfg !== 'object') return null;
+    return {
+      order: Array.isArray(cfg.order) ? cfg.order : [],
+      collapsed: (cfg.collapsed && typeof cfg.collapsed === 'object') ? cfg.collapsed : {},
+    };
+  } catch (_) { return null; }
+}
+function _eiDetailBlocksHost() {
+  const detEl = document.getElementById('emailInboxDetail');
+  if (!detEl) return null;
+  return detEl.querySelector(':scope > div') || detEl;
+}
+function _eiApplyDetailLayout(detEl, emailId) {
+  try {
+    const host = detEl.querySelector(':scope > div') || detEl;
+    let blocks = Array.from(host.querySelectorAll(':scope > [data-eiblock]'));
+    if (!blocks.length) return;
+    const saved = _eiLoadDetailLayout();
+    // 1) Chrome injizieren (idempotent) — Leiste oben, Rest in .ei-block-content gewickelt
+    blocks.forEach(el => {
+      if (el.querySelector(':scope > .ei-block-bar')) return;
+      el.classList.add('ei-block');
+      const title = el.getAttribute('data-eiblock-title') || el.getAttribute('data-eiblock') || '';
+      const content = document.createElement('div');
+      content.className = 'ei-block-content';
+      while (el.firstChild) content.appendChild(el.firstChild);
+      const bar = document.createElement('div');
+      bar.className = 'ei-block-bar';
+      bar.innerHTML =
+        '<svg class="ei-block-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="9 6 15 12 9 18"/></svg>'
+        + '<span class="ei-block-name">' + _esc(title) + '</span>'
+        + '<span class="ei-block-move">'
+        +   '<button type="button" data-dir="up" title="Block nach oben">▲</button>'
+        +   '<button type="button" data-dir="down" title="Block nach unten">▼</button>'
+        + '</span>';
+      bar.addEventListener('click', (ev) => {
+        if (ev.target.closest('.ei-block-move')) return;
+        _eiToggleBlock(el);
+      });
+      bar.querySelector('[data-dir="up"]').addEventListener('click', (ev) => { ev.stopPropagation(); _eiMoveBlock(el, -1); });
+      bar.querySelector('[data-dir="down"]').addEventListener('click', (ev) => { ev.stopPropagation(); _eiMoveBlock(el, 1); });
+      el.appendChild(bar);
+      el.appendChild(content);
+    });
+    // 2) Auf/Zu-Zustand: gespeichert > data-eiblock-collapsed-Default
+    blocks.forEach(el => {
+      const key = el.getAttribute('data-eiblock');
+      let collapsed;
+      if (saved && saved.collapsed && Object.prototype.hasOwnProperty.call(saved.collapsed, key)) collapsed = !!saved.collapsed[key];
+      else collapsed = el.getAttribute('data-eiblock-collapsed') === '1';
+      el.classList.toggle('ei-collapsed', collapsed);
+    });
+    // 3) Reihenfolge anwenden (gespeicherte order zuerst, unbekannte Keys behalten ihre Position)
+    const order = (saved && saved.order && saved.order.length) ? saved.order : blocks.map(b => b.getAttribute('data-eiblock'));
+    _eiReorderBlocks(host, order);
+    // 4) Pfeil-Status + Toolbar
+    _eiRefreshMoveButtons(host);
+    _eiMarkLayoutDirty(false);
+  } catch (e) { console.warn('[V12.434] _eiApplyDetailLayout:', e.message); }
+}
+function _eiReorderBlocks(host, order) {
+  const blocks = Array.from(host.querySelectorAll(':scope > [data-eiblock]'));
+  if (blocks.length < 2) return;
+  const byKey = {};
+  blocks.forEach(b => { byKey[b.getAttribute('data-eiblock')] = b; });
+  const seq = [];
+  (order || []).forEach(k => { if (byKey[k] && seq.indexOf(byKey[k]) === -1) seq.push(byKey[k]); });
+  blocks.forEach(b => { if (seq.indexOf(b) === -1) seq.push(b); });
+  // Platzhalter an den aktuellen Block-Slots → Banner dazwischen bleiben fix
+  const placeholders = blocks.map(b => { const ph = document.createComment('eib'); host.insertBefore(ph, b); host.removeChild(b); return ph; });
+  placeholders.forEach((ph, i) => { host.insertBefore(seq[i], ph); host.removeChild(ph); });
+}
+function _eiMoveBlock(el, dir) {
+  const host = el.parentNode; if (!host) return;
+  const blocks = Array.from(host.querySelectorAll(':scope > [data-eiblock]'));
+  const i = blocks.indexOf(el);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= blocks.length) return;
+  const a = blocks[i], b = blocks[j];
+  const phA = document.createComment('eib'); host.insertBefore(phA, a); host.removeChild(a);
+  const phB = document.createComment('eib'); host.insertBefore(phB, b); host.removeChild(b);
+  host.insertBefore(b, phA); host.removeChild(phA);
+  host.insertBefore(a, phB); host.removeChild(phB);
+  _eiRefreshMoveButtons(host);
+  _eiMarkLayoutDirty(true);
+}
+function _eiToggleBlock(el) {
+  el.classList.toggle('ei-collapsed');
+  _eiMarkLayoutDirty(true);
+}
+function _eiRefreshMoveButtons(host) {
+  const blocks = Array.from(host.querySelectorAll(':scope > [data-eiblock]'));
+  blocks.forEach((b, i) => {
+    const up = b.querySelector(':scope > .ei-block-bar [data-dir="up"]');
+    const dn = b.querySelector(':scope > .ei-block-bar [data-dir="down"]');
+    if (up) up.disabled = (i === 0);
+    if (dn) dn.disabled = (i === blocks.length - 1);
+  });
+}
+function _eiCurrentLayout() {
+  const host = _eiDetailBlocksHost(); if (!host) return null;
+  const blocks = Array.from(host.querySelectorAll(':scope > [data-eiblock]'));
+  if (!blocks.length) return null;
+  const order = blocks.map(b => b.getAttribute('data-eiblock'));
+  const collapsed = {};
+  blocks.forEach(b => { collapsed[b.getAttribute('data-eiblock')] = b.classList.contains('ei-collapsed'); });
+  return { order, collapsed };
+}
+function _eiSaveDetailLayout() {
+  const cfg = _eiCurrentLayout();
+  if (!cfg) { showToast('Kein Layout zum Speichern gefunden.', 'error'); return; }
+  try {
+    localStorage.setItem(EI_LAYOUT_KEY, JSON.stringify(cfg));
+    _eiMarkLayoutDirty(false);
+    showToast('✓ Layout gespeichert — gilt für alle Email-Ansichten.', 'success');
+  } catch (e) { showToast('Layout speichern fehlgeschlagen: ' + e.message, 'error'); }
+}
+function _eiResetDetailLayout() {
+  try { localStorage.removeItem(EI_LAYOUT_KEY); } catch (_) {}
+  showToast('↺ Layout auf Standard zurückgesetzt.', 'info');
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+}
+function _eiMarkLayoutDirty(dirty) {
+  const btn = document.querySelector('#eiLayoutToolbar .ei-layout-save');
+  if (!btn) return;
+  btn.classList.toggle('dirty', !!dirty);
+  btn.textContent = dirty ? '💾 Layout speichern *' : '💾 Layout speichern';
 }
 
 // V12.259: alle [data-html]-Elemente innerhalb des Containers in echtes DOM-Markup
