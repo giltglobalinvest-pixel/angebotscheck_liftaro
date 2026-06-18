@@ -4123,23 +4123,25 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="chat_antwort"   onclick="setEiFilter('chat_antwort')"  ><span class="ei-side-dot" style="background:#0891b2;animation:eiNeuPulse 1.6s ease-in-out infinite"></span><span class="ei-side-lbl">💬 Chat-Antworten</span><span class="ei-side-cnt" id="eiSideCnt_chat_antwort">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:6px 10px"></div>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
-            <!-- V12.399: „Offen" = Email hat eine submitted LV-Anfrage (Angebot vom Wartungsnehmer eingegangen) -->
-            <button class="ei-side-item" data-status="offen"          onclick="setEiFilter('offen')"         ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">💰 Offen · Angebot eingegangen</span><span class="ei-side-cnt" id="eiSideCnt_offen">0</span></button>
+            <!-- V12.431: „Offen" entfernt — war ein Auto-Status (nicht manuell setzbar, nicht im Status-Dropdown) -->
             <!-- V12.371: „Gesichtet" + „Geantwortet" entfernt — werden in „In Bearbeitung" zusammengefasst -->
             <button class="ei-side-item" data-status="in_bearbeitung" onclick="setEiFilter('in_bearbeitung')"><span class="ei-side-dot" style="background:#60a5fa"></span><span class="ei-side-lbl">In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_in_bearbeitung">0</span></button>
             <button class="ei-side-item" data-status="wartend"        onclick="setEiFilter('wartend')"       ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Wartend</span><span class="ei-side-cnt" id="eiSideCnt_wartend">0</span></button>
             <!-- V12.373: Wiedervorlage — automatischer Wechsel zurück auf "Neu" bei Eintritt des Datums -->
-            <button class="ei-side-item" data-status="wiedervorlage"  onclick="setEiFilter('wiedervorlage')" ><span class="ei-side-dot" style="background:#0891b2"></span><span class="ei-side-lbl">📅 Wiedervorlage</span><span class="ei-side-cnt" id="eiSideCnt_wiedervorlage">0</span></button>
+            <button class="ei-side-item" data-status="wiedervorlage"  onclick="setEiFilter('wiedervorlage')" ><span class="ei-side-dot" style="background:#0891b2"></span><span class="ei-side-lbl">📅 Auf Wiedervorlage</span><span class="ei-side-cnt" id="eiSideCnt_wiedervorlage">0</span></button>
             <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">✓ Erledigt</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
-            <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
             <button class="ei-side-item" data-status="alle"           onclick="setEiFilter('alle')"          ><span class="ei-side-dot" style="background:#fff"></span><span class="ei-side-lbl">Alle</span><span class="ei-side-cnt" id="eiSideCnt_alle">0</span></button>
-            <!-- V12.426: Filter nach Check-Status -->
+            <!-- V12.431: „Gesendet" ist kein setzbarer Status → bei den Sammel-/Hilfsfiltern, nicht in der Status-Gruppe -->
+            <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
+            <!-- V12.426/431: Filter nach Check-Status — spiegelt das Check-Dropdown (alle 5 Optionen) -->
             <div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;padding:12px 10px 4px">Check-Status</div>
-            <button class="ei-side-item" data-status="check:gecheckt"    onclick="setEiFilter('check:gecheckt')"   ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">✓ Gecheckt</span><span class="ei-side-cnt" id="eiSideCnt_check_gecheckt">0</span></button>
-            <button class="ei-side-item" data-status="check:beauftragt"  onclick="setEiFilter('check:beauftragt')" ><span class="ei-side-dot" style="background:#2d5f96"></span><span class="ei-side-lbl">📤 Beauftragt</span><span class="ei-side-cnt" id="eiSideCnt_check_beauftragt">0</span></button>
-            <button class="ei-side-item" data-status="check:abgerechnet" onclick="setEiFilter('check:abgerechnet')"><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">🧾 Abgerechnet</span><span class="ei-side-cnt" id="eiSideCnt_check_abgerechnet">0</span></button>
+            <button class="ei-side-item" data-status="check:kein_check"     onclick="setEiFilter('check:kein_check')"     ><span class="ei-side-dot" style="background:#94a3b8"></span><span class="ei-side-lbl">🚫 Kein Check</span><span class="ei-side-cnt" id="eiSideCnt_check_kein_check">0</span></button>
+            <button class="ei-side-item" data-status="check:in_bearbeitung" onclick="setEiFilter('check:in_bearbeitung')" ><span class="ei-side-dot" style="background:#0891b2"></span><span class="ei-side-lbl">🔄 In Bearbeitung</span><span class="ei-side-cnt" id="eiSideCnt_check_in_bearbeitung">0</span></button>
+            <button class="ei-side-item" data-status="check:gecheckt"       onclick="setEiFilter('check:gecheckt')"       ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">✓ Gecheckt</span><span class="ei-side-cnt" id="eiSideCnt_check_gecheckt">0</span></button>
+            <button class="ei-side-item" data-status="check:beauftragt"     onclick="setEiFilter('check:beauftragt')"     ><span class="ei-side-dot" style="background:#2d5f96"></span><span class="ei-side-lbl">📤 Beauftragt</span><span class="ei-side-cnt" id="eiSideCnt_check_beauftragt">0</span></button>
+            <button class="ei-side-item" data-status="check:abgerechnet"    onclick="setEiFilter('check:abgerechnet')"    ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">💶 Abgerechnet</span><span class="ei-side-cnt" id="eiSideCnt_check_abgerechnet">0</span></button>
           </div>
           <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.08em;padding:18px 10px 8px">Werkzeuge</div>
           <button class="ei-side-item" onclick="openEiDuplicatesModal()" title="Identische Emails finden und archivieren">
@@ -6437,7 +6439,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.430';
+const APP_VERSION = 'V12.431';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11638,27 +11640,11 @@ async function _eiLvLoadSubmittedAll(forceReload) {
       }
       window._eiLvSubmittedByEmail = map;
       window._eiLvSubmittedAllLoaded = true;
-      // V12.400: Status auf 'offen' persistieren — nur für Emails die noch auf 'neu' stehen.
-      // Manuell gesetzte Status wie 'verworfen' oder 'wartend' werden nicht überschrieben.
-      try {
-        const all = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
-        const updates = [];
-        for (const eid of Object.keys(map)) {
-          const rec = all.find(r => r && r._id === eid);
-          if (!rec) continue;
-          const cur = String(rec.status || 'neu');
-          if (cur === 'neu' || cur === '') {
-            rec.status = 'offen';
-            updates.push(eid);
-          }
-        }
-        // Async DB-Updates (best effort, typecast für neue Option)
-        for (const eid of updates) {
-          atUpdate('Emails', eid, { status: 'offen' }, { typecast: true })
-            .catch(e => console.warn('[V12.400] Email→offen fail:', eid, e.message));
-        }
-        if (updates.length) console.log('[V12.400] ' + updates.length + ' Email(s) auf Status offen gesetzt');
-      } catch (e) { console.warn('[V12.400] Status-Persist:', e.message); }
+      // V12.431: Auto-Status 'offen' entfernt — 'offen' war kein manuell setzbarer Status und ist
+      // nicht mehr Teil der Status-Liste (nur diese: neu / in_bearbeitung / wartend / wiedervorlage /
+      // geantwortet / verworfen). Eingegangene Angebote werden über die Chat-/Neue-Antworten-Filter
+      // und die Angebots-Pille in der Liste sichtbar. Legacy-Records mit status='offen' erscheinen
+      // via _eiNormStatus unter „In Bearbeitung".
       return map;
     } catch (e) {
       console.warn('[V12.399] _eiLvLoadSubmittedAll:', e.message);
@@ -30909,7 +30895,7 @@ function setEiFilter(status, skipRender) {
     const label = (status === 'in_bearbeitung') ? 'In Bearbeitung'
       : (status === 'neue_antwort') ? '↶ Neue Antworten'
       : (status === 'geantwortet') ? '✓ Erledigt'
-      : (typeof status === 'string' && status.indexOf('check:') === 0) ? ('Check: ' + ({ gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet', in_bearbeitung: 'In Bearbeitung' }[status.slice(6)] || status.slice(6)))
+      : (typeof status === 'string' && status.indexOf('check:') === 0) ? ('Check: ' + ({ kein_check: 'Kein Check', gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet', in_bearbeitung: 'In Bearbeitung' }[status.slice(6)] || status.slice(6)))
       : (status === 'alle') ? 'Alle' : status.charAt(0).toUpperCase() + status.slice(1);
     const palette = {
       neu:           { bg:'#fef3c7', fg:'#92400e' },
@@ -30957,7 +30943,8 @@ function _restoreEmailInboxListState() {
 // und werden auf „in_bearbeitung" zusammengefasst. Bestehende DB-Records mit diesen
 // Werten erscheinen damit automatisch unter „In Bearbeitung" — ohne Migration.
 // V12.427: 'geantwortet' (= Check gesendet) ist jetzt eigener Status „Erledigt" — nicht mehr in „In Bearbeitung" gefaltet
-const _EI_STATUS_NORMALIZE = { gesichtet: 'in_bearbeitung' };
+// V12.431: 'offen' (Auto-Status für eingegangene Angebote) entfernt — Legacy-Records auf „In Bearbeitung" mappen
+const _EI_STATUS_NORMALIZE = { gesichtet: 'in_bearbeitung', offen: 'in_bearbeitung' };
 function _eiNormStatus(s) {
   const k = String(s || 'neu');
   return Object.prototype.hasOwnProperty.call(_EI_STATUS_NORMALIZE, k) ? _EI_STATUS_NORMALIZE[k] : k;
@@ -31003,7 +30990,7 @@ function _eiUpdateSidebarCounts() {
   }
   // V12.371: 'gesichtet' und 'geantwortet' werden in 'in_bearbeitung' zusammengefasst
   // V12.373: Wiedervorlage-Status mitzählen + abgelaufene auf 'neu' zurücksetzen
-  let cAlle = 0, cSent = 0, byStatus = { neu:0, offen:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, geantwortet:0, verworfen:0 };
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, geantwortet:0, verworfen:0 };
   const todayIso = new Date().toISOString().slice(0, 10);
   const expireWvIds = []; // { recId, oldDatum }
   for (const r of all) {
@@ -31036,18 +31023,6 @@ function _eiUpdateSidebarCounts() {
     }
   }
   set('eiSideCnt_neu',            byStatus.neu);
-  // V12.399: Counter „Offen" = Emails mit submitted LV-Anfrage
-  try {
-    const bag = window._eiLvSubmittedByEmail || {};
-    let cntOffen = 0;
-    for (const r of all) {
-      if (!r || r.direction === 'outgoing') continue;
-      if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
-      const eid = String(r._id || '');
-      if (bag[eid] && bag[eid].length) cntOffen++;
-    }
-    set('eiSideCnt_offen', cntOffen);
-  } catch (_) { set('eiSideCnt_offen', 0); }
   set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
   set('eiSideCnt_wartend',        byStatus.wartend);
   set('eiSideCnt_wiedervorlage',  byStatus.wiedervorlage);
@@ -31062,14 +31037,22 @@ function _eiUpdateSidebarCounts() {
   if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
   const chatReplyCnt = all.filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r)).length;
   set('eiSideCnt_chat_antwort', chatReplyCnt);
-  // V12.426: Check-Status-Zähler
+  // V12.426/431: Check-Status-Zähler — alle 5 Stufen; „Kein Check" zählt auch leere Werte.
+  // threaded/Chat-Antworten ausgeschlossen (analog zur Filter-Anzeige via dropThreaded).
   try {
-    let cG = 0, cB = 0, cA = 0;
+    let cK = 0, cI = 0, cG = 0, cB = 0, cA = 0;
     for (const r of all) {
       if (!r || r.direction === 'outgoing') continue;
+      if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
       const cs = String(r.check_status || '');
-      if (cs === 'gecheckt') cG++; else if (cs === 'beauftragt') cB++; else if (cs === 'abgerechnet') cA++;
+      if (cs === 'gecheckt') cG++;
+      else if (cs === 'beauftragt') cB++;
+      else if (cs === 'abgerechnet') cA++;
+      else if (cs === 'in_bearbeitung') cI++;
+      else cK++;   // '' oder 'kein_check'
     }
+    set('eiSideCnt_check_kein_check', cK);
+    set('eiSideCnt_check_in_bearbeitung', cI);
     set('eiSideCnt_check_gecheckt', cG);
     set('eiSideCnt_check_beauftragt', cB);
     set('eiSideCnt_check_abgerechnet', cA);
@@ -31856,13 +31839,14 @@ function _eiFiltered() {
     // V12.235: Nur Emails mit eingehenden Chat-Antworten (von Wartungsnehmer/Servicebetrieb)
     if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r));
-  } else if (_eiFilter === 'offen') {
-    // V12.399: Nur Emails mit submitted LV-Anfrage (Angebot vom Wartungsnehmer eingegangen)
-    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiLvEmailHasSubmitted(r._id));
   } else if (typeof _eiFilter === 'string' && _eiFilter.indexOf('check:') === 0) {
-    // V12.426: Filter nach Check-Status (gecheckt / beauftragt / abgerechnet …)
+    // V12.426/431: Filter nach Check-Status (alle 5 Stufen). „Kein Check" matcht auch leere Werte.
     const _cs = _eiFilter.slice(6);
-    base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && String(r.check_status || '') === _cs);
+    base = (_eiAllRecords || []).filter(r => {
+      if (!r || r.direction === 'outgoing') return false;
+      const v = String(r.check_status || '');
+      return _cs === 'kein_check' ? (v === '' || v === 'kein_check') : (v === _cs);
+    });
   } else {
     // V12.371: Normalisierung — alte „gesichtet"/„geantwortet"-Records erscheinen unter „in_bearbeitung"
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiNormStatus(r.status || 'neu') === _eiFilter);
