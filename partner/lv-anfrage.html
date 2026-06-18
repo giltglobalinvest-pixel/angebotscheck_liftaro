@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.11.0';
+  const APP_VERSION = 'v1.11.1';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -939,7 +939,10 @@
     drawRight('GESAMT',             colSum, y - 8, bold, 8.5, COL_MUTE);
     y -= 18;
     page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
-    y -= 6;
+    y -= 8;
+    // v1.11: Hinweis zur Herkunft der technischen Spezifikation
+    for (const l of wrap('Die technische Spezifikation wurde aus dem vorliegenden Angebot zur Reparatur am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + ' extrahiert.', helv, 8.5, W - 2*M)) { draw(l, M, y, helv, 8.5, COL_MUTE); y -= 11; }
+    y -= 5;
 
     for (const p of sub.response) {
       const titel   = String(p.titel || '').trim();
