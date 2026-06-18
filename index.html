@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.415';
+const APP_VERSION = 'V12.416';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -7919,7 +7919,9 @@ async function setupTables() {
       { name: 'status',              type: 'singleLineText' },  // 'entwurf' | 'bereit' | 'versendet'
       { name: 'ki_extraktion_at',    type: 'singleLineText' },
       { name: 'savedAt',             type: 'singleLineText' },
+      { name: 'archiviert',          type: 'singleLineText' },  // V12.416: '1' = archiviert/ausgeblendet
     ]);
+    try { ensureFields('Leistungsverzeichnisse', [{ name: 'archiviert', type: 'singleLineText' }]); } catch(_) {}
   } catch (e) { console.warn('[V12.375] ensureTable(Leistungsverzeichnisse) failed:', e.message); }
   try {
     // V12.381: LV-Anfragen — eine Anfrage pro Versand eines LVs an einen Servicebetrieb
@@ -7955,6 +7957,7 @@ async function setupTables() {
       { name: 'klauseln_snapshot_html',   type: 'multilineText'  },
       { name: 'einleitung_snapshot_html', type: 'multilineText'  },
       { name: 'unterschrift_snapshot',    type: 'multilineText'  },
+      { name: 'archiviert',               type: 'singleLineText' },  // V12.416: '1' = archiviert/ausgeblendet
     ]); } catch(_) {}
   } catch (e) { console.warn('[V12.381] ensureTable(LV_Anfragen) failed:', e.message); }
   try {
@@ -11624,6 +11627,7 @@ async function _eiLvLoadSubmittedAll(forceReload) {
         const f = r.fields || {};
         const eid = String(f.email_id || '').trim();
         if (!eid) continue;
+        if (String(f.archiviert || '') === '1') continue;   // V12.416: archivierte Angebote ausblenden
         (map[eid] = map[eid] || []).push({ _recordId: r.id, ...f });
       }
       window._eiLvSubmittedByEmail = map;
@@ -11671,6 +11675,53 @@ function _eiLvEmailSubmittedCount(emailId) {
   const arr = bag[emailId];
   return arr ? arr.length : 0;
 }
+
+// V12.416: Archivierung von LVs und eingegangenen Angeboten (ausblenden, reversibel)
+function _eiIsArchived(x) { return !!x && String(x.archiviert || '') === '1'; }
+window._eiIsArchived = _eiIsArchived;
+
+// LV archivieren / wiederherstellen
+async function _eiLvArchive(emailId, lvId, restore) {
+  const arr = (window._eiLvByEmail && window._eiLvByEmail[emailId]) || [];
+  const lv = arr.find(x => String(x.id) === String(lvId));
+  if (!lv || !lv._recordId) { showToast('LV nicht gefunden', 'error', 3000); return; }
+  const val = restore ? '' : '1';
+  try {
+    await atUpdate('Leistungsverzeichnisse', lv._recordId, { archiviert: val });
+    lv.archiviert = val;
+    showToast(restore ? '↩ LV wiederhergestellt' : '🗄 LV archiviert', 'success', 2500);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) { console.warn('[V12.416] LV-Archiv:', e.message); showToast('Fehlgeschlagen: ' + e.message, 'error', 5000); }
+}
+window._eiLvArchive = _eiLvArchive;
+
+// Eingegangenes Angebot (LV-Anfrage) archivieren / wiederherstellen
+async function _eiLvAnfrageArchive(emailId, anfId, restore) {
+  const anfArr = (window._eiLvAnfragenByEmail && window._eiLvAnfragenByEmail[emailId]) || [];
+  let anf = anfArr.find(x => String(x.id) === String(anfId));
+  const recId = (anf && anf._recordId) || null;
+  if (!recId) { showToast('Angebot nicht gefunden', 'error', 3000); return; }
+  const val = restore ? '' : '1';
+  try {
+    await atUpdate('LV_Anfragen', recId, { archiviert: val });
+    if (anf) anf.archiviert = val;
+    // Aus dem submitted-Cache entfernen/hinzufügen, damit Banner + Zählung stimmen
+    const subBag = window._eiLvSubmittedByEmail || {};
+    if (!restore) { if (subBag[emailId]) subBag[emailId] = subBag[emailId].filter(x => String(x.id) !== String(anfId)); }
+    else if (anf && String(anf.status) === 'submitted') { (subBag[emailId] = subBag[emailId] || []).push(anf); }
+    showToast(restore ? '↩ Angebot wiederhergestellt' : '🗄 Angebot archiviert', 'success', 2500);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) { console.warn('[V12.416] Angebot-Archiv:', e.message); showToast('Fehlgeschlagen: ' + e.message, 'error', 5000); }
+}
+window._eiLvAnfrageArchive = _eiLvAnfrageArchive;
+
+// Toggle für die Archiv-Ansicht pro Email
+function _eiLvToggleArchiv(emailId) {
+  window._eiLvShowArchiv = window._eiLvShowArchiv || {};
+  window._eiLvShowArchiv[emailId] = !window._eiLvShowArchiv[emailId];
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+}
+window._eiLvToggleArchiv = _eiLvToggleArchiv;
 window._eiLvEmailHasSubmitted = _eiLvEmailHasSubmitted;
 window._eiLvEmailSubmittedCount = _eiLvEmailSubmittedCount;
 
@@ -33581,13 +33632,14 @@ function _renderEmailLvSection(r) {
     // V12.388: pro LV alle Anfragen aus dem Cache anhängen → zeigen wir „→ an XYZ"
     const anfCache = (window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[r._id])) ? window._eiLvAnfragenByEmail[r._id] : [];
     const fmtZeit = (iso) => { if (!iso) return ''; try { const d = new Date(iso); const today = new Date(); const sameDay = d.toDateString() === today.toDateString(); return sameDay ? d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); } catch(_) { return ''; } };
-    cardsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">' + lvs.map(lv => {
+    const activeLvs = lvs.filter(lv => !_eiIsArchived(lv));
+    cardsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">' + activeLvs.map(lv => {
       let cnt = 0;
       try { const a = JSON.parse(lv.positionen_json || '[]'); cnt = Array.isArray(a) ? a.length : 0; } catch (_) {}
       const statusBg = lv.status === 'bereit' ? '#dcfce7' : (lv.status === 'versendet' ? '#dbeafe' : '#fef3c7');
       const statusFg = lv.status === 'bereit' ? '#166534' : (lv.status === 'versendet' ? '#1e40af' : '#92400e');
       const statusLbl = lv.status === 'bereit' ? 'BEREIT' : (lv.status === 'versendet' ? 'VERSENDET' : 'ENTWURF');
-      const anfragen = anfCache.filter(a => String(a.lv_id) === String(lv.id));
+      const anfragen = anfCache.filter(a => String(a.lv_id) === String(lv.id) && !_eiIsArchived(a));
       // Empfänger-Zeilen
       let recipientsHtml = '';
       if (anfragen.length) {
@@ -33600,11 +33652,15 @@ function _renderEmailLvSection(r) {
               const sFg = a.status === 'submitted' ? '#166534' : (a.status === 'opened' ? '#92400e' : (a.status === 'sent' ? '#1e40af' : '#475569'));
               const sLbl = a.status === 'submitted' ? '💰 Antwort eingegangen' : (a.status === 'opened' ? '👁 Link geöffnet' : (a.status === 'sent' ? '✓ gesendet' : 'pending'));
               const zeit = fmtZeit(a.sent_at || a.savedAt);
+              const archBtn = (a.status === 'submitted')
+                ? '<button onclick="event.stopPropagation();_eiLvAnfrageArchive(\'' + r._id + '\',\'' + _esc(String(a.id)) + '\')" title="Eingegangenes Angebot archivieren (ausblenden)" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:12px;padding:0 2px;line-height:1">🗄</button>'
+                : '';
               return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#475569">'
                 +     '<span style="color:#7c3aed">→</span>'
                 +     '<span style="font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + _esc(firma) + (email ? ' <span style="color:#94a3b8;font-weight:400">· ' + _esc(email) + '</span>' : '') + '</span>'
                 +     '<span style="background:' + sBg + ';color:' + sFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;white-space:nowrap">' + sLbl + '</span>'
                 +     (zeit ? '<span style="color:#94a3b8;font-size:10.5px;white-space:nowrap">' + _esc(zeit) + '</span>' : '')
+                +     archBtn
                 + '</div>';
             }).join('')
           + '</div>';
@@ -33619,8 +33675,39 @@ function _renderEmailLvSection(r) {
         +   '<div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">' + cnt + ' Position' + (cnt === 1 ? '' : 'en') + (anfragen.length ? ' · ' + anfragen.length + ' Anfrage' + (anfragen.length === 1 ? '' : 'n') : '') + '</div>'
         + '</button>'
         + recipientsHtml
+        + '<div style="display:flex;justify-content:flex-end;margin-top:2px"><button onclick="_eiLvArchive(\'' + r._id + '\',\'' + _esc(String(lv.id)) + '\')" title="Diese LV-Analyse archivieren (ausblenden)" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:10.5px;padding:2px 4px;font-family:inherit">🗄 archivieren</button></div>'
         + '</div>';
     }).join('') + '</div>';
+  }
+  // V12.416: Archiv-Panel (archivierte LVs + Angebote) — einklappbar, mit Wiederherstellen
+  let archivPanel = '';
+  if (Array.isArray(cacheEntry)) {
+    const anfCacheAll = (window._eiLvAnfragenByEmail && Array.isArray(window._eiLvAnfragenByEmail[r._id])) ? window._eiLvAnfragenByEmail[r._id] : [];
+    const archLvs = cacheEntry.filter(lv => _eiIsArchived(lv));
+    const archAnf = anfCacheAll.filter(a => _eiIsArchived(a));
+    const archTotal = archLvs.length + archAnf.length;
+    if (archTotal) {
+      const open = !!(window._eiLvShowArchiv && window._eiLvShowArchiv[r._id]);
+      let inner = '';
+      if (open) {
+        inner = '<div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">'
+          + archLvs.map(lv => '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:7px;padding:6px 10px">'
+              + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📋 ' + _esc(lv.titel || lv.id || 'LV') + '</span>'
+              + '<button onclick="_eiLvArchive(\'' + r._id + '\',\'' + _esc(String(lv.id)) + '\',true)" style="background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">↩ Wiederherstellen</button>'
+              + '</div>').join('')
+          + archAnf.map(a => { let snap={}; try{snap=JSON.parse(a.servicebetrieb_snapshot_json||'{}');}catch(_){}
+              const firma = String(snap.firma || a.servicebetrieb_id || 'Wartungsnehmer');
+              return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:7px;padding:6px 10px">'
+              + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">💰 Angebot · ' + _esc(firma) + '</span>'
+              + '<button onclick="_eiLvAnfrageArchive(\'' + r._id + '\',\'' + _esc(String(a.id)) + '\',true)" style="background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">↩ Wiederherstellen</button>'
+              + '</div>'; }).join('')
+          + '</div>';
+      }
+      archivPanel = '<div style="margin-top:8px;border-top:1px dashed #e2e8f0;padding-top:8px">'
+        + '<button onclick="_eiLvToggleArchiv(\'' + r._id + '\')" style="background:transparent;border:none;color:#64748b;cursor:pointer;font-size:11px;font-weight:600;padding:0;font-family:inherit">🗄 Archiv (' + archTotal + ') ' + (open ? '▲ ausblenden' : '▼ anzeigen') + '</button>'
+        + inner
+        + '</div>';
+    }
   }
   const btnStyle = pre.ok
     ? 'background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;cursor:pointer'
@@ -33652,6 +33739,7 @@ function _renderEmailLvSection(r) {
     + '</div>'
     + cardsHtml
     + ergebnisBanner
+    + archivPanel
     + (pre.ok || lvs.length ? '' : '<div style="font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ ' + _esc(pre.reason) + '</div>')
     + '</div>';
 }
@@ -33690,7 +33778,7 @@ async function openErgebnisCheckModal(emailId) {
   let anfragen = [], lvs = [];
   try {
     const recs = await atRead('LV_Anfragen', "AND({email_id}='" + String(emailId).replace(/'/g, "\\'") + "',{status}='submitted')", { sort: false });
-    anfragen = (recs || []).map(x => ({ _recordId: x.id, ...x.fields }));
+    anfragen = (recs || []).map(x => ({ _recordId: x.id, ...x.fields })).filter(x => String(x.archiviert || '') !== '1');  // V12.416: archivierte ausblenden
   } catch (e) { console.warn('[V12.402] Anfragen-Load:', e.message); }
   if (!anfragen.length) { showToast('Keine eingegangenen Angebote gefunden', 'warning', 4000); return; }
   try { lvs = await _eiLvLoadForEmail(emailId, false); } catch (_) {}
@@ -33733,6 +33821,9 @@ async function openErgebnisCheckModal(emailId) {
     origAngebotNr: String(snap.orig_angebot_nr || '').trim(),    // V12.412: Angebots-Nr. des Original-Angebots (editierbar)
     einschaetzung: '', empfehlung: '',
     anschreiben: '', beauftragung: '', kiHint: '',
+    // V12.416: Test-Versand — sendet an eigene Adresse statt an den Kunden
+    testMode: false,
+    testEmail: (function(){ try { return localStorage.getItem('liftaroTestEmail') || ''; } catch(_) { return ''; } })(),
   };
 
   // V12.413: Gespeicherten Ergebnis-Check wiederherstellen (falls vorhanden)
@@ -33839,12 +33930,20 @@ function _eiErgebnisRenderModal() {
     +     '</div>'
     +   '</details>'
     + '</div>'
+    // V12.416: Test-Versand-Leiste — sendet an eigene Adresse statt an den Kunden
+    + '<div style="border-top:1px solid #fcd34d;background:#fffbeb;padding:9px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    +   '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#92400e;font-weight:700;cursor:pointer;white-space:nowrap">'
+    +     '<input type="checkbox" id="ergTestMode" ' + (s.testMode ? 'checked' : '') + ' onchange="_eiErgebnisToggleTestMode(this.checked)" style="width:15px;height:15px;cursor:pointer"> 🧪 Test-Versand'
+    +   '</label>'
+    +   '<input type="email" id="ergTestEmail" value="' + esc(s.testEmail || '') + '" placeholder="test@meine-adresse.de" oninput="_eiErgebnisSetTestEmail(this.value)" style="flex:1;min-width:180px;padding:7px 10px;border:1px solid #fcd34d;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;background:#fff' + (s.testMode ? '' : ';opacity:.55') + '">'
+    +   '<span style="font-size:10.5px;color:#b45309">geht an deine Adresse, NICHT an den Kunden</span>'
+    + '</div>'
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:13px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-    +   '<div style="font-size:11.5px;color:#64748b">Empfänger: <b>' + esc(s.hvEmail || '⚠ keine HV-Email') + '</b></div>'
+    +   '<div style="font-size:11.5px;color:#64748b">' + (s.testMode ? '🧪 Test an: <b style="color:#92400e">' + esc(s.testEmail || '⚠ Test-Adresse fehlt') + '</b>' : 'Empfänger: <b>' + esc(s.hvEmail || '⚠ keine HV-Email') + '</b>') + '</div>'
     +   '<div style="display:flex;gap:8px">'
     +     '<button id="ergSaveBtn" onclick="_eiErgebnisSaveCheck()" title="Auswahl, Beträge und Texte speichern — der Ergebnis-Check kann später wieder geöffnet werden" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">💾 Speichern</button>'
     +     '<button onclick="_eiErgebnisCreateAndSend(false)" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">📄 Nur PDF</button>'
-    +     '<button id="ergSendBtn" onclick="_eiErgebnisCreateAndSend(true)" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 PDF erstellen & an HV senden</button>'
+    +     '<button id="ergSendBtn" onclick="_eiErgebnisCreateAndSend(true)" style="background:' + (s.testMode ? '#d97706' : '#16a34a') + ';color:#fff;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + (s.testMode ? '🧪 Test-PDF an mich senden' : '📤 PDF erstellen & an HV senden') + '</button>'
     +   '</div>'
     + '</div>'
     + '</div>';
@@ -33992,6 +34091,8 @@ function _eiErgebnisCollectState() {
   const oa = g('ergOrigAnbieter'); if (oa != null) s.origAnbieter = oa.trim();
   const onr = g('ergOrigAngebotNr'); if (onr != null) s.origAngebotNr = onr.trim();
   const hint = g('ergPromptInput'); if (hint != null) s.kiHint = hint;
+  const te = g('ergTestEmail'); if (te != null) s.testEmail = te.trim();
+  const tm = document.getElementById('ergTestMode'); if (tm) s.testMode = !!tm.checked;
   return s;
 }
 window._eiErgebnisCollectState = _eiErgebnisCollectState;
@@ -34035,6 +34136,21 @@ async function _eiErgebnisSaveCheck() {
 }
 window._eiErgebnisSaveCheck = _eiErgebnisSaveCheck;
 
+// V12.416: Test-Versand umschalten (sendet an eigene Adresse statt Kunde)
+function _eiErgebnisToggleTestMode(on) {
+  const s = window._eiErgebnisState; if (!s) return;
+  _eiErgebnisCollectState();
+  s.testMode = !!on;
+  _eiErgebnisRenderModal();
+}
+window._eiErgebnisToggleTestMode = _eiErgebnisToggleTestMode;
+function _eiErgebnisSetTestEmail(v) {
+  const s = window._eiErgebnisState; if (!s) return;
+  s.testEmail = String(v || '').trim();
+  try { localStorage.setItem('liftaroTestEmail', s.testEmail); } catch(_) {}
+}
+window._eiErgebnisSetTestEmail = _eiErgebnisSetTestEmail;
+
 async function _eiErgebnisCreateAndSend(doSend) {
   const s = window._eiErgebnisState; if (!s) return;
   if (!window.PDFLib) { showToast('PDF-Bibliothek nicht verfügbar', 'error', 3500); return; }
@@ -34042,7 +34158,11 @@ async function _eiErgebnisCreateAndSend(doSend) {
   _eiErgebnisCollectState();
   const btn = document.getElementById('ergSendBtn');
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
-  if (doSend && !s.hvEmail) { showToast('Keine HV-Email vorhanden — „Nur PDF" nutzen oder HV-Email ergänzen', 'warning', 5000); return; }
+  // V12.416: Test-Versand — Empfänger ist die eigene Test-Adresse, NICHT der Kunde
+  const isTest = !!s.testMode;
+  const sendTo = isTest ? String(s.testEmail || '').trim() : s.hvEmail;
+  if (doSend && isTest && !sendTo) { showToast('Test-Adresse fehlt — bitte oben eintragen', 'warning', 5000); return; }
+  if (doSend && !isTest && !s.hvEmail) { showToast('Keine HV-Email vorhanden — „Nur PDF" nutzen oder HV-Email ergänzen', 'warning', 5000); return; }
   if (btn && doSend) { btn.disabled = true; btn.textContent = '⏳ Erstelle …'; }
   try {
     const _arrB64 = (view) => { let bin = ''; for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000)); return btoa(bin); };
@@ -34085,9 +34205,9 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const diff = Math.max(0, orig - chosen.angebotSumme);
     const provision = diff * (_eiErgProvPct(s) / 100);
     const ersparnis = Math.max(0, diff - provision);   // tatsächliche Ersparnis nach Liftaro
-    const betreff = 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
+    const betreff = (isTest ? '[TEST] ' : '') + 'Ihr Reparatur-Angebot · Aufzug Fn ' + (s.snap.fabriknummer || '') + ' · Ersparnis ' + _eiErgFmtEur(ersparnis);
     const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
-    if (btn) btn.textContent = '⏳ Sende an HV …';
+    if (btn) btn.textContent = isTest ? '⏳ Sende Test …' : '⏳ Sende an HV …';
     const body = 'Sehr geehrte Damen und Herren,\n\n'
       + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
       + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
@@ -34101,7 +34221,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig:'', htmlBody:'' };
     const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
     const payload = {
-      to: s.hvEmail, subject: betreff, text: finalText, replyTo: 'check@liftaro.de',
+      to: sendTo, subject: betreff, text: finalText, replyTo: 'check@liftaro.de',
       attachments: attachments,
     };
     if (sig.htmlBody) payload.html = sig.htmlBody;
@@ -34111,10 +34231,16 @@ async function _eiErgebnisCreateAndSend(doSend) {
     });
     if (!resp.ok) { const t = await resp.text().catch(()=>''); throw new Error('email-sender HTTP ' + resp.status + ': ' + t.slice(0, 150)); }
     const sentAt = new Date().toISOString();
+    if (isTest) {
+      // V12.416: Test-Versand — KEIN Outgoing-Record, KEIN Status-Flip, Kunde bleibt unberührt
+      document.getElementById('eiErgebnisModal')?.remove();
+      showToast('🧪 Test-PDF an „' + sendTo + '" gesendet — Kunde NICHT benachrichtigt', 'success', 6000);
+      return;
+    }
     // Outgoing-Record + Status erledigt
     try {
       await atWrite('Emails', {
-        direction: 'outgoing', from_email: 'check@liftaro.de', to_email: s.hvEmail,
+        direction: 'outgoing', from_email: 'check@liftaro.de', to_email: sendTo,
         subject: betreff, body: finalText, sent_at: sentAt, bearbeiter_name: userName,
         chat_email_id: s.emailId, attachment_filenames: attachments.map(a => a.filename).join(', '),
       });
@@ -34126,13 +34252,13 @@ async function _eiErgebnisCreateAndSend(doSend) {
       const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) { rr.status = 'geantwortet'; rr.ergebnis_check_json = ergJson; }
     } catch (e) { console.warn('[V12.402] Status-Update:', e.message); }
     document.getElementById('eiErgebnisModal')?.remove();
-    showToast('✓ Ergebnis an „' + s.hvEmail + '" gesendet', 'success', 5000);
+    showToast('✓ Ergebnis an „' + sendTo + '" gesendet', 'success', 5000);
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   } catch (e) {
     console.error('[V12.402] _eiErgebnisCreateAndSend:', e);
     showToast('Fehlgeschlagen: ' + e.message, 'error', 7000);
-    if (btn) { btn.disabled = false; btn.textContent = '📤 PDF erstellen & an HV senden'; }
+    if (btn) { btn.disabled = false; btn.textContent = (s.testMode ? '🧪 Test-PDF an mich senden' : '📤 PDF erstellen & an HV senden'); }
   }
 }
 window._eiErgebnisCreateAndSend = _eiErgebnisCreateAndSend;
