@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.419';
+const APP_VERSION = 'V12.420';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -37302,7 +37302,10 @@ async function _eiLvBuildAntwortPdf(sub) {
   drawRight('GESAMT', colSum, y - 8, bold, 8.5, COL_MUTE);
   y -= 18;
   page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
-  y -= 16;   // V12.415: mehr Luft zwischen Kopfzeile und erster Position
+  y -= 8;
+  // V12.420: Hinweis zur Herkunft der technischen Spezifikation
+  for (const l of wrap('Die technische Spezifikation wurde aus dem vorliegenden Angebot zur Reparatur am Aufzug Fn ' + (sub.snap.fabriknummer || '-') + ' extrahiert.', helv, 8.5, W - 2*M)) { draw(l, M, y, helv, 8.5, COL_MUTE); y -= 11; }
+  y -= 7;
   const txtW = colMen - colTit - 14;   // Textbreite Titel/Beschreibung (läuft nicht in Mengen-Spalte)
   for (const p of sub.response) {
     const titel = String(p.titel || '').trim();
