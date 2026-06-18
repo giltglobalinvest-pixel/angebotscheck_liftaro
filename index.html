@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.439';
+const APP_VERSION = 'V12.440';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12886,31 +12886,45 @@ function _eiWvRenderEditorBody(body, s) {
 }
 window._eiWvRenderEditorBody = _eiWvRenderEditorBody;
 
-function _eiWvShowVorschau() {
+async function _eiWvShowVorschau() {
   const s = window._eiLvEditorState; if (!s) return;
-  if (typeof _eiWvRenderVertrag !== 'function') { showToast('Renderer nicht verfügbar', 'error'); return; }
+  if (!window.PDFLib) { showToast('PDF-Bibliothek nicht geladen', 'error', 4000); return; }
   const o = s.wvOptionen || _eiWvDefaultOptions();
   const snap = s.snap || {};
   const aufzugLine = '- ' + ([snap.hersteller, snap.fabriknummer ? ('Fn ' + snap.fabriknummer) : '', snap.standort].filter(Boolean).join(', ') || 'Aufzugsanlage');
-  const md = _eiWvRenderVertrag(o, {
+  const parties = {
     kunde_name: snap.hv_name || '—',
-    firma_name: '(Wartungsnehmer — trägt sein Angebot ein)',
+    firma_name: '(Wartungsnehmer — Angebot ausstehend)',
     vertragsnummer: 'ENTWURF',
     vertrag_titel: 'Wartungsvertrag — ' + (snap.standort || 'Aufzugsanlage'),
     aufzug_anzahl: 1,
     aufzug_liste: aufzugLine,
-  });
+  };
+  showToast('⏳ Erzeuge Vertrags-PDF …', 'info', 2000);
+  let url;
+  try {
+    const bytes = await _eiWvBuildVertragPdf(o, parties);
+    url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  } catch (e) { console.error('[V12.440] _eiWvShowVorschau:', e); showToast('PDF fehlgeschlagen: ' + e.message, 'error', 7000); return; }
   const esc = (typeof _esc === 'function') ? _esc : (x => String(x == null ? '' : x));
+  const fname = 'Wartungsvertrag_' + (snap.fabriknummer ? 'Fn' + String(snap.fabriknummer).replace(/[^A-Za-z0-9]/g, '') : 'Entwurf') + '.pdf';
   const ex = document.getElementById('wvVorschauModal'); if (ex) try { ex.remove(); } catch (_) {}
   const ov = document.createElement('div'); ov.id = 'wvVorschauModal';
+  ov.setAttribute('data-url', url);
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.7);z-index:7200;display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
-  ov.innerHTML = '<div style="background:#fff;border-radius:12px;width:min(820px,96vw);height:min(90vh,900px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)">'
-    + '<div style="background:#1a3a5c;color:#fff;padding:13px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0"><div style="font-size:14px;font-weight:700">📄 Vertrag-Vorschau (Rohtext)</div><button onclick="document.getElementById(\'wvVorschauModal\').remove()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">✕</button></div>'
-    + '<pre style="flex:1;overflow:auto;margin:0;padding:20px 24px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.55;color:#0f172a;white-space:pre-wrap">' + esc(md) + '</pre>'
-    + '<div style="border-top:1px solid #e2e8f0;padding:10px 20px;font-size:11.5px;color:#64748b;flex-shrink:0">Rohtext-Vorschau. Das gestylte PDF im Reparatur-Angebots-Look kommt in Phase 4 (mit dem Preis des Wartungsnehmers).</div>'
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;width:min(900px,97vw);height:min(94vh,1000px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)">'
+    + '<div style="background:#1a3a5c;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0">'
+    +   '<div style="font-size:14px;font-weight:700">📄 Wartungsvertrag — Vorschau</div>'
+    +   '<div style="display:flex;gap:8px;align-items:center">'
+    +     '<a href="' + url + '" download="' + esc(fname) + '" style="background:#7dc242;color:#0f172a;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:700;text-decoration:none;font-family:inherit">⬇ Herunterladen</a>'
+    +     '<button onclick="(function(){var m=document.getElementById(\'wvVorschauModal\');if(m){try{URL.revokeObjectURL(m.getAttribute(\'data-url\'));}catch(e){}m.remove();}})()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1">✕</button>'
+    +   '</div>'
+    + '</div>'
+    + '<iframe src="' + url + '" style="flex:1;border:none;width:100%"></iframe>'
+    + '<div style="border-top:1px solid #e2e8f0;padding:8px 18px;font-size:11px;color:#64748b;flex-shrink:0">Entwurf-Vorschau · Wartungsnehmer-Name + Preis werden im finalen Vertrag (Phase 4 · Landing) gesetzt.</div>'
     + '</div>';
   document.body.appendChild(ov);
-  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.onclick = (e) => { if (e.target === ov) { try { URL.revokeObjectURL(url); } catch (_) {} ov.remove(); } };
 }
 window._eiWvShowVorschau = _eiWvShowVorschau;
 
@@ -13017,6 +13031,101 @@ async function _eiWvExtractOptionen() {
   }
 }
 window._eiWvExtractOptionen = _eiWvExtractOptionen;
+
+// V12.440: Gestyltes Wartungsvertrag-PDF (im Liftaro-Look) aus den Optionen + Vorlage.
+// Rendert den Markdown-Vertrag (_eiWvRenderVertrag) zeilenweise mit pdf-lib:
+// Überschriften (#/##/###), Inline-Fett (**…**), Bullets (-/*), nummerierte Listen,
+// Leistungsübersicht-Tabelle (|…|), horizontale Linien (---), Unterschriftslinien ([[SIGLINE]]).
+async function _eiWvBuildVertragPdf(opts, parties) {
+  const P = window.PDFLib;
+  if (!P) throw new Error('PDFLib (pdf-lib) nicht geladen');
+  const md = _eiWvRenderVertrag(opts, parties);
+  const doc = await P.PDFDocument.create();
+  const helv = await doc.embedFont(P.StandardFonts.Helvetica);
+  const bold = await doc.embedFont(P.StandardFonts.HelveticaBold);
+  const rgb = P.rgb;
+  const A4 = [595.28, 841.89], ML = 56, MR = 56, MT = 64, MB = 50;
+  const PW = A4[0], PH = A4[1], CW = PW - ML - MR;
+  const NAVY = rgb(0.10, 0.23, 0.36), INK = rgb(0.07, 0.10, 0.16), SOFT = rgb(0.42, 0.47, 0.56), MUTE = rgb(0.58, 0.64, 0.71), GREEN = rgb(0.49, 0.76, 0.26), RULE = rgb(0.80, 0.84, 0.89);
+  const safe = (t) => (typeof _winAnsiSafe === 'function') ? _winAnsiSafe(String(t == null ? '' : t)) : String(t == null ? '' : t);
+  let logo = null;
+  try { if (typeof _eiLoadLiftaroLogoForPdf === 'function') logo = await _eiLoadLiftaroLogoForPdf(doc); } catch (_) {}
+  let page, y;
+  const headerBar = (p) => {
+    p.drawRectangle({ x: 0, y: PH - 4, width: PW, height: 4, color: GREEN });
+    if (logo && logo.width) { const lw = 84, lh = logo.height * (lw / logo.width); p.drawImage(logo, { x: PW - MR - lw, y: PH - 16 - lh, width: lw, height: lh }); }
+    else { p.drawText('liftaro', { x: PW - MR - 56, y: PH - 28, size: 15, font: bold, color: NAVY }); }
+  };
+  const newPage = () => { page = doc.addPage(A4); y = PH - MT; headerBar(page); };
+  newPage();
+  const ensure = (need) => { if (y - need < MB + 18) newPage(); };
+  const spaceW = (size) => helv.widthOfTextAtSize(' ', size);
+  const wordsOf = (s) => String(s).split(/\s+/).filter(Boolean);
+  // Inline-Fett-fähiges, umbrechendes Textzeichnen
+  const drawRich = (text, o) => {
+    o = o || {};
+    const size = o.size || 10, lineH = o.lineH || size * 1.45, color = o.color || INK, indent = o.indent || 0, baseBold = !!o.bold;
+    const maxW = CW - indent;
+    const segs = String(text).split('**');
+    const wl = [];
+    segs.forEach((seg, i) => { const b = baseBold !== (i % 2 === 1); wordsOf(seg).forEach(w => wl.push({ w: safe(w), b })); });
+    let lineWords = [];
+    const widthOf = (arr) => { let wd = 0; arr.forEach((tok, i) => { const f = tok.b ? bold : helv; if (i > 0) wd += spaceW(size); wd += f.widthOfTextAtSize(tok.w, size); }); return wd; };
+    const flush = () => {
+      if (!lineWords.length) return;
+      ensure(lineH);
+      let x = ML + indent;
+      lineWords.forEach((tok, i) => { const f = tok.b ? bold : helv; if (i > 0) x += spaceW(size); page.drawText(tok.w, { x, y, size, font: f, color }); x += f.widthOfTextAtSize(tok.w, size); });
+      y -= lineH; lineWords = [];
+    };
+    wl.forEach(tok => { const test = lineWords.concat([tok]); if (widthOf(test) > maxW && lineWords.length) { flush(); lineWords = [tok]; } else { lineWords = test; } });
+    flush();
+  };
+  const rule = () => { ensure(14); y -= 3; page.drawLine({ start: { x: ML, y }, end: { x: PW - MR, y }, thickness: 0.7, color: RULE }); y -= 11; };
+  const sigline = () => { ensure(30); y -= 16; page.drawLine({ start: { x: ML, y }, end: { x: ML + 230, y }, thickness: 0.9, color: INK }); y -= 12; };
+  // Leistungsübersicht-Tabelle
+  let tbl = null;
+  const flushTable = () => {
+    if (!tbl) return;
+    const rows = tbl.filter(r => !/^\|?\s*:?-{2,}/.test(r.replace(/\|/g, '').trim() ? r : '|') && !/^\|[\s:\-|]+\|$/.test(r));
+    const data = tbl.filter(r => !/^\|[\s:\-|]+\|$/.test(r));
+    ensure(20); y -= 2;
+    data.forEach((r, ri) => {
+      const cells = r.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+      const label = cells[0] || '', val = cells[1] || '';
+      ensure(15);
+      const head = ri === 0;
+      page.drawText(safe(label), { x: ML + 4, y, size: 9.5, font: head ? bold : helv, color: head ? SOFT : INK });
+      page.drawText(safe(val), { x: ML + CW * 0.6, y, size: 9.5, font: bold, color: head ? SOFT : NAVY });
+      y -= 14.5;
+    });
+    y -= 4; tbl = null;
+  };
+  // Markdown zeilenweise
+  const lines = md.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (/^\|/.test(t)) { (tbl = tbl || []).push(t); continue; } else if (tbl) { flushTable(); }
+    if (!t) { y -= 5; continue; }
+    if (t === '---') { rule(); continue; }
+    if (t === '[[SIGLINE]]') { sigline(); continue; }
+    if (/^#\s+/.test(t)) { ensure(28); y -= 2; drawRich(t.replace(/^#\s+/, ''), { bold: true, size: 18, color: NAVY, lineH: 23 }); y -= 6; continue; }
+    if (/^##\s+/.test(t)) { ensure(26); y -= 9; drawRich(t.replace(/^##\s+/, ''), { bold: true, size: 13.5, color: NAVY, lineH: 18 }); y -= 3; continue; }
+    if (/^###\s+/.test(t)) { ensure(20); y -= 4; drawRich(t.replace(/^###\s+/, ''), { bold: true, size: 11.5, color: INK, lineH: 15.5 }); y -= 1; continue; }
+    if (/^[-*]\s+/.test(t)) { ensure(15); page.drawText('-', { x: ML + 6, y, size: 10, font: bold, color: NAVY }); drawRich(t.replace(/^[-*]\s+/, ''), { size: 10, lineH: 14, indent: 16 }); continue; }
+    const mn = t.match(/^(\d+)\.\s+(.*)$/);
+    if (mn) { ensure(15); page.drawText(mn[1] + '.', { x: ML + 4, y, size: 10, font: bold, color: NAVY }); drawRich(mn[2], { size: 10, lineH: 14, indent: 22 }); continue; }
+    drawRich(t, { size: 10, lineH: 14.5 });
+  }
+  if (tbl) flushTable();
+  // Footer
+  const pages = doc.getPages();
+  for (let i = 0; i < pages.length; i++) {
+    pages[i].drawText(safe('Liftaro GmbH · Wartungsvertrag · Seite ' + (i + 1) + ' / ' + pages.length), { x: ML, y: 26, size: 7.5, font: helv, color: MUTE });
+  }
+  return await doc.save();
+}
+window._eiWvBuildVertragPdf = _eiWvBuildVertragPdf;
 
 // ============================================================================
 // V12.381: LV-Versand (Phase 2) — Token, Anfragen-Tabelle, Servicebetrieb-Picker
