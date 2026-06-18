@@ -6437,7 +6437,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.427';
+const APP_VERSION = 'V12.428';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12442,7 +12442,10 @@ function _eiLvBuildSendEmail(s, sb, landingUrl) {
     + 'Vielen Dank im Voraus.\n\n'
     + 'Mit freundlichen Grüßen\n'
     + 'Liftaro · im Auftrag von ' + hv;
-  const betreff = 'Angebotsanfrage Fn ' + fn + ' - ' + hv + ' - ' + posCount + ' Position' + (posCount === 1 ? '' : 'en');
+  // V12.428: Check-ID (z. B. L-39) im Betreff erwähnen
+  const _r = (Array.isArray(_eiAllRecords) ? _eiAllRecords : []).find(x => x && x._id === s.emailId);
+  const checkId = _r ? String(_r.external_check_id || _r.email_id || '').trim() : '';
+  const betreff = 'Angebotsanfrage ' + (checkId ? checkId + ' - ' : '') + 'Fn ' + fn + ' - ' + hv + ' - ' + posCount + ' Position' + (posCount === 1 ? '' : 'en');
   return { betreff, body };
 }
 
@@ -41136,23 +41139,12 @@ async function setEmailStatus(recId, newStatus) {
     if (bearb) await atUpdate('Emails', recId, { bearbeiter_name: bearb });
   } catch (e) { console.warn('[V12.347] bearbeiter_name nicht aktualisiert:', e.message); }
 
-  // V12.255: Wenn die Email aus dem aktuell sichtbaren Filter rausfällt UND das
-  // Detail-Overlay sie gerade zeigt, dann zur nächsten Email der gefilterten Liste
-  // springen oder das Overlay schließen.
-  const ov = document.getElementById('emailInboxDetailOverlay');
-  const overlayOpen = ov && ov.style.display === 'flex';
-  const filtNow = (typeof _eiFiltered === 'function') ? _eiFiltered() : [];
-  const stillVisible = filtNow.some(x => x._id === recId);
-  if (overlayOpen && recId === _eiSelectedId && !stillVisible) {
-    if (filtNow.length) {
-      selectEmailRow(filtNow[0]._id);
-    } else {
-      if (typeof closeEmailDetailOverlay === 'function') closeEmailDetailOverlay();
-    }
-  } else {
-    renderEmailInboxList();
-    renderEmailInboxDetail();
-  }
+  // V12.428: Nach manuellem Statuswechsel im Detail NICHT mehr automatisch zur
+  // nächsten Mail springen (wirkte wie „Status springt zurück", war aber eine andere
+  // Mail). Wir bleiben auf derselben Mail — die Liste filtert sie ggf. aus, das Detail
+  // zeigt sie weiter mit dem neuen Status.
+  renderEmailInboxList();
+  if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
   _refreshEmailInboxBadge();
   const label = ({ neu: 'neu', gesichtet: 'gesichtet', in_bearbeitung: 'in Bearbeitung', wartend: 'wartend', wiedervorlage: 'auf Wiedervorlage', geantwortet: 'beantwortet', verworfen: 'archiviert' })[newStatus] || newStatus;
   const extraInfo = (newStatus === 'wiedervorlage' && wiedervorlageDatum) ? (' bis ' + wiedervorlageDatum) : '';
