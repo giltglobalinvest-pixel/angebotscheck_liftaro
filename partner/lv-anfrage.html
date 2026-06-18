@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.11.2';
+  const APP_VERSION = 'v1.11.3';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -814,7 +814,7 @@
     // v1.10: Einfache Angebotsnummer Liftaro-XXXXX
     const _tokenRaw = String(sub.anf.token || sub.anf.id || '').replace(/^(lva|lv)_/i, '');
     const _tokenShort = _tokenRaw.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
-    const angNr = 'Liftaro-' + (_tokenShort || 'XXXXX');
+    const angNr = 'L-' + (_tokenShort || 'XXXXX');
     const totalPagesHolder = { total: 0 };  // wird am Ende gesetzt
 
     let page = doc.addPage([W, H]);
