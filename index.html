@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.441';
+const APP_VERSION = 'V12.442';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11488,7 +11488,7 @@ function _eiWvRenderVertrag(opts, parties, templateMd) {
   const jahres = Number(o.jahrespreis_netto) || 0;
   const turnusBetrag = o.abrechnung_turnus === 'quartalsweise' ? jahres / 4 : jahres;
   const data = {
-    vertrag_titel:      p.vertrag_titel   || 'Wartungsvertrag für Aufzugsanlagen',
+    vertrag_titel:      p.vertrag_titel   || 'Wartungsvertrag',
     vertragsnummer:     p.vertragsnummer  || '—',
     datum_heute:        p.datum_heute     || _eiWvFmtDate(new Date().toISOString()),
     kunde_name:         p.kunde_name      || '—',
@@ -12902,7 +12902,7 @@ async function _eiWvShowVorschau() {
     kunde_adresse: kundeAdresse,
     firma_name: '(Wartungsnehmer — Angebot ausstehend)',
     vertragsnummer: 'ENTWURF',
-    vertrag_titel: 'Wartungsvertrag — ' + (snap.standort || 'Aufzugsanlage'),
+    vertrag_titel: 'Wartungsvertrag',
     aufzug_anzahl: 1,
     aufzug_liste: aufzugLine,
   };
