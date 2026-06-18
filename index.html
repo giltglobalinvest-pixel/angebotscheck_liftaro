@@ -4130,6 +4130,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="wartend"        onclick="setEiFilter('wartend')"       ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Wartend</span><span class="ei-side-cnt" id="eiSideCnt_wartend">0</span></button>
             <!-- V12.373: Wiedervorlage — automatischer Wechsel zurück auf "Neu" bei Eintritt des Datums -->
             <button class="ei-side-item" data-status="wiedervorlage"  onclick="setEiFilter('wiedervorlage')" ><span class="ei-side-dot" style="background:#0891b2"></span><span class="ei-side-lbl">📅 Wiedervorlage</span><span class="ei-side-cnt" id="eiSideCnt_wiedervorlage">0</span></button>
+            <button class="ei-side-item" data-status="geantwortet"    onclick="setEiFilter('geantwortet')"   ><span class="ei-side-dot" style="background:#16a34a"></span><span class="ei-side-lbl">✓ Erledigt</span><span class="ei-side-cnt" id="eiSideCnt_geantwortet">0</span></button>
             <button class="ei-side-item" data-status="gesendet"       onclick="setEiFilter('gesendet')"      ><span class="ei-side-dot" style="background:#7c3aed"></span><span class="ei-side-lbl">✈ Gesendet</span><span class="ei-side-cnt" id="eiSideCnt_gesendet">0</span></button>
             <button class="ei-side-item" data-status="verworfen"      onclick="setEiFilter('verworfen')"     ><span class="ei-side-dot" style="background:#ef4444"></span><span class="ei-side-lbl">📦 Archiviert</span><span class="ei-side-cnt" id="eiSideCnt_verworfen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:8px 10px"></div>
@@ -6436,7 +6437,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.426';
+const APP_VERSION = 'V12.427';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -30904,6 +30905,7 @@ function setEiFilter(status, skipRender) {
   if (chipEl) {
     const label = (status === 'in_bearbeitung') ? 'In Bearbeitung'
       : (status === 'neue_antwort') ? '↶ Neue Antworten'
+      : (status === 'geantwortet') ? '✓ Erledigt'
       : (typeof status === 'string' && status.indexOf('check:') === 0) ? ('Check: ' + ({ gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet', in_bearbeitung: 'In Bearbeitung' }[status.slice(6)] || status.slice(6)))
       : (status === 'alle') ? 'Alle' : status.charAt(0).toUpperCase() + status.slice(1);
     const palette = {
@@ -30951,7 +30953,8 @@ function _restoreEmailInboxListState() {
 // V12.371: Status-Mapping — „gesichtet" und „geantwortet" wurden aus dem UI entfernt
 // und werden auf „in_bearbeitung" zusammengefasst. Bestehende DB-Records mit diesen
 // Werten erscheinen damit automatisch unter „In Bearbeitung" — ohne Migration.
-const _EI_STATUS_NORMALIZE = { gesichtet: 'in_bearbeitung', geantwortet: 'in_bearbeitung' };
+// V12.427: 'geantwortet' (= Check gesendet) ist jetzt eigener Status „Erledigt" — nicht mehr in „In Bearbeitung" gefaltet
+const _EI_STATUS_NORMALIZE = { gesichtet: 'in_bearbeitung' };
 function _eiNormStatus(s) {
   const k = String(s || 'neu');
   return Object.prototype.hasOwnProperty.call(_EI_STATUS_NORMALIZE, k) ? _EI_STATUS_NORMALIZE[k] : k;
@@ -30997,7 +31000,7 @@ function _eiUpdateSidebarCounts() {
   }
   // V12.371: 'gesichtet' und 'geantwortet' werden in 'in_bearbeitung' zusammengefasst
   // V12.373: Wiedervorlage-Status mitzählen + abgelaufene auf 'neu' zurücksetzen
-  let cAlle = 0, cSent = 0, byStatus = { neu:0, offen:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, verworfen:0 };
+  let cAlle = 0, cSent = 0, byStatus = { neu:0, offen:0, in_bearbeitung:0, wartend:0, wiedervorlage:0, geantwortet:0, verworfen:0 };
   const todayIso = new Date().toISOString().slice(0, 10);
   const expireWvIds = []; // { recId, oldDatum }
   for (const r of all) {
@@ -31045,6 +31048,7 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_in_bearbeitung', byStatus.in_bearbeitung);
   set('eiSideCnt_wartend',        byStatus.wartend);
   set('eiSideCnt_wiedervorlage',  byStatus.wiedervorlage);
+  set('eiSideCnt_geantwortet',    byStatus.geantwortet);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
   set('eiSideCnt_alle',           cAlle);
   set('eiSideCnt_gesendet',       cSent);
@@ -32216,10 +32220,11 @@ function renderEmailInboxList() {
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
         { val: 'wiedervorlage',  label: '📅 Auf Wiedervorlage' },
+        { val: 'geantwortet',    label: '✓ Erledigt' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
       const _curStatusDisplay = _eiNormStatus(curStatus);
-      const _knownStatus = ['neu','in_bearbeitung','wartend','wiedervorlage','verworfen'];
+      const _knownStatus = ['neu','in_bearbeitung','wartend','wiedervorlage','geantwortet','verworfen'];
       if (_curStatusDisplay && !_knownStatus.includes(_curStatusDisplay)) {
         statusOpts.unshift({ val: _curStatusDisplay, label: ({ gesendet: 'Gesendet' })[_curStatusDisplay] || _curStatusDisplay });
       }
@@ -39416,7 +39421,7 @@ function openEmailDetailOverlay() {
   // Breadcrumb aktualisieren — zeigt aktuellen Status-Filter als Kontext
   const crumb = document.getElementById('emailDetailOverlayCrumbStatus');
   if (crumb) {
-    const map = { neu: 'Neu', gesichtet: 'Gesichtet', in_bearbeitung: 'In Bearbeitung', wartend: 'Wartend', wiedervorlage: '📅 Wiedervorlage', geantwortet: 'Geantwortet', gesendet: 'Gesendet', verworfen: 'Verworfen', alle: 'Alle', neue_antwort: 'Neue Antworten', chat_antwort: 'Chat-Antworten' };
+    const map = { neu: 'Neu', gesichtet: 'Gesichtet', in_bearbeitung: 'In Bearbeitung', wartend: 'Wartend', wiedervorlage: '📅 Wiedervorlage', geantwortet: '✓ Erledigt', gesendet: 'Gesendet', verworfen: 'Verworfen', alle: 'Alle', neue_antwort: 'Neue Antworten', chat_antwort: 'Chat-Antworten' };
     crumb.textContent = map[_eiFilter] || 'Email';
   }
   // Scroll-Reset
@@ -39591,10 +39596,11 @@ function renderEmailInboxDetail() {
         { val: 'in_bearbeitung', label: 'In Bearbeitung' },
         { val: 'wartend',        label: 'Wartend' },
         { val: 'wiedervorlage',  label: '📅 Auf Wiedervorlage' },
+        { val: 'geantwortet',    label: '✓ Erledigt' },
         { val: 'verworfen',      label: 'Archiviert' },
       ];
       const _curStatusHdrDisplay = _eiNormStatus(curStatus);
-      const _knownStatusHdr = ['neu','in_bearbeitung','wartend','wiedervorlage','verworfen'];
+      const _knownStatusHdr = ['neu','in_bearbeitung','wartend','wiedervorlage','geantwortet','verworfen'];
       if (_curStatusHdrDisplay && !_knownStatusHdr.includes(_curStatusHdrDisplay)) {
         statusOptsHdr.unshift({ val: _curStatusHdrDisplay, label: ({ gesendet: 'Gesendet' })[_curStatusHdrDisplay] || _curStatusHdrDisplay });
       }
