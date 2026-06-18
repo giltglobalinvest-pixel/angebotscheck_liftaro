@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.443';
+const APP_VERSION = 'V12.444';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12941,7 +12941,7 @@ async function _eiWvShowVorschau() {
   let kundeName, kundeAdresse;
   if (o.ist_weg) {
     kundeName = 'WEG ' + (snap.standort || 'Aufzugsanlage');
-    kundeAdresse = [hvName, hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+    kundeAdresse = [(hvName !== '—' ? 'c/o ' + hvName : ''), hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
   } else {
     kundeName = hvName;
     kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
