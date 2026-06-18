@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.421';
+const APP_VERSION = 'V12.422';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -36924,6 +36924,8 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
     (it.lv_anfrage_id && String(a.id) === String(it.lv_anfrage_id)) ||
     (it.lv_anfrage_token && String(a.token) === String(it.lv_anfrage_token))
   ) || null;
+  // V12.422: archivierte Anfragen/Antworten im Chat ausblenden
+  if (anf && typeof _eiIsArchived === 'function' && _eiIsArchived(anf)) return '';
   let lv = null;
   if (anf) lv = lvs.find(x => String(x.id) === String(anf.lv_id)) || null;
   // V12.405: Fallback — wenn anf/lv nicht aufgelöst, aber nur EIN LV für die Email existiert, nimm das
@@ -36951,6 +36953,10 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
   const _delTok = (it.id && !it._synthetic) ? ('chat:' + it.id) : '';
   const _delBtn = _delTok
     ? '<button class="ei-chat-del" onclick="event.stopPropagation();deleteChatBubble(\'' + emailId + '\',\'' + _delTok + '\')" title="Chat-Eintrag löschen" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:2px 6px;border-radius:5px;opacity:0;transition:opacity .15s,background .15s,color .15s" onmouseover="this.style.background=\'#fee2e2\';this.style.color=\'#9F1B1F\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'#94a3b8\'">✕</button>'
+    : '';
+  // V12.422: Archiv-Button (Anfrage/Antwort ausblenden, reversibel via LV-Archiv-Panel)
+  const _archBtn = (anf && anf.id)
+    ? '<button class="ei-chat-del" onclick="event.stopPropagation();_eiLvAnfrageArchive(\'' + emailId + '\',\'' + _esc(String(anf.id)) + '\')" title="Anfrage/Antwort archivieren (ausblenden)" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:12.5px;line-height:1;padding:2px 6px;border-radius:5px;opacity:0;transition:opacity .15s,background .15s,color .15s" onmouseover="this.style.background=\'#e0e7ff\';this.style.color=\'#4338ca\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'#94a3b8\'">🗄</button>'
     : '';
   // V12.397: Wenn die Anfrage submitted ist → Antwort-Details + PDF-Download in der Kachel
   let antwortHtml = '';
@@ -36986,7 +36992,7 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
   const grad = 'linear-gradient(135deg,' + accent + ',' + accentDeep + ')';
   return ''
     + '<div class="ei-chat-row" style="display:flex;justify-content:' + (isOut ? 'flex-end' : 'flex-start') + ';margin-bottom:8px;align-items:flex-start;gap:4px">'
-    +   (isOut ? _delBtn : '')
+    +   (isOut ? (_archBtn + _delBtn) : '')
     +   '<div style="max-width:78%">'
     +     '<div style="font-size:10.5px;color:#94a3b8;margin-bottom:3px;padding:0 8px;' + (isOut ? 'text-align:right' : '') + '">' + _esc(sender) + (when ? ' · ' + _esc(when) : '') + '</div>'
     +     '<div ' + (onOpenLv ? 'onclick="' + onOpenLv + '" style="cursor:pointer;' : 'style="') + 'background:' + grad + ';color:#fff;border-radius:14px;border-' + (isOut ? 'br' : 'bl') + '-radius:4px;padding:11px 14px;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.08)" ' + (onOpenLv ? 'title="Klicken zum LV öffnen"' : '') + '>'
@@ -37001,7 +37007,7 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
     +       (linkBtn && stat !== 'submitted' ? '<div style="display:flex;justify-content:flex-end;margin-top:8px">' + linkBtn + '</div>' : '')
     +     '</div>'
     +   '</div>'
-    +   (!isOut ? _delBtn : '')
+    +   (!isOut ? (_delBtn + _archBtn) : '')
     + '</div>';
 }
 window._eiLvRenderAnfrageBubble = _eiLvRenderAnfrageBubble;
@@ -37016,6 +37022,8 @@ function _eiLvRenderAntwortBubble(it, emailId) {
     (it.lv_anfrage_id && String(a.id) === String(it.lv_anfrage_id)) ||
     (it.lv_anfrage_token && String(a.token) === String(it.lv_anfrage_token))
   ) || null;
+  // V12.422: archivierte Antworten im Chat ausblenden
+  if (anf && typeof _eiIsArchived === 'function' && _eiIsArchived(anf)) return '';
   const lvs = (window._eiLvByEmail && Array.isArray(window._eiLvByEmail[emailId])) ? window._eiLvByEmail[emailId] : [];
   const lv = anf ? lvs.find(x => String(x.id) === String(anf.lv_id)) : null;
   const lvTitel = lv ? String(lv.titel || '(LV)') : '(LV-Antwort)';
