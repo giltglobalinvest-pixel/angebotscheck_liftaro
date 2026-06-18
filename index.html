@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.422';
+const APP_VERSION = 'V12.423';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34241,6 +34241,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
       to: sendTo, subject: betreff, text: finalText, replyTo: 'check@liftaro.de',
       attachments: attachments,
     };
+    if (!isTest) payload.bcc = 'service@liftaro.de';   // V12.423: Ergebnis-Versand an HV immer in Kopie an Liftaro
     if (sig.htmlBody) payload.html = sig.htmlBody;
     const resp = await fetch(APP_KEYS.emailSenderUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret },
@@ -34268,6 +34269,24 @@ async function _eiErgebnisCreateAndSend(doSend) {
       await atUpdate('Emails', s.emailId, { status: 'geantwortet', status_at: sentAt, ergebnis_check_json: ergJson }, { typecast: true });
       const rr = (_eiAllRecords || []).find(x => x._id === s.emailId); if (rr) { rr.status = 'geantwortet'; rr.ergebnis_check_json = ergJson; }
     } catch (e) { console.warn('[V12.402] Status-Update:', e.message); }
+    // V12.423: Gesendete HV-Email als Notiz im Verlauf hinterlegen (volltext, was dem Verwalter ging)
+    try {
+      const rr2 = (_eiAllRecords || []).find(x => x._id === s.emailId);
+      if (rr2) {
+        let comments = [];
+        if (typeof _parseEmailComments === 'function') comments = _parseEmailComments(rr2) || [];
+        else { try { comments = JSON.parse(rr2.comments_json || '[]') || []; } catch (_) { comments = []; } }
+        const noteText = '📤 Ergebnis an Hausverwaltung gesendet\n'
+          + 'An: ' + sendTo + ' · BCC: service@liftaro.de\n'
+          + 'Betreff: ' + betreff + '\n'
+          + 'Anhang: ' + attachments.map(a => a.filename).join(', ') + '\n\n'
+          + finalText;
+        comments.push({ id: Math.random().toString(36).slice(2, 10), author: userName, text: noteText, created_at: sentAt });
+        const cJson = JSON.stringify(comments);
+        await atUpdate('Emails', s.emailId, { comments_json: cJson });
+        rr2.comments_json = cJson;
+      }
+    } catch (e) { console.warn('[V12.423] Sende-Notiz:', e.message); }
     document.getElementById('eiErgebnisModal')?.remove();
     showToast('✓ Ergebnis an „' + sendTo + '" gesendet', 'success', 5000);
     if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
