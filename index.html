@@ -4915,10 +4915,18 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 }
 /* V12.434: Verschieb- & einklappbare Email-Detail-Blöcke (Layout-Manager) */
 .ei-block { position: relative; }
+/* V12.438: „Dezent" — kräftige, NEUTRALE Vollumrandung der Detail-Kacheln statt der bunten
+   Links-Akzente. Überschreibt die Inline-border-left-Farben (lila/navy/cyan/amber) der Kacheln. */
+#emailInboxDetail .ei-block {
+  border: 2px solid #aeb9c6 !important;
+  border-radius: 10px !important;
+}
+/* Farbige Links-Stripes der INNEREN Karten ebenfalls auf neutrales Grau (ruhiger, kein Box-in-Box) */
+#emailInboxDetail .ei-block .dr-section { border-left-color: #cbd5e1 !important; }
 .ei-block-bar {
   display:flex; align-items:center; gap:6px;
-  padding:7px 12px; cursor:pointer; user-select:none;
-  background:rgba(15,23,42,.035); border-bottom:1px solid rgba(15,23,42,.06);
+  padding:8px 12px; cursor:pointer; user-select:none;
+  background:rgba(15,23,42,.04); border-bottom:2px solid #d3dae3;
   border-top-left-radius:inherit; border-top-right-radius:inherit;
   font-family:'DM Sans',sans-serif;
 }
@@ -6474,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.437';
+const APP_VERSION = 'V12.438';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
