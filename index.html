@@ -6474,7 +6474,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.435';
+const APP_VERSION = 'V12.436';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -39614,7 +39614,8 @@ function renderEmailInboxDetail() {
   // Email-Header-Block
   const isForwarded = !!r.is_forwarded;
   const forwardedVia = String(r.forwarded_via || '');
-  html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px">
+  html += `<div class="ei-block dr-section" data-eiblock="header" data-eiblock-title="Betreff & Status" style="margin-bottom:14px;padding:0">
+    <div style="padding:16px 18px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
       <div style="font-size:16px;font-weight:700;color:var(--dr-ink);letter-spacing:-.02em;line-height:1.3;flex:1;min-width:0">${_esc((r.ai_subject && r.ai_subject.trim()) || r.subject || '(kein Betreff)')}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
@@ -39682,7 +39683,7 @@ function renderEmailInboxDetail() {
       <span style="font-size:14px">↪</span>
       <span>Weitergeleitet via <strong>${_esc(forwardedVia)}</strong>${r.raw_subject ? ` · Original-Betreff: <em>${_esc(r.raw_subject)}</em>` : ''}. Antworten gehen direkt an den UR-Absender.</span>
     </div>` : ''}
-  </div>`;
+  </div></div>`;
 
   // V12.204: Email-Typ als prominente Pille direkt unter dem Header
   (function() {
@@ -40262,7 +40263,7 @@ function renderEmailInboxDetail() {
 // Movable Blöcke tragen data-eiblock="<key>" + data-eiblock-title; optional
 // data-eiblock-collapsed="1" als Default-Auf/Zu (greift nur ohne gespeicherte Konfig).
 // ════════════════════════════════════════════════════════════════════════
-const EI_LAYOUT_KEY = 'eiDetailLayout_v2';   // V12.435: v2 — Email-Typ als movable Block ergänzt
+const EI_LAYOUT_KEY = 'eiDetailLayout_v3';   // V12.436: v3 — Header-Block (Betreff & Status) als movable Block ergänzt
 function _eiLoadDetailLayout() {
   try {
     const raw = localStorage.getItem(EI_LAYOUT_KEY);
