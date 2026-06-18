@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.11.1';
+  const APP_VERSION = 'v1.11.2';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -919,8 +919,8 @@
       y -= anlH + 10;
     }
 
-    // Anschreiben
-    y -= 4;
+    // Anschreiben (v1.11.2: mehr Abstand zum Anlage-Block darüber)
+    y -= 20;
     draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 18;
     const intro1 = wrap('vielen Dank für Ihre Anfrage. Das nachfolgende Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + ' ist in Kooperation mit der Liftaro GmbH entstanden und wurde auf Basis der gelieferten Daten automatisch generiert.', helv, 10, W - 2*M);
     for (const l of intro1) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
@@ -1014,7 +1014,7 @@
     // v1.11: AGB direkt unterhalb der Gewährleistung (KEINE eigene Seite mehr)
     const klauselnText = htmlToText(sub.klauseln);
     if (klauselnText) {
-      y -= 6; ensureSpace(44);
+      y -= 24; ensureSpace(48);
       draw('Allgemeine Geschäftsbedingungen', M, y, bold, 13, COL_INK); y -= 4;
       page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
       y -= 18;
