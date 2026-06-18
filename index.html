@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.414';
+const APP_VERSION = 'V12.415';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11293,8 +11293,10 @@ function _eiLvDefaultPauschalVorlage() {
     klauseln_html:
       '<h4>Gewährleistung</h4>'
     + '<p>Auf alle ausgeführten Arbeiten und verbauten Teile gewähren wir 24 Monate Gewährleistung gemäß §634a BGB, beginnend mit der mangelfreien Abnahme.</p>'
-    + '<h4>Eigentumsvorbehalt</h4>'
-    + '<p>Die gelieferte Ware bleibt bis zur vollständigen Bezahlung Eigentum des Auftragnehmers.</p>'
+    + '<h4>Material</h4>'
+    + '<p>Verbautes oder geliefertes Material bleibt bis zur vollständigen Rechnungsbegleichung im Besitz des Auftragnehmers.</p>'
+    + '<h4>Ausgebautes Material</h4>'
+    + '<p>Defektes Material geht nach dem Ausbau in den Besitz des Auftragnehmers über oder wird direkt verschrottet.</p>'
     + '<h4>Haftung</h4>'
     + '<p>Haftung für Schäden ist auf Vorsatz und grobe Fahrlässigkeit beschränkt. Für leichte Fahrlässigkeit haften wir nur bei Verletzung wesentlicher Vertragspflichten.</p>'
     + '<h4>Zahlungsbedingungen</h4>'
@@ -36997,6 +36999,10 @@ async function _eiLvBuildAntwortPdf(sub) {
   const COL_LIGHT = rgb(0.86, 0.89, 0.92);
   const COL_BG = rgb(0.96, 0.97, 0.98);
   const COL_BRAND = rgb(0.49, 0.23, 0.93);
+  // V12.415: echtes Liftaro-Logo + LV-Positions-Map (für Detailbeschreibung je Position)
+  const logo = await _eiLoadLiftaroLogoForPdf(doc);
+  const lvPosMap = {};
+  try { (JSON.parse((sub.lv && sub.lv.positionen_json) || '[]') || []).forEach(p => { lvPosMap[String(p.pos_nr)] = p; }); } catch (_) {}
   const VAT = 0.19;
   const sumNetto = sub.sum || 0;
   const sumVat = Math.round(sumNetto * VAT * 100) / 100;
@@ -37054,16 +37060,23 @@ async function _eiLvBuildAntwortPdf(sub) {
     drawHeader(false);
   }
   function drawHeader(firstPage) {
-    // Liftaro-Branding-Banner: Titel + Untertitel auf Folgeseiten klar getrennt
-    draw('LIFTARO', M, H - M - 8, bold, 12, COL_BRAND);
-    drawRight('Reparaturangebot', W - M, H - M - 8, helv, 9.5, COL_MUTE);
-    page.drawLine({ start: { x: M, y: H - M - 18 }, end: { x: W - M, y: H - M - 18 }, thickness: 0.6, color: COL_LIGHT });
-    if (!firstPage) {
-      // Untertitel deutlich UNTER der Linie, plus extra Abstand zum nächsten Inhalt
-      draw('Angebot ' + angNr, M, H - M - 34, helv, 9, COL_MUTE);
-      y = H - M - 56;
+    // V12.415: Echtes Liftaro-Logo links (Fallback: Wortmarke), Trennlinie tiefer für Logo-Platz
+    const lineY = H - M - 40;
+    if (logo) {
+      const ratio = (logo.width / logo.height) || 4;
+      let lh = 24, lw = lh * ratio;
+      if (lw > 130) { lw = 130; lh = lw / ratio; }
+      page.drawImage(logo, { x: M, y: lineY + 10, width: lw, height: lh });
     } else {
-      y = H - M - 42;
+      draw('LIFTARO', M, lineY + 14, bold, 14, COL_BRAND);
+    }
+    drawRight('Reparaturangebot', W - M, lineY + 16, helv, 9.5, COL_MUTE);
+    page.drawLine({ start: { x: M, y: lineY }, end: { x: W - M, y: lineY }, thickness: 0.6, color: COL_LIGHT });
+    if (!firstPage) {
+      draw('Angebot ' + angNr, M, lineY - 16, helv, 9, COL_MUTE);
+      y = lineY - 38;
+    } else {
+      y = lineY - 24;
     }
   }
   drawHeader(true);
@@ -37073,13 +37086,15 @@ async function _eiLvBuildAntwortPdf(sub) {
   y -= 22;
 
   // EMPFÄNGER + Meta-Block nebeneinander
+  const metaX1 = W - M - 220, metaX2 = W - M;
   const yMetaStart = y;
-  draw('EMPFANGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
-  draw(sub.snap.hv_name || '(Hausverwaltung)', M, y, bold, 11, COL_INK); y -= 14;
+  // V12.415: Name umbrechen, damit er nicht in den Meta-Block rechts läuft
+  draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
+  const recvName = sub.snap.hv_name || '(Hausverwaltung)';
+  for (const rl of wrap(recvName, bold, 11, metaX1 - M - 16)) { draw(rl, M, y, bold, 11, COL_INK); y -= 14; }
   if (sub.snap.hv_email) { draw('z.Hd. ' + sub.snap.hv_email, M, y, helv, 10, COL_INK); y -= 12; }
 
   // Meta-Block rechts
-  const metaX1 = W - M - 220, metaX2 = W - M;
   let yMeta = yMetaStart;
   const metaRow = (lbl, val, vBold) => {
     draw(lbl, metaX1, yMeta, helv, 9, COL_MUTE);
@@ -37120,13 +37135,13 @@ async function _eiLvBuildAntwortPdf(sub) {
   // Erweiterte Einleitung
   draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 20;
   const intro = [
-    'vielen Dank fur die Ubermittlung Ihrer Reparaturanfrage uber die Liftaro-Plattform.',
+    'vielen Dank für die Übermittlung Ihrer Reparaturanfrage über die Liftaro-Plattform.',
     '',
-    'Im Auftrag der Hausverwaltung ' + (sub.snap.hv_name || '') + ' wurde von Liftaro ein neutrales Leistungsverzeichnis fur die angefragten Reparaturarbeiten am Aufzug Fn ' + (sub.snap.fabriknummer || '') + ' erstellt und dem Wartungsnehmer ' + (sub.wn.firma || '') + ' zur Preiskalkulation ubermittelt.',
+    'Im Auftrag der Hausverwaltung ' + (sub.snap.hv_name || '') + ' wurde von Liftaro ein neutrales Leistungsverzeichnis für die angefragten Reparaturarbeiten am Aufzug Fn ' + (sub.snap.fabriknummer || '') + ' erstellt und dem Wartungsnehmer ' + (sub.wn.firma || '') + ' zur Preiskalkulation übermittelt.',
     '',
-    'Der Wartungsnehmer hat die einzelnen Positionen gepruft, mit seinen Preisen und Lieferzeiten versehen und das Angebot rechtsverbindlich bestatigt. Das nachstehende Angebot ist somit unmittelbar von ' + (sub.wn.firma || 'dem Wartungsnehmer') + ' abgegeben und basiert eins-zu-eins auf den von der Hausverwaltung angefragten Leistungen.',
+    'Der Wartungsnehmer hat die einzelnen Positionen geprüft, mit seinen Preisen und Lieferzeiten versehen und das Angebot rechtsverbindlich bestätigt. Das nachstehende Angebot ist somit unmittelbar von ' + (sub.wn.firma || 'dem Wartungsnehmer') + ' abgegeben und basiert eins-zu-eins auf den von der Hausverwaltung angefragten Leistungen.',
     '',
-    'Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehorigen Preise den nachstehenden Positionen. Fur Ruckfragen stehen wir Ihnen jederzeit gerne zur Verfugung.',
+    'Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen. Für Rückfragen stehen wir Ihnen jederzeit gerne zur Verfügung.',
   ];
   for (const para of intro) {
     if (para === '') { y -= 8; continue; }
@@ -37144,31 +37159,38 @@ async function _eiLvBuildAntwortPdf(sub) {
   drawRight('GESAMT', colSum, y - 8, bold, 8.5, COL_MUTE);
   y -= 18;
   page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.4, color: COL_LIGHT });
-  y -= 6;
+  y -= 16;   // V12.415: mehr Luft zwischen Kopfzeile und erster Position
+  const txtW = colMen - colTit - 14;   // Textbreite Titel/Beschreibung (läuft nicht in Mengen-Spalte)
   for (const p of sub.response) {
     const titel = String(p.titel || '').trim();
     const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
     const einheit = String(p.einheit || '').trim();
     const preis = Number(p.preis_eur || 0);
     const summe = preis * menge;
-    const titelLines = wrap(titel, bold, 10, 340);
+    // V12.415: Detaillierten Leistungsumfang aus dem neutralen LV (oder Antwort) ergänzen
+    const lvPos = lvPosMap[String(p.pos_nr)] || {};
+    const beschreibung = String(p.beschreibung || lvPos.beschreibung || '').trim();
     const bemerk = String(p.bemerkung || '').trim();
-    const bulletLines = [];
-    if (bemerk) { bemerk.split(/\n+/).filter(Boolean).forEach(ln => bulletLines.push(...wrap('* ' + ln, helv, 9, 335))); }
-    const blockH = 14 + Math.max(0, (titelLines.length - 1) * 12) + (bulletLines.length ? bulletLines.length * 11 + 6 : 0) + 10;
-    ensureSpace(blockH);
+    const titelLines = wrap(titel, bold, 10.5, txtW);
+    const beschrLines = beschreibung ? wrap(beschreibung, helv, 9, txtW) : [];
+    const bemerkLines = bemerk ? wrap('Anmerkung des Wartungsnehmers: ' + bemerk, helv, 9, txtW) : [];
+    let contentH = titelLines.length * 13;
+    if (beschrLines.length) contentH += 4 + beschrLines.length * 12;
+    if (bemerkLines.length) contentH += 4 + bemerkLines.length * 12;
+    ensureSpace(contentH + 34);
     const yTop = y;
-    draw(String(p.pos_nr || ''), colNr, y, helv, 10, COL_INK);
-    for (let i = 0; i < titelLines.length; i++) draw(titelLines[i], colTit, y - i * 12, bold, 10, COL_INK);
-    let yBul = y - titelLines.length * 12 - 2;
-    for (const bl of bulletLines) { draw(bl, colTit, yBul, helv, 9, COL_MUTE); yBul -= 11; }
+    draw(String(p.pos_nr || ''), colNr, yTop, helv, 10, COL_INK);
+    let yc = yTop;
+    for (const tl of titelLines) { draw(tl, colTit, yc, bold, 10.5, COL_INK); yc -= 13; }
+    if (beschrLines.length) { yc -= 4; for (const bl of beschrLines) { draw(bl, colTit, yc, helv, 9, COL_MUTE); yc -= 12; } }
+    if (bemerkLines.length) { yc -= 4; for (const bl of bemerkLines) { draw(bl, colTit, yc, helv, 9, COL_MUTE); yc -= 12; } }
     drawRight(menge.toString() + (einheit ? ' ' + einheit : ''), colMen + 30, yTop, helv, 10, COL_INK);
     drawRight(summe > 0 ? fmtEurStr(summe) : '-', colSum, yTop, bold, 10, COL_INK);
-    y -= blockH;
-    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: COL_LIGHT });
-    y -= 4;
+    y = yTop - contentH - 12;   // Bodenabstand vor der Trennlinie
+    page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.3, color: COL_LIGHT });
+    y -= 16;                    // großzügiger Abstand oberhalb der nächsten Position
   }
-  y -= 6; ensureSpace(60);
+  y -= 4; ensureSpace(60);
   const sumLblX = W - M - 220;
   const drawSumRow = (lbl, val, big) => {
     draw(lbl, sumLblX, y, big ? bold : helv, big ? 12 : 10, COL_INK);
@@ -37176,7 +37198,7 @@ async function _eiLvBuildAntwortPdf(sub) {
     y -= big ? 18 : 15;
   };
   drawSumRow('Gesamtnettopreis', fmtEurStr(sumNetto));
-  drawSumRow('Zuzuglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
+  drawSumRow('Zuzüglich gesetzl. USt. 19 %', fmtEurStr(sumVat));
   page.drawLine({ start: { x: sumLblX, y: y + 4 }, end: { x: colSum, y: y + 4 }, thickness: 0.6, color: COL_INK });
   y -= 6;
   drawSumRow('Gesamtbruttopreis', fmtEurStr(sumBrutto), true);
@@ -37199,18 +37221,20 @@ async function _eiLvBuildAntwortPdf(sub) {
     y -= h + 6;
   };
   if (sub.lieferzeitGesamt) kondBox('Lieferzeit', sub.lieferzeitGesamt);
-  kondBox('Preisbasis', 'Festpreis, gultig 60 Tage ab Angebotsdatum');
+  kondBox('Preisbasis', 'Festpreis, gültig 60 Tage ab Angebotsdatum');
   kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
-  kondBox('Gewahrleistung', '24 Monate auf neu eingebaute Teile gemass § 634a BGB');
+  kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
+  kondBox('Material', 'Verbautes oder geliefertes Material bleibt bis zur vollständigen Rechnungsbegleichung im Besitz des Auftragnehmers.');
+  kondBox('Ausgebautes Material', 'Defektes Material geht nach dem Ausbau in den Besitz des Auftragnehmers über oder wird direkt verschrottet.');
 
   // Bestätigung des Wartungsnehmers (mit erläuterndem Satz, ohne ?-Zeichen)
   y -= 10; ensureSpace(110);
   page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
   y -= 16;
-  draw('Bestatigung des Wartungsnehmers', M, y, bold, 12, COL_INK); y -= 18;
+  draw('Bestätigung des Wartungsnehmers', M, y, bold, 12, COL_INK); y -= 18;
   const bestSatz = sub.sigMode === 'drawn'
-    ? ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben und mit handschriftlicher Unterschrift bestatigt.')
-    : ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben. Die Bestatigung erfolgte digital gemass § 127 i.V.m. § 126b BGB (Textform).');
+    ? ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben und mit handschriftlicher Unterschrift bestätigt.')
+    : ('Der Wartungsnehmer ' + (sub.wn.firma || '') + ' hat am ' + dat + ' das vorstehende Angebot zu den genannten Preisen und Konditionen verbindlich abgegeben. Die Bestätigung erfolgte digital gemäß § 127 i.V.m. § 126b BGB (Textform).');
   const bestLines = wrap(bestSatz, helv, 10, W - 2*M);
   for (const l of bestLines) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
   y -= 8;
@@ -37226,11 +37250,11 @@ async function _eiLvBuildAntwortPdf(sub) {
   page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 200, y: y - 2 }, thickness: 1.2, color: COL_INK });
   y -= 22;
   const beaufrText = [
-    'Hiermit beauftragt die Hausverwaltung ' + (sub.snap.hv_name || '') + ' den Wartungsnehmer ' + (sub.wn.firma || '') + ' mit der Durchfuhrung der vorstehend angebotenen Leistungen zu den genannten Preisen und Konditionen.',
+    'Hiermit beauftragt die Hausverwaltung ' + (sub.snap.hv_name || '') + ' den Wartungsnehmer ' + (sub.wn.firma || '') + ' mit der Durchführung der vorstehend angebotenen Leistungen zu den genannten Preisen und Konditionen.',
     '',
-    'Die Hausverwaltung erklart, zur Erteilung dieses Auftrags im Namen der Eigentumergemeinschaft / des Eigentumers bevollmachtigt zu sein. Mit der Unterschrift wird der Auftrag verbindlich erteilt und das vorstehende Angebot zur Grundlage der vertraglichen Vereinbarung gemacht.',
+    'Die Hausverwaltung erklärt, zur Erteilung dieses Auftrags im Namen der Eigentümergemeinschaft / des Eigentümers bevollmächtigt zu sein. Mit der Unterschrift wird der Auftrag verbindlich erteilt und das vorstehende Angebot zur Grundlage der vertraglichen Vereinbarung gemacht.',
     '',
-    'Der Auftrag wird wirksam mit Zugang der unterzeichneten Bestatigung beim Wartungsnehmer.',
+    'Der Auftrag wird wirksam mit Zugang der unterzeichneten Bestätigung beim Wartungsnehmer.',
   ];
   for (const para of beaufrText) {
     if (para === '') { y -= 8; continue; }
@@ -37262,7 +37286,7 @@ async function _eiLvBuildAntwortPdf(sub) {
   const klauselnText = _eiLvHtmlToText(sub.klauseln);
   if (klauselnText) {
     newPage();
-    draw('Allgemeine Geschaftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
+    draw('Allgemeine Geschäftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
     page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
     y -= 22;
     const lines = klauselnText.split('\n');
@@ -37287,7 +37311,7 @@ async function _eiLvBuildAntwortPdf(sub) {
       let yy = fY + 6;
       for (const l of lines) { if (!l) continue; pg.drawText(safe(l), { x: xCol[xi], y: yy, size: 8.5, font: helv, color: COL_MUTE }); yy -= 10; }
     };
-    drawCol(0, 'Liftaro', ['Vermittelt uber check.liftaro.de', 'check@liftaro.de']);
+    drawCol(0, 'Liftaro', ['Vermittelt über check.liftaro.de', 'check@liftaro.de']);
     drawCol(1, sub.wn.firma || '-', [
       sub.wn.strasse || '',
       [sub.wn.plz, sub.wn.ort].filter(Boolean).join(' '),
