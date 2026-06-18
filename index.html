@@ -6474,7 +6474,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.434';
+const APP_VERSION = 'V12.435';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -39689,17 +39689,19 @@ function renderEmailInboxDetail() {
     const t = _eiResolveEmailTyp(r);
     if (t) {
       const pal = _eiTypPalette(t);
-      html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:${pal.bg};border:1px solid ${pal.accent};border-radius:10px">
-        <span style="width:10px;height:10px;border-radius:50%;background:${pal.accent}"></span>
-        <span style="font-size:10.5px;color:${pal.fg};font-weight:700;text-transform:uppercase;letter-spacing:.06em">Email-Typ</span>
-        <span style="font-size:14px;color:${pal.fg};font-weight:700">${_esc(t)}</span>
-        <button onclick="openEmailTypEditor('${r._id}',this)" style="margin-left:auto;background:#fff;border:1px solid ${pal.accent};color:${pal.fg};border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Ändern</button>
+      html += `<div class="ei-block" data-eiblock="typ" data-eiblock-title="Email-Typ" style="margin-bottom:14px;padding:0;background:${pal.bg};border:1px solid ${pal.accent};border-radius:10px">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${pal.accent}"></span>
+          <span style="font-size:14px;color:${pal.fg};font-weight:700">${_esc(t)}</span>
+          <button onclick="openEmailTypEditor('${r._id}',this)" style="margin-left:auto;background:#fff;border:1px solid ${pal.accent};color:${pal.fg};border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Ändern</button>
+        </div>
       </div>`;
     } else {
-      html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:#fff7ed;border:1px dashed #fdba74;border-radius:10px">
-        <span style="font-size:10.5px;color:#9a3412;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Email-Typ</span>
-        <span style="font-size:13px;color:#9a3412">Noch nicht gesetzt</span>
-        <button onclick="openEmailTypEditor('${r._id}',this)" style="margin-left:auto;background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">+ Typ setzen</button>
+      html += `<div class="ei-block" data-eiblock="typ" data-eiblock-title="Email-Typ" style="margin-bottom:14px;padding:0;background:#fff7ed;border:1px dashed #fdba74;border-radius:10px">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+          <span style="font-size:13px;color:#9a3412">Noch nicht gesetzt</span>
+          <button onclick="openEmailTypEditor('${r._id}',this)" style="margin-left:auto;background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">+ Typ setzen</button>
+        </div>
       </div>`;
     }
   })();
@@ -40260,7 +40262,7 @@ function renderEmailInboxDetail() {
 // Movable Blöcke tragen data-eiblock="<key>" + data-eiblock-title; optional
 // data-eiblock-collapsed="1" als Default-Auf/Zu (greift nur ohne gespeicherte Konfig).
 // ════════════════════════════════════════════════════════════════════════
-const EI_LAYOUT_KEY = 'eiDetailLayout_v1';
+const EI_LAYOUT_KEY = 'eiDetailLayout_v2';   // V12.435: v2 — Email-Typ als movable Block ergänzt
 function _eiLoadDetailLayout() {
   try {
     const raw = localStorage.getItem(EI_LAYOUT_KEY);
