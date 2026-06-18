@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.440';
+const APP_VERSION = 'V12.441';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11431,7 +11431,7 @@ function _eiWvFmtDate(iso) {
 // Auto-Leistungsübersicht (§ zwischen §1 und §2) aus den 9 Optionen
 function _eiWvBuildUebersicht(opts) {
   const o = opts || {};
-  const ja = '✓ Ja', nein = '–';
+  const ja = 'Ja', nein = '–';   // V12.441: kein ✓ — nicht in WinAnsi (→ "?" im PDF)
   const rows = [
     ['Wartungseinsätze pro Jahr', String(o.wartungen_pro_jahr || '–')],
     ['Wartungstyp', _eiWvTypLabel(o.wartungstyp)],
@@ -11571,10 +11571,6 @@ function _eiWvVertragTemplateMd() {
 **Auftraggeber (AG):**
 {{kunde_name}}
 {{kunde_adresse}}
-Kundennummer: {{kunde_nummer}}
-Ansprechpartner: {{kontakt_name}}
-E-Mail: {{kontakt_email}}
-Telefon: {{kontakt_telefon}}
 
 **Auftragnehmer (AN):**
 {{firma_name}}
@@ -12230,6 +12226,10 @@ function _eiLvBuildKontextSnapshot(r) {
     hv_name: hvName,
     hv_pipedrive_org_id: hvOrgId,
     hv_email: hvEmail,
+    // V12.441: HV-Adresse mit in den Snapshot (gleiche Quelle wie der Ergebnis-Check) — für Wartungsvertrag benötigt
+    hv_strasse: String(r.real_hv_strasse || '').trim(),
+    hv_plz:     String(r.real_hv_plz || '').trim(),
+    hv_ort:     String(r.real_hv_ort || '').trim(),
     standort: String(r.aufzug_standort || '').trim(),
     fabriknummer: String(r.aufzug_fabriknummer || '').trim(),
     hersteller: String(r.aufzug_hersteller || '').trim(),
@@ -12891,9 +12891,15 @@ async function _eiWvShowVorschau() {
   if (!window.PDFLib) { showToast('PDF-Bibliothek nicht geladen', 'error', 4000); return; }
   const o = s.wvOptionen || _eiWvDefaultOptions();
   const snap = s.snap || {};
+  // V12.441: HV-Adresse aus dem Snapshot, Fallback auf den Email-Record (gleiche Quelle wie Ergebnis-Check)
+  const _r = (typeof _eiAllRecords !== 'undefined' ? (_eiAllRecords || []).find(x => x._id === s.emailId) : null) || {};
+  const hvStrasse = String(snap.hv_strasse || _r.real_hv_strasse || '').trim();
+  const hvPlzOrt = [String(snap.hv_plz || _r.real_hv_plz || '').trim(), String(snap.hv_ort || _r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
+  const kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
   const aufzugLine = '- ' + ([snap.hersteller, snap.fabriknummer ? ('Fn ' + snap.fabriknummer) : '', snap.standort].filter(Boolean).join(', ') || 'Aufzugsanlage');
   const parties = {
     kunde_name: snap.hv_name || '—',
+    kunde_adresse: kundeAdresse,
     firma_name: '(Wartungsnehmer — Angebot ausstehend)',
     vertragsnummer: 'ENTWURF',
     vertrag_titel: 'Wartungsvertrag — ' + (snap.standort || 'Aufzugsanlage'),
