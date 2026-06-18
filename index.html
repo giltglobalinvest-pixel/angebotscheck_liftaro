@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.424';
+const APP_VERSION = 'V12.425';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -39453,7 +39453,9 @@ function _eiUpdateOverlayNavButtons() {
     const r = (_eiAllRecords || []).find(x => x._id === _eiSelectedId);
     const typ = (r && typeof _eiResolveEmailTyp === 'function') ? _eiResolveEmailTyp(r) : '';
     const isCheckType = ['Vertragscheck', 'Reparaturcheck', 'Modernisierungscheck', 'Rechnungscheck'].includes(typ);
-    scBtn.style.display = isCheckType ? 'inline-flex' : 'none';
+    // V12.425: Schnell-Check vorerst ausgeblendet (auf Wunsch). Reaktivieren: scBtn.style.display = isCheckType ? 'inline-flex' : 'none';
+    scBtn.style.display = 'none';
+    void isCheckType;
   }
 }
 
