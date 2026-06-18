@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.442';
+const APP_VERSION = 'V12.443';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11403,15 +11403,20 @@ window._eiLvDefaultPauschalVorlage = _eiLvDefaultPauschalVorlage;
 // ════════════════════════════════════════════════════════════════════════════
 function _eiWvDefaultOptions() {
   return {
+    ist_weg: false,                 // V12.443: WEG → Auftraggeber = „WEG <Standort>" + Hausverwaltung
     wartungen_pro_jahr: 2,
     wartungstyp: 'systemwartung',   // 'systemwartung' | 'vollwartung'
     notruf: true,                   // Option 3: Notruf + GSM-Service
     notruf_montage: true,           // Option 4: Montage Notrufgerät im Preis
     zues: false,                    // Option 5: ZÜS komplett
-    vertragsbeginn: '',             // ISO-Datum (YYYY-MM-DD)
+    vertragsbeginn: '',             // ISO-Datum (YYYY-MM-DD) — NEUER Vertrag (nächstmöglich)
     laufzeit_jahre: 5,
     jahrespreis_netto: 0,
     abrechnung_turnus: 'jaehrlich', // 'jaehrlich' | 'quartalsweise'
+    // V12.443: Bestandsvertrag-Daten für die Stichtagsberechnung des nächstmöglichen Beginns
+    bestand_vertragsbeginn: '',     // Beginn des vorliegenden (alten) Vertrags
+    bestand_laufzeit_jahre: null,   // Laufzeit des alten Vertrags
+    kuendigungsfrist_monate: 3,     // Kündigungsfrist des alten Vertrags (Monate)
   };
 }
 window._eiWvDefaultOptions = _eiWvDefaultOptions;
@@ -11427,6 +11432,35 @@ function _eiWvFmtDate(iso) {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? (m[3] + '.' + m[2] + '.' + m[1]) : (s || '—');
 }
+// V12.443: Nächstmöglicher Beginn des NEUEN Vertrags = frühester Termin-Ablauf des Bestandsvertrags,
+// dessen Kündigungs-Deadline (Ablauf minus Kündigungsfrist) noch in der Zukunft liegt.
+// Vertrag läuft `laufzeit` Jahre ab Beginn, danach jährliche Verlängerung.
+function _eiWvNextPossibleStart(startISO, laufzeitJahre, kuendMonate) {
+  try {
+    const start = new Date(String(startISO).slice(0, 10) + 'T00:00:00');
+    if (isNaN(start.getTime())) return '';
+    const lf = Math.max(1, parseInt(laufzeitJahre, 10) || 1);
+    const km = Math.max(0, parseInt(kuendMonate, 10) || 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let end = new Date(start); end.setFullYear(end.getFullYear() + lf);
+    let guard = 0;
+    while (guard < 240) {
+      const deadline = new Date(end); deadline.setMonth(deadline.getMonth() - km);
+      if (deadline >= today) break;
+      end.setFullYear(end.getFullYear() + 1);
+      guard++;
+    }
+    // Lokale Datumskomponenten (kein toISOString → kein UTC-Tagessprung)
+    const pad = (n) => (n < 10 ? '0' + n : String(n));
+    return end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate());
+  } catch (_) { return ''; }
+}
+function _eiWvRecomputeStart(o) {
+  if (!o || !o.bestand_vertragsbeginn) return;
+  const next = _eiWvNextPossibleStart(o.bestand_vertragsbeginn, o.bestand_laufzeit_jahre, o.kuendigungsfrist_monate);
+  if (next) o.vertragsbeginn = next;
+}
+window._eiWvNextPossibleStart = _eiWvNextPossibleStart;
 
 // Auto-Leistungsübersicht (§ zwischen §1 und §2) aus den 9 Optionen
 function _eiWvBuildUebersicht(opts) {
@@ -11541,8 +11575,9 @@ function _eiLvDefaultWartungsvertragVorlage() {
     + '  "notruf": true|false  (ist ein Notruf-/GSM-/Notbefreiungsservice Vertragsbestandteil?),\n'
     + '  "notruf_montage": true|false  (ist die Montage/Bereitstellung des Notrufgeräts im Preis enthalten?),\n'
     + '  "zues": true|false  (übernimmt der AN die Organisation/Begleitung der wiederkehrenden ZÜS-Prüfungen?),\n'
-    + '  "vertragsbeginn": "YYYY-MM-DD" | null,\n'
-    + '  "laufzeit_jahre": <Zahl, z.B. 5> | null,\n'
+    + '  "vertragsbeginn": "YYYY-MM-DD" | null  (Beginn des VORLIEGENDEN/bestehenden Vertrags),\n'
+    + '  "laufzeit_jahre": <Zahl, z.B. 5> | null  (Erstlaufzeit des bestehenden Vertrags),\n'
+    + '  "kuendigungsfrist_monate": <Zahl, Kündigungsfrist des bestehenden Vertrags in MONATEN, z.B. 3 — „90 Tage"/„ein Quartal" = 3, „6 Monate" = 6, „12 Monate"/„ein Jahr" = 12> | null,\n'
     + '  "jahrespreis_netto": <Zahl, Netto-Jahresvergütung in EUR, z.B. 2150> | null,\n'
     + '  "abrechnung_turnus": "jaehrlich" | "quartalsweise" | null\n'
     + '}\n\n'
@@ -12839,6 +12874,7 @@ function _eiWvSet(key, val) {
   s.wvOptionen = s.wvOptionen || _eiWvDefaultOptions();
   s.wvOptionen[key] = val;
   if (key === 'notruf' && !val) s.wvOptionen.notruf_montage = false;
+  if (key === 'kuendigungsfrist_monate') _eiWvRecomputeStart(s.wvOptionen);   // V12.443: nächstmöglichen Beginn neu berechnen
   if (key !== 'jahrespreis_netto') _eiLvRenderEditorBody();   // Preis-Tippen ohne Re-Render (kein Fokusverlust)
 }
 window._eiWvSet = _eiWvSet;
@@ -12866,7 +12902,9 @@ function _eiWvRenderEditorBody(body, s) {
   for (let i = 1; i <= 10; i++) yearsOpts.push([i, String(i)]);
   const wiz = '<div style="background:#f7fbf8;border:1px solid #cfe9d8;border-radius:12px;padding:18px 20px">'
     + '<div style="font-size:13px;font-weight:800;color:#15803d;letter-spacing:.02em;margin-bottom:4px">✨ Wartungsvertrag — Leistungsoptionen</div>'
-    + '<div style="font-size:12px;color:#5b7a66;margin-bottom:2px">Liftaro legt diese 9 Optionen als verbindliche Spec fest. Der Wartungsnehmer trägt später nur den Jahrespreis ein.</div>'
+    + '<div style="font-size:12px;color:#5b7a66;margin-bottom:8px">Liftaro legt diese Optionen als verbindliche Spec fest. Der Wartungsnehmer trägt später nur den Jahrespreis ein.</div>'
+    + '<label style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid ' + (o.ist_weg ? '#7c3aed' : '#e2e8f0') + ';border-radius:8px;cursor:pointer;background:' + (o.ist_weg ? '#faf5ff' : '#fff') + ';margin-bottom:4px;font-size:13.5px;color:#0f172a;font-weight:600"><input type="checkbox"' + (o.ist_weg ? ' checked' : '') + ' onchange="_eiWvSet(\'ist_weg\',this.checked)" style="accent-color:#7c3aed;width:16px;height:16px">🏢 Wohnungseigentümergemeinschaft (WEG)</label>'
+    + '<div style="font-size:11.5px;color:#64748b;margin-bottom:2px">Bei WEG wird der Auftraggeber als „WEG &lt;Standort&gt;" mit der Hausverwaltung als Vertreterin dargestellt.</div>'
     + lbl(1, 'Anzahl Wartungen pro Jahr') + selOf(o.wartungen_pro_jahr, [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [6, '6'], [12, '12']], "_eiWvSet('wartungen_pro_jahr',parseInt(this.value,10))")
     + lbl(2, 'Wartungstyp')
       + radio('wv_typ', o.wartungstyp === 'systemwartung', 'Systemwartung — nur Wartung, Reparaturen separat nach Aufwand', "_eiWvSet('wartungstyp','systemwartung')")
@@ -12874,7 +12912,10 @@ function _eiWvRenderEditorBody(body, s) {
     + lbl(3, 'Notruf und GSM-Service inkludieren') + check(!!o.notruf, 'Ja, dazu nehmen', "_eiWvSet('notruf',this.checked)", false)
     + lbl(4, 'Montage Notrufgerät im Preis enthalten') + check(!!(o.notruf && o.notruf_montage), 'Ja, dazu nehmen', "_eiWvSet('notruf_montage',this.checked)", !o.notruf)
     + lbl(5, 'ZÜS-Organisation, Durchführung und Begleitung (ZÜS komplett)') + check(!!o.zues, 'Ja, dazu nehmen', "_eiWvSet('zues',this.checked)", false)
-    + lbl(6, 'Vertragsbeginn') + '<input type="date" value="' + esc(o.vertragsbeginn || '') + '" onchange="_eiWvSet(\'vertragsbeginn\',this.value)" style="' + inStyle + '">'
+    + lbl(6, 'Vertragsbeginn (nächstmöglicher Start)') + '<input type="date" value="' + esc(o.vertragsbeginn || '') + '" onchange="_eiWvSet(\'vertragsbeginn\',this.value)" style="' + inStyle + '">'
+      + (o.bestand_vertragsbeginn
+          ? '<div style="margin-top:6px;font-size:11.5px;color:#3f6b50;background:#f0fdf4;border:1px solid #cfe9d8;border-radius:7px;padding:8px 11px;line-height:1.6">ℹ Berechnet aus Bestandsvertrag: Beginn <strong>' + esc(_eiWvFmtDate(o.bestand_vertragsbeginn)) + '</strong> · Laufzeit <strong>' + esc(String(o.bestand_laufzeit_jahre || '?')) + ' J.</strong> · Kündigungsfrist <input type="number" min="0" max="24" value="' + (o.kuendigungsfrist_monate != null ? o.kuendigungsfrist_monate : '') + '" onchange="_eiWvSet(\'kuendigungsfrist_monate\',parseInt(this.value,10)||0)" style="width:50px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:5px;font-family:inherit;font-size:12px"> Monate</div>'
+          : '<div style="margin-top:6px;font-size:11px;color:#94a3b8">Nach „🤖 KI: Optionen aus Vertrag" wird hier automatisch der nächstmögliche Termin gesetzt.</div>')
     + lbl(7, 'Laufzeit in Jahren') + selOf(o.laufzeit_jahre, yearsOpts, "_eiWvSet('laufzeit_jahre',parseInt(this.value,10))")
     + lbl(8, 'Jahrespreis netto (€) — aktueller Bestandsvertrag (Vergleichsbasis)') + '<input type="number" min="0" step="0.01" value="' + (o.jahrespreis_netto || '') + '" oninput="_eiWvSet(\'jahrespreis_netto\',parseFloat(this.value)||0)" placeholder="z. B. 2150" style="' + inStyle + '">'
     + lbl(9, 'Abrechnungsturnus')
@@ -12893,12 +12934,21 @@ async function _eiWvShowVorschau() {
   const snap = s.snap || {};
   // V12.441: HV-Adresse aus dem Snapshot, Fallback auf den Email-Record (gleiche Quelle wie Ergebnis-Check)
   const _r = (typeof _eiAllRecords !== 'undefined' ? (_eiAllRecords || []).find(x => x._id === s.emailId) : null) || {};
+  const hvName = String(snap.hv_name || '').trim() || '—';
   const hvStrasse = String(snap.hv_strasse || _r.real_hv_strasse || '').trim();
   const hvPlzOrt = [String(snap.hv_plz || _r.real_hv_plz || '').trim(), String(snap.hv_ort || _r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
-  const kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  // V12.443: WEG → Auftraggeber = „WEG <Standort>" + Hausverwaltung (Name + Adresse); sonst HV direkt
+  let kundeName, kundeAdresse;
+  if (o.ist_weg) {
+    kundeName = 'WEG ' + (snap.standort || 'Aufzugsanlage');
+    kundeAdresse = [hvName, hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  } else {
+    kundeName = hvName;
+    kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  }
   const aufzugLine = '- ' + ([snap.hersteller, snap.fabriknummer ? ('Fn ' + snap.fabriknummer) : '', snap.standort].filter(Boolean).join(', ') || 'Aufzugsanlage');
   const parties = {
-    kunde_name: snap.hv_name || '—',
+    kunde_name: kundeName,
     kunde_adresse: kundeAdresse,
     firma_name: '(Wartungsnehmer — Angebot ausstehend)',
     vertragsnummer: 'ENTWURF',
@@ -13022,8 +13072,11 @@ async function _eiWvExtractOptionen() {
     if (typeof parsed.notruf_montage === 'boolean') o.notruf_montage = parsed.notruf_montage;
     if (!o.notruf) o.notruf_montage = false;
     if (typeof parsed.zues === 'boolean') o.zues = parsed.zues;
-    if (typeof parsed.vertragsbeginn === 'string' && /^\d{4}-\d{2}-\d{2}/.test(parsed.vertragsbeginn)) o.vertragsbeginn = parsed.vertragsbeginn.slice(0, 10);
-    if (num(parsed.laufzeit_jahre) != null) o.laufzeit_jahre = num(parsed.laufzeit_jahre);
+    // V12.443: Bestandsvertrag-Daten merken → nächstmöglichen Beginn berechnen (statt Alt-Beginn anzeigen)
+    if (typeof parsed.vertragsbeginn === 'string' && /^\d{4}-\d{2}-\d{2}/.test(parsed.vertragsbeginn)) o.bestand_vertragsbeginn = parsed.vertragsbeginn.slice(0, 10);
+    if (num(parsed.laufzeit_jahre) != null) { o.bestand_laufzeit_jahre = num(parsed.laufzeit_jahre); o.laufzeit_jahre = num(parsed.laufzeit_jahre); }
+    if (num(parsed.kuendigungsfrist_monate) != null) o.kuendigungsfrist_monate = num(parsed.kuendigungsfrist_monate);
+    _eiWvRecomputeStart(o);
     if (num(parsed.jahrespreis_netto) != null) o.jahrespreis_netto = num(parsed.jahrespreis_netto);
     if (parsed.abrechnung_turnus === 'jaehrlich' || parsed.abrechnung_turnus === 'quartalsweise') o.abrechnung_turnus = parsed.abrechnung_turnus;
     s.wvOptionen = o;
