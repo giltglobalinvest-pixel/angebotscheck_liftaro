@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.10.0';
+  const APP_VERSION = 'v1.11.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -857,10 +857,10 @@
       if (y - h < M + 80) newPage();
     }
 
-    // v1.10: Neutraler Liftaro-Branded-Header (kein Logo-Box mehr)
+    // v1.11: Header = Wartungsfirma als Absender (kein „LIFTARO" mehr darüber)
     const COL_BRAND = rgb(0.49, 0.23, 0.93);
     function drawHeader(firstPage) {
-      draw('LIFTARO', M, H - M - 8, bold, 12, COL_BRAND);
+      draw(sub.wn.firma || 'Reparaturbetrieb', M, H - M - 8, bold, 12, COL_INK);
       drawRight('Reparaturangebot', W - M, H - M - 8, helv, 9.5, COL_MUTE);
       page.drawLine({ start: { x: M, y: H - M - 18 }, end: { x: W - M, y: H - M - 18 }, thickness: 0.6, color: COL_LIGHT });
       if (!firstPage) {
@@ -872,13 +872,11 @@
     }
     drawHeader(true);
 
-    // Auf Seite 1: zusätzlich "Firma" links oben
-    draw(sub.wn.firma || '—', M, H - M - 22, helv, 9, COL_INK);
-
     // EMPFÄNGER + Meta-Block
     const yMetaStart = y;
     draw('EMPFÄNGER', M, y, bold, 8.5, COL_MUTE); y -= 14;
-    draw(sub.snap.hv_name || '(Hausverwaltung)', M, y, bold, 11, COL_INK); y -= 13;
+    // v1.11: HV-Name umbrechen, damit er nicht in den Meta-Block rechts läuft
+    for (const rl of wrap(sub.snap.hv_name || '(Hausverwaltung)', bold, 11, (W - M - 200) - M - 14)) { draw(rl, M, y, bold, 11, COL_INK); y -= 13; }
     if (sub.snap.hv_email) { draw('z.Hd. ' + (sub.snap.hv_email || ''), M, y, helv, 10, COL_INK); y -= 12; }
     // Adresse (falls in snap vorhanden)
     const hvAdr = String(sub.snap.hv_strasse || '').trim();
@@ -924,7 +922,7 @@
     // Anschreiben
     y -= 4;
     draw('Sehr geehrte Damen und Herren,', M, y, helv, 10, COL_INK); y -= 18;
-    const intro1 = wrap('vielen Dank für Ihre Anfrage. Gerne unterbreiten wir Ihnen nachfolgendes Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + '.', helv, 10, W - 2*M);
+    const intro1 = wrap('vielen Dank für Ihre Anfrage. Das nachfolgende Angebot für die angefragten Leistungen am Aufzug Fn ' + (sub.snap.fabriknummer || '—') + ' ist in Kooperation mit der Liftaro GmbH entstanden und wurde auf Basis der gelieferten Daten automatisch generiert.', helv, 10, W - 2*M);
     for (const l of intro1) { draw(l, M, y, helv, 10, COL_INK); y -= 13; }
     y -= 4;
     const intro2 = wrap('Bitte entnehmen Sie die detaillierten Leistungsbeschreibungen sowie die zugehörigen Preise den nachstehenden Positionen. Für Rückfragen stehen wir Ihnen jederzeit gerne zur Verfügung.', helv, 10, W - 2*M);
@@ -1010,9 +1008,25 @@
     kondBox('Zahlungsbedingungen', 'Zahlungsziel: 14 Tage netto nach Rechnungsstellung.');
     kondBox('Gewährleistung', '24 Monate auf neu eingebaute Teile gemäß § 634a BGB');
 
-    // Unterschrift-Block
-    y -= 10;
-    ensureSpace(80);
+    // v1.11: AGB direkt unterhalb der Gewährleistung (KEINE eigene Seite mehr)
+    const klauselnText = htmlToText(sub.klauseln);
+    if (klauselnText) {
+      y -= 6; ensureSpace(44);
+      draw('Allgemeine Geschäftsbedingungen', M, y, bold, 13, COL_INK); y -= 4;
+      page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
+      y -= 18;
+      const lines = klauselnText.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i].trim();
+        if (!ln) { y -= 6; continue; }
+        const isHeader = ln.length < 50 && !/[.,:]$/.test(ln) && /^[A-ZÄÖÜ]/.test(ln);
+        if (isHeader) { y -= 4; ensureSpace(20); draw(ln, M, y, bold, 11, COL_INK); y -= 14; }
+        else { const wr = wrap(ln, helv, 10, W - 2*M); for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; } }
+      }
+    }
+
+    // Verbindliche Bestätigung des Wartungsnehmers (v1.11: ohne ✓-Symbol → kein „?")
+    y -= 12; ensureSpace(90);
     page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
     y -= 14;
     draw('VERBINDLICHE BESTÄTIGUNG', M, y, bold, 8.5, COL_MUTE); y -= 16;
@@ -1024,35 +1038,31 @@
         y -= sigH + 6;
       } catch (_) {}
     } else {
-      draw('✓ Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, COL_INK); y -= 14;
+      draw('Digital bestätigt (§ 127 i.V.m. § 126b BGB · Textform)', M, y, helv, 10, COL_INK); y -= 14;
     }
     draw('Unterzeichnet von: ' + (sub.sigName || '—'), M, y, bold, 10, COL_INK); y -= 13;
     draw('Datum: ' + dat, M, y, helv, 10, COL_MUTE);
+    y -= 24;
 
-    // AGB auf neue Seite
-    const klauselnText = htmlToText(sub.klauseln);
-    if (klauselnText) {
-      newPage();
-      draw('Allgemeine Geschaeftsbedingungen', M, y, bold, 16, COL_INK); y -= 4;
-      page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + 140, y: y - 2 }, thickness: 1.2, color: COL_INK });
-      y -= 22;
-      // Render strukturiert (H4 als Bold-Header, P als Body)
-      const lines = klauselnText.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        const ln = lines[i].trim();
-        if (!ln) { y -= 6; continue; }
-        // Heuristik: kurze Zeilen ohne Punkt am Ende als Header behandeln
-        const isHeader = ln.length < 50 && !/[.,:]$/.test(ln) && /^[A-ZÄÖÜ]/.test(ln);
-        if (isHeader) {
-          y -= 4;
-          ensureSpace(20);
-          draw(ln, M, y, bold, 11, COL_INK); y -= 14;
-        } else {
-          const wr = wrap(ln, helv, 10, W - 2*M);
-          for (const l of wr) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
-        }
-      }
-    }
+    // v1.11: Beauftragung durch die Hausverwaltung (Unterschriftsfeld)
+    ensureSpace(150);
+    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.5, color: COL_LIGHT });
+    y -= 16;
+    draw('Beauftragung durch die Hausverwaltung', M, y, bold, 12, COL_INK); y -= 16;
+    const beaufLines = wrap('Hiermit beauftragt die Hausverwaltung ' + (sub.snap.hv_name || '') + ' den Betrieb ' + (sub.wn.firma || '') + ' mit der Durchführung der vorstehend angebotenen Leistungen zu den genannten Preisen und Konditionen. Mit der Unterschrift wird der Auftrag verbindlich erteilt.', helv, 10, W - 2*M);
+    for (const l of beaufLines) { ensureSpace(14); draw(l, M, y, helv, 10, COL_INK); y -= 13; }
+    y -= 32;
+    ensureSpace(54);
+    const colWsig = (W - 2*M - 40) / 2;
+    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: M + colWsig, y: y - 2 }, thickness: 0.6, color: COL_INK });
+    draw('Ort, Datum', M, y - 14, helv, 9, COL_MUTE);
+    const sig2X = M + colWsig + 40;
+    page.drawLine({ start: { x: sig2X, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.6, color: COL_INK });
+    draw('Unterschrift / Stempel Hausverwaltung', sig2X, y - 14, helv, 9, COL_MUTE);
+    y -= 42;
+    ensureSpace(20);
+    draw('Name in Druckbuchstaben:', M, y, helv, 9, COL_MUTE); y -= 14;
+    page.drawLine({ start: { x: M, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.5, color: COL_LIGHT });
 
     // Footer auf jeder Seite (3 Spalten)
     totalPagesHolder.total = allPages.length;
