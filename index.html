@@ -6431,7 +6431,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.418';
+const APP_VERSION = 'V12.419';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12054,8 +12054,8 @@ async function _eiLvExtractPositions() {
       + '- Wenn das PDF kein Reparatur-Angebot ist (Wartungsvertrag, Rechnung, Korrespondenz, leere/unlesbare Datei): gib AUSDRÜCKLICH `[]` zurück.\n\n'
       + 'Antworte AUSSCHLIESSLICH mit GENAU EINEM gültigen JSON-Array — kein vorangestelltes leeres Array, kein Text oder Markdown davor/danach.';
     const reqBody = {
-      model: 'claude-haiku-4-5',
-      max_tokens: 2500,
+      model: 'claude-sonnet-4-5-20250929',   // V12.419: Sonnet statt Haiku — liest Einzelpreise aus PDF-Tabellen zuverlässiger
+      max_tokens: 3500,
       system: sysPrompt,
       messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: userText }]) }],
     };
@@ -12119,10 +12119,16 @@ async function _eiLvExtractPositions() {
     if (!Array.isArray(parsed)) throw new Error('Konnte KI-Antwort nicht als Array parsen (' + (parseError || 'unbekannt') + ')');
     // V12.378: Normalisieren — titel separat vom beschreibung-Fließtext
     // V12.392: preis_eur als Zahl (oder null) mit-übernehmen
+    // V12.419: robustes Zahl-Parsing — erkennt Dezimaltrenner (Punkt ODER Komma)
+    // korrekt. Bisher zerstörte .replace(/\./g,'') einen Punkt-Dezimalpreis (489.50 → 48950).
     const parseNum = (v) => {
-      if (v == null || v === '' || v === false) return null;
-      if (typeof v === 'number') return isFinite(v) ? v : null;
-      const s = String(v).replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+      if (v == null || v === false) return null;
+      if (typeof v === 'number') return (isFinite(v) && v > 0) ? v : null;
+      let s = String(v).replace(/[^0-9.,-]/g, '');   // nur Ziffern, . , -
+      if (!s) return null;
+      const lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
+      if (lc > ld) s = s.replace(/\./g, '').replace(',', '.');   // Komma ist Dezimaltrenner (de)
+      else s = s.replace(/,/g, '');                              // Punkt ist Dezimaltrenner (us) bzw. Tausender-Kommas raus
       const n = parseFloat(s);
       return (isNaN(n) || !isFinite(n) || n <= 0) ? null : n;
     };
@@ -12135,6 +12141,7 @@ async function _eiLvExtractPositions() {
       preis_eur:    parseNum(p.preis_eur),
     })).filter(p => p.titel || p.beschreibung);
     window._eiLvLastDiagnostics.normalizedCount = norm.length;
+    window._eiLvLastDiagnostics.priceCount = norm.filter(p => p.preis_eur != null).length;   // V12.419
     window._eiLvLastDiagnostics.titelEmptyCount = norm.filter(p => !p.titel).length;
     if (!norm.length) {
       showToast('⚠ Claude hat keine konkreten Reparatur-Positionen im PDF gefunden. „🔬 Diagnose" klicken für Details.', 'warning', 9000);
@@ -12178,7 +12185,8 @@ async function _eiLvExtractPositions() {
         }
       }
     } catch (e) { console.warn('[V12.414] LV-Meta-Extraktion:', e.message); }
-    let toast = '✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' aus PDF extrahiert' + metaInfo;
+    const _priceCnt = norm.filter(p => p.preis_eur != null).length;
+    let toast = '✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' extrahiert · ' + _priceCnt + '/' + norm.length + ' mit Einzelpreis' + (_priceCnt === 0 ? ' (PDF enthält evtl. keine Einzelpreise — „🔬 Diagnose" prüfen)' : '') + metaInfo;
     if (promptWarning) toast += ' · ⚠ ' + promptWarning;
     const skipMsg = (skipped.length) ? ' · ⚠ ' + skipped.length + ' Anhang übersprungen: ' + skipped.join(' · ') : '';
     toast += skipMsg;
