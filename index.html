@@ -4121,6 +4121,8 @@ const pdfWorkerReady = Promise.resolve();</script>
             <button class="ei-side-item" data-status="neue_antwort"   onclick="setEiFilter('neue_antwort')"  ><span class="ei-side-dot" style="background:#ef4444;animation:eiNeuPulse 1.4s ease-in-out infinite"></span><span class="ei-side-lbl">↶ Neue Antworten</span><span class="ei-side-cnt" id="eiSideCnt_neue_antwort">0</span></button>
             <!-- V12.235: Chat-Antworten (von Wartungsnehmer/Servicebetrieb-Chats) -->
             <button class="ei-side-item" data-status="chat_antwort"   onclick="setEiFilter('chat_antwort')"  ><span class="ei-side-dot" style="background:#0891b2;animation:eiNeuPulse 1.6s ease-in-out infinite"></span><span class="ei-side-lbl">💬 Chat-Antworten</span><span class="ei-side-cnt" id="eiSideCnt_chat_antwort">0</span></button>
+            <!-- V12.453: Offene Vorgänge mit eingegangenem WN-Angebot (persistent, unabhängig vom Gelesen-Status) -->
+            <button class="ei-side-item" data-status="angebot_eingegangen" onclick="setEiFilter('angebot_eingegangen')"><span class="ei-side-dot" style="background:#16a34a;animation:eiNeuPulse 1.6s ease-in-out infinite"></span><span class="ei-side-lbl">📥 Angebote eingegangen</span><span class="ei-side-cnt" id="eiSideCnt_angebot_eingegangen">0</span></button>
             <div style="height:1px;background:rgba(255,255,255,.1);margin:6px 10px"></div>
             <button class="ei-side-item" data-status="neu"            onclick="setEiFilter('neu')"           ><span class="ei-side-dot" style="background:#f59e0b"></span><span class="ei-side-lbl">Neu</span><span class="ei-side-cnt" id="eiSideCnt_neu">0</span></button>
             <!-- V12.431: „Offen" entfernt — war ein Auto-Status (nicht manuell setzbar, nicht im Status-Dropdown) -->
@@ -6482,7 +6484,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.452';
+const APP_VERSION = 'V12.453';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12213,6 +12215,15 @@ function _eiLvEmailHasSubmitted(emailId) {
   const arr = bag[emailId];
   return arr && arr.length > 0;
 }
+// V12.453: Offener Vorgang mit eingegangenem WN-Angebot? (für Filter „📥 Angebote eingegangen" + Listen-Pille).
+// „Offen" = Status NICHT erledigt (geantwortet) und NICHT verworfen — persistent, unabhängig vom Gelesen-Status.
+function _eiLvEmailHasOpenOffer(r) {
+  if (!r || r.direction === 'outgoing' || !r._id) return false;
+  if (!_eiLvEmailHasSubmitted(r._id)) return false;
+  const st = (typeof _eiNormStatus === 'function') ? _eiNormStatus(r.status || 'neu') : String(r.status || 'neu');
+  return st !== 'geantwortet' && st !== 'verworfen';
+}
+window._eiLvEmailHasOpenOffer = _eiLvEmailHasOpenOffer;
 function _eiLvEmailSubmittedCount(emailId) {
   const bag = window._eiLvSubmittedByEmail || {};
   const arr = bag[emailId];
@@ -31922,6 +31933,8 @@ function setEiFilter(status, skipRender) {
   if (chipEl) {
     const label = (status === 'in_bearbeitung') ? 'In Bearbeitung'
       : (status === 'neue_antwort') ? '↶ Neue Antworten'
+      : (status === 'chat_antwort') ? '💬 Chat-Antworten'
+      : (status === 'angebot_eingegangen') ? '📥 Angebote eingegangen'
       : (status === 'geantwortet') ? '✓ Erledigt'
       : (typeof status === 'string' && status.indexOf('check:') === 0) ? ('Check: ' + ({ kein_check: 'Kein Check', gecheckt: 'Gecheckt', beauftragt: 'Beauftragt', abgerechnet: 'Abgerechnet', in_bearbeitung: 'In Bearbeitung' }[status.slice(6)] || status.slice(6)))
       : (status === 'alle') ? 'Alle' : status.charAt(0).toUpperCase() + status.slice(1);
@@ -31933,6 +31946,8 @@ function setEiFilter(status, skipRender) {
       verworfen:     { bg:'#fee2e2', fg:'#991b1b' },
       alle:          { bg:'#f1f5f9', fg:'#0f172a' },
       neue_antwort:  { bg:'#fee2e2', fg:'#991b1b' },
+      chat_antwort:  { bg:'#cffafe', fg:'#155e75' },
+      angebot_eingegangen: { bg:'#dcfce7', fg:'#166534' },
     }[status] || { bg:'#f1f5f9', fg:'#0f172a' };
     chipEl.style.background = palette.bg;
     chipEl.style.color = palette.fg;
@@ -32065,6 +32080,9 @@ function _eiUpdateSidebarCounts() {
   if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
   const chatReplyCnt = all.filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r)).length;
   set('eiSideCnt_chat_antwort', chatReplyCnt);
+  // V12.453: Counter „📥 Angebote eingegangen" — offene Vorgänge mit submitted WN-Angebot
+  const offerOpenCnt = all.filter(r => (typeof _eiLvEmailHasOpenOffer === 'function') && _eiLvEmailHasOpenOffer(r)).length;
+  set('eiSideCnt_angebot_eingegangen', offerOpenCnt);
   // V12.426/431: Check-Status-Zähler — alle 5 Stufen; „Kein Check" zählt auch leere Werte.
   // threaded/Chat-Antworten ausgeschlossen (analog zur Filter-Anzeige via dropThreaded).
   try {
@@ -32867,6 +32885,9 @@ function _eiFiltered() {
     // V12.235: Nur Emails mit eingehenden Chat-Antworten (von Wartungsnehmer/Servicebetrieb)
     if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r));
+  } else if (_eiFilter === 'angebot_eingegangen') {
+    // V12.453: Offene Vorgänge mit eingegangenem WN-Angebot (submitted LV/WV) — persistent, unabhängig vom Gelesen-Status
+    base = (_eiAllRecords || []).filter(r => (typeof _eiLvEmailHasOpenOffer === 'function') && _eiLvEmailHasOpenOffer(r));
   } else if (typeof _eiFilter === 'string' && _eiFilter.indexOf('check:') === 0) {
     // V12.426/431: Filter nach Check-Status (alle 5 Stufen). „Kein Check" matcht auch leere Werte.
     const _cs = _eiFilter.slice(6);
@@ -33210,8 +33231,16 @@ function renderEmailInboxList() {
           🔀 ${_isCopy ? 'Kopie' : (_splitCnt >= 2 ? '1/' + _splitCnt : 'Split')}
         </span>`
       : '';
-    // V12.228: Chat-Antwort-Indikator — eingehende Antworten von Chat-Partnern im Cache
-    const _hasChatReply = (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
+    // V12.453: Persistente „Angebot eingegangen"-Pille — offene Vorgänge mit submitted WN-Angebot,
+    // unabhängig vom Gelesen-Status (steady, kein Pulsieren). Zeigt Anzahl bei Mehrfach-Angeboten.
+    const _hasOpenOffer = (typeof _eiLvEmailHasOpenOffer === 'function') && _eiLvEmailHasOpenOffer(r);
+    const _offerCnt = (_hasOpenOffer && typeof _eiLvEmailSubmittedCount === 'function') ? _eiLvEmailSubmittedCount(r._id) : 0;
+    const offerChip = _hasOpenOffer
+      ? `<span title="Wartungsnehmer-Angebot eingegangen — Klick öffnet den Vorgang" style="background:#16a34a;color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px">📥 ${_offerCnt > 1 ? _offerCnt + ' ANGEBOTE' : 'ANGEBOT'}</span>`
+      : '';
+    // V12.228: Chat-Antwort-Indikator — eingehende Antworten von Chat-Partnern im Cache.
+    // V12.453: Bei offenem Angebot zeigt stattdessen die 📥-Pille (vermeidet Doppel-Indikator).
+    const _hasChatReply = !_hasOpenOffer && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
     const chatReplyChip = _hasChatReply
       ? `<span title="Neue Chat-Antwort von einem Service-Partner — Klick öffnet die Email" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;animation:eiNeuPulse 1.6s ease-in-out infinite">
           💬 CHAT-ANTWORT
@@ -33440,7 +33469,7 @@ function renderEmailInboxList() {
         ${standortRow}
         ${attRow}
       </div>
-      <div class="ei-row-actions">${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
+      <div class="ei-row-actions">${offerChip}${chatReplyChip}${splitChip}${emTypChip}${statusChip}${quickActions}</div>
     </div>`;
   }).join('');
 }
