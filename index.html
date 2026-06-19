@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.456';
+const APP_VERSION = 'V12.457';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11421,6 +11421,66 @@ function _eiLvDefaultPauschalVorlage() {
 }
 window._eiLvDefaultPauschalVorlage = _eiLvDefaultPauschalVorlage;
 
+// V12.457: Modernisierungscheck — eigener LV-Vorlagentyp 'modernisierung' auf der Reparatur-Pipeline.
+// Mechanik identisch zur Reparatur (Positionen + Stückpreise), nur eigener Extraktions-Prompt +
+// Modernisierungs-Klauseln. Code-Default (wie WV), wird in startLvErstellen in den Picker injiziert.
+function _eiLvDefaultModernisierungVorlage() {
+  return {
+    id: 'lvv_modernisierung_default',
+    typ: 'modernisierung',
+    name: 'Modernisierungsangebot (Standard)',
+    einleitung_html:
+      '<p>Sehr geehrte Damen und Herren,</p>'
+    + '<p>im Auftrag unseres Kunden — der unten genannten Hausverwaltung — bitten wir Sie um ein verbindliches Angebot für die nachfolgend aufgeführte Modernisierung der o. g. Aufzugsanlage.</p>'
+    + '<p>Bitte tragen Sie pro Position Ihren <strong>Netto-Einzelpreis</strong> ein und nennen Sie uns die voraussichtliche <strong>Bauzeit / Stillstandsdauer</strong> der Anlage sowie etwaige Ergänzungen.</p>'
+    + '<p>Es gelten die unten aufgeführten Vertragsbedingungen.</p>',
+    klauseln_html:
+      '<h4>Gewährleistung</h4>'
+    + '<p>Auf alle modernisierten Komponenten und verbauten Teile gewähren wir 24 Monate Gewährleistung gemäß §634a BGB, beginnend mit der mangelfreien Abnahme.</p>'
+    + '<h4>Normen &amp; Stand der Technik</h4>'
+    + '<p>Die Modernisierung wird nach den anerkannten Regeln der Technik und den einschlägigen Normen (insbesondere EN 81-20/50, BetrSichV, TRBS) ausgeführt. Bestehende Nachrüstpflichten werden im Rahmen des angebotenen Umfangs berücksichtigt.</p>'
+    + '<h4>Material &amp; Altteile</h4>'
+    + '<p>Verbautes Material bleibt bis zur vollständigen Rechnungsbegleichung im Besitz des Auftragnehmers. Ausgebaute Altteile gehen nach Demontage in den Besitz des Auftragnehmers über bzw. werden fachgerecht entsorgt.</p>'
+    + '<h4>Haftung</h4>'
+    + '<p>Haftung für Schäden ist auf Vorsatz und grobe Fahrlässigkeit beschränkt. Für leichte Fahrlässigkeit haften wir nur bei Verletzung wesentlicher Vertragspflichten.</p>'
+    + '<h4>Zahlungsbedingungen</h4>'
+    + '<p>30 % bei Auftragsvergabe, 60 % nach Anlieferung der Hauptkomponenten, 10 % nach mangelfreier Abnahme. Zahlungsziel 14 Tage netto.</p>',
+    pflicht_felder_json: JSON.stringify(['pos_nr', 'beschreibung', 'menge', 'einheit']),
+    bausteine_json:      JSON.stringify([]),
+    extraktion_prompt:
+      '[v12.392-preis] Du bist Spezialist für MODERNISIERUNGS-Angebote von Aufzug-Firmen (NICHT Wartungs-Verträge, NICHT einfache Reparaturen).\n\n'
+    + 'Lies das angehängte PDF-Angebot vollständig. Extrahiere die echten Modernisierungs-POSITIONEN (Bau-/Liefergruppen) und fasse pro Position ALLE Unter-Schritte (Lieferung, Demontage der Altkomponente, Montage, Verkabelung, Einstellung, Inbetriebnahme, Abnahme/Prüfung etc.) zu EINEM Eintrag mit Titel + ausführlicher Beschreibung zusammen.\n\n'
+    + 'Typische Modernisierungs-Positionen sind z. B.: Steuerung/Frequenzumrichter, Antrieb/Getriebe/Treibscheibe, Fahrkorb/Kabine (Verkleidung, Bedientableau), Fahrkorb- und Schachttüren inkl. Türantriebe, Schacht- und Fahrkorbsignalisierung, Geschwindigkeitsbegrenzer/Fangvorrichtung, Puffer, Hängekabel/Verkabelung, Notruf-/Fernüberwachung, Schachtbeleuchtung, Nachrüstungen nach EN 81-20/50.\n\n'
+    + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
+    + '[\n'
+    + '  {\n'
+    + '    "pos_nr": "1",\n'
+    + '    "titel": "Kurzer Positions-Titel (max 80 Zeichen, z. B. „Neue Aufzugssteuerung inkl. Frequenzumrichter")",\n'
+    + '    "beschreibung": "Mehrere Sätze (oder Aufzählung) mit allen Leistungen die zu dieser Position gehören — typischerweise Lieferung, Demontage Altteil, Montage, Verkabelung, Einstellung, Inbetriebnahme, Abnahme. ca. 60–200 Wörter. Übernimm die Substanz des Original-PDFs neutral.",\n'
+    + '    "menge": "Stückzahl als Zahl",\n'
+    + '    "einheit": "Stk / Pauschal / Satz / m",\n'
+    + '    "preis_eur": "Netto-Einzelpreis dieser Position als Zahl (z. B. 18900.00). Wenn im PDF kein Einzelpreis für genau diese Position erkennbar ist: null (NICHT raten, NICHT teilen, NICHT aus Gesamtsumme errechnen)."\n'
+    + '  },\n'
+    + '  ...\n'
+    + ']\n\n'
+    + 'STRENGE Regeln (Verstoß = unbrauchbares Ergebnis):\n'
+    + '- ZUSAMMENFASSEN: Pro Bau-/Liefergruppe EINE Position. Unter-Bullets (Lieferung, Demontage, Montage, Verkabelung, Inbetriebnahme) werden NIEMALS eigene Positionen — sie gehören IN die Beschreibung der übergeordneten Position.\n'
+    + '- HALLUZINIERE NIEMALS. Wenn das PDF keine konkreten Modernisierungs-Positionen enthält, gib `[]` zurück.\n'
+    + '- Keine Sammelposten „Lieferung", „Montage", „Bauzeit", „Gerüst" als eigene Position, wenn sie zu einer Komponente gehören — als Unterpunkt in die Beschreibung.\n'
+    + '- Einzelpreis im PDF EXTRAHIEREN (preis_eur, Netto, EUR als Zahl). Nur Gesamtsumme genannt → preis_eur=null.\n'
+    + '- Titel kurz und sprechend (Substantiv-Phrase: „Erneuerung Fahrkorbtüren", NICHT „Wir tauschen die Türen").\n'
+    + '- Beschreibung neutral und vollständig — Bearbeiter soll alle Details sehen ohne ins Original-PDF zu schauen.\n'
+    + '- Numerierung beginnt bei 1, fortlaufend.\n'
+    + '- Realistisches Ziel: 3–10 Positionen für ein typisches Modernisierungs-Angebot.',
+    unterschrift_text:
+      'Mit meiner Unterschrift bestätige ich verbindlich die vorgenannten Preise und die angegebene Bauzeit / Stillstandsdauer. Das Angebot ist 30 Tage ab Datum gültig.',
+    pdf_layout_json: JSON.stringify({ accent: '#1a3a5c', accent2: '#ca8a04' }),
+    aktiv: '1',
+    savedAt: new Date().toISOString(),
+  };
+}
+window._eiLvDefaultModernisierungVorlage = _eiLvDefaultModernisierungVorlage;
+
 // ════════════════════════════════════════════════════════════════════════════
 // V12.439: WARTUNGSVERTRAGS-CHECK — Phase 1: Vorlage + Conditional-Renderer
 // LV-Typ „wartungsvertrag": Liftaro fixiert 9 Leistungsoptionen (Spec aus Alt-Vertrag),
@@ -12366,6 +12426,10 @@ async function startLvErstellen(emailId, vorlageId) {
   // V12.439: Wartungsvertrags-Vorlage (Code-Default) immer anbieten, falls (noch) nicht in der DB.
   if (typeof _eiLvDefaultWartungsvertragVorlage === 'function' && !vorlagen.some(v => String(v.typ) === 'wartungsvertrag')) {
     vorlagen.push(_eiLvDefaultWartungsvertragVorlage());
+  }
+  // V12.457: Modernisierungs-Vorlage (Code-Default) immer anbieten, falls (noch) nicht in der DB.
+  if (typeof _eiLvDefaultModernisierungVorlage === 'function' && !vorlagen.some(v => String(v.typ) === 'modernisierung')) {
+    vorlagen.push(_eiLvDefaultModernisierungVorlage());
   }
   if (!vorlagen.length) { showToast('Keine aktive LV-Vorlage vorhanden — bitte unter Werkzeuge → LV-Vorlagen anlegen', 'warning', 7000); return; }
   let chosen = null;
@@ -13710,6 +13774,11 @@ async function openLvForEmail(emailId, lvId) {
       let _isWvLv = String(lv.vorlage_id || '') === 'lvv_wartungsvertrag_default';
       if (!_isWvLv) { try { const _pj = JSON.parse(lv.positionen_json || '{}'); if (_pj && _pj.__wv) _isWvLv = true; } catch (_) {} }
       if (_isWvLv && typeof _eiLvDefaultWartungsvertragVorlage === 'function') vorlage = _eiLvDefaultWartungsvertragVorlage();
+    }
+    // V12.457: Modernisierungs-LV → Code-Default-Vorlage (analog WV), sonst fiele es auf vorlagen[0] (Reparatur)
+    // zurück → typ='modernisierung' verloren → Bauzeit-Label + Normen-Abschnitt würden nicht greifen.
+    if (!vorlage && String(lv.vorlage_id || '') === 'lvv_modernisierung_default' && typeof _eiLvDefaultModernisierungVorlage === 'function') {
+      vorlage = _eiLvDefaultModernisierungVorlage();
     }
     if (!vorlage) vorlage = vorlagen[0];
     if (!vorlage) {
