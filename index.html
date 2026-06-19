@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.446';
+const APP_VERSION = 'V12.447';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13661,7 +13661,16 @@ async function openLvForEmail(emailId, lvId) {
       showToast('Keine LV-Vorlagen geladen — Airtable-Verbindung prüfen', 'error', 6000);
       return;
     }
-    const vorlage = vorlagen.find(v => String(v.id) === String(lv.vorlage_id)) || vorlagen[0];
+    let vorlage = vorlagen.find(v => String(v.id) === String(lv.vorlage_id)) || null;
+    // V12.447: Wartungsvertrag-LV → Code-Default-Vorlage (ist NICHT in der Airtable-Vorlagenliste,
+    // wird nur in startLvErstellen injiziert). Sonst fiele es auf vorlagen[0] (Reparatur) zurück
+    // → WV-Modus inaktiv → Editor leer + „0 Positionen" + kein Wartungsnehmer-Senden-Button.
+    if (!vorlage) {
+      let _isWvLv = String(lv.vorlage_id || '') === 'lvv_wartungsvertrag_default';
+      if (!_isWvLv) { try { const _pj = JSON.parse(lv.positionen_json || '{}'); if (_pj && _pj.__wv) _isWvLv = true; } catch (_) {} }
+      if (_isWvLv && typeof _eiLvDefaultWartungsvertragVorlage === 'function') vorlage = _eiLvDefaultWartungsvertragVorlage();
+    }
+    if (!vorlage) vorlage = vorlagen[0];
     if (!vorlage) {
       showToast('Vorlage zu diesem LV fehlt — bitte unter Werkzeuge prüfen', 'warning', 5000);
       return;
@@ -34680,8 +34689,22 @@ function _renderEmailLvSection(r) {
     const fmtZeit = (iso) => { if (!iso) return ''; try { const d = new Date(iso); const today = new Date(); const sameDay = d.toDateString() === today.toDateString(); return sameDay ? d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); } catch(_) { return ''; } };
     const activeLvs = lvs.filter(lv => !_eiIsArchived(lv));
     cardsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">' + activeLvs.map(lv => {
-      let cnt = 0;
-      try { const a = JSON.parse(lv.positionen_json || '[]'); cnt = Array.isArray(a) ? a.length : 0; } catch (_) {}
+      // V12.447: Wartungsvertrag-LV (positionen_json = {__wv,optionen}) → Eckdaten statt „0 Positionen"
+      let infoLine = '0 Positionen';
+      try {
+        const a = JSON.parse(lv.positionen_json || '[]');
+        if (a && a.__wv) {
+          const oo = a.optionen || {};
+          const parts = [];
+          if (oo.wartungen_pro_jahr) parts.push(oo.wartungen_pro_jahr + '×/Jahr');
+          parts.push(oo.wartungstyp === 'vollwartung' ? 'Vollwartung' : 'Systemwartung');
+          if (Number(oo.jahrespreis_netto) > 0) parts.push(Number(oo.jahrespreis_netto).toLocaleString('de-DE') + ' €/Jahr');
+          infoLine = '📄 Wartungsvertrag · ' + parts.join(' · ');
+        } else {
+          const cnt = Array.isArray(a) ? a.length : 0;
+          infoLine = cnt + ' Position' + (cnt === 1 ? '' : 'en');
+        }
+      } catch (_) {}
       const statusBg = lv.status === 'bereit' ? '#dcfce7' : (lv.status === 'versendet' ? '#dbeafe' : '#fef3c7');
       const statusFg = lv.status === 'bereit' ? '#166534' : (lv.status === 'versendet' ? '#1e40af' : '#92400e');
       const statusLbl = lv.status === 'bereit' ? 'BEREIT' : (lv.status === 'versendet' ? 'VERSENDET' : 'ENTWURF');
@@ -34718,7 +34741,7 @@ function _renderEmailLvSection(r) {
         +     '<span style="background:' + statusBg + ';color:' + statusFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;letter-spacing:.04em">' + statusLbl + '</span>'
         +   '</div>'
         +   '<div style="font-size:13px;color:#0f172a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(lv.titel || '(ohne Titel)') + '</div>'
-        +   '<div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">' + cnt + ' Position' + (cnt === 1 ? '' : 'en') + (anfragen.length ? ' · ' + anfragen.length + ' Anfrage' + (anfragen.length === 1 ? '' : 'n') : '') + '</div>'
+        +   '<div style="font-size:11px;color:#64748b;font-family:var(--dr-f-mono)">' + infoLine + (anfragen.length ? ' · ' + anfragen.length + ' Anfrage' + (anfragen.length === 1 ? '' : 'n') : '') + '</div>'
         + '</button>'
         + recipientsHtml
         + '<div style="display:flex;justify-content:flex-end;margin-top:2px"><button onclick="_eiLvArchive(\'' + r._id + '\',\'' + _esc(String(lv.id)) + '\')" title="Diese LV-Analyse archivieren (ausblenden)" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:10.5px;padding:2px 4px;font-family:inherit">🗄 archivieren</button></div>'
