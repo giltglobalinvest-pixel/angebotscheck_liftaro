@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.448';
+const APP_VERSION = 'V12.449';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -41934,7 +41934,17 @@ function _eiResolveSignatureForSend(userBody, forName) {
   const textSig = (typeof _stripHtml === 'function') ? _stripHtml(htmlSig) : htmlSig;
   // HTML-Body aus userBody (Plain → HTML) + Signatur-HTML
   const escFn = (typeof _esc === 'function') ? _esc : (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const userHtml = escFn(String(userBody || '')).replace(/\r?\n/g, '<br>');
+  // V12.449: http(s)-URLs als echte <a href>-Links einbetten, damit Email-Clients den
+  // Link nicht selbst aus dem Klartext "erraten" und dabei verstümmeln
+  // (z. B. check.liftaro.de → check.liftarode). Läuft NACH dem Escapen, also auf dem
+  // bereits HTML-sicheren String (newlines noch \n, < bereits &lt; → kein Über-Matchen).
+  const _linkifyHtml = (escaped) => escaped.replace(/(https?:\/\/[^\s<]+)/g, (m) => {
+    let trail = '';
+    const tm = m.match(/[.,;:!?)\]]+$/);
+    if (tm) { trail = tm[0]; m = m.slice(0, m.length - trail.length); }
+    return '<a href="' + m + '" target="_blank" rel="noopener" style="color:#2456E5;text-decoration:underline;word-break:break-all">' + m + '</a>' + trail;
+  });
+  const userHtml = _linkifyHtml(escFn(String(userBody || ''))).replace(/\r?\n/g, '<br>');
   const htmlBody =
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:14px;line-height:1.5">' +
       userHtml +
