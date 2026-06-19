@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.13.0';
+  const APP_VERSION = 'v1.13.1';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -286,7 +286,12 @@
     if (wvData) {
       if (status === 'submitted') {
         let preisSub = Number(anf.summe_netto_eur) || 0;
-        try { const rj = JSON.parse(anf.response_json || '{}'); if (Number(rj.jahrespreis_netto)) preisSub = Number(rj.jahrespreis_netto); } catch (_) {}
+        // v1.13.1: response_json ist jetzt ein Positions-Array ([{preis_eur}]); altes Objekt-Format {jahrespreis_netto} als Fallback
+        try {
+          const rj = JSON.parse(anf.response_json || 'null');
+          if (Array.isArray(rj) && rj[0] && Number(rj[0].preis_eur)) preisSub = Number(rj[0].preis_eur);
+          else if (rj && Number(rj.jahrespreis_netto)) preisSub = Number(rj.jahrespreis_netto);
+        } catch (_) {}
         renderWvSubmittedView({ token, anf, lv, snap, wn, wv: wvData }, preisSub); return;
       }
       if (status !== 'opened') markAsOpened(token);
@@ -1511,8 +1516,19 @@ async function submitWvAngebot(ctx) {
   const base = await getPartnerApiUrl();
   if (!base) { if (btn) { btn.disabled = false; btn.textContent = '📤 Angebot absenden'; } alert('Konfigurationsfehler: kein Submit-Endpoint. Bitte den Absender kontaktieren.'); return; }
   const turnus = (ctx.wv && ctx.wv.optionen && ctx.wv.optionen.abrechnung_turnus) || 'jaehrlich';
+  const turnusLabel = (turnus === 'quartalsweise') ? 'quartalsweise' : 'jährlich';
+  // v1.13.1: response_json wird als Positions-ARRAY gesendet (1 Position = Jahrespauschale),
+  // damit es 1:1 zum Reparatur-Flow passt — der Partner-API-Val (positionen.map) sowie alle
+  // Liftaro-Leser verarbeiten es dann ohne Sonderbehandlung (kein Backend-Change nötig).
   const payload = {
-    response_json: JSON.stringify({ __wv: true, jahrespreis_netto: preis, abrechnung_turnus: turnus, firma_name: (ctx.wn && ctx.wn.firma) || sigName }),
+    response_json: JSON.stringify([{
+      pos_nr: 1,
+      titel: 'Wartungsvertrag — Jahrespauschale',
+      menge: 1,
+      einheit: 'Jahr',
+      preis_eur: preis,
+      bemerkung: 'Verbindliche Jahres-Wartungspauschale (netto), Abrechnung ' + turnusLabel + '.'
+    }]),
     signatur_name: sigName, signatur_methode: 'digital',
     bestaetigung_text: 'Verbindliche Angebotsabgabe (Wartungsvertrag): Jahrespauschale ' + preis.toFixed(2) + ' EUR netto.',
     summe_netto_eur: Math.round(preis * 100) / 100,
