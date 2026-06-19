@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.449';
+const APP_VERSION = 'V12.450';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -34863,12 +34863,26 @@ async function _eiErgebnisAssembleState(emailId) {
     let resp = []; try { resp = JSON.parse(a.response_json || '[]'); } catch(_) {}
     const lv = lvs.find(x => String(x.id) === String(a.lv_id)) || null;
     let origPos = []; if (lv) { try { origPos = JSON.parse(lv.positionen_json || '[]'); } catch(_) {} }
+    // V12.450: Wartungsvertrag erkennen (__wv im Anfrage-Snapshot)
+    let wvBlob = null; try { const _ps = JSON.parse(a.positionen_snapshot_json || 'null'); if (_ps && _ps.__wv) wvBlob = _ps; } catch(_) {}
+    const isWv = !!wvBlob;
+    // WN-Angebotssumme: WV = Jahrespauschale. Robust gegen Array (neu), Legacy-Objekt {jahrespreis_netto} und summe_netto_eur.
+    let angebotSumme = _eiErgSumOfPositions(Array.isArray(resp) ? resp : []);
+    if (isWv && !(angebotSumme > 0)) {
+      if (resp && !Array.isArray(resp) && Number(resp.jahrespreis_netto)) angebotSumme = Number(resp.jahrespreis_netto);
+      else if (Number(a.summe_netto_eur)) angebotSumme = Number(a.summe_netto_eur);
+    }
+    // Vergleichswert: WV = jährlicher Bestandsvertrags-Preis aus dem Wizard-Snapshot; Reparatur = LV-Positionssumme
+    const originalSumme = isWv
+      ? (Number(wvBlob.optionen && wvBlob.optionen.jahrespreis_netto) || 0)
+      : _eiErgSumOfPositions(origPos);
     return {
       anfId: a.id, recordId: a._recordId, rawAnf: a,
       wnFirma: String(wn.firma || a.servicebetrieb_id || 'Wartungsnehmer'),
-      wn, resp, lv, origPos,
-      angebotSumme: _eiErgSumOfPositions(resp),
-      originalSumme: _eiErgSumOfPositions(origPos),
+      wn, resp, lv, origPos, isWv, wvBlob,
+      wvOptionen: (wvBlob && wvBlob.optionen) || null,
+      angebotSumme,
+      originalSumme,
       lieferzeit: String(a.lieferzeit_gesamt || ''),
     };
   });
@@ -34889,7 +34903,9 @@ async function _eiErgebnisAssembleState(emailId) {
   window._eiErgebnisState = {
     emailId, enriched, snap, hvEmail, hvName, hvAnsprech, hvStrasse, hvPlzOrt,
     chosenAnfId: chosen.anfId,
-    originalEur: chosen.originalSumme || Number(snap.orig_gesamtpreis_eur) || 0,   // V12.414: Fallback auf extrahierten Netto-Gesamtpreis
+    isWv: !!(chosen && chosen.isWv),                                              // V12.450: Wartungsvertrag-Ergebnis-Check
+    wvOptionen: (chosen && chosen.wvOptionen) || null,
+    originalEur: chosen.originalSumme || Number(snap.orig_gesamtpreis_eur) || 0,   // V12.414: Fallback auf extrahierten Netto-Gesamtpreis (WV: jährl. Bestandspreis)
     provisionPct: LV_LIFTARO_PROVISION_PCT,   // editierbare Liftaro-Vergütung in % (Default 25)
     origAnbieter: String(snap.orig_anbieter || '').trim(),       // V12.412: Anbieter des Original-Angebots (editierbar)
     origAngebotNr: String(snap.orig_angebot_nr || '').trim(),    // V12.412: Angebots-Nr. des Original-Angebots (editierbar)
@@ -34951,6 +34967,7 @@ function _eiErgebnisRenderModal() {
   const ov = document.getElementById('eiErgebnisModal');
   if (!s || !ov) return;
   const esc = _esc;
+  const isWv = !!s.isWv;   // V12.450: Wartungsvertrag-Ergebnis-Check (Jahrespauschale vs. Bestandspreis)
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   const orig = Number(s.originalEur) || 0;
   const ang  = chosen ? chosen.angebotSumme : 0;
@@ -34978,22 +34995,22 @@ function _eiErgebnisRenderModal() {
     + '</div>'
     + '<div style="flex:1;overflow-y:auto;padding:20px 22px;background:#fafbfc">'
     // 1) Angebot wählen
-    +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">1 · Empfohlenes Angebot wählen</div>'
+    +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">1 · ' + (isWv ? 'Empfohlenen Wartungsvertrag wählen' : 'Empfohlenes Angebot wählen') + '</div>'
     +   offerCards
-    // 2) Original-Betrag
-    +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">2 · Vergleichswert (Original-Angebot)</div>'
+    // 2) Vergleichswert (Original-Angebot / WV: jährl. Bestandsvertrags-Preis)
+    +   '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">2 · ' + (isWv ? 'Vergleichswert (bestehender Wartungsvertrag, jährlich)' : 'Vergleichswert (Original-Angebot)') + '</div>'
     +   '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:11px 14px">'
-    +     '<span style="font-size:12.5px;color:#475569;flex:1">Summe des vorliegenden Original-Angebots (netto)</span>'
+    +     '<span style="font-size:12.5px;color:#475569;flex:1">' + (isWv ? 'Jährlicher Netto-Preis des bestehenden Wartungsvertrags' : 'Summe des vorliegenden Original-Angebots (netto)') + '</span>'
     +     '<input type="text" inputmode="decimal" id="ergOrigInput" value="' + (orig > 0 ? String(orig).replace('.', ',') : '') + '" placeholder="0,00" oninput="_eiErgebnisOrigEdit(this.value)" style="width:120px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:var(--dr-f-mono);font-size:13px;text-align:right;outline:none">'
-    +     '<span style="color:#94a3b8;font-size:13px">€</span>'
+    +     '<span style="color:#94a3b8;font-size:13px">€' + (isWv ? '/Jahr' : '') + '</span>'
     +   '</div>'
     // V12.412: Anbieter + Angebots-Nr. des Original-Angebots (werden im PDF genannt, editierbar)
     +   '<div style="display:flex;gap:8px;margin-top:8px">'
-    +     '<div style="flex:2"><input type="text" id="ergOrigAnbieter" value="' + esc(s.origAnbieter || '') + '" placeholder="Anbieter des Original-Angebots" oninput="window._eiErgebnisState.origAnbieter=this.value" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px;outline:none;box-sizing:border-box"></div>'
-    +     '<div style="flex:1"><input type="text" id="ergOrigAngebotNr" value="' + esc(s.origAngebotNr || '') + '" placeholder="Angebots-Nr." oninput="window._eiErgebnisState.origAngebotNr=this.value" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px;outline:none;box-sizing:border-box"></div>'
+    +     '<div style="flex:2"><input type="text" id="ergOrigAnbieter" value="' + esc(s.origAnbieter || '') + '" placeholder="' + (isWv ? 'Bisheriger Wartungsbetrieb' : 'Anbieter des Original-Angebots') + '" oninput="window._eiErgebnisState.origAnbieter=this.value" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px;outline:none;box-sizing:border-box"></div>'
+    +     '<div style="flex:1"><input type="text" id="ergOrigAngebotNr" value="' + esc(s.origAngebotNr || '') + '" placeholder="' + (isWv ? 'Vertrags-Nr.' : 'Angebots-Nr.') + '" oninput="window._eiErgebnisState.origAngebotNr=this.value" style="width:100%;padding:8px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px;outline:none;box-sizing:border-box"></div>'
     +   '</div>'
     // 3) Ersparnis-Vorschau (in-place updatebar via id)
-    +   (orig <= 0 ? '<div style="margin-top:8px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ Original-Preis nicht hinterlegt — bitte oben eintragen (bei alten LVs wurde der Vergleichspreis noch nicht gespeichert). Bei neuen LVs wird er automatisch aus dem Anhang übernommen.</div>' : '')
+    +   (orig <= 0 ? '<div style="margin-top:8px;font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:7px;padding:8px 11px">⚠ ' + (isWv ? 'Jährlicher Bestandspreis nicht hinterlegt — bitte oben eintragen. Normalerweise wird er aus dem Wizard übernommen (Jahrespreis des vorliegenden Vertrags).' : 'Original-Preis nicht hinterlegt — bitte oben eintragen (bei alten LVs wurde der Vergleichspreis noch nicht gespeichert). Bei neuen LVs wird er automatisch aus dem Anhang übernommen.') + '</div>' : '')
     +   '<div id="ergErsparnisBox" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px 16px">' + _eiErgebnisErsparnisInner(orig, ang, chosen ? chosen.wnFirma : '', _eiErgProvPct(s)) + '</div>'
     +   '<div style="margin-top:6px;font-size:11px;color:#94a3b8">Die Liftaro-Vergütung ist im Feld oben (Standard ' + LV_LIFTARO_PROVISION_PCT + ' %) anpassbar — alle Werte rechnen sich automatisch neu.</div>'
     // 4) KI-Prompt
@@ -35044,6 +35061,7 @@ function _eiErgebnisChooseAnf(anfId) {
   // Original-Betrag auf das LV des gewählten Angebots umstellen (falls vorhanden + noch nicht manuell geändert)
   const e = s.enriched.find(x => x.anfId === anfId);
   if (e && e.originalSumme > 0) s.originalEur = e.originalSumme;
+  if (e) { s.isWv = !!e.isWv; s.wvOptionen = e.wvOptionen || null; }   // V12.450
   // Texte aus dem aktuellen Editor übernehmen, damit sie beim Re-Render nicht verloren gehen
   const ein = document.getElementById('ergEinschaetzung'); if (ein) s.einschaetzung = ein.value;
   const emp = document.getElementById('ergEmpfehlung'); if (emp) s.empfehlung = emp.value;
@@ -35053,17 +35071,23 @@ window._eiErgebnisChooseAnf = _eiErgebnisChooseAnf;
 
 function _eiErgebnisErsparnisInner(orig, ang, chosenFirma, pct) {
   const esc = _esc;
+  const isWv = !!(window._eiErgebnisState && window._eiErgebnisState.isWv);   // V12.450
+  const lblOrig = isWv ? 'Bestehender Wartungsvertrag (jährl.)' : 'Original-Angebot';
+  const lblAng  = isWv ? 'Empfohlener Wartungsvertrag' : 'Empfohlenes Angebot';
+  const lblDiff = isWv ? 'Differenz (jährl.)' : 'Differenz';
+  const lblProv = isWv ? ' % der jährl. Differenz)' : ' % der Differenz)';
+  const lblNetto = isWv ? 'Ihre jährliche Ersparnis' : 'Ihre tatsächliche Ersparnis';
   const p = (pct == null || isNaN(pct)) ? LV_LIFTARO_PROVISION_PCT : Math.max(0, Math.min(100, Number(pct)));
   const diff = Math.max(0, orig - ang);                                                 // Brutto-Differenz
   const provision = diff * (p / 100);
   const netto = Math.max(0, diff - provision);                                          // tatsächliche Ersparnis nach Liftaro
   const npct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
   const pctStr = String(p).replace('.', ',');
-  return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Original-Angebot</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</span></div>'
-    + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>Empfohlenes Angebot (' + esc(chosenFirma || '') + ')</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(ang)) + '</span></div>'
-    + '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:12.5px;color:#166534"><span>Differenz</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(diff)) + '</span></div>'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#166534;margin-bottom:5px"><span style="display:inline-flex;align-items:center;gap:4px">Liftaro-Vergütung (<input type="text" inputmode="decimal" id="ergProvPctInput" value="' + esc(pctStr) + '" oninput="_eiErgebnisProvisionEdit(this.value)" onclick="this.select()" title="Liftaro-Vergütung in % der Differenz — anpassbar" style="width:44px;padding:2px 5px;border:1px solid #16a34a;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;outline:none;background:#fff;color:#15803d;font-weight:700"> % der Differenz)</span><span id="ergProvAmount" style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(provision)) + '</span></div>'
-    + '<div style="border-top:2px solid #16a34a;margin:6px 0 0;padding-top:7px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#15803d"><span id="ergNettoLabel">Ihre tatsächliche Ersparnis' + (npct ? ' (' + npct + ' %)' : '') + '</span><span id="ergNettoAmount" style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(netto)) + '</span></div>';
+  return '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>' + lblOrig + '</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#166534;margin-bottom:5px"><span>' + lblAng + ' (' + esc(chosenFirma || '') + ')</span><span style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(ang)) + '</span></div>'
+    + '<div style="border-top:1px solid #86efac;margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:12.5px;color:#166534"><span>' + lblDiff + '</span><span style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(diff)) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#166534;margin-bottom:5px"><span style="display:inline-flex;align-items:center;gap:4px">Liftaro-Vergütung (<input type="text" inputmode="decimal" id="ergProvPctInput" value="' + esc(pctStr) + '" oninput="_eiErgebnisProvisionEdit(this.value)" onclick="this.select()" title="Liftaro-Vergütung in % der Differenz — anpassbar" style="width:44px;padding:2px 5px;border:1px solid #16a34a;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;outline:none;background:#fff;color:#15803d;font-weight:700">' + lblProv + '</span><span id="ergProvAmount" style="font-family:var(--dr-f-mono)">− ' + esc(_eiErgFmtEur(provision)) + '</span></div>'
+    + '<div style="border-top:2px solid #16a34a;margin:6px 0 0;padding-top:7px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#15803d"><span id="ergNettoLabel">' + lblNetto + (npct ? ' (' + npct + ' %)' : '') + '</span><span id="ergNettoAmount" style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(netto)) + '</span></div>';
 }
 window._eiErgebnisErsparnisInner = _eiErgebnisErsparnisInner;
 
@@ -35097,7 +35121,7 @@ function _eiErgebnisProvisionEdit(v) {
   const npct = orig > 0 ? Math.round((netto / orig) * 100) : 0;
   const pa = document.getElementById('ergProvAmount'); if (pa) pa.textContent = '− ' + _eiErgFmtEur(provision);
   const na = document.getElementById('ergNettoAmount'); if (na) na.textContent = _eiErgFmtEur(netto);
-  const nl = document.getElementById('ergNettoLabel'); if (nl) nl.textContent = 'Ihre tatsächliche Ersparnis' + (npct ? ' (' + npct + ' %)' : '');
+  const nl = document.getElementById('ergNettoLabel'); if (nl) nl.textContent = (s.isWv ? 'Ihre jährliche Ersparnis' : 'Ihre tatsächliche Ersparnis') + (npct ? ' (' + npct + ' %)' : '');
 }
 window._eiErgebnisProvisionEdit = _eiErgebnisProvisionEdit;
 
@@ -35118,8 +35142,11 @@ async function _eiErgebnisGenerateKI(mode) {
   if (mode === 'refine' && !isRefine) { showToast('Noch keine Texte vorhanden — zuerst „Einschätzung generieren"', 'info', 3500); return; }
   if (btn) { btn.disabled = true; btn.textContent = isRefine ? '⏳ Überarbeite …' : '⏳ Generiere …'; }
   try {
-    const leistListe = ((chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || [])).map((p, i) => (i + 1) + '. ' + (p.titel || '') + (p.beschreibung ? ' — ' + String(p.beschreibung).slice(0, 160) : '')).join('\n');
-    const sys = 'Du bist Berater bei Liftaro, einer neutralen Vermittlungsplattform für Aufzug-Reparaturen. '
+    const isWv = !!s.isWv;
+    const leistListe = isWv
+      ? (function(){ const o = s.wvOptionen || (chosen && chosen.wvOptionen) || {}; const tl = (typeof _eiWvTypLabel === 'function') ? _eiWvTypLabel(o.wartungstyp) : String(o.wartungstyp || ''); const tu = (typeof _eiWvTurnusLabel === 'function') ? _eiWvTurnusLabel(o.abrechnung_turnus) : String(o.abrechnung_turnus || ''); return [ (o.wartungen_pro_jahr || '?') + 'x Wartung/Jahr', 'Wartungstyp: ' + tl, o.notruf ? 'inkl. Notruf-/GSM-Service' : 'ohne Notruf-Service', o.zues ? 'inkl. ZUES-Organisation' : 'ohne ZUES-Organisation', 'Laufzeit ' + (o.laufzeit_jahre || '?') + ' Jahre', 'Abrechnung ' + tu ].map((l, i) => (i + 1) + '. ' + l).join('\n'); })()
+      : ((chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || [])).map((p, i) => (i + 1) + '. ' + (p.titel || '') + (p.beschreibung ? ' — ' + String(p.beschreibung).slice(0, 160) : '')).join('\n');
+    const sys = 'Du bist Berater bei Liftaro, einer neutralen Vermittlungsplattform für Aufzug-' + (isWv ? 'Wartung und -Reparaturen' : 'Reparaturen') + '. '
       + 'Du schreibst für eine Hausverwaltung eine kurze, NEUTRALE und sachliche Einschätzung zu einem eingeholten Alternativangebot. '
       + 'WICHTIG: Du DRÄNGST den Kunden NICHT und gibst KEINE Verkaufs-/Abschluss-Aufforderung. '
       + 'Du beurteilst neutral und weist die VORTEILE des Angebots sachlich aus (z. B. Preisvorteil, Lieferzeit, geprüfter Leistungsumfang). '
@@ -35128,11 +35155,11 @@ async function _eiErgebnisGenerateKI(mode) {
       + 'Antworte AUSSCHLIESSLICH mit gültigem JSON: {"einschaetzung":"...","empfehlung":"..."} — keine Markdown-Fences, kein Vortext.';
     const usr = 'Aufzug Fn ' + (s.snap.fabriknummer || '?') + ' am Standort ' + (s.snap.standort || '?') + '.\n'
       + 'Hausverwaltung: ' + (s.hvName || '?') + '\n\n'
-      + 'Original-Angebot (vorliegend): ' + _eiErgFmtEur(orig) + ' netto\n'
-      + 'Eingeholtes Alternativangebot von ' + chosen.wnFirma + ': ' + _eiErgFmtEur(ang) + ' netto\n'
-      + (chosen.lieferzeit ? 'Lieferzeit: ' + chosen.lieferzeit + '\n' : '')
-      + 'Differenz zugunsten der HV: ' + _eiErgFmtEur(ersparnis) + '\n\n'
-      + 'Leistungsumfang (neutral erstellt):\n' + leistListe + '\n\n'
+      + (isWv ? 'Bestehender Wartungsvertrag (jaehrlich): ' : 'Original-Angebot (vorliegend): ') + _eiErgFmtEur(orig) + ' netto\n'
+      + (isWv ? 'Eingeholte Jahrespauschale von ' : 'Eingeholtes Alternativangebot von ') + chosen.wnFirma + ': ' + _eiErgFmtEur(ang) + ' netto' + (isWv ? ' pro Jahr' : '') + '\n'
+      + (!isWv && chosen.lieferzeit ? 'Lieferzeit: ' + chosen.lieferzeit + '\n' : '')
+      + (isWv ? 'Jaehrliche Differenz zugunsten der HV: ' : 'Differenz zugunsten der HV: ') + _eiErgFmtEur(ersparnis) + '\n\n'
+      + (isWv ? 'Geforderter Wartungsumfang (von Liftaro festgelegt):\n' : 'Leistungsumfang (neutral erstellt):\n') + leistListe + '\n\n'
       + (isRefine
           ? ('AKTUELLE TEXTE (vom Bearbeiter ggf. manuell angepasst), die du ÜBERARBEITEN sollst:\n'
              + 'Einschaetzung: ' + (String(s.einschaetzung || '').trim() || '(leer)') + '\n'
@@ -35257,18 +35284,25 @@ async function _eiErgebnisCreateAndSend(doSend) {
     // V12.412: Ergebnis + Alternativangebot zu EINER PDF mergen (Original-Angebot wird nur erwähnt, NICHT mehr angehängt)
     if (btn) btn.textContent = '⏳ Erstelle PDF …';
     const ergBytes = new Uint8Array(await (await _eiBuildErgebnisCheckPDF(s, chosen)).arrayBuffer());
-    // Alternativangebot (Wartungsnehmer-Angebot)
+    // Alternativangebot — V12.450: WV = fertiger Wartungsvertrag (_eiWvBuildVertragPdf, mit WN-Jahrespauschale); Reparatur = Antwort-PDF
     let altBytes = null;
     try {
       const a = chosen.rawAnf || {};
-      const subAlt = {
-        anf: a, lv: chosen.lv, snap: s.snap, wn: chosen.wn || {}, response: chosen.resp || [], sum: chosen.angebotSumme,
-        sigMode: String(a.signatur_methode || 'digital'), sigName: String(a.signatur_name || ''),
-        signaturDataUrl: String(a.signatur_dataurl || ''), lieferzeitGesamt: String(a.lieferzeit_gesamt || ''),
-        klauseln: String(a.klauseln_snapshot_html || ''),
-      };
-      if (typeof _eiLvBuildAntwortPdf === 'function') altBytes = new Uint8Array(await (await _eiLvBuildAntwortPdf(subAlt)).arrayBuffer());
-    } catch (e) { console.warn('[V12.412] Alternativangebot:', e.message); }
+      if (s.isWv && typeof _eiWvBuildVertragPdf === 'function') {
+        const wvO = Object.assign({}, chosen.wvOptionen || (chosen.wvBlob && chosen.wvBlob.optionen) || {}, { jahrespreis_netto: chosen.angebotSumme });
+        const wvP = Object.assign({}, (chosen.wvBlob && chosen.wvBlob.parties) || {}, { firma_name: (chosen.wn && chosen.wn.firma) || String(a.signatur_name || ''), vertragsnummer: String(a.id || '') });
+        const _wvb = await _eiWvBuildVertragPdf(wvO, wvP);
+        altBytes = (_wvb instanceof Uint8Array) ? _wvb : new Uint8Array(await _wvb.arrayBuffer());
+      } else {
+        const subAlt = {
+          anf: a, lv: chosen.lv, snap: s.snap, wn: chosen.wn || {}, response: chosen.resp || [], sum: chosen.angebotSumme,
+          sigMode: String(a.signatur_methode || 'digital'), sigName: String(a.signatur_name || ''),
+          signaturDataUrl: String(a.signatur_dataurl || ''), lieferzeitGesamt: String(a.lieferzeit_gesamt || ''),
+          klauseln: String(a.klauseln_snapshot_html || ''),
+        };
+        if (typeof _eiLvBuildAntwortPdf === 'function') altBytes = new Uint8Array(await (await _eiLvBuildAntwortPdf(subAlt)).arrayBuffer());
+      }
+    } catch (e) { console.warn('[V12.450] Alternativangebot/WV-Vertrag:', e.message); }
     // Merge zu EINER Datei (Original-Angebot bewusst NICHT mehr enthalten)
     if (btn) btn.textContent = '⏳ Füge PDF zusammen …';
     const { PDFDocument } = window.PDFLib;
@@ -35293,18 +35327,28 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const diff = Math.max(0, orig - chosen.angebotSumme);
     const provision = diff * (_eiErgProvPct(s) / 100);
     const ersparnis = Math.max(0, diff - provision);   // tatsächliche Ersparnis nach Liftaro
-    const betreff = (isTest ? '[TEST] ' : '') + 'Ihr Reparatur-Angebot - Aufzug Fn ' + (s.snap.fabriknummer || '') + ' - Ersparnis ' + _eiErgFmtEur(ersparnis).replace(/\s*€/, ' EUR');
+    const betreff = (isTest ? '[TEST] ' : '') + (s.isWv ? 'Ihr Wartungsvertrags-Angebot - Aufzug Fn ' : 'Ihr Reparatur-Angebot - Aufzug Fn ') + (s.snap.fabriknummer || '') + (s.isWv ? ' - Jaehrliche Ersparnis ' : ' - Ersparnis ') + _eiErgFmtEur(ersparnis).replace(/\s*€/, ' EUR');
     const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
     if (btn) btn.textContent = isTest ? '⏳ Sende Test …' : '⏳ Sende an HV …';
-    const body = 'Sehr geehrte Damen und Herren,\n\n'
-      + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
-      + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
-      + '· Original-Angebot: ' + _eiErgFmtEur(orig) + ' netto\n'
-      + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
-      + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
-      + (s.empfehlung ? s.empfehlung + '\n\n' : '')
-      + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot.\n\n'
-      + 'Mit freundlichen Grüßen\nIhr Liftaro-Team';
+    const body = s.isWv
+      ? ('Sehr geehrte Damen und Herren,\n\n'
+        + 'anbei erhalten Sie unser Ergebnis zur Wartungsvertrags-Prüfung für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
+        + 'Wir haben für Sie eine Jahrespauschale für einen vergleichbaren Wartungsvertrag eingeholt:\n'
+        + '· Bestehender Wartungsvertrag (jährlich): ' + _eiErgFmtEur(orig) + ' netto\n'
+        + '· Empfohlener Wartungsvertrag (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto/Jahr\n'
+        + '· Ihre jährliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
+        + (s.empfehlung ? s.empfehlung + '\n\n' : '')
+        + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie den abschlussfertigen Wartungsvertrag.\n\n'
+        + 'Mit freundlichen Grüßen\nIhr Liftaro-Team')
+      : ('Sehr geehrte Damen und Herren,\n\n'
+        + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
+        + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
+        + '· Original-Angebot: ' + _eiErgFmtEur(orig) + ' netto\n'
+        + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
+        + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
+        + (s.empfehlung ? s.empfehlung + '\n\n' : '')
+        + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot.\n\n'
+        + 'Mit freundlichen Grüßen\nIhr Liftaro-Team');
     const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
     const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig:'', htmlBody:'' };
     const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
@@ -35444,6 +35488,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const BRAND = rgb(0.49, 0.23, 0.93), GREEN = rgb(0.08, 0.5, 0.2), GREEN_BG = rgb(0.94, 0.99, 0.96);
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
+  const isWv = !!(s && s.isWv);   // V12.450: Wartungsvertrag-Ergebnis-PDF (Jahrespauschale vs. Bestandspreis)
   const provPct = _eiErgProvPct(s);
   const ersparnis = Math.max(0, orig - ang);
   const provision = ersparnis * (provPct / 100);
@@ -35470,7 +35515,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     } else {
       draw('LIFTARO', M, lineY + 16, bold, 13, BRAND);
     }
-    dr('Ergebnis Angebots-Check', W - M, lineY + 16, helv, 9.5, MUTE);
+    dr(isWv ? 'Ergebnis Wartungsvertrags-Check' : 'Ergebnis Angebots-Check', W - M, lineY + 16, helv, 9.5, MUTE);
     page.drawLine({ start: { x: M, y: lineY }, end: { x: W - M, y: lineY }, thickness: 0.6, color: LIGHT });
     y = first ? (lineY - 22) : (lineY - 36);
     if (!first) draw('Ergebnis ' + angNr, M, lineY - 16, helv, 9, MUTE);
@@ -35491,7 +35536,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   draw('Aufzug:', W - M - 200, yM, helv, 9, MUTE); dr('Fn ' + (s.snap.fabriknummer || '-'), W - M, yM, helv, 10, INK); yM -= 16;
   if (s.snap.standort) { const sl = wrap(s.snap.standort, helv, 9, 200); for (const l of sl) { dr(l, W - M, yM, helv, 9, MUTE); yM -= 12; } }
   y = Math.min(y, yM) - 18;
-  draw('Ergebnis des Angebots-Checks', M, y, bold, 19, INK); y -= 28;
+  draw(isWv ? 'Ergebnis des Wartungsvertrags-Checks' : 'Ergebnis des Angebots-Checks', M, y, bold, 19, INK); y -= 28;
   // Anschreiben (editierbar)
   const anschreiben = s.anschreiben || _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis);
   for (const l of wrap(anschreiben, helv, 10, W - 2*M)) {
@@ -35510,39 +35555,67 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const boxH = 146;
   page.drawRectangle({ x: M, y: y - boxH, width: W - 2*M, height: boxH, color: GREEN_BG, borderColor: rgb(0.53, 0.94, 0.67), borderWidth: 1 });
   let by = y - 16;
-  draw('Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 13;
+  draw(isWv ? 'Bestehender Wartungsvertrag (jaehrlich)' : 'Original-Angebot (vorliegend)', M + 16, by, helv, 11, INK); dr(fmtEur(orig), W - M - 16, by, helv, 11, INK); by -= 13;
   if (origSub) draw(origSub, M + 16, by, helv, 8.5, MUTE); by -= 16;
-  draw('Empfohlenes Angebot', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 13;
+  draw(isWv ? 'Empfohlener Wartungsvertrag (Jahrespauschale)' : 'Empfohlenes Angebot', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(ang), W - M - 16, by, helv, 11, INK); by -= 13;
   if (recSub) draw(recSub, M + 16, by, helv, 8.5, MUTE); by -= 13;
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 0.5, color: rgb(0.53, 0.94, 0.67) }); by -= 16;
-  draw('Differenz', M + 16, by, helv, 11, INK); dr(fmtEur(ersparnis), W - M - 16, by, helv, 11, INK); by -= 18;
-  draw('Liftaro-Vergutung (' + String(provPct).replace('.', ',') + ' % der Differenz)', M + 16, by, helv, 11, INK); dr('- ' + fmtEur(provision), W - M - 16, by, helv, 11, INK); by -= 11;
+  draw(isWv ? 'Differenz (jaehrlich)' : 'Differenz', M + 16, by, helv, 11, INK); dr(fmtEur(ersparnis), W - M - 16, by, helv, 11, INK); by -= 18;
+  draw('Liftaro-Vergutung (' + String(provPct).replace('.', ',') + (isWv ? ' % der jaehrl. Differenz)' : ' % der Differenz)'), M + 16, by, helv, 11, INK); dr('- ' + fmtEur(provision), W - M - 16, by, helv, 11, INK); by -= 11;
   page.drawLine({ start: { x: M + 16, y: by }, end: { x: W - M - 16, y: by }, thickness: 1.2, color: GREEN }); by -= 20;
-  draw('Ihre tatsachliche Ersparnis' + (nettoPct ? ' (' + nettoPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(netto), W - M - 16, by, bold, 16, GREEN);
+  draw((isWv ? 'Ihre jaehrliche Ersparnis' : 'Ihre tatsachliche Ersparnis') + (nettoPct ? ' (' + nettoPct + ' %)' : ''), M + 16, by, bold, 14, GREEN); dr(fmtEur(netto), W - M - 16, by, bold, 16, GREEN);
   y -= boxH + 30;
   // V12.409: Leistungsumfang — nur Titel + Beschreibung aus dem extrahierten LV, KEINE Preise/Mengen
-  ensure(46);
-  draw('Leistungsumfang der Angebote', M, y, bold, 12, INK); y -= 16;
   const _origFirma = String(s.origAnbieter || '').trim();
-  const leistIntro = _origFirma
-    ? 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Angebot der Firma ' + _origFirma + ' per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:'
-    : 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Original-Angebot per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:';
-  for (const l of wrap(leistIntro, helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
-  y -= 6;
-  // Quelle: bevorzugt das neutrale LV (Titel + Beschreibung), sonst die Antwort-Positionen (nur Titel)
-  const leistPos = (chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || []);
-  for (let pi = 0; pi < leistPos.length; pi++) {
-    const p = leistPos[pi];
-    const titel = String(p.titel || '').trim();
-    const besch = String(p.beschreibung || '').trim();
-    const nr = String(p.pos_nr || (pi + 1));
-    const tl = wrap(nr + '. ' + titel, bold, 10.5, W - 2*M);
-    ensure(tl.length * 13 + 6);
-    for (const l of tl) { draw(l, M, y, bold, 10.5, INK); y -= 13; }
-    if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
+  if (isWv) {
+    // V12.450: Wartungsvertrag — geforderter Leistungsumfang (9 Optionen aus dem Wizard, OHNE Jahrespreis)
+    ensure(46);
+    draw('Geforderter Leistungsumfang (Wartungsvertrag)', M, y, bold, 12, INK); y -= 16;
+    for (const l of wrap('Beide Wartungsvertraege beziehen sich auf den nachstehenden, von Liftaro festgelegten Leistungsumfang. Verglichen wird ausschliesslich die jaehrliche Pauschale:', helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
     y -= 8;
+    const o = s.wvOptionen || chosen.wvOptionen || {};
+    const _tl = (typeof _eiWvTypLabel === 'function') ? _eiWvTypLabel(o.wartungstyp) : String(o.wartungstyp || '-');
+    const _tu = (typeof _eiWvTurnusLabel === 'function') ? _eiWvTurnusLabel(o.abrechnung_turnus) : String(o.abrechnung_turnus || '-');
+    const wvRows = [
+      ['Wartungseinsaetze pro Jahr', String(o.wartungen_pro_jahr || '-')],
+      ['Wartungstyp', _tl],
+      ['Notruf- & GSM-Service', o.notruf ? 'Ja' : '-'],
+      ['Montage Notrufgeraet inklusive', (o.notruf && o.notruf_montage) ? 'Ja' : '-'],
+      ['ZUES-Organisation komplett', o.zues ? 'Ja' : '-'],
+      ['Vertragslaufzeit', (o.laufzeit_jahre ? o.laufzeit_jahre + ' Jahre' : '-')],
+      ['Abrechnungsturnus', _tu],
+    ];
+    for (const rrow of wvRows) {
+      ensure(15);
+      draw(rrow[0], M + 4, y, helv, 10, INK);
+      dr(rrow[1], W - M - 4, y, bold, 10, INK);
+      page.drawLine({ start: { x: M + 4, y: y - 4 }, end: { x: W - M - 4, y: y - 4 }, thickness: 0.4, color: LIGHT });
+      y -= 17;
+    }
+    y -= 4;
+  } else {
+    ensure(46);
+    draw('Leistungsumfang der Angebote', M, y, bold, 12, INK); y -= 16;
+    const leistIntro = _origFirma
+      ? 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Angebot der Firma ' + _origFirma + ' per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:'
+      : 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Original-Angebot per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:';
+    for (const l of wrap(leistIntro, helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+    y -= 6;
+    // Quelle: bevorzugt das neutrale LV (Titel + Beschreibung), sonst die Antwort-Positionen (nur Titel)
+    const leistPos = (chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || []);
+    for (let pi = 0; pi < leistPos.length; pi++) {
+      const p = leistPos[pi];
+      const titel = String(p.titel || '').trim();
+      const besch = String(p.beschreibung || '').trim();
+      const nr = String(p.pos_nr || (pi + 1));
+      const tl = wrap(nr + '. ' + titel, bold, 10.5, W - 2*M);
+      ensure(tl.length * 13 + 6);
+      for (const l of tl) { draw(l, M, y, bold, 10.5, INK); y -= 13; }
+      if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
+      y -= 8;
+    }
+    if (chosen.lieferzeit) { y -= 2; ensure(20); draw('Lieferzeit (empfohlenes Angebot): ' + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
   }
-  if (chosen.lieferzeit) { y -= 2; ensure(20); draw('Lieferzeit (empfohlenes Angebot): ' + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
   // Einschätzung
   if (s.einschaetzung) {
     y -= 10; ensure(40);
@@ -35563,7 +35636,10 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   }
   // Hinweis auf Anhänge
   y -= 4; ensure(28);
-  for (const l of wrap('Das empfohlene Alternativangebot finden Sie vollstandig im Anhang dieser E-Mail. Das ursprungliche Angebot' + (_origFirma ? ' der Firma ' + _origFirma : '') + ' liegt Ihnen bereits vor und ist hier nur zum Vergleich aufgefuhrt.', helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+  const anhangHinweis = isWv
+    ? ('Den vollstaendigen, abschlussfertigen Wartungsvertrag der Firma ' + (chosen ? chosen.wnFirma : '') + ' finden Sie im Anhang dieser E-Mail. Der bestehende Wartungsvertrag' + (_origFirma ? ' der Firma ' + _origFirma : '') + ' ist hier nur zum Vergleich aufgefuhrt.')
+    : ('Das empfohlene Alternativangebot finden Sie vollstandig im Anhang dieser E-Mail. Das ursprungliche Angebot' + (_origFirma ? ' der Firma ' + _origFirma : '') + ' liegt Ihnen bereits vor und ist hier nur zum Vergleich aufgefuhrt.');
+  for (const l of wrap(anhangHinweis, helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
   y -= 10;
   // Zustimmung zum Angebot + Liftaro-Beraterverguetung (editierbar) — KEINE Reparatur-Beauftragung
   const beauftr = s.beauftragung || _eiErgDefaultBeauftragung(s, chosen);
@@ -35607,11 +35683,21 @@ window._eiBuildErgebnisCheckPDF = _eiBuildErgebnisCheckPDF;
 
 // Default-Texte für das Ergebnis-PDF (in der UI editierbar)
 function _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis) {
+  if (s && s.isWv) {
+    return 'Sehr geehrte Damen und Herren,\n\n'
+      + 'im Auftrag der Hausverwaltung ' + (s.hvName || '') + ' hat Liftaro fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' ein vergleichbares Wartungsvertrags-Angebot zum bestehenden Wartungsvertrag eingeholt.\n\n'
+      + 'Auf Basis des bestehenden Leistungsumfangs wurde eine Jahrespauschale bei einem qualifizierten Wartungsbetrieb angefragt. Das nachstehende Ergebnis stellt die empfohlene Jahrespauschale dem jahrlichen Preis des bestehenden Wartungsvertrags gegenuber.';
+  }
   return 'Sehr geehrte Damen und Herren,\n\n'
     + 'im Auftrag der Hausverwaltung ' + (s.hvName || '') + ' hat Liftaro fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' ein vergleichbares Alternativangebot zur vorliegenden Reparatur eingeholt.\n\n'
     + 'Auf Basis eines neutralen Leistungsverzeichnisses wurden die angefragten Leistungen an qualifizierte Fachbetriebe ubermittelt. Das nachstehende Ergebnis stellt das empfohlene Angebot dem ursprunglich vorliegenden Angebot gegenuber.';
 }
 function _eiErgDefaultBeauftragung(s, chosen) {
+  if (s && s.isWv) {
+    return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Wartungsvertrags-Angebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
+      + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + String(_eiErgProvPct(s)).replace('.', ',') + ' % der realisierten jahrlichen Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
+      + 'Der verbindliche Abschluss des Wartungsvertrags erfolgt separat im Rahmen des angenommenen Angebots. Diese Bestatigung betrifft ausschliesslich die Annahme des Angebots und die Zustimmung zur Liftaro-Beraterverguetung.';
+  }
   return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Alternativangebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
     + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + String(_eiErgProvPct(s)).replace('.', ',') + ' % der realisierten Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
     + 'Die verbindliche Beauftragung der Reparaturleistungen gegenuber dem Fachbetrieb erfolgt separat im Rahmen des angenommenen Angebots. Diese Bestatigung betrifft ausschliesslich die Annahme des Angebots und die Zustimmung zur Liftaro-Beraterverguetung.';
