@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.457';
+const APP_VERSION = 'V12.458';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12719,7 +12719,7 @@ async function _eiLvExtractPositions() {
       + 'Antworte AUSSCHLIESSLICH mit GENAU EINEM gültigen JSON-Array — kein vorangestelltes leeres Array, kein Text oder Markdown davor/danach.';
     const reqBody = {
       model: 'claude-sonnet-4-5-20250929',   // V12.419: Sonnet statt Haiku — liest Einzelpreise aus PDF-Tabellen zuverlässiger
-      max_tokens: 3500,
+      max_tokens: 8000,   // V12.458: 3500 zu knapp — Modernisierungs-/große Reparatur-Angebote mit vielen ausführlichen Positionen wurden abgeschnitten ("Unterminated string in JSON")
       system: sysPrompt,
       messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: userText }]) }],
     };
@@ -12742,7 +12742,7 @@ async function _eiLvExtractPositions() {
     const data = await resp.json();
     const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-    let parsed = null; let parseError = '';
+    let parsed = null; let parseError = ''; let salvaged = false;
     try { parsed = JSON.parse(cleaned); }
     catch (e1) { parseError = String(e1.message || e1); }
     // V12.418: Robustes Fallback. Haiku schickt gelegentlich ein leeres "[]" voran
@@ -12756,6 +12756,34 @@ async function _eiLvExtractPositions() {
     if (!Array.isArray(parsed)) {
       const m = cleaned.match(/\[[\s\S]*\]/);
       if (m) { try { parsed = JSON.parse(m[0]); parseError = ''; } catch (e2) { parseError = String(e2.message || e2); } }
+    }
+    // V12.458: Truncation-Salvage — wenn die KI-Antwort abgeschnitten wurde (max_tokens erreicht →
+    // "Unterminated string in JSON"), die VOLLSTÄNDIG übertragenen {…}-Objekte einzeln retten statt
+    // alles zu verwerfen. Balancierte Klammer-Zählung, String-/Escape-sicher (ignoriert { } in Strings).
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      const objs = [];
+      let depth = 0, startIdx = -1, inStr = false, esc = false;
+      for (let i = 0; i < cleaned.length; i++) {
+        const ch = cleaned[i];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === '\\') esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') { inStr = true; continue; }
+        if (ch === '{') { if (depth === 0) startIdx = i; depth++; }
+        else if (ch === '}') {
+          if (depth > 0) {
+            depth--;
+            if (depth === 0 && startIdx >= 0) {
+              try { const o = JSON.parse(cleaned.slice(startIdx, i + 1)); if (o && typeof o === 'object' && !Array.isArray(o)) objs.push(o); } catch (_) {}
+              startIdx = -1;
+            }
+          }
+        }
+      }
+      if (objs.length) { parsed = objs; parseError = ''; salvaged = true; }
     }
     // V12.379: Diagnose-State immer speichern, auch bei Fehler
     window._eiLvLastDiagnostics = {
@@ -12813,6 +12841,8 @@ async function _eiLvExtractPositions() {
     }
     s.positionen = norm;
     _eiLvRenderEditorBody();
+    // V12.458: Bei geretteter (abgeschnittener) KI-Antwort warnen — letzte Position(en) können fehlen.
+    if (salvaged) showToast('⚠ KI-Antwort war abgeschnitten — ' + norm.length + ' Position(en) gerettet. Bitte auf Vollständigkeit prüfen (ggf. letzte Position manuell ergänzen).', 'warning', 9000);
     // V12.414: Kopfdaten (Anbieter, Angebotsnummer, Netto-Gesamtpreis) zusätzlich extrahieren
     // und im Kontext-Snapshot ablegen → der Ergebnis-Check füllt damit Original-Anbieter/-Nr. automatisch.
     let metaInfo = '';
