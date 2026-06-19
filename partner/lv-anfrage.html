@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.13.1';
+  const APP_VERSION = 'v1.13.2';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -990,6 +990,7 @@ function _eiWvRenderVertrag(opts, parties, templateMd) {
     kontakt_email:      p.kontakt_email   || '—',
     kontakt_telefon:    p.kontakt_telefon || '—',
     firma_name:         p.firma_name      || '—',
+    firma_adresse:      [String(p.firma_strasse||'').trim(), [String(p.firma_plz||'').trim(), String(p.firma_ort||'').trim()].filter(Boolean).join(' ')].filter(Boolean).join('\n'),
     vertrag_uebersicht: _eiWvBuildUebersicht(o),
     aufzug_anzahl:      String(p.aufzug_anzahl || 1),
     aufzug_liste:       p.aufzug_liste    || '—',
@@ -1090,6 +1091,7 @@ function _eiWvVertragTemplateMd() {
 
 **Auftragnehmer (AN):**
 {{firma_name}}
+{{firma_adresse}}
 
 Zwischen den vorstehend genannten Parteien wird der nachfolgende Wartungsvertrag geschlossen. Gegenstand dieses Vertrages ist die regelmäßige Wartung, Inspektion und Instandhaltung der im § 2 aufgeführten Aufzugsanlagen gemäß den vereinbarten Leistungsinhalten sowie den einschlägigen gesetzlichen und technischen Vorschriften, insbesondere der Betriebssicherheitsverordnung (BetrSichV), der TRBS 1201 Teil 4 sowie den anerkannten Regeln der Technik.
 
@@ -1573,7 +1575,8 @@ async function downloadWvVertrag(ctx, preis) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Vertrag wird erstellt …'; }
   try {
     const o = Object.assign({}, (ctx.wv && ctx.wv.optionen) || {}, { jahrespreis_netto: preis });
-    const p = Object.assign({}, (ctx.wv && ctx.wv.parties) || {}, { firma_name: (ctx.wn && ctx.wn.firma) || (window._lvWvSubmission && window._lvWvSubmission.sigName) || '', vertragsnummer: ctx.anf.id || '' });
+    const _wn = ctx.wn || {};
+    const p = Object.assign({}, (ctx.wv && ctx.wv.parties) || {}, { firma_name: _wn.firma || (window._lvWvSubmission && window._lvWvSubmission.sigName) || '', firma_strasse: String(_wn.strasse || ''), firma_plz: String(_wn.plz || ''), firma_ort: String(_wn.ort || ''), vertragsnummer: ctx.anf.id || '' });
     const bytes = await _eiWvBuildVertragPdf(o, p);
     const fn = 'Wartungsvertrag_' + String((ctx.snap && ctx.snap.fabriknummer) || ctx.anf.id || 'LV').replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf';
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
