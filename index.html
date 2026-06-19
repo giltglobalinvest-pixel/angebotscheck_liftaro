@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.451';
+const APP_VERSION = 'V12.452';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -40894,10 +40894,10 @@ function renderEmailInboxDetail() {
   }
   // V12.253: Neutralisierte Anhänge — separater Bereich nach den Originalen
   if (Array.isArray(r.neutralized_attachments) && r.neutralized_attachments.length) {
-    html += `<div class="dr-section" style="margin-bottom:14px;padding:16px 18px;background:#f0fdf4;border:1px solid #86efac">
-      <div class="dr-section-head" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
-        <div class="dr-section-title" style="color:#15803d">🕶 Neutralisierte Anhänge<span class="dr-section-title__count" style="background:#dcfce7;color:#166534">${r.neutralized_attachments.length}</span></div>
-        <span style="font-size:11px;color:#15803d;background:#dcfce7;border:1px solid #86efac;border-radius:999px;padding:2px 9px;font-weight:600">für Versand an Dritte</span>
+    html += `<div class="ei-block dr-section" data-eiblock="neutral" data-eiblock-title="🕶 Neutralisierte Anhänge" style="margin-bottom:14px;padding:0;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
+      <div class="ei-block-pad" style="padding:16px 18px">
+      <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:flex-end">
+        <span style="font-size:11px;color:#15803d;background:#dcfce7;border:1px solid #86efac;border-radius:999px;padding:2px 9px;font-weight:600">für Versand an Dritte · ${r.neutralized_attachments.length}</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">`;
     r.neutralized_attachments.forEach((a, nIdx) => {
@@ -40915,7 +40915,7 @@ function renderEmailInboxDetail() {
         </button>
       </div>`;
     });
-    html += `</div></div>`;
+    html += `</div></div></div>`;
   }
 
   // V12.189: Forward-Toolbar wurde in den Composer im Verlauf integriert (Tabs Antworten/Notiz/Weiterleiten)
