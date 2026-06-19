@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.445';
+const APP_VERSION = 'V12.446';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11553,6 +11553,29 @@ function _eiWvRenderVertrag(opts, parties, templateMd) {
 }
 window._eiWvRenderVertrag = _eiWvRenderVertrag;
 
+// V12.446: Parteien-Block (AG/AN-Daten) für Vorschau, Versand-Snapshot + Landing — eine Quelle.
+// WEG → kunde_name="WEG <Standort>", Adresse = c/o HV + HV-Adresse; sonst HV direkt.
+function _eiWvBuildParties(s) {
+  const o = s.wvOptionen || _eiWvDefaultOptions();
+  const snap = s.snap || {};
+  const adr = s.hvAdresse || {};
+  const r = (typeof _eiAllRecords !== 'undefined' ? (_eiAllRecords || []).find(x => x._id === s.emailId) : null) || {};
+  const hvName = String(snap.hv_name || '').trim() || '—';
+  const hvStrasse = String(adr.strasse || snap.hv_strasse || r.real_hv_strasse || '').trim();
+  const hvPlzOrt = [String(adr.plz || snap.hv_plz || r.real_hv_plz || '').trim(), String(adr.ort || snap.hv_ort || r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
+  let kundeName, kundeAdresse;
+  if (o.ist_weg) {
+    kundeName = 'WEG ' + (snap.standort || 'Aufzugsanlage');
+    kundeAdresse = [(hvName !== '—' ? 'c/o ' + hvName : ''), hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  } else {
+    kundeName = hvName;
+    kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  }
+  const aufzugLine = '- ' + ([snap.hersteller, snap.fabriknummer ? ('Fn ' + snap.fabriknummer) : '', snap.standort].filter(Boolean).join(', ') || 'Aufzugsanlage');
+  return { kunde_name: kundeName, kunde_adresse: kundeAdresse, vertrag_titel: 'Wartungsvertrag', aufzug_anzahl: 1, aufzug_liste: aufzugLine, standort: String(snap.standort || '') };
+}
+window._eiWvBuildParties = _eiWvBuildParties;
+
 function _eiLvDefaultWartungsvertragVorlage() {
   return {
     id: 'lvv_wartungsvertrag_default',
@@ -12393,7 +12416,7 @@ async function _eiLvOpenEditor(emailId, existingLv, vorlage) {
           + '<button onclick="_eiWvShowVorschau()" style="background:#fff;color:#1a3a5c;border:1px solid #1a3a5c;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📄 Vertrag-Vorschau</button>'
         : '<button onclick="_eiLvExtractPositions()" id="lvEdExtractBtn" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px">🤖 KI: Positionen aus Anhang</button>')
     +     '<button onclick="_eiLvSave()" id="lvEdSaveBtn" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Speichern</button>'
-    +     (_isWvEditor ? '' : '<button onclick="openLvSendPicker()" id="lvEdSendBtn" title="LV an einen Servicebetrieb senden" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 An Dienstleister senden</button>')
+    +     '<button onclick="openLvSendPicker()" id="lvEdSendBtn" title="' + (_isWvEditor ? 'Wartungsvertrags-Anfrage an einen Wartungsnehmer senden' : 'LV an einen Servicebetrieb senden') + '" style="background:#0891b2;color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + (_isWvEditor ? '📤 An Wartungsnehmer senden' : '📤 An Dienstleister senden') + '</button>'
     +   '</div>'
     + '</div>'
     + '</div>';
@@ -12958,32 +12981,8 @@ async function _eiWvShowVorschau() {
   if (!window.PDFLib) { showToast('PDF-Bibliothek nicht geladen', 'error', 4000); return; }
   const o = s.wvOptionen || _eiWvDefaultOptions();
   const snap = s.snap || {};
-  // V12.441: HV-Adresse aus dem Snapshot, Fallback auf den Email-Record (gleiche Quelle wie Ergebnis-Check)
-  const _r = (typeof _eiAllRecords !== 'undefined' ? (_eiAllRecords || []).find(x => x._id === s.emailId) : null) || {};
-  const hvName = String(snap.hv_name || '').trim() || '—';
-  // V12.445: HV-Adresse bevorzugt aus dem Wizard-Feld (s.hvAdresse), dann Snapshot, dann Email-Record
-  const _adr = s.hvAdresse || {};
-  const hvStrasse = String(_adr.strasse || snap.hv_strasse || _r.real_hv_strasse || '').trim();
-  const hvPlzOrt = [String(_adr.plz || snap.hv_plz || _r.real_hv_plz || '').trim(), String(_adr.ort || snap.hv_ort || _r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
-  // V12.443: WEG → Auftraggeber = „WEG <Standort>" + Hausverwaltung (Name + Adresse); sonst HV direkt
-  let kundeName, kundeAdresse;
-  if (o.ist_weg) {
-    kundeName = 'WEG ' + (snap.standort || 'Aufzugsanlage');
-    kundeAdresse = [(hvName !== '—' ? 'c/o ' + hvName : ''), hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
-  } else {
-    kundeName = hvName;
-    kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
-  }
-  const aufzugLine = '- ' + ([snap.hersteller, snap.fabriknummer ? ('Fn ' + snap.fabriknummer) : '', snap.standort].filter(Boolean).join(', ') || 'Aufzugsanlage');
-  const parties = {
-    kunde_name: kundeName,
-    kunde_adresse: kundeAdresse,
-    firma_name: '(Wartungsnehmer — Angebot ausstehend)',
-    vertragsnummer: 'ENTWURF',
-    vertrag_titel: 'Wartungsvertrag',
-    aufzug_anzahl: 1,
-    aufzug_liste: aufzugLine,
-  };
+  // V12.446: Parteien zentral via _eiWvBuildParties (WEG/c/o/Adresse) — identisch zu Versand/Landing
+  const parties = Object.assign(_eiWvBuildParties(s), { firma_name: '(Wartungsnehmer — Angebot ausstehend)', vertragsnummer: 'ENTWURF' });
   showToast('⏳ Erzeuge Vertrags-PDF …', 'info', 2000);
   let url;
   try {
@@ -13403,6 +13402,31 @@ function _eiLvBuildSendEmail(s, sb, landingUrl) {
   const standort = s.snap.standort || '?';
   const posCount = s.positionen.length;
   const ansprache = sb.ansprechperson ? ('Sehr geehrte/r Frau/Herr ' + sb.ansprechperson) : ('Sehr geehrte Damen und Herren');
+  // V12.446: Wartungsvertrag — andere Anfrage (Jahrespauschale statt Stückpreise)
+  if (s.vorlage && s.vorlage.typ === 'wartungsvertrag') {
+    const o = s.wvOptionen || _eiWvDefaultOptions();
+    const leist = [
+      (o.wartungen_pro_jahr || '?') + '× Wartung/Jahr',
+      _eiWvTypLabel(o.wartungstyp),
+      o.notruf ? 'inkl. Notruf-/GSM-Service' : 'ohne Notruf-Service',
+      o.zues ? 'inkl. ZÜS-Organisation' : 'ohne ZÜS-Organisation',
+      'Laufzeit ' + (o.laufzeit_jahre || '?') + ' Jahre',
+      'Abrechnung ' + _eiWvTurnusLabel(o.abrechnung_turnus).toLowerCase(),
+    ];
+    const wvBody = ansprache + ',\n\n'
+      + 'im Auftrag der Hausverwaltung ' + hv + ' bitten wir Sie um ein Angebot für einen Wartungsvertrag der Aufzugsanlage '
+      + 'Fn ' + fn + ' (' + standort + ') mit folgendem Leistungsumfang:\n\n'
+      + leist.map(l => '  · ' + l).join('\n') + '\n\n'
+      + 'Bitte tragen Sie online Ihre jährliche Wartungspauschale (netto) ein:\n'
+      + landingUrl + '\n\n'
+      + 'Den vollständigen Leistungsumfang sehen Sie über den Link. Nach Eingabe Ihres Preises und Bestätigung wird automatisch der fertige Wartungsvertrag als PDF erzeugt.\n\n'
+      + 'Vielen Dank im Voraus.\n\n'
+      + 'Mit freundlichen Grüßen\nLiftaro · im Auftrag von ' + hv;
+    const _rWv = (Array.isArray(_eiAllRecords) ? _eiAllRecords : []).find(x => x && x._id === s.emailId);
+    const checkIdWv = _rWv ? String(_rWv.external_check_id || _rWv.email_id || '').trim() : '';
+    const wvBetreff = 'Wartungsvertrag-Anfrage ' + (checkIdWv ? checkIdWv + ' - ' : '') + 'Fn ' + fn + ' - ' + hv;
+    return { betreff: wvBetreff, body: wvBody };
+  }
   const body = ansprache + ',\n\n'
     + 'im Auftrag der Hausverwaltung ' + hv + ' bitten wir Sie um ein Angebot für nachstehende Leistungen am Aufzug '
     + 'Fn ' + fn + ' (' + standort + '):\n\n'
@@ -13495,6 +13519,11 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
     // 1) LV_Anfragen anlegen (status='pending', kein sent_at yet)
     // V12.395: Vorlage einfrieren — Klauseln, Einleitung, Unterschrift_Text als Snapshot
     setBtn('⏳ Lege Anfrage an …');
+    // V12.446: Wartungsvertrag — Optionen + Parteien als Snapshot (Landing erkennt __wv)
+    const _isWv = !!(s.vorlage && s.vorlage.typ === 'wartungsvertrag');
+    const positionenSnapshot = _isWv
+      ? JSON.stringify({ __wv: true, optionen: (s.wvOptionen || _eiWvDefaultOptions()), parties: _eiWvBuildParties(s) })
+      : JSON.stringify(s.positionen);
     const fields = {
       id:                              anfrageId,
       lv_id:                           s.lvId,
@@ -13505,7 +13534,7 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
       status:                          'pending',
       email_betreff:                   betreff,
       email_body:                      body,
-      positionen_snapshot_json:        JSON.stringify(s.positionen),
+      positionen_snapshot_json:        positionenSnapshot,
       klauseln_snapshot_html:          String((s.vorlage && s.vorlage.klauseln_html)   || ''),
       einleitung_snapshot_html:        String((s.vorlage && s.vorlage.einleitung_html) || ''),
       unterschrift_snapshot:           String((s.vorlage && s.vorlage.unterschrift_text) || ''),
