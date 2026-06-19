@@ -6484,7 +6484,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.453';
+const APP_VERSION = 'V12.454';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33241,10 +33241,12 @@ function renderEmailInboxList() {
     // V12.228: Chat-Antwort-Indikator — eingehende Antworten von Chat-Partnern im Cache.
     // V12.453: Bei offenem Angebot zeigt stattdessen die 📥-Pille (vermeidet Doppel-Indikator).
     const _hasChatReply = !_hasOpenOffer && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r);
+    // V12.454: Pille + direkter ✓-Button („als gelesen markieren") in der Übersicht — ohne den Vorgang zu öffnen.
     const chatReplyChip = _hasChatReply
-      ? `<span title="Neue Chat-Antwort von einem Service-Partner — Klick öffnet die Email" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;animation:eiNeuPulse 1.6s ease-in-out infinite">
-          💬 CHAT-ANTWORT
-        </span>`
+      ? `<span style="display:inline-flex;align-items:center;gap:3px">`
+          + `<span title="Neue Chat-Antwort von einem Service-Partner — Klick öffnet die Email" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;animation:eiNeuPulse 1.6s ease-in-out infinite">💬 CHAT-ANTWORT</span>`
+          + `<button onclick="event.stopPropagation();markChatRepliesAsSeen('${r._id}')" title="Als gelesen markieren — entfernt die Markierung (Vorgang wird NICHT geöffnet)" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;border-radius:999px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:800;line-height:1;padding:0;font-family:inherit" onmouseover="this.style.background='#cffafe'" onmouseout="this.style.background='#fff'">✓</button>`
+        + `</span>`
       : '';
     // V12.265: Schnellaktionen → 3 Dropdowns (Ticket-System-Stil)
     // Status / Bearbeiter / Check-Status
