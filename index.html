@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.447';
+const APP_VERSION = 'V12.448';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13332,7 +13332,9 @@ function _eiLvCheckSbPflicht(sb) {
 // V12.383: Picker auf Wartungsnehmer umgestellt (Servicebetriebe = Wartungsnehmer)
 async function openLvSendPicker() {
   const s = window._eiLvEditorState; if (!s) return;
-  if (!s.positionen.length) { showToast('LV hat keine Positionen — erst Positionen extrahieren oder hinzufügen', 'warning', 3500); return; }
+  // V12.448: Wartungsvertrag hat keine Positionen (nutzt wvOptionen) — Positions-Check nur für Reparatur-LVs
+  const _isWvSend = !!(s.vorlage && s.vorlage.typ === 'wartungsvertrag');
+  if (!_isWvSend && !s.positionen.length) { showToast('LV hat keine Positionen — erst Positionen extrahieren oder hinzufügen', 'warning', 3500); return; }
   if (s.recordId == null || !s.recordId) {
     showToast('Bitte erst „💾 Speichern" klicken, damit das LV einen Datensatz hat', 'warning', 4000);
     return;
@@ -13478,7 +13480,7 @@ async function _eiLvOpenSendDraft(sb) {
     +     '<textarea id="lvSendBody" rows="14" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:ui-monospace,monospace;resize:vertical;line-height:1.55;box-sizing:border-box">' + _esc(body) + '</textarea>'
     +   '</div>'
     +   '<div style="background:#fef3c7;border:1px solid #fcd34d;color:#78350f;padding:10px 14px;border-radius:7px;font-size:12px;line-height:1.55">'
-    +     '<b>📍 Landing-URL (Phase 3 — noch nicht live):</b><br><code style="font-size:11px;word-break:break-all">' + _esc(landingUrl) + '</code><br>'
+    +     '<b>📍 Landing-URL:</b><br><code style="font-size:11px;word-break:break-all">' + _esc(landingUrl) + '</code><br>'
     +     '<span style="font-size:11px">Token: <code>' + _esc(token) + '</code> · Anfrage-ID: <code>' + _esc(anfrageId) + '</code></span>'
     +   '</div>'
     + '</div>'
