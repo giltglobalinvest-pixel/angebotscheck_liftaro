@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.12.0';
+  const APP_VERSION = 'v1.13.0';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -280,6 +280,18 @@
 
     // 5) Status — wenn bereits submitted: read-only success-view
     const status = String(anf.status || 'sent');
+    // V12.446 (WV): Wartungsvertrag-Anfrage? (Objekt mit __wv im Anfrage-Snapshot, inkl. parties)
+    let wvData = null;
+    try { const _pj = JSON.parse(anf.positionen_snapshot_json || '{}'); if (_pj && _pj.__wv) wvData = _pj; } catch (_) {}
+    if (wvData) {
+      if (status === 'submitted') {
+        let preisSub = Number(anf.summe_netto_eur) || 0;
+        try { const rj = JSON.parse(anf.response_json || '{}'); if (Number(rj.jahrespreis_netto)) preisSub = Number(rj.jahrespreis_netto); } catch (_) {}
+        renderWvSubmittedView({ token, anf, lv, snap, wn, wv: wvData }, preisSub); return;
+      }
+      if (status !== 'opened') markAsOpened(token);
+      renderWvForm({ token, anf, lv, snap, wn, wv: wvData }); return;
+    }
     if (status === 'submitted') {
       renderSubmittedView(anf, lv, positionen, snap, wn);
       return;
@@ -802,6 +814,758 @@
       return await doc.embedPng(bytes);
     } catch (e) { console.warn("[lv] Logo embed:", e && e.message); return null; }
   }
+
+
+// ════════ V12.446: Wartungsvertrag-Engine (Port aus index.html) ════════
+function _winAnsiSafe(s) {
+  if (s == null) return '';
+  const conf = {
+    // Kyrillisch confusables (Kleinbuchstaben)
+    'а':'a','е':'e','о':'o','с':'c','р':'p','х':'x','у':'y','к':'k','т':'t','м':'m','н':'h','в':'B','і':'i','ӏ':'l','ѕ':'s','ј':'j','ԛ':'q','ԝ':'w',
+    // Kyrillisch confusables (Großbuchstaben)
+    'А':'A','Е':'E','О':'O','С':'C','Р':'P','Х':'X','У':'Y','К':'K','Т':'T','М':'M','Н':'H','В':'B','І':'I','Ѕ':'S','Ј':'J',
+    // Griechisch confusables
+    'α':'a','ο':'o','ε':'e','ρ':'p','τ':'t','κ':'k','ν':'v','ι':'i','μ':'u',
+    'Α':'A','Β':'B','Ε':'E','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'N','Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X','Ζ':'Z',
+    // Smart Quotes / Dashes
+    '‘':"'", '’':"'", '‚':',', '‛':"'",
+    '“':'"', '”':'"', '„':'"', '‟':'"',
+    '–':'-', '—':'-', '−':'-', '‒':'-', '―':'-',
+    '…':'...',
+    // Whitespace varianten → normales Space
+    ' ':' ', ' ':' ', ' ':' ', ' ':' ', ' ':' ', ' ':' ',
+    // Zero-width drop
+    '​':'', '‌':'', '‍':'', '﻿':'',
+  };
+  let out = '';
+  for (const ch of String(s)) {
+    if (Object.prototype.hasOwnProperty.call(conf, ch)) { out += conf[ch]; continue; }
+    const code = ch.charCodeAt(0);
+    // ASCII printable + Tab/LF/CR
+    if (code === 0x09 || code === 0x0A || code === 0x0D) { out += ch; continue; }
+    if (code >= 0x20 && code <= 0x7E) { out += ch; continue; }
+    // Latin-1 Supplement (deckt äöüß, € ist 0x20AC = separate WinAnsi-Slot)
+    if (code >= 0xA0 && code <= 0xFF) { out += ch; continue; }
+    // € ist in WinAnsi an 0x80 — separat zulassen
+    if (code === 0x20AC) { out += ch; continue; }
+    // Alles übrige durch Fragezeichen ersetzen
+    out += '?';
+  }
+  return out;
+}
+window._winAnsiSafe = _winAnsiSafe;
+function _eiWvDefaultOptions() {
+  return {
+    ist_weg: false,                 // V12.443: WEG → Auftraggeber = „WEG <Standort>" + Hausverwaltung
+    wartungen_pro_jahr: 2,
+    wartungstyp: 'systemwartung',   // 'systemwartung' | 'vollwartung'
+    notruf: true,                   // Option 3: Notruf + GSM-Service
+    notruf_montage: true,           // Option 4: Montage Notrufgerät im Preis
+    zues: false,                    // Option 5: ZÜS komplett
+    vertragsbeginn: '',             // ISO-Datum (YYYY-MM-DD) — NEUER Vertrag (nächstmöglich)
+    laufzeit_jahre: 5,
+    jahrespreis_netto: 0,
+    abrechnung_turnus: 'jaehrlich', // 'jaehrlich' | 'quartalsweise'
+    // V12.443: Bestandsvertrag-Daten für die Stichtagsberechnung des nächstmöglichen Beginns
+    bestand_vertragsbeginn: '',     // Beginn des vorliegenden (alten) Vertrags
+    bestand_laufzeit_jahre: null,   // Laufzeit des alten Vertrags
+    kuendigungsfrist_monate: 3,     // Kündigungsfrist des alten Vertrags (Monate)
+  };
+}
+window._eiWvDefaultOptions = _eiWvDefaultOptions;
+
+function _eiWvTurnusLabel(t)  { return t === 'quartalsweise' ? 'Quartalsweise' : 'Jährlich'; }
+function _eiWvTypLabel(t)     { return t === 'vollwartung' ? 'Vollwartung (Verschleißteile inkl.)' : 'Systemwartung (Reparaturen separat nach Aufwand)'; }
+function _eiWvFmtEur(n) {
+  const v = Number(n) || 0;
+  return v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+function _eiWvFmtDate(iso) {
+  const s = String(iso || '').slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? (m[3] + '.' + m[2] + '.' + m[1]) : (s || '—');
+}
+// V12.443: Nächstmöglicher Beginn des NEUEN Vertrags = frühester Termin-Ablauf des Bestandsvertrags,
+// dessen Kündigungs-Deadline (Ablauf minus Kündigungsfrist) noch in der Zukunft liegt.
+// Vertrag läuft `laufzeit` Jahre ab Beginn, danach jährliche Verlängerung.
+function _eiWvNextPossibleStart(startISO, laufzeitJahre, kuendMonate) {
+  try {
+    const start = new Date(String(startISO).slice(0, 10) + 'T00:00:00');
+    if (isNaN(start.getTime())) return '';
+    const lf = Math.max(1, parseInt(laufzeitJahre, 10) || 1);
+    const km = Math.max(0, parseInt(kuendMonate, 10) || 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let end = new Date(start); end.setFullYear(end.getFullYear() + lf);
+    let guard = 0;
+    while (guard < 240) {
+      const deadline = new Date(end); deadline.setMonth(deadline.getMonth() - km);
+      if (deadline >= today) break;
+      end.setFullYear(end.getFullYear() + 1);
+      guard++;
+    }
+    // Lokale Datumskomponenten (kein toISOString → kein UTC-Tagessprung)
+    const pad = (n) => (n < 10 ? '0' + n : String(n));
+    return end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate());
+  } catch (_) { return ''; }
+}
+function _eiWvRecomputeStart(o) {
+  if (!o || !o.bestand_vertragsbeginn) return;
+  const next = _eiWvNextPossibleStart(o.bestand_vertragsbeginn, o.bestand_laufzeit_jahre, o.kuendigungsfrist_monate);
+  if (next) o.vertragsbeginn = next;
+}
+window._eiWvNextPossibleStart = _eiWvNextPossibleStart;
+
+// Auto-Leistungsübersicht (§ zwischen §1 und §2) aus den 9 Optionen
+function _eiWvBuildUebersicht(opts) {
+  const o = opts || {};
+  const ja = 'Ja', nein = '–';   // V12.441: kein ✓ — nicht in WinAnsi (→ "?" im PDF)
+  const rows = [
+    ['Wartungseinsätze pro Jahr', String(o.wartungen_pro_jahr || '–')],
+    ['Wartungstyp', _eiWvTypLabel(o.wartungstyp)],
+    ['Notruf- & GSM-Service', o.notruf ? ja : nein],
+    ['Montage Notrufgerät inkl.', (o.notruf && o.notruf_montage) ? ja : nein],
+    ['ZÜS-Organisation komplett', o.zues ? ja : nein],
+    ['Vertragslaufzeit', (o.laufzeit_jahre ? o.laufzeit_jahre + ' Jahre' : '–')],
+    ['Jahrespreis (netto)', _eiWvFmtEur(o.jahrespreis_netto)],
+    ['Abrechnungsturnus', _eiWvTurnusLabel(o.abrechnung_turnus)],
+  ];
+  let md = '## Leistungsübersicht\n\n| Leistung | Vereinbart |\n| --- | --- |\n';
+  rows.forEach(r => { md += '| ' + r[0] + ' | ' + r[1] + ' |\n'; });
+  return md;
+}
+
+// {{#flag}}…{{/flag}} (positiv) und {{^flag}}…{{/flag}} (negativ); Nesting via Mehrfach-Pässe.
+function _eiWvApplyConditionals(tpl, flags) {
+  let out = String(tpl || ''), prev, guard = 0;
+  do {
+    prev = out;
+    out = out.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (m, k, body) => flags[k] ? body : '');
+    out = out.replace(/\{\{\^(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (m, k, body) => flags[k] ? '' : body);
+    guard++;
+  } while (out !== prev && guard < 12);
+  return out;
+}
+
+// §-Unterabschnitte (### N.M …) nach dem Ausblenden lückenlos neu nummerieren.
+// Major-Nummern (## § N) bleiben unverändert (sind nicht bedingt).
+function _eiWvRenumber(md) {
+  let major = 0, minor = 0;
+  return String(md || '').split('\n').map(line => {
+    const maj = line.match(/^##\s+§\s+(\d+)\b/);
+    if (maj) { major = parseInt(maj[1], 10); minor = 0; return line; }
+    const sub = line.match(/^###\s+\d+\.(\d+)(.*)$/);
+    if (sub && major) { minor++; return '### ' + major + '.' + minor + sub[2]; }
+    return line;
+  }).join('\n');
+}
+
+// Voller Render: Optionen + Parteien/Anlagen-Daten → fertiger Vertrags-Markdown.
+// `parties` liefert kunde_*, kontakt_*, firma_name, aufzug_anzahl, aufzug_liste,
+// vertrag_titel, vertragsnummer, datum_heute (in Phase 1 ggf. Beispielwerte).
+function _eiWvRenderVertrag(opts, parties, templateMd) {
+  const o = Object.assign(_eiWvDefaultOptions(), opts || {});
+  const p = parties || {};
+  const flags = {
+    notruf: !!o.notruf,
+    notruf_montage: !!(o.notruf && o.notruf_montage),
+    zues: !!o.zues,
+    vollwartung: o.wartungstyp === 'vollwartung',
+    systemwartung: o.wartungstyp !== 'vollwartung',
+  };
+  const jahres = Number(o.jahrespreis_netto) || 0;
+  const turnusBetrag = o.abrechnung_turnus === 'quartalsweise' ? jahres / 4 : jahres;
+  const data = {
+    vertrag_titel:      p.vertrag_titel   || 'Wartungsvertrag',
+    vertragsnummer:     p.vertragsnummer  || '—',
+    datum_heute:        p.datum_heute     || _eiWvFmtDate(new Date().toISOString()),
+    kunde_name:         p.kunde_name      || '—',
+    kunde_adresse:      p.kunde_adresse   || '—',
+    kunde_nummer:       p.kunde_nummer    || '—',
+    kontakt_name:       p.kontakt_name    || '—',
+    kontakt_email:      p.kontakt_email   || '—',
+    kontakt_telefon:    p.kontakt_telefon || '—',
+    firma_name:         p.firma_name      || '—',
+    vertrag_uebersicht: _eiWvBuildUebersicht(o),
+    aufzug_anzahl:      String(p.aufzug_anzahl || 1),
+    aufzug_liste:       p.aufzug_liste    || '—',
+    wartungen_pro_jahr: String(o.wartungen_pro_jahr || '—'),
+    jahresumsatz:       _eiWvFmtEur(jahres),
+    abrechnung_typ:     'Pauschal',
+    abrechnung_turnus:  _eiWvTurnusLabel(o.abrechnung_turnus),
+    turnus_betrag:      _eiWvFmtEur(turnusBetrag),
+    start_datum:        _eiWvFmtDate(o.vertragsbeginn),
+    laufzeit_monate:    String((Number(o.laufzeit_jahre) || 0) * 12),
+  };
+  let md = String(templateMd || _eiWvVertragTemplateMd());
+  md = _eiWvApplyConditionals(md, flags);
+  md = md.replace(/\{\{(\w+)\}\}/g, (m, k) => (data[k] != null ? String(data[k]) : ''));
+  md = _eiWvRenumber(md);
+  // Mehrfach-Leerzeilen (durch ausgeblendete Blöcke) zusammenfassen
+  md = md.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  return md;
+}
+window._eiWvRenderVertrag = _eiWvRenderVertrag;
+
+// V12.446: Parteien-Block (AG/AN-Daten) für Vorschau, Versand-Snapshot + Landing — eine Quelle.
+// WEG → kunde_name="WEG <Standort>", Adresse = c/o HV + HV-Adresse; sonst HV direkt.
+function _eiWvBuildParties(s) {
+  const o = s.wvOptionen || _eiWvDefaultOptions();
+  const snap = s.snap || {};
+  const adr = s.hvAdresse || {};
+  const r = (typeof _eiAllRecords !== 'undefined' ? (_eiAllRecords || []).find(x => x._id === s.emailId) : null) || {};
+  const hvName = String(snap.hv_name || '').trim() || '—';
+  const hvStrasse = String(adr.strasse || snap.hv_strasse || r.real_hv_strasse || '').trim();
+  const hvPlzOrt = [String(adr.plz || snap.hv_plz || r.real_hv_plz || '').trim(), String(adr.ort || snap.hv_ort || r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
+  let kundeName, kundeAdresse;
+  if (o.ist_weg) {
+    kundeName = 'WEG ' + (snap.standort || 'Aufzugsanlage');
+    kundeAdresse = [(hvName !== '—' ? 'c/o ' + hvName : ''), hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  } else {
+    kundeName = hvName;
+    kundeAdresse = [hvStrasse, hvPlzOrt].filter(Boolean).join('\n');
+  }
+  const aufzugLine = '- ' + ([snap.hersteller, snap.fabriknummer ? ('Fn ' + snap.fabriknummer) : '', snap.standort].filter(Boolean).join(', ') || 'Aufzugsanlage');
+  return { kunde_name: kundeName, kunde_adresse: kundeAdresse, vertrag_titel: 'Wartungsvertrag', aufzug_anzahl: 1, aufzug_liste: aufzugLine, standort: String(snap.standort || '') };
+}
+window._eiWvBuildParties = _eiWvBuildParties;
+
+function _eiLvDefaultWartungsvertragVorlage() {
+  return {
+    id: 'lvv_wartungsvertrag_default',
+    typ: 'wartungsvertrag',
+    name: 'Wartungsvertrag (Standard)',
+    einleitung_html:
+      '<p>Sehr geehrte Damen und Herren,</p>'
+    + '<p>im Auftrag unseres Kunden — der unten genannten Hausverwaltung — bitten wir Sie um ein verbindliches Angebot für einen Wartungsvertrag der unten aufgeführten Aufzugsanlage(n) mit dem nachfolgend festgelegten Leistungsumfang.</p>'
+    + '<p>Bitte nennen Sie uns Ihren <strong>Netto-Jahrespreis</strong> für das beschriebene Leistungspaket. Der Leistungsumfang ist verbindlich vorgegeben, damit die Angebote vergleichbar bleiben.</p>',
+    klauseln_html: '<p>Die vollständigen Vertragsbedingungen ergeben sich aus der Wartungsvertrags-Vorlage (§ 1–§ 10). Maßgeblich ist die jeweils gültige Fassung im Vorlagen-Admin.</p>',
+    pflicht_felder_json: JSON.stringify(['wartungen_pro_jahr', 'wartungstyp', 'vertragsbeginn', 'laufzeit_jahre', 'jahrespreis_netto', 'abrechnung_turnus']),
+    bausteine_json:      JSON.stringify([]),
+    vertrag_template_md: _eiWvVertragTemplateMd(),
+    extraktion_prompt:
+      '[v12.439-wv] Du bist Spezialist für Aufzug-WARTUNGSVERTRÄGE. Lies den angehängten bestehenden Wartungsvertrag (PDF) vollständig und extrahiere die nachfolgenden Leistungsoptionen.\n\n'
+    + 'Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown, kein Vortext):\n'
+    + '{\n'
+    + '  "wartungen_pro_jahr": <Zahl, z.B. 2 — Anzahl der regulären Wartungseinsätze pro Jahr>,\n'
+    + '  "wartungstyp": "systemwartung" | "vollwartung"  (Vollwartung = Verschleißteile inklusive; Systemwartung/Basiswartung = Reparaturen separat),\n'
+    + '  "notruf": true|false  (ist ein Notruf-/GSM-/Notbefreiungsservice Vertragsbestandteil?),\n'
+    + '  "notruf_montage": true|false  (ist die Montage/Bereitstellung des Notrufgeräts im Preis enthalten?),\n'
+    + '  "zues": true|false  (übernimmt der AN die Organisation/Begleitung der wiederkehrenden ZÜS-Prüfungen?),\n'
+    + '  "vertragsbeginn": "YYYY-MM-DD" | null  (Beginn des VORLIEGENDEN/bestehenden Vertrags),\n'
+    + '  "laufzeit_jahre": <Zahl, z.B. 5> | null  (Erstlaufzeit des bestehenden Vertrags),\n'
+    + '  "kuendigungsfrist_monate": <Zahl, Kündigungsfrist des bestehenden Vertrags in MONATEN, z.B. 3 — „90 Tage"/„ein Quartal" = 3, „6 Monate" = 6, „12 Monate"/„ein Jahr" = 12> | null,\n'
+    + '  "jahrespreis_netto": <Zahl, Netto-Jahresvergütung in EUR, z.B. 2150> | null,\n'
+    + '  "abrechnung_turnus": "jaehrlich" | "quartalsweise" | null\n'
+    + '}\n\n'
+    + 'Regeln: Nicht raten — wenn ein Wert nicht im Vertrag steht, null bzw. false. Preise als Zahl ohne Tausenderpunkt/€. Wenn das PDF KEIN Wartungsvertrag ist (Reparatur-Angebot, Rechnung, Korrespondenz), gib `{}` zurück.',
+    unterschrift_text:
+      'Mit meiner Unterschrift bestätige ich verbindlich den vorgenannten Netto-Jahrespreis für das beschriebene Leistungspaket. Das Angebot ist 30 Tage ab Datum gültig.',
+    pdf_layout_json: JSON.stringify({ accent: '#1a3a5c', accent2: '#7dc242' }),
+    aktiv: '1',
+    savedAt: new Date().toISOString(),
+  };
+}
+window._eiLvDefaultWartungsvertragVorlage = _eiLvDefaultWartungsvertragVorlage;
+
+// Vertragsvorlage (Markdown mit {{platzhalter}} + {{#bedingung}}…{{/bedingung}}).
+// Quelle/Pflege: vorlagen/wartungsvertrag-vorlage.md — hier eingebettet, da Single-File-App.
+function _eiWvVertragTemplateMd() {
+  return `# {{vertrag_titel}}
+
+**Vertragsnummer:** {{vertragsnummer}}
+**Datum:** {{datum_heute}}
+
+---
+
+## § 1 Vertragsparteien und Vertragsgegenstand
+
+**Auftraggeber (AG):**
+{{kunde_name}}
+{{kunde_adresse}}
+
+**Auftragnehmer (AN):**
+{{firma_name}}
+
+Zwischen den vorstehend genannten Parteien wird der nachfolgende Wartungsvertrag geschlossen. Gegenstand dieses Vertrages ist die regelmäßige Wartung, Inspektion und Instandhaltung der im § 2 aufgeführten Aufzugsanlagen gemäß den vereinbarten Leistungsinhalten sowie den einschlägigen gesetzlichen und technischen Vorschriften, insbesondere der Betriebssicherheitsverordnung (BetrSichV), der TRBS 1201 Teil 4 sowie den anerkannten Regeln der Technik.
+
+---
+
+{{vertrag_uebersicht}}
+
+---
+
+## § 2 Vertragsanlagen
+
+Der Vertrag umfasst die nachfolgend aufgeführten Aufzugsanlagen (Anzahl: {{aufzug_anzahl}}):
+
+{{aufzug_liste}}
+
+Änderungen im Anlagenbestand (Hinzunahme oder Herausnahme von Anlagen) bedürfen einer schriftlichen Vereinbarung beider Parteien und können zu einer Anpassung der Vergütung führen.
+
+---
+
+## § 3 Wartungsleistungen
+
+### 3.1 Regelmäßige Wartung
+
+Der AN führt an den vertragsgegenständlichen Anlagen {{wartungen_pro_jahr}} Wartungseinsätze pro Jahr durch.
+
+{{#vollwartung}}Es wird eine **Vollwartung** vereinbart: Übliche Verschleißteile sowie deren Austausch sind im Vergütungsumfang enthalten, soweit nicht unter § 3 ausdrücklich ausgenommen.{{/vollwartung}}{{#systemwartung}}Es wird eine **Systemwartung** vereinbart: Gegenstand ist die Wartung; Reparaturen, Ersatzteile und Verschleißteile werden gesondert nach Aufwand berechnet (vgl. nicht enthaltene Leistungen).{{/systemwartung}}
+
+Die Wartungsarbeiten umfassen insbesondere:
+
+- Sicht-, Funktions- und Sicherheitsprüfungen aller sicherheitsrelevanten Baugruppen und Komponenten
+- Schmieren, Einstellen und Nachstellen von Bauteilen gemäß den Herstellervorgaben und technischen Regelwerken
+- Reinigung der Anlage im unmittelbaren Wartungsbereich
+- Dokumentation der durchgeführten Arbeiten in einem Wartungsnachweis
+- Verbrauchsmaterialien (Schmierstoffe, Reinigungsmittel) sowie die Entsorgung der im Rahmen der Wartung ausgetauschten Kleinteile sind in der Vergütung enthalten
+
+Die Wartungseinsätze werden während der Regelarbeitszeit des AN (Montag bis Freitag, 07:00–17:00 Uhr, ausgenommen gesetzliche Feiertage) durchgeführt.
+
+### 3.2 Störungsbeseitigung
+
+Der AN nimmt Störungsmeldungen über ein Service-Center entgegen. Die Erreichbarkeit des Service-Centers ist rund um die Uhr, 365 Tage im Jahr, gewährleistet.
+
+Störungsbeseitigungen werden innerhalb der Regelarbeitszeit des AN ausgeführt. Die Reaktionszeit beträgt innerhalb der Regelarbeitszeit bis zu 24 Stunden ab Eingang der Störungsmeldung.
+
+Einsätze außerhalb der Regelarbeitszeit werden auf ausdrücklichen Wunsch des AG erbracht. Die dabei anfallenden Überstundenzuschläge und etwaige Notdienstpauschalen werden dem AG gesondert in Rechnung gestellt.
+
+{{#notruf}}### 3.3 Notruf- und Notbefreiungsservice
+
+Der AN stellt dem AG für die Dauer des Vertragsverhältnisses leihweise ein Notrufgerät inkl. GSM-Modul zur Verfügung, sofern nicht schriftlich etwas anderes vereinbart ist. Das Notrufgerät wird auf eine rund um die Uhr besetzte Servicezentrale des AN aufgeschaltet. Eingehende Notrufe werden entgegengenommen und die Befreiung eingeschlossener Personen durch qualifiziertes Fachpersonal koordiniert und durchgeführt.
+
+Damit erfüllt der AG die Anforderungen der BetrSichV Anhang 1 Abschnitt 4.1 hinsichtlich Notrufbereitschaft und Personenbefreiung. Die für den Betrieb des GSM-Moduls anfallenden Verbindungskosten (Flatrate) sind in der vereinbarten Vergütung enthalten.
+
+{{#notruf_montage}}Die Montage des Notrufgeräts ist in der vereinbarten Vergütung enthalten.{{/notruf_montage}}{{^notruf_montage}}Die Montage des Notrufgeräts wird gesondert nach Aufwand berechnet.{{/notruf_montage}}
+
+Der AG hat sicherzustellen, dass im Bereich des Aufzugsschachts und des Maschinenraums eine ausreichende Mobilfunkversorgung besteht. Ist dies nicht der Fall, schlägt der AN geeignete Maßnahmen zur Verbesserung der Empfangsqualität vor; die entstehenden Kosten trägt der AG.
+
+Zur Aufbewahrung der für die Notbefreiung notwendigen Objektschlüssel wird ein Schlüsselbehälter in der jeweiligen Liegenschaft installiert. Der AN wählt den geeigneten Standort in Abstimmung mit dem AG. Die Einlagerung der Schlüssel erfolgt auf Risiko des AG.
+
+{{/notruf}}{{#zues}}### 3.4 Wiederkehrende Prüfungen (ZÜS-Koordination)
+
+Der AN übernimmt im Auftrag des AG die Organisation, Koordination und Begleitung der gesetzlich vorgeschriebenen wiederkehrenden Prüfungen (Haupt- und Zwischenprüfungen) durch eine zugelassene Überwachungsstelle (ZÜS). Hierzu gehören:
+
+- Beauftragung einer vom AN ausgewählten ZÜS
+- Terminverfolgung und Terminmitteilung an den AG
+- Begleitung der Hauptprüfungen durch einen Servicetechniker des AN
+- Hinterlegung und Auswertung der Prüfberichte
+- Angebotserstellung zur Beseitigung festgestellter Mängel auf Anfrage
+- Mängelabmeldung bei der ZÜS (sofern die Mängelbeseitigung durch den AN erfolgt)
+
+Nicht enthalten sind: Kosten für Nachprüfungen, sofern deren Ursache nicht beim AN liegt; Kosten für Prüfungen nach Änderungen oder Modernisierungen; Kosten für Prüfgewichte.
+
+Der AG bevollmächtigt den AN hiermit, die für die Durchführung der Prüfungen erforderlichen Informationen und Unterlagen bei bisherigen Vertragspartnern oder Behörden einzuholen sowie die ZÜS im Namen des AG zu beauftragen.
+
+Sofern bei Vertragsbeginn wiederkehrende Prüfungen bereits überfällig sind, beauftragt der AN die entsprechenden Nachprüfungen; diese sind nicht im Vertragspreis enthalten und werden gesondert in Rechnung gestellt.
+
+{{/zues}}### 3.5 Nicht enthaltene Leistungen
+
+Sofern in diesem Vertrag nichts anderes vereinbart ist, sind folgende Leistungen nicht Bestandteil der vereinbarten Vergütung und werden gesondert abgerechnet:
+
+- Reparatur und Austausch von Beleuchtungsmitteln und Batterien (ausgenommen Notrufakku)
+- Nachfüllen und Wechseln von Getriebeöl sowie Altölentsorgung
+- Reparatur- und Austauscharbeiten, die auf Ereignisse außerhalb des Einflussbereichs des AN zurückzuführen sind (insbesondere Vandalismus, Missbrauch, Wasserschäden, Überspannung, höhere Gewalt)
+- Arbeiten aufgrund neuer oder geänderter gesetzlicher Anforderungen, die nach Vertragsabschluss in Kraft treten
+- Reparatur oder Austausch von Fahrkorb, Schachtgehäuse, Türverkleidungen, Türrahmen und dekorativen Bauteilen
+- Austausch von Maschinen, Antrieben, Steuerungen, Tragseilen sowie bei Hydraulikanlagen von Zylindern und Kolben
+- Reinigung des Gebäudes und der Kabine über den wartungsbedingten Bereich hinaus
+- Wartung und Reparatur der gebäudeseitigen Netzwerkinfrastruktur (LAN)
+- Mündlich erteilte Reparaturaufträge dürfen bis zu einem Wert von 500,00 € netto vom AN sofort ausgeführt und dem AG in Rechnung gestellt werden
+
+---
+
+## § 4 Vergütung und Zahlungsbedingungen
+
+### 4.1 Vergütung
+
+Der AG zahlt an den AN für die vertraglich vereinbarten Leistungen gemäß § 3 eine jährliche Nettovergütung in Höhe von:
+
+**{{jahresumsatz}} (netto, zzgl. der gesetzlichen Mehrwertsteuer)**
+
+Abrechnungsart: {{abrechnung_typ}}
+Abrechnungsturnus: {{abrechnung_turnus}}
+Betrag je Abrechnungsperiode: **{{turnus_betrag}} (netto, zzgl. der gesetzlichen Mehrwertsteuer)**
+
+### 4.2 Sondereinsätze und Zusatzleistungen
+
+Über die vereinbarte Pauschale hinausgehende Leistungen (vgl. § 3, nicht enthaltene Leistungen) sowie Einsätze außerhalb der Regelarbeitszeit erfolgen nur auf gesonderte Beauftragung. Abgerechnet wird zum jeweils bei Beauftragung gültigen Stundensatz; die aktuelle Preisliste wird auf Anfrage mitgeteilt. Fahrtkosten, Materialkosten und etwaige Fremdkosten werden gesondert berechnet.
+
+### 4.3 Fälligkeit und Zahlungsverzug
+
+Rechnungen sind innerhalb von 14 Tagen nach Rechnungseingang ohne Abzug zur Zahlung fällig. Bei Zahlungsverzug ist der AN berechtigt, Verzugszinsen in Höhe von 5 Prozentpunkten über dem jeweiligen Basiszinssatz gemäß § 247 BGB zu berechnen. Darüber hinaus ist der AN berechtigt, die Erbringung der Leistungen bis zur vollständigen Begleichung aller rückständigen Beträge auszusetzen.
+
+### 4.4 Preisanpassung
+
+Der AN ist berechtigt, die vereinbarte Vergütung jeweils zum 1. Januar eines Kalenderjahres anzupassen. Die Preisanpassung erfolgt auf Grundlage der nachstehenden Formel:
+
+**KN = K × (PM × MN/M + PL × LN/L)**
+
+Dabei gilt:
+- **KN** = neuer Vertragspreis
+- **K** = zuletzt gültiger Vertragspreis
+- **PM** = materialabhängiger Preisanteil: 20 %
+- **PL** = entgeltabhängiger Preisanteil: 80 %
+- **M** = Erzeugerpreisindex (Personen- und Lastenaufzüge, Rolltreppen, Rollsteige, GP19-282216) im zuletzt gültigen Vertragspreis
+- **MN** = vorgenannter Erzeugerpreisindex im neuen Vertragspreis
+- **L** = Tarifentgelt einer Fachkraft der Metallindustrie, Entgeltgruppe 5B, im zuletzt gültigen Vertragspreis
+- **LN** = vorgenanntes Tarifentgelt im neuen Vertragspreis
+
+Der Materialpreisindex basiert auf dem Preisindex des Statistischen Bundesamtes. Der AN teilt dem AG eine Preisanpassung spätestens zwei Monate vor deren Inkrafttreten schriftlich mit. Kündigt der AG den Vertrag nicht innerhalb eines Monats nach Zugang der Mitteilung zum Zeitpunkt des Inkrafttretens der Preisanpassung, gilt die Preisanpassung als akzeptiert.
+
+---
+
+## § 5 Pflichten des Auftraggebers
+
+Der AG ist verpflichtet:
+
+1. dem AN und dessen Mitarbeitern jederzeit sicheren und ungehinderten Zugang zu den Anlagen, zugehörigen Maschinenräumen und Schächten zu ermöglichen, einschließlich der Bereitstellung notwendiger Schlüssel;
+2. dem AN Störungen, Unfälle, Beschädigungen oder sonstige sicherheitsrelevante Vorkommnisse an den Anlagen unverzüglich zu melden;
+3. dem AN das Vorhandensein gefährlicher Stoffe (z. B. Asbest) am Standort unverzüglich mitzuteilen;
+4. geplante Änderungen der Nutzung der Anlage oder des Gebäudes sowie Änderungen in den Eigentums- oder Besitzverhältnissen am Standort rechtzeitig anzuzeigen;
+5. dem AN unverzüglich mitzuteilen, wenn Dritte während der Vertragslaufzeit Arbeiten an den Anlagen vorgenommen haben;
+6. sicherzustellen, dass dem Personal des AN eine sichere Arbeitsumgebung zur Verfügung steht;
+7. eine beauftragte Person zur Beaufsichtigung der Aufzugsanlagen gemäß TRBS 3121 Abschnitt 3.3 zu stellen, sofern diese Leistung nicht ausdrücklich vom AN übernommen wird;
+8. Änderungen der Rechnungsanschrift, der Ansprechpartner sowie sonstiger vertraglicher Kontaktdaten unverzüglich schriftlich mitzuteilen;
+9. sollte die Anlage eine Gefahr für Personen darstellen, diese unverzüglich außer Betrieb zu nehmen und den AN zu informieren.
+
+Der AN haftet nicht für Schäden, die darauf zurückzuführen sind, dass der AG den vorstehenden Verpflichtungen nicht nachgekommen ist. Der AG stellt den AN von sämtlichen Ansprüchen Dritter frei, die aus einer Verletzung der vorgenannten Pflichten resultieren.
+
+---
+
+## § 6 Haftung und Haftungsbeschränkung
+
+Der AN haftet für Schäden, die durch seine schuldhaften Pflichtverletzungen entstehen, nach den gesetzlichen Bestimmungen. Die Haftung für leichte Fahrlässigkeit ist — soweit gesetzlich zulässig — ausgeschlossen, sofern es sich nicht um die Verletzung wesentlicher Vertragspflichten (Kardinalpflichten), um Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit oder um Ansprüche nach dem Produkthaftungsgesetz handelt.
+
+Der AN haftet nicht für Schäden, die verursacht werden durch:
+
+- Ereignisse außerhalb des zumutbaren Einflussbereichs des AN (insbesondere höhere Gewalt, Feuer, Wasser, Vandalismus, Cyberangriffe, Netzausfälle);
+- Eingriffe Dritter an der Anlage ohne vorherige schriftliche Zustimmung des AN;
+- unterlassene Meldungen von Störungen oder Unfällen durch den AG;
+- nicht durchgeführte, vom AN empfohlene oder gesetzlich vorgeschriebene Reparaturen oder Modernisierungen, deren Ausführung der AG abgelehnt hat.
+
+In allen übrigen Fällen ist die Gesamthaftung des AN für innerhalb eines Zeitraums von zwölf Monaten entstandene Schäden auf 5 % der in diesem Zeitraum vom AG geleisteten Vergütung begrenzt, soweit keine vorsätzliche oder grob fahrlässige Pflichtverletzung vorliegt.
+
+---
+
+## § 7 Gewährleistung für Materialien
+
+Vom AN gelieferte Materialien und Ersatzteile entsprechen Originalteilen oder Teilen gleichwertiger Qualität und Funktionalität. Das Eigentum an gelieferten Materialien geht erst mit vollständiger Bezahlung auf den AG über.
+
+Der AN gewährt auf die von ihm gelieferten und eingebauten Materialien eine Gewährleistungsfrist von 24 Monaten ab Einbau, bei nicht sofortigem Einbau ab Lieferung. Ausgenommen sind Schäden durch normale Abnutzung oder durch Ereignisse außerhalb des Einflussbereichs des AN.
+
+Stellt der AG einen Mangel fest, hat er diesen unverzüglich schriftlich beim AN anzuzeigen. Der AN ist berechtigt, den Mangel durch Nachbesserung oder Ersatzlieferung zu beheben. Weitergehende Ansprüche, insbesondere auf Rücktritt oder Minderung, sind — soweit gesetzlich zulässig — ausgeschlossen.
+
+---
+
+## § 8 Vertragslaufzeit und Kündigung
+
+### 8.1 Beginn und Laufzeit
+
+Dieser Vertrag beginnt am **{{start_datum}}** und wird für eine Laufzeit von **{{laufzeit_monate}} Monaten** geschlossen. Wird der Vertrag nicht von einer Partei mit einer Frist von mindestens 90 Tagen vor Ablauf der jeweiligen Laufzeit schriftlich gekündigt, verlängert er sich automatisch um jeweils 12 weitere Monate.
+
+### 8.2 Ordentliche Kündigung
+
+Beide Parteien können den Vertrag mit einer Frist von 90 Tagen zum Ende der jeweiligen Vertragslaufzeit schriftlich kündigen.
+
+### 8.3 Außerordentliche Kündigung
+
+Jede Partei ist berechtigt, den Vertrag aus wichtigem Grund fristlos schriftlich zu kündigen. Ein wichtiger Grund liegt insbesondere vor, wenn:
+
+- eine Partei trotz schriftlicher Abmahnung und Setzung einer angemessenen Nachfrist wesentliche Vertragspflichten verletzt;
+- eine Partei 30 Tage oder länger durch höhere Gewalt an der Erfüllung ihrer vertraglichen Pflichten gehindert ist;
+- über das Vermögen einer Partei ein Insolvenzverfahren eröffnet oder die Eröffnung mangels Masse abgelehnt wird;
+- der AG Dritte ohne vorherige schriftliche Zustimmung des AN mit Wartungs- oder Reparaturarbeiten an den Vertragsanlagen beauftragt;
+- der AG dem AN den Zugang zur Anlage dauerhaft verweigert oder keine sichere Arbeitsumgebung bereitstellt und den Zustand nicht innerhalb von 30 Tagen nach schriftlicher Aufforderung behebt;
+- wesentliche Änderungen der Eigentumsverhältnisse am Standort eintreten, ohne dass eine Nachfolgevereinbarung zustande kommt.
+
+Kündigt der AN den Vertrag aus einem vom AG zu vertretenden Grund, ist der AN berechtigt, als pauschalierten Schadensersatz 20 % des Vergütungsbetrags zu verlangen, den der AG bei regulärem Ablauf des Vertrages noch hätte zahlen müssen. Dem AG bleibt der Nachweis eines geringeren Schadens vorbehalten.
+
+### 8.4 Vorübergehende Stilllegung
+
+Bei vorübergehender Stilllegung einer Anlage ruht der Vertrag für die vereinbarte Stillstandsdauer. Zur Erhaltung der technischen Betriebsfähigkeit führt der AN eine Stillstandswartung mit angepasstem Intervall und gesondertem Pauschalpreis durch. Vor Wiederinbetriebnahme prüft der AN die Anlage auf etwaigen Reparatur- und Ersatzteilbedarf; die entstehenden Kosten trägt der AG.
+
+Bei dauerhafter Stilllegung oder Demontage einer Anlage erlischt der Vertrag für die betreffende Anlage zum Ende des laufenden Kalendermonats, sofern dem AN die Stilllegung mindestens drei Monate zuvor schriftlich angezeigt wurde.
+
+---
+
+## § 9 Datenschutz
+
+Der AN erhebt und verarbeitet personenbezogene Daten des AG und seiner Vertreter ausschließlich zur Vertragserfüllung und im Rahmen der bestehenden Geschäftsbeziehung, insbesondere zur Erbringung der vereinbarten Leistungen, zur Rechnungsstellung und zur Kontaktaufnahme. Die Verarbeitung erfolgt auf Grundlage von Art. 6 Abs. 1 lit. b DSGVO. Weitere Informationen zur Datenverarbeitung durch den AN sind der Datenschutzerklärung des AN zu entnehmen. Beide Parteien verpflichten sich, die jeweils anwendbaren datenschutzrechtlichen Vorschriften zu beachten.
+
+---
+
+## § 10 Sonstige Bestimmungen
+
+### 10.1 Subunternehmer
+
+Der AN ist berechtigt, zur Erbringung der vereinbarten Leistungen qualifizierte Subunternehmer einzusetzen. Der AN bleibt in diesem Fall dem AG gegenüber für die ordnungsgemäße Leistungserbringung verantwortlich.
+
+### 10.2 Abtretung und Vertragsübernahme
+
+Eine Übertragung der Rechte und Pflichten aus diesem Vertrag durch den AG bedarf der vorherigen schriftlichen Zustimmung des AN. Der AN ist berechtigt, diesen Vertrag oder einzelne daraus resultierende Ansprüche innerhalb seiner Unternehmensgruppe ohne Zustimmung des AG zu übertragen.
+
+### 10.3 Änderungen der Rechtsverhältnisse
+
+Der AG ist verpflichtet, den AN rechtzeitig über Änderungen der Rechtsverhältnisse bezüglich des Standorts (insbesondere Verkauf, Vermietung oder Verpachtung der Liegenschaft) zu informieren, damit eine Nachfolgevereinbarung mit einem etwaigen Rechtsnachfolger geschlossen werden kann. Unterbleibt diese Mitteilung oder kommt keine Nachfolgevereinbarung zustande, bleibt der AG bis zum Ende der Vertragslaufzeit oder dem nächstmöglichen ordentlichen Kündigungstermin zur Zahlung der vereinbarten Vergütung verpflichtet.
+
+### 10.4 Schriftform
+
+Änderungen und Ergänzungen dieses Vertrages sowie Nebenabreden bedürfen der Schriftform. Dies gilt auch für die Aufhebung des Schriftformerfordernisses. Hinweise oder Verweise in Dokumenten des AG auf abweichende Allgemeine Geschäftsbedingungen sind für den AN nicht bindend.
+
+### 10.5 Salvatorische Klausel
+
+Sollten einzelne Bestimmungen dieses Vertrages unwirksam oder undurchführbar sein oder werden, berührt dies die Wirksamkeit der übrigen Bestimmungen nicht. Die unwirksame oder undurchführbare Bestimmung ist durch eine solche zu ersetzen, die dem wirtschaftlichen Sinngehalt und Zweck der unwirksamen Bestimmung am nächsten kommt.
+
+### 10.6 Anwendbares Recht und Gerichtsstand
+
+Auf diesen Vertrag findet ausschließlich deutsches Recht unter Ausschluss des UN-Kaufrechts (CISG) Anwendung. Ausschließlicher Gerichtsstand für alle Streitigkeiten aus oder im Zusammenhang mit diesem Vertrag ist der Geschäftssitz des AN, sofern der AG Kaufmann, juristische Person des öffentlichen Rechts oder öffentlich-rechtliches Sondervermögen ist.
+
+### 10.7 Korruptionsvermeidung und Compliance
+
+Beide Parteien verpflichten sich, bei der Erfüllung ihrer Verpflichtungen aus diesem Vertrag alle einschlägigen gesetzlichen Vorschriften zu beachten, insbesondere solche betreffend Korruptionsprävention, Geldwäsche und Handelssanktionen. Jede Partei verpflichtet sich, keinerlei unzulässige Zuwendungen anzubieten, zu versprechen, zu gewähren oder anzunehmen.
+
+### 10.8 Inkrafttreten
+
+Dieser Vertrag tritt mit Unterzeichnung durch beide Parteien in Kraft. Sofern der AG den AN vor Unterzeichnung zur Leistungserbringung auffordert oder dies gestattet, gelten die Vertragsbedingungen ab dem Zeitpunkt der Leistungsaufnahme als vom AG angenommen.
+
+---
+
+## Unterschriften
+
+Dieser Vertrag wird in zwei gleichlautenden Ausfertigen erstellt; jede Partei erhält ein Exemplar.
+
+**Auftraggeber**
+
+Ort, Datum:
+[[SIGLINE]]
+Unterschrift, Name und Funktion ({{kunde_name}})
+
+---
+
+**Auftragnehmer**
+
+Ort, Datum:
+[[SIGLINE]]
+Unterschrift, Name und Funktion ({{firma_name}})
+`;
+}
+window._eiWvVertragTemplateMd = _eiWvVertragTemplateMd;
+async function _eiWvBuildVertragPdf(opts, parties) {
+  const P = window.PDFLib;
+  if (!P) throw new Error('PDFLib (pdf-lib) nicht geladen');
+  const md = _eiWvRenderVertrag(opts, parties);
+  const doc = await P.PDFDocument.create();
+  const helv = await doc.embedFont(P.StandardFonts.Helvetica);
+  const bold = await doc.embedFont(P.StandardFonts.HelveticaBold);
+  const rgb = P.rgb;
+  const A4 = [595.28, 841.89], ML = 56, MR = 56, MT = 64, MB = 50;
+  const PW = A4[0], PH = A4[1], CW = PW - ML - MR;
+  const NAVY = rgb(0.10, 0.23, 0.36), INK = rgb(0.07, 0.10, 0.16), SOFT = rgb(0.42, 0.47, 0.56), MUTE = rgb(0.58, 0.64, 0.71), GREEN = rgb(0.49, 0.76, 0.26), RULE = rgb(0.80, 0.84, 0.89);
+  const safe = (t) => (typeof _winAnsiSafe === 'function') ? _winAnsiSafe(String(t == null ? '' : t)) : String(t == null ? '' : t);
+  let logo = null;
+  try { if (typeof _lvLoadLiftaroLogo === 'function') logo = await _lvLoadLiftaroLogo(doc); } catch (_) {}
+  let page, y;
+  const headerBar = (p) => {
+    p.drawRectangle({ x: 0, y: PH - 4, width: PW, height: 4, color: GREEN });
+    if (logo && logo.width) { const lw = 84, lh = logo.height * (lw / logo.width); p.drawImage(logo, { x: PW - MR - lw, y: PH - 16 - lh, width: lw, height: lh }); }
+    else { p.drawText('liftaro', { x: PW - MR - 56, y: PH - 28, size: 15, font: bold, color: NAVY }); }
+  };
+  const newPage = () => { page = doc.addPage(A4); y = PH - MT; headerBar(page); };
+  newPage();
+  const ensure = (need) => { if (y - need < MB + 18) newPage(); };
+  const spaceW = (size) => helv.widthOfTextAtSize(' ', size);
+  const wordsOf = (s) => String(s).split(/\s+/).filter(Boolean);
+  // Inline-Fett-fähiges, umbrechendes Textzeichnen
+  const drawRich = (text, o) => {
+    o = o || {};
+    const size = o.size || 10, lineH = o.lineH || size * 1.45, color = o.color || INK, indent = o.indent || 0, baseBold = !!o.bold;
+    const maxW = CW - indent;
+    const segs = String(text).split('**');
+    const wl = [];
+    segs.forEach((seg, i) => { const b = baseBold !== (i % 2 === 1); wordsOf(seg).forEach(w => wl.push({ w: safe(w), b })); });
+    let lineWords = [];
+    const widthOf = (arr) => { let wd = 0; arr.forEach((tok, i) => { const f = tok.b ? bold : helv; if (i > 0) wd += spaceW(size); wd += f.widthOfTextAtSize(tok.w, size); }); return wd; };
+    const flush = () => {
+      if (!lineWords.length) return;
+      ensure(lineH);
+      let x = ML + indent;
+      lineWords.forEach((tok, i) => { const f = tok.b ? bold : helv; if (i > 0) x += spaceW(size); page.drawText(tok.w, { x, y, size, font: f, color }); x += f.widthOfTextAtSize(tok.w, size); });
+      y -= lineH; lineWords = [];
+    };
+    wl.forEach(tok => { const test = lineWords.concat([tok]); if (widthOf(test) > maxW && lineWords.length) { flush(); lineWords = [tok]; } else { lineWords = test; } });
+    flush();
+  };
+  const rule = () => { ensure(14); y -= 3; page.drawLine({ start: { x: ML, y }, end: { x: PW - MR, y }, thickness: 0.7, color: RULE }); y -= 11; };
+  const sigline = () => { ensure(30); y -= 16; page.drawLine({ start: { x: ML, y }, end: { x: ML + 230, y }, thickness: 0.9, color: INK }); y -= 12; };
+  // Leistungsübersicht-Tabelle
+  let tbl = null;
+  const flushTable = () => {
+    if (!tbl) return;
+    const rows = tbl.filter(r => !/^\|?\s*:?-{2,}/.test(r.replace(/\|/g, '').trim() ? r : '|') && !/^\|[\s:\-|]+\|$/.test(r));
+    const data = tbl.filter(r => !/^\|[\s:\-|]+\|$/.test(r));
+    ensure(20); y -= 2;
+    data.forEach((r, ri) => {
+      const cells = r.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+      const label = cells[0] || '', val = cells[1] || '';
+      ensure(15);
+      const head = ri === 0;
+      page.drawText(safe(label), { x: ML + 4, y, size: 9.5, font: head ? bold : helv, color: head ? SOFT : INK });
+      page.drawText(safe(val), { x: ML + CW * 0.6, y, size: 9.5, font: bold, color: head ? SOFT : NAVY });
+      y -= 14.5;
+    });
+    y -= 4; tbl = null;
+  };
+  // Markdown zeilenweise
+  const lines = md.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (/^\|/.test(t)) { (tbl = tbl || []).push(t); continue; } else if (tbl) { flushTable(); }
+    if (!t) { y -= 5; continue; }
+    if (t === '---') { rule(); continue; }
+    if (t === '[[SIGLINE]]') { sigline(); continue; }
+    if (/^#\s+/.test(t)) { ensure(28); y -= 2; drawRich(t.replace(/^#\s+/, ''), { bold: true, size: 18, color: NAVY, lineH: 23 }); y -= 6; continue; }
+    if (/^##\s+/.test(t)) { ensure(26); y -= 9; drawRich(t.replace(/^##\s+/, ''), { bold: true, size: 13.5, color: NAVY, lineH: 18 }); y -= 3; continue; }
+    if (/^###\s+/.test(t)) { ensure(20); y -= 4; drawRich(t.replace(/^###\s+/, ''), { bold: true, size: 11.5, color: INK, lineH: 15.5 }); y -= 1; continue; }
+    if (/^[-*]\s+/.test(t)) { ensure(15); page.drawText('-', { x: ML + 6, y, size: 10, font: bold, color: NAVY }); drawRich(t.replace(/^[-*]\s+/, ''), { size: 10, lineH: 14, indent: 16 }); continue; }
+    const mn = t.match(/^(\d+)\.\s+(.*)$/);
+    if (mn) { ensure(15); page.drawText(mn[1] + '.', { x: ML + 4, y, size: 10, font: bold, color: NAVY }); drawRich(mn[2], { size: 10, lineH: 14, indent: 22 }); continue; }
+    drawRich(t, { size: 10, lineH: 14.5 });
+  }
+  if (tbl) flushTable();
+  // Footer
+  const pages = doc.getPages();
+  for (let i = 0; i < pages.length; i++) {
+    pages[i].drawText(safe('Liftaro GmbH · Wartungsvertrag · Seite ' + (i + 1) + ' / ' + pages.length), { x: ML, y: 26, size: 7.5, font: helv, color: MUTE });
+  }
+  return await doc.save();
+}
+window._eiWvBuildVertragPdf = _eiWvBuildVertragPdf;
+
+// ════════ V12.446: Wartungsvertrag — Formular / Submit / Submitted / Download ════════
+function renderWvForm(ctx) {
+  const { anf, snap, wn, wv } = ctx;
+  const o = (wv && wv.optionen) || {};
+  const hvName = (snap && snap.hv_name) || (wv && wv.parties && wv.parties.kunde_name) || '(Hausverwaltung)';
+  const standort = (snap && snap.standort) || (wv && wv.parties && wv.parties.standort) || '';
+  const fn = (snap && snap.fabriknummer) || '';
+  const yn = (b) => b ? 'Ja' : '–';
+  const rows = [
+    ['Wartungseinsätze pro Jahr', String(o.wartungen_pro_jahr || '–')],
+    ['Wartungstyp', (o.wartungstyp === 'vollwartung' ? 'Vollwartung (Verschleißteile inkl.)' : 'Systemwartung (Reparaturen separat)')],
+    ['Notruf- & GSM-Service', yn(o.notruf)],
+    ['Montage Notrufgerät inkl.', yn(o.notruf && o.notruf_montage)],
+    ['ZÜS-Organisation komplett', yn(o.zues)],
+    ['Vertragslaufzeit', (o.laufzeit_jahre ? o.laufzeit_jahre + ' Jahre' : '–')],
+    ['Abrechnungsturnus', (o.abrechnung_turnus === 'quartalsweise' ? 'Quartalsweise' : 'Jährlich')],
+  ];
+  const specRows = rows.map(r => `<tr><td style="padding:7px 10px;color:#475569;border-bottom:1px solid #f1f5f9">${esc(r[0])}</td><td style="padding:7px 10px;font-weight:700;color:#0f172a;text-align:right;border-bottom:1px solid #f1f5f9">${esc(r[1])}</td></tr>`).join('');
+  $('root').innerHTML = `
+    <div class="wrap">
+      <div class="topbar"><span class="brand">🛗 Liftaro · Wartungsvertrag-Anfrage</span><span class="tag">${esc(anf.id || '')}</span></div>
+      <div class="card">
+        <h2>Wartungsvertrag — Anfrage</h2>
+        <div class="muted" style="margin-bottom:12px">Im Auftrag der Hausverwaltung <strong>${esc(hvName)}</strong> bitten wir um Ihre jährliche Wartungspauschale für die unten beschriebene Anlage und den festgelegten Leistungsumfang.</div>
+        <div style="background:var(--surface-alt);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--ink)">
+          ${standort ? `<div><span style="color:#94a3b8">📍 Standort:</span> ${esc(standort)}</div>` : ''}
+          ${fn ? `<div><span style="color:#94a3b8">🛗 Fabriknr.:</span> ${esc(fn)}${snap.hersteller ? ' · ' + esc(snap.hersteller) : ''}</div>` : ''}
+        </div>
+      </div>
+      <div class="card">
+        <h2>📋 Geforderte Leistungen</h2>
+        <div class="muted" style="margin-bottom:12px">Diese Leistungen sind verbindlich vorgegeben, damit die Angebote vergleichbar bleiben. Bitte bepreisen Sie das Gesamtpaket.</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${specRows}</tbody></table>
+      </div>
+      <div class="card">
+        <h2>💶 Ihre jährliche Wartungspauschale</h2>
+        <div class="muted" style="margin-bottom:10px">Netto-Jahrespreis für das beschriebene Leistungspaket, zzgl. MwSt. Abrechnung: ${esc(o.abrechnung_turnus === 'quartalsweise' ? 'quartalsweise' : 'jährlich')}.</div>
+        <div class="field" style="display:flex;align-items:center;gap:10px"><input type="number" id="wvPreis" min="0" step="0.01" placeholder="z. B. 2150" style="max-width:220px"><span style="font-weight:700;color:#0f172a">€ / Jahr (netto)</span></div>
+      </div>
+      <div class="card">
+        <h2>✍ Verbindliche Bestätigung</h2>
+        <label style="display:flex;align-items:flex-start;gap:11px;padding:14px 16px;background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:var(--r-md);cursor:pointer">
+          <input type="checkbox" id="wvConfirm" style="margin-top:3px;width:18px;height:18px;accent-color:var(--purple)">
+          <span style="font-size:13px;color:var(--ink);line-height:1.55"><strong>Hiermit gebe ich mein Angebot zu vorstehendem Leistungsumfang und Jahrespreis verbindlich ab.</strong> Ich bestätige, im Namen meines Unternehmens zur Abgabe befugt zu sein.</span>
+        </label>
+        <div class="muted" style="font-size:11.5px;margin-top:10px;line-height:1.5">Diese digitale Bestätigung gilt rechtlich gleichwertig zur handschriftlichen Unterschrift (§ 127 BGB i. V. m. § 126b BGB · Textform).</div>
+        <div style="margin-top:14px"><label class="label">Name des Unterzeichners *</label><div class="field"><input type="text" id="wvSigName" placeholder="Vor- und Nachname" value="${esc(wn.ansprechperson || '')}"></div></div>
+      </div>
+      <div class="submit-bar">
+        <div class="info">Nach dem Absenden erhalten Sie den fertigen Wartungsvertrag als PDF zum Download.</div>
+        <button class="btn-primary" id="submitBtn" onclick="window._lvSubmit&&window._lvSubmit()">📤 Angebot absenden</button>
+      </div>
+      <div class="footer"><code>Token: ${esc(getParam('t').slice(0, 10))}…</code> · Liftaro GmbH · ${esc(APP_VERSION)}<br>Bei Fragen: <a href="mailto:check@liftaro.de" style="color:var(--purple-deep)">check@liftaro.de</a></div>
+    </div>`;
+  window._lvCtx = ctx;
+  window._lvSubmit = function () { submitWvAngebot(ctx); };
+}
+
+async function submitWvAngebot(ctx) {
+  const preis = parseFloat(String(($('wvPreis') || {}).value || '').replace(',', '.')) || 0;
+  if (!preis || preis <= 0) { alert('Bitte tragen Sie eine gültige Jahrespauschale (netto) ein.'); $('wvPreis') && $('wvPreis').focus(); return; }
+  const sigName = String(($('wvSigName') || {}).value || '').trim();
+  if (!sigName) { alert('Bitte den Namen des Unterzeichners eintragen.'); $('wvSigName') && $('wvSigName').focus(); return; }
+  const cb = $('wvConfirm');
+  if (!cb || !cb.checked) { alert('Bitte die Bestätigungs-Checkbox aktivieren.'); cb && cb.focus(); return; }
+  const btn = $('submitBtn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Sende …'; }
+  const base = await getPartnerApiUrl();
+  if (!base) { if (btn) { btn.disabled = false; btn.textContent = '📤 Angebot absenden'; } alert('Konfigurationsfehler: kein Submit-Endpoint. Bitte den Absender kontaktieren.'); return; }
+  const turnus = (ctx.wv && ctx.wv.optionen && ctx.wv.optionen.abrechnung_turnus) || 'jaehrlich';
+  const payload = {
+    response_json: JSON.stringify({ __wv: true, jahrespreis_netto: preis, abrechnung_turnus: turnus, firma_name: (ctx.wn && ctx.wn.firma) || sigName }),
+    signatur_name: sigName, signatur_methode: 'digital',
+    bestaetigung_text: 'Verbindliche Angebotsabgabe (Wartungsvertrag): Jahrespauschale ' + preis.toFixed(2) + ' EUR netto.',
+    summe_netto_eur: Math.round(preis * 100) / 100,
+    lieferzeit_gesamt: '',
+  };
+  try {
+    const r = await fetch(base + '/api/lv-anfragen/' + encodeURIComponent(ctx.token) + '/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(String(j.error || ('HTTP ' + r.status)));
+    window._lvWvSubmission = { ctx, preis, sigName };
+    renderWvSubmittedView(ctx, preis);
+  } catch (e) {
+    console.error('WV-Submit:', e);
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Angebot absenden'; }
+    alert('Übermittlung fehlgeschlagen: ' + e.message + '\n\nBitte erneut versuchen oder den Absender per Email informieren.');
+  }
+}
+
+function renderWvSubmittedView(ctx, preis) {
+  const o = (ctx.wv && ctx.wv.optionen) || {};
+  const turnus = o.abrechnung_turnus === 'quartalsweise' ? 'quartalsweise' : 'jährlich';
+  const datum = ctx.anf.submitted_at ? new Date(ctx.anf.submitted_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Soeben';
+  $('root').innerHTML = `
+    <div class="wrap">
+      <div class="topbar"><span class="brand">🛗 Liftaro · Wartungsvertrag</span><span class="tag">${esc(ctx.anf.id || '')}</span></div>
+      <div class="card success-box">
+        <h2>✓ Angebot übermittelt</h2>
+        <div style="margin-top:14px;font-size:13.5px;color:#166534">Jahrespauschale <strong>${esc(_eiWvFmtEur(preis))}</strong> netto · Abrechnung ${esc(turnus)}</div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #bbf7d0;font-size:12.5px;color:#166534">Eingangsbestätigung: ${esc(datum)}<br>Die Hausverwaltung ${esc((ctx.snap && ctx.snap.hv_name) || '')} wird über Ihr Angebot informiert.</div>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #bbf7d0">
+          <button id="dlWvBtn" onclick="window._lvDownloadWv&&window._lvDownloadWv()" class="btn-primary" style="background:#16A34A;box-shadow:0 4px 12px rgba(22,163,74,.3)">📄 Wartungsvertrag als PDF herunterladen</button>
+        </div>
+      </div>
+      <div class="footer">Liftaro GmbH · ${esc(APP_VERSION)}<br>Bei Rückfragen: <a href="mailto:check@liftaro.de" style="color:var(--purple-deep)">check@liftaro.de</a></div>
+    </div>`;
+  window._lvDownloadWv = function () { downloadWvVertrag(ctx, preis); };
+}
+
+async function downloadWvVertrag(ctx, preis) {
+  const btn = $('dlWvBtn');
+  if (!window.PDFLib) { alert('PDF-Bibliothek noch nicht geladen — bitte 2 Sek warten.'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Vertrag wird erstellt …'; }
+  try {
+    const o = Object.assign({}, (ctx.wv && ctx.wv.optionen) || {}, { jahrespreis_netto: preis });
+    const p = Object.assign({}, (ctx.wv && ctx.wv.parties) || {}, { firma_name: (ctx.wn && ctx.wn.firma) || (window._lvWvSubmission && window._lvWvSubmission.sigName) || '', vertragsnummer: ctx.anf.id || '' });
+    const bytes = await _eiWvBuildVertragPdf(o, p);
+    const fn = 'Wartungsvertrag_' + String((ctx.snap && ctx.snap.fabriknummer) || ctx.anf.id || 'LV').replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf';
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a'); a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) { console.error('WV-PDF:', e); alert('PDF-Erstellung fehlgeschlagen: ' + (e.message || e)); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '📄 Wartungsvertrag als PDF herunterladen'; } }
+}
 
 async function buildAngebotPdf(sub) {
     // v1.12: 1:1-Port des App-Builders _eiLvBuildAntwortPdf — identisches PDF wie im Chat
