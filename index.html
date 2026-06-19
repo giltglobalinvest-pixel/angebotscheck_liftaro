@@ -2221,7 +2221,7 @@ const pdfWorkerReady = Promise.resolve();</script>
       </button>
       <span class="nav-shelf-divider"></span>
       <!-- Gruppe 2: Datenbestand -->
-      <button class="nav-pill" data-nav="checks" onclick="openAllChecks()" title="Checks-Übersicht">
+      <button class="nav-pill" data-nav="checks" data-feature="nav_checks" onclick="openAllChecks()" title="Checks-Übersicht">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><polyline points="9 12 11 14 15 10"/></svg>
         Checks
       </button>
@@ -4794,6 +4794,8 @@ body.feat-hidden-ei_vorgaenge         [data-feature="ei_vorgaenge"]         { di
 body.feat-hidden-ei_aktionen          [data-feature="ei_aktionen"]          { display: none !important; }
 body.feat-hidden-ei_manuell_check     [data-feature="ei_manuell_check"]     { display: none !important; }
 body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { display: none !important; }
+/* V12.455: „Checks"-Nav-Pille ausblendbar */
+body.feat-hidden-nav_checks [data-feature="nav_checks"] { display: none !important; }
 /* V12.346: Dezenter Toggle-Hint oben rechts an jeder ausblendbaren Kachel */
 [data-feature] { position: relative; }
 .ei-toggle-hint {
@@ -6484,7 +6486,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.454';
+const APP_VERSION = 'V12.455';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6495,6 +6497,13 @@ const APP_VERSION = 'V12.454';
 // `[data-feature="<key>"]` — keine Re-Renders nötig.
 // ═══════════════════════════════════════════════════════════════
 const FEATURE_REGISTRY = [
+  {
+    // V12.455: „Checks"-Nav-Pille in der oberen Menüleiste ausblenden
+    key:    'nav_checks',
+    label:  'Checks-Menü (obere Leiste)',
+    desc:   'Blendet die „📋 Checks"-Pille in der oberen Navigationsleiste aus. Die Checks-Funktion selbst bleibt erhalten (z. B. über Vorgänge/Email-Detail erreichbar).',
+    icon:   '📋',
+  },
   {
     key:    'rahmenvertrag',
     label:  'Rahmenverträge',
