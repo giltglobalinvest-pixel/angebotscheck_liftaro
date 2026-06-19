@@ -6482,7 +6482,7 @@ body.feat-hidden-ei_ki_antwortentwurf [data-feature="ei_ki_antwortentwurf"] { di
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.450';
+const APP_VERSION = 'V12.451';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11532,6 +11532,7 @@ function _eiWvRenderVertrag(opts, parties, templateMd) {
     kontakt_email:      p.kontakt_email   || '—',
     kontakt_telefon:    p.kontakt_telefon || '—',
     firma_name:         p.firma_name      || '—',
+    firma_adresse:      [String(p.firma_strasse||'').trim(), [String(p.firma_plz||'').trim(), String(p.firma_ort||'').trim()].filter(Boolean).join(' ')].filter(Boolean).join('\n'),
     vertrag_uebersicht: _eiWvBuildUebersicht(o),
     aufzug_anzahl:      String(p.aufzug_anzahl || 1),
     aufzug_liste:       p.aufzug_liste    || '—',
@@ -11632,6 +11633,7 @@ function _eiWvVertragTemplateMd() {
 
 **Auftragnehmer (AN):**
 {{firma_name}}
+{{firma_adresse}}
 
 Zwischen den vorstehend genannten Parteien wird der nachfolgende Wartungsvertrag geschlossen. Gegenstand dieses Vertrages ist die regelmäßige Wartung, Inspektion und Instandhaltung der im § 2 aufgeführten Aufzugsanlagen gemäß den vereinbarten Leistungsinhalten sowie den einschlägigen gesetzlichen und technischen Vorschriften, insbesondere der Betriebssicherheitsverordnung (BetrSichV), der TRBS 1201 Teil 4 sowie den anerkannten Regeln der Technik.
 
@@ -35290,7 +35292,8 @@ async function _eiErgebnisCreateAndSend(doSend) {
       const a = chosen.rawAnf || {};
       if (s.isWv && typeof _eiWvBuildVertragPdf === 'function') {
         const wvO = Object.assign({}, chosen.wvOptionen || (chosen.wvBlob && chosen.wvBlob.optionen) || {}, { jahrespreis_netto: chosen.angebotSumme });
-        const wvP = Object.assign({}, (chosen.wvBlob && chosen.wvBlob.parties) || {}, { firma_name: (chosen.wn && chosen.wn.firma) || String(a.signatur_name || ''), vertragsnummer: String(a.id || '') });
+        const _wvWn = chosen.wn || {};
+        const wvP = Object.assign({}, (chosen.wvBlob && chosen.wvBlob.parties) || {}, { firma_name: _wvWn.firma || String(a.signatur_name || ''), firma_strasse: String(_wvWn.strasse || ''), firma_plz: String(_wvWn.plz || ''), firma_ort: String(_wvWn.ort || ''), vertragsnummer: String(a.id || '') });
         const _wvb = await _eiWvBuildVertragPdf(wvO, wvP);
         altBytes = (_wvb instanceof Uint8Array) ? _wvb : new Uint8Array(await _wvb.arrayBuffer());
       } else {
