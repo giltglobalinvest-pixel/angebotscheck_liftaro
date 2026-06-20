@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.461';
+const APP_VERSION = 'V12.462';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13267,9 +13267,34 @@ window._eiWvSave = _eiWvSave;
 async function _eiWvExtractOptionen() {
   const s = window._eiLvEditorState; if (!s) return;
   const btn = document.getElementById('lvEdExtractBtn');
-  const setBtn = (txt, dis) => { if (!btn) return; btn.disabled = !!dis; btn.style.opacity = dis ? '.7' : '1'; btn.textContent = txt; };
+  // V12.462: Extract-Button als Fortschritts-Anzeige (gleiches Muster wie Reparatur/Modernisierung).
+  let extractOk = false;
+  const _ensureProg = () => {
+    if (!btn || btn.querySelector('.lvxp-lbl')) return;
+    btn._origHTML = btn.innerHTML;
+    btn.style.position = 'relative'; btn.style.overflow = 'hidden'; btn.style.minWidth = '250px';
+    btn.innerHTML = '<span class="lvxp-fill" style="position:absolute;left:0;top:0;bottom:0;width:5%;background:rgba(255,255,255,.32);transition:width .6s ease;z-index:0"></span>'
+      + '<span class="lvxp-lbl" style="position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;white-space:nowrap"></span>';
+  };
+  const setProg = (pct, ms) => {
+    if (!btn) return; _ensureProg();
+    const fill = btn.querySelector('.lvxp-fill'); if (!fill) return;
+    fill.style.transition = 'width ' + (ms != null ? ms : 600) + 'ms ' + ((ms || 0) > 2500 ? 'ease-out' : 'ease');
+    fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  };
+  const _restoreBtn = () => {
+    if (!btn) return;
+    if (btn._origHTML != null) { btn.innerHTML = btn._origHTML; btn._origHTML = null; }
+    btn.style.overflow = ''; btn.style.minWidth = ''; btn.style.position = '';
+  };
+  const setBtn = (txt, dis) => {
+    if (!btn) return;
+    btn.disabled = !!dis; btn.style.opacity = dis ? '.92' : '1';
+    if (dis) { _ensureProg(); const lbl = btn.querySelector('.lvxp-lbl'); if (lbl) lbl.textContent = txt; }
+    else { _restoreBtn(); }
+  };
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt — bitte im Setup eintragen', 'error', 4500); return; }
-  setBtn('⏳ Lade PDFs …', true);
+  setBtn('⏳ Lade PDFs …', true); setProg(6);
   try {
     const r = (_eiAllRecords || []).find(x => x._id === s.emailId);
     if (!r) throw new Error('Email nicht gefunden');
@@ -13282,7 +13307,7 @@ async function _eiWvExtractOptionen() {
     const docContents = []; let total = 0; const MAX = 28 * 1024 * 1024;
     for (let i = 0; i < pdfs.length && i < 5; i++) {
       const a = pdfs[i]; if (!a.url) continue;
-      setBtn('⏳ Lade ' + (i + 1) + ' …', true);
+      setBtn('⏳ Lade PDF ' + (i + 1) + ' …', true); setProg(6 + (i + 1) * 5);
       try {
         const resp = await fetch(a.url); if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const buf = await resp.arrayBuffer(); if (total + buf.byteLength > MAX) continue; total += buf.byteLength;
@@ -13291,7 +13316,7 @@ async function _eiWvExtractOptionen() {
     }
     if (!docContents.length) throw new Error('Kein PDF-Anhang konnte geladen werden');
     const sysPrompt = String((s.vorlage && s.vorlage.extraktion_prompt) || _eiLvDefaultWartungsvertragVorlage().extraktion_prompt);
-    setBtn('⏳ Claude liest Vertrag …', true);
+    setBtn('⏳ Claude liest den Vertrag …', true); setProg(25); setProg(92, 16000);
     const userText = 'Analysiere den/die obigen Wartungsvertrag-PDF(s) und gib die Leistungsoptionen als EIN JSON-Objekt zurück — nur JSON, kein Text/Markdown davor oder danach.';
     const reqBody = { model: 'claude-sonnet-4-5-20250929', max_tokens: 1200, system: sysPrompt, messages: [{ role: 'user', content: docContents.concat([{ type: 'text', text: userText }]) }] };
     const t0 = Date.now();
@@ -13327,13 +13352,15 @@ async function _eiWvExtractOptionen() {
     if (num(parsed.jahrespreis_netto) != null) o.jahrespreis_netto = num(parsed.jahrespreis_netto);
     if (parsed.abrechnung_turnus === 'jaehrlich' || parsed.abrechnung_turnus === 'quartalsweise') o.abrechnung_turnus = parsed.abrechnung_turnus;
     s.wvOptionen = o;
+    extractOk = true; setProg(96);
     _eiLvRenderEditorBody();
     showToast('✓ Optionen aus Vertrag übernommen — bitte prüfen', 'success', 4000);
   } catch (e) {
     console.error('[V12.439] _eiWvExtractOptionen:', e);
     showToast('KI-Extraktion fehlgeschlagen: ' + e.message, 'error', 6500);
   } finally {
-    setBtn('🤖 KI: Optionen aus Vertrag', false);
+    if (extractOk) { setProg(100, 250); setTimeout(() => setBtn('🤖 KI: Optionen aus Vertrag', false), 380); }
+    else setBtn('🤖 KI: Optionen aus Vertrag', false);
   }
 }
 window._eiWvExtractOptionen = _eiWvExtractOptionen;
