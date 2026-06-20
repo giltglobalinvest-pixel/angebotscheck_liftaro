@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.463';
+const APP_VERSION = 'V12.464';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13668,6 +13668,26 @@ function _eiLvBuildSendEmail(s, sb, landingUrl) {
     const checkIdWv = _rWv ? String(_rWv.external_check_id || _rWv.email_id || '').trim() : '';
     const wvBetreff = 'Wartungsvertrag-Anfrage ' + (checkIdWv ? checkIdWv + ' - ' : '') + 'Fn ' + fn + ' - ' + hv;
     return { betreff: wvBetreff, body: wvBody };
+  }
+  // V12.464: Modernisierung — eigenes Anschreiben (Bauzeit/Stillstand + Gesamtpreis-/Einzelpreis-Hinweis je Variante)
+  if (s.vorlage && String(s.vorlage.id || '').indexOf('lvv_modernisierung') === 0) {
+    const isGesamtMod = String(s.vorlage.id || '') === 'lvv_modernisierung_gesamt_default';
+    const modBody = ansprache + ',\n\n'
+      + 'im Auftrag der Hausverwaltung ' + hv + ' bitten wir Sie um ein verbindliches Angebot für die Modernisierung der Aufzugsanlage '
+      + 'Fn ' + fn + ' (' + standort + ') mit folgendem Leistungsumfang:\n\n'
+      + s.positionen.map((p, i) => '  ' + (i + 1) + '. ' + (p.titel || (p.beschreibung || '').slice(0, 80)) + (p.menge && p.menge !== '1' ? ' (Menge: ' + p.menge + ' ' + p.einheit + ')' : '')).join('\n')
+      + '\n\n'
+      + (isGesamtMod
+          ? 'Bitte tragen Sie online EINEN Netto-Gesamtpreis (Pauschal) für den gesamten Leistungsumfang sowie die voraussichtliche Bauzeit / Stillstandsdauer ein:\n'
+          : 'Bitte tragen Sie online Ihre Netto-Einzelpreise je Position sowie die voraussichtliche Bauzeit / Stillstandsdauer ein:\n')
+      + landingUrl + '\n\n'
+      + 'Den vollständigen Leistungsumfang sehen Sie über den Link. Nach Eingabe Ihres Preises und Bestätigung wird automatisch Ihr Modernisierungs-Angebot als PDF erzeugt.\n\n'
+      + 'Vielen Dank im Voraus.\n\n'
+      + 'Mit freundlichen Grüßen\nLiftaro · im Auftrag von ' + hv;
+    const _rM = (Array.isArray(_eiAllRecords) ? _eiAllRecords : []).find(x => x && x._id === s.emailId);
+    const checkIdM = _rM ? String(_rM.external_check_id || _rM.email_id || '').trim() : '';
+    const modBetreff = 'Modernisierungs-Anfrage ' + (checkIdM ? checkIdM + ' - ' : '') + 'Fn ' + fn + ' - ' + hv;
+    return { betreff: modBetreff, body: modBody };
   }
   const body = ansprache + ',\n\n'
     + 'im Auftrag der Hausverwaltung ' + hv + ' bitten wir Sie um ein Angebot für nachstehende Leistungen am Aufzug '
