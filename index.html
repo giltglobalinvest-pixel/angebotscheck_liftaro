@@ -4175,13 +4175,38 @@ const pdfWorkerReady = Promise.resolve();</script>
       <div id="emailInboxContentPane" style="display:flex;flex-direction:column;min-width:0;overflow:hidden">
         <!-- Sub-Header über der Tabelle -->
         <div id="emailInboxSubHeader" style="background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <!-- V12.469: Kompakter Status-Filter nur auf dem Handy (ersetzt die große Sidebar) -->
+          <select id="eiMobileStatusFilter" class="ei-mobile-only" onchange="setEiFilter(this.value)" aria-label="Postfach-Filter" style="border:1px solid #cbd5e1;border-radius:9px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:#0f172a;background:#f8fafc;outline:none">
+            <optgroup label="Eingang">
+              <option value="neue_antwort">↶ Neue Antworten</option>
+              <option value="chat_antwort">💬 Chat-Antworten</option>
+              <option value="angebot_eingegangen">📥 Angebote eingegangen</option>
+            </optgroup>
+            <optgroup label="Status">
+              <option value="neu">Neu</option>
+              <option value="in_bearbeitung">In Bearbeitung</option>
+              <option value="wartend">Wartend</option>
+              <option value="wiedervorlage">📅 Auf Wiedervorlage</option>
+              <option value="geantwortet">✓ Erledigt</option>
+              <option value="verworfen">📦 Archiviert</option>
+              <option value="alle">Alle</option>
+              <option value="gesendet">✈ Gesendet</option>
+            </optgroup>
+            <optgroup label="Check-Status">
+              <option value="check:kein_check">🚫 Kein Check</option>
+              <option value="check:in_bearbeitung">🔄 Check: In Bearbeitung</option>
+              <option value="check:gecheckt">✓ Gecheckt</option>
+              <option value="check:beauftragt">📤 Beauftragt</option>
+              <option value="check:abgerechnet">💶 Abgerechnet</option>
+            </optgroup>
+          </select>
           <div style="display:flex;align-items:center;gap:12px">
             <!-- V12.185: Übersicht ein-/ausklappen -->
             <button id="emailInboxListToggle" onclick="toggleEmailInboxList()" title="Übersicht einklappen — mehr Platz für Email-Inhalt" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:7px;padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.background='#e2e8f0';this.style.color='#0f172a'" onmouseout="this.style.background='#f1f5f9';this.style.color='#475569'">
               <svg id="emailInboxListToggleIcon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="transition:transform .2s"><polyline points="15 18 9 12 15 6"/></svg>
               <span id="emailInboxListToggleLabel">Übersicht einklappen</span>
             </button>
-            <div style="font-size:13px;color:#475569;display:flex;align-items:center;gap:8px">
+            <div class="ei-mob-hide" style="font-size:13px;color:#475569;display:flex;align-items:center;gap:8px">
               <span style="color:#94a3b8">Sortieren nach:</span>
               <strong style="color:#0f172a">Neueste zuerst</strong>
               <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#475569"><polyline points="18 15 12 9 6 15"/></svg>
@@ -5227,7 +5252,22 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
   .dr-header h1 { font-size: 20px; }
   .dr-header-icon { width: 38px; height: 38px; border-radius: 12px; }
   .dr-cta { padding: 10px 14px; font-size: 13px; }
+
+  /* V12.469: Postfach mobil — einspaltig, große Filter-Sidebars weg, kompaktes Status-Dropdown */
+  #emailInboxBody { grid-template-columns: 1fr !important; }
+  #emailInboxSidebar { display: none !important; }
+  #emailInboxInnerBody { grid-template-columns: 1fr !important; }
+  #emailInboxFilterPane { display: none !important; }
+  #emailInboxList { border-right: none !important; padding: 10px 11px !important; }
+  #emailInboxSubHeader { padding: 9px 12px !important; gap: 8px !important; }
+  /* Desktop-only Sub-Header-Elemente auf dem Handy ausblenden */
+  #emailInboxListToggle, #eiPickModeToggle, #emailInboxStatusChip,
+  #eiTypFilterBtn, #eiHvFilterBtn, #eiAufzugFilterBtn, .ei-mob-hide { display: none !important; }
+  #emailInboxSubHeader > div { gap: 8px !important; flex-wrap: wrap; }
+  .ei-mobile-only { display: block !important; }
+  #eiMobileStatusFilter { width: 100%; box-sizing: border-box; }
 }
+.ei-mobile-only { display: none; }
 </style>
 
 <!-- Dashboard als Vollseite (Sibling zu #appContent). Wird via showDashboardView()/showCheckView() umgeschaltet. -->
@@ -6489,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.468';
+const APP_VERSION = 'V12.469';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32178,8 +32218,26 @@ async function loadEmailInbox(silent) {
   }
 }
 
+// V12.469: mobiles Status-Dropdown — Option-Labels mit Zählern aktualisieren + aktiven Filter setzen.
+function _eiSyncMobileFilter() {
+  const sel = document.getElementById('eiMobileStatusFilter'); if (!sel) return;
+  for (const opt of sel.options) {
+    const v = opt.value; if (!v) continue;
+    let base = opt.getAttribute('data-base');
+    if (base == null) { base = String(opt.textContent || '').replace(/\s+\(\d+\)$/, ''); opt.setAttribute('data-base', base); }
+    const cid = v.indexOf('check:') === 0 ? ('eiSideCnt_check_' + v.slice(6)) : ('eiSideCnt_' + v);
+    const cEl = document.getElementById(cid);
+    const n = cEl ? String(cEl.textContent || '').trim() : '';
+    opt.textContent = base + (n && n !== '0' ? ' (' + n + ')' : '');
+  }
+  try { if (typeof _eiFilter === 'string' && sel.value !== _eiFilter) sel.value = _eiFilter; } catch (_) {}
+}
+window._eiSyncMobileFilter = _eiSyncMobileFilter;
+
 function setEiFilter(status, skipRender) {
   _eiFilter = status;
+  // V12.469: mobiles Status-Dropdown synchron halten
+  try { const _ms = document.getElementById('eiMobileStatusFilter'); if (_ms && _ms.value !== status) _ms.value = status; } catch (_) {}
   // V12.177/178: Pills + Sidebar-Items markieren, Sub-Header-Chip aktualisieren
   document.querySelectorAll('.ei-filt-pill, .ei-side-item').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-status') === status);
@@ -32338,6 +32396,8 @@ function _eiUpdateSidebarCounts() {
   // V12.453: Counter „📥 Angebote eingegangen" — offene Vorgänge mit submitted WN-Angebot
   const offerOpenCnt = all.filter(r => (typeof _eiLvEmailHasOpenOffer === 'function') && _eiLvEmailHasOpenOffer(r)).length;
   set('eiSideCnt_angebot_eingegangen', offerOpenCnt);
+  // V12.469: mobiles Status-Dropdown — Labels mit Zählern + aktiven Filter spiegeln
+  if (typeof _eiSyncMobileFilter === 'function') _eiSyncMobileFilter();
   // V12.426/431: Check-Status-Zähler — alle 5 Stufen; „Kein Check" zählt auch leere Werte.
   // threaded/Chat-Antworten ausgeschlossen (analog zur Filter-Anzeige via dropThreaded).
   try {
