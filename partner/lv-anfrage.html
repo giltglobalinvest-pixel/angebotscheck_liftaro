@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.13.5';
+  const APP_VERSION = 'v1.13.6';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -1823,11 +1823,15 @@ async function buildAngebotPdf(sub) {
   for (const l of wrap('Die technische Spezifikation wurde aus dem vorliegenden Angebot zur Reparatur am Aufzug Fn ' + (sub.snap.fabriknummer || '-') + ' extrahiert.', helv, 8.5, W - 2*M)) { draw(l, M, y, helv, 8.5, COL_MUTE); y -= 11; }
   y -= 7;
   const txtW = colMen - colTit - 14;   // Textbreite Titel/Beschreibung (läuft nicht in Mengen-Spalte)
-  for (const p of sub.response) {
+  // v1.13.6: Gesamtpreis-Modernisierung — Bausteine detailliert auflisten (ohne Einzelpreise), Gesamtsumme unten.
+  const _isGesamtAngebot = String((sub.lv && sub.lv.vorlage_id) || '') === 'lvv_modernisierung_gesamt_default';
+  let _rows = sub.response;
+  if (_isGesamtAngebot) { try { const _bs = JSON.parse((sub.lv && sub.lv.positionen_json) || '[]'); if (Array.isArray(_bs) && _bs.length) _rows = _bs; } catch (_) {} }
+  for (const p of _rows) {
     const titel = String(p.titel || '').trim();
     const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
     const einheit = String(p.einheit || '').trim();
-    const preis = Number(p.preis_eur || 0);
+    const preis = _isGesamtAngebot ? 0 : Number(p.preis_eur || 0);
     const summe = preis * menge;
     // V12.415: Detaillierten Leistungsumfang aus dem neutralen LV (oder Antwort) ergänzen
     const lvPos = lvPosMap[String(p.pos_nr)] || {};
