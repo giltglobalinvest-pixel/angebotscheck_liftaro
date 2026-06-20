@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.465';
+const APP_VERSION = 'V12.466';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -38812,11 +38812,16 @@ async function _eiLvBuildAntwortPdf(sub) {
   for (const l of wrap('Die technische Spezifikation wurde aus dem vorliegenden Angebot zur Reparatur am Aufzug Fn ' + (sub.snap.fabriknummer || '-') + ' extrahiert.', helv, 8.5, W - 2*M)) { draw(l, M, y, helv, 8.5, COL_MUTE); y -= 11; }
   y -= 7;
   const txtW = colMen - colTit - 14;   // Textbreite Titel/Beschreibung (läuft nicht in Mengen-Spalte)
-  for (const p of sub.response) {
+  // V12.466: Gesamtpreis-Modernisierung — im Angebot die Bausteine detailliert auflisten (statt der einen
+  // Sammelzeile), aber OHNE Einzelpreise; die eine Gesamtsumme steht unten. Bausteine aus dem LV-Snapshot.
+  const _isGesamtAngebot = String((sub.lv && sub.lv.vorlage_id) || '') === 'lvv_modernisierung_gesamt_default';
+  let _rows = sub.response;
+  if (_isGesamtAngebot) { try { const _bs = JSON.parse((sub.lv && sub.lv.positionen_json) || '[]'); if (Array.isArray(_bs) && _bs.length) _rows = _bs; } catch (_) {} }
+  for (const p of _rows) {
     const titel = String(p.titel || '').trim();
     const menge = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
     const einheit = String(p.einheit || '').trim();
-    const preis = Number(p.preis_eur || 0);
+    const preis = _isGesamtAngebot ? 0 : Number(p.preis_eur || 0);
     const summe = preis * menge;
     // V12.415: Detaillierten Leistungsumfang aus dem neutralen LV (oder Antwort) ergänzen
     const lvPos = lvPosMap[String(p.pos_nr)] || {};
