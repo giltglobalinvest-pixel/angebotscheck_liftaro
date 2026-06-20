@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.462';
+const APP_VERSION = 'V12.463';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35172,6 +35172,7 @@ async function _eiErgebnisAssembleState(emailId) {
     emailId, enriched, snap, hvEmail, hvName, hvAnsprech, hvStrasse, hvPlzOrt,
     chosenAnfId: chosen.anfId,
     isWv: !!(chosen && chosen.isWv),                                              // V12.450: Wartungsvertrag-Ergebnis-Check
+    isMod: !!(chosen && chosen.lv && String(chosen.lv.vorlage_id || '').indexOf('lvv_modernisierung') === 0),   // V12.463: Modernisierungs-Check
     wvOptionen: (chosen && chosen.wvOptionen) || null,
     originalEur: chosen.originalSumme || Number(snap.orig_gesamtpreis_eur) || 0,   // V12.414: Fallback auf extrahierten Netto-Gesamtpreis (WV: jährl. Bestandspreis)
     provisionPct: LV_LIFTARO_PROVISION_PCT,   // editierbare Liftaro-Vergütung in % (Default 25)
@@ -35329,7 +35330,7 @@ function _eiErgebnisChooseAnf(anfId) {
   // Original-Betrag auf das LV des gewählten Angebots umstellen (falls vorhanden + noch nicht manuell geändert)
   const e = s.enriched.find(x => x.anfId === anfId);
   if (e && e.originalSumme > 0) s.originalEur = e.originalSumme;
-  if (e) { s.isWv = !!e.isWv; s.wvOptionen = e.wvOptionen || null; }   // V12.450
+  if (e) { s.isWv = !!e.isWv; s.wvOptionen = e.wvOptionen || null; s.isMod = !!(e.lv && String(e.lv.vorlage_id || '').indexOf('lvv_modernisierung') === 0); }   // V12.450/463
   // Texte aus dem aktuellen Editor übernehmen, damit sie beim Re-Render nicht verloren gehen
   const ein = document.getElementById('ergEinschaetzung'); if (ein) s.einschaetzung = ein.value;
   const emp = document.getElementById('ergEmpfehlung'); if (emp) s.empfehlung = emp.value;
@@ -35596,7 +35597,7 @@ async function _eiErgebnisCreateAndSend(doSend) {
     const diff = Math.max(0, orig - chosen.angebotSumme);
     const provision = diff * (_eiErgProvPct(s) / 100);
     const ersparnis = Math.max(0, diff - provision);   // tatsächliche Ersparnis nach Liftaro
-    const betreff = (isTest ? '[TEST] ' : '') + (s.isWv ? 'Ihr Wartungsvertrags-Angebot - Aufzug Fn ' : 'Ihr Reparatur-Angebot - Aufzug Fn ') + (s.snap.fabriknummer || '') + (s.isWv ? ' - Jaehrliche Ersparnis ' : ' - Ersparnis ') + _eiErgFmtEur(ersparnis).replace(/\s*€/, ' EUR');
+    const betreff = (isTest ? '[TEST] ' : '') + (s.isWv ? 'Ihr Wartungsvertrags-Angebot - Aufzug Fn ' : (s.isMod ? 'Ihr Modernisierungs-Angebot - Aufzug Fn ' : 'Ihr Reparatur-Angebot - Aufzug Fn ')) + (s.snap.fabriknummer || '') + (s.isWv ? ' - Jaehrliche Ersparnis ' : ' - Ersparnis ') + _eiErgFmtEur(ersparnis).replace(/\s*€/, ' EUR');
     const attachments = [{ filename: fnSafe, contentType: 'application/pdf', contentBase64: base64 }];
     if (btn) btn.textContent = isTest ? '⏳ Sende Test …' : '⏳ Sende an HV …';
     const body = s.isWv
@@ -35609,15 +35610,25 @@ async function _eiErgebnisCreateAndSend(doSend) {
         + (s.empfehlung ? s.empfehlung + '\n\n' : '')
         + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie den abschlussfertigen Wartungsvertrag.\n\n'
         + 'Mit freundlichen Grüßen\nIhr Liftaro-Team')
-      : ('Sehr geehrte Damen und Herren,\n\n'
-        + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
-        + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
-        + '· Original-Angebot: ' + _eiErgFmtEur(orig) + ' netto\n'
-        + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
-        + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
-        + (s.empfehlung ? s.empfehlung + '\n\n' : '')
-        + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot.\n\n'
-        + 'Mit freundlichen Grüßen\nIhr Liftaro-Team');
+      : (s.isMod
+        ? ('Sehr geehrte Damen und Herren,\n\n'
+          + 'anbei erhalten Sie unser Ergebnis zur Modernisierungsanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
+          + 'Wir haben für Sie ein vergleichbares Modernisierungs-Angebot eingeholt:\n'
+          + '· Vorliegendes Angebot: ' + _eiErgFmtEur(orig) + ' netto\n'
+          + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
+          + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
+          + (s.empfehlung ? s.empfehlung + '\n\n' : '')
+          + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Modernisierungs-Angebot.\n\n'
+          + 'Mit freundlichen Grüßen\nIhr Liftaro-Team')
+        : ('Sehr geehrte Damen und Herren,\n\n'
+          + 'anbei erhalten Sie unser Ergebnis zur Reparaturanfrage für den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' (' + s.snap.standort + ')' : '') + '.\n\n'
+          + 'Wir haben für Sie ein Alternativangebot eingeholt:\n'
+          + '· Original-Angebot: ' + _eiErgFmtEur(orig) + ' netto\n'
+          + '· Empfohlenes Angebot (' + chosen.wnFirma + '): ' + _eiErgFmtEur(chosen.angebotSumme) + ' netto\n'
+          + '· Ihre tatsächliche Ersparnis (nach Liftaro-Vergütung): ' + _eiErgFmtEur(ersparnis) + '\n\n'
+          + (s.empfehlung ? s.empfehlung + '\n\n' : '')
+          + 'Im beigefügten PDF finden Sie das vollständige Ergebnis sowie das empfohlene Alternativangebot.\n\n'
+          + 'Mit freundlichen Grüßen\nIhr Liftaro-Team'));
     const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
     const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig:'', htmlBody:'' };
     const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
@@ -35758,6 +35769,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   const orig = Number(s.originalEur) || 0;
   const ang = chosen ? chosen.angebotSumme : 0;
   const isWv = !!(s && s.isWv);   // V12.450: Wartungsvertrag-Ergebnis-PDF (Jahrespauschale vs. Bestandspreis)
+  const isMod = !!(s && s.isMod); // V12.463: Modernisierungs-Ergebnis-PDF (Bauzeit/Stillstand + Normen-Abschnitt)
   const provPct = _eiErgProvPct(s);
   const ersparnis = Math.max(0, orig - ang);
   const provision = ersparnis * (provPct / 100);
@@ -35784,7 +35796,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
     } else {
       draw('LIFTARO', M, lineY + 16, bold, 13, BRAND);
     }
-    dr(isWv ? 'Ergebnis Wartungsvertrags-Check' : 'Ergebnis Angebots-Check', W - M, lineY + 16, helv, 9.5, MUTE);
+    dr(isWv ? 'Ergebnis Wartungsvertrags-Check' : (isMod ? 'Ergebnis Modernisierungs-Check' : 'Ergebnis Angebots-Check'), W - M, lineY + 16, helv, 9.5, MUTE);
     page.drawLine({ start: { x: M, y: lineY }, end: { x: W - M, y: lineY }, thickness: 0.6, color: LIGHT });
     y = first ? (lineY - 22) : (lineY - 36);
     if (!first) draw('Ergebnis ' + angNr, M, lineY - 16, helv, 9, MUTE);
@@ -35805,7 +35817,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   draw('Aufzug:', W - M - 200, yM, helv, 9, MUTE); dr('Fn ' + (s.snap.fabriknummer || '-'), W - M, yM, helv, 10, INK); yM -= 16;
   if (s.snap.standort) { const sl = wrap(s.snap.standort, helv, 9, 200); for (const l of sl) { dr(l, W - M, yM, helv, 9, MUTE); yM -= 12; } }
   y = Math.min(y, yM) - 18;
-  draw(isWv ? 'Ergebnis des Wartungsvertrags-Checks' : 'Ergebnis des Angebots-Checks', M, y, bold, 19, INK); y -= 28;
+  draw(isWv ? 'Ergebnis des Wartungsvertrags-Checks' : (isMod ? 'Ergebnis des Modernisierungs-Checks' : 'Ergebnis des Angebots-Checks'), M, y, bold, 19, INK); y -= 28;
   // Anschreiben (editierbar)
   const anschreiben = s.anschreiben || _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis);
   for (const l of wrap(anschreiben, helv, 10, W - 2*M)) {
@@ -35883,7 +35895,15 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
       if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
       y -= 8;
     }
-    if (chosen.lieferzeit) { y -= 2; ensure(20); draw('Lieferzeit (empfohlenes Angebot): ' + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
+    if (chosen.lieferzeit) { y -= 2; ensure(20); draw((isMod ? 'Bauzeit / Stillstand (empfohlenes Angebot): ' : 'Lieferzeit (empfohlenes Angebot): ') + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
+  }
+  // V12.463: Modernisierung — neutraler Normen-/Nachrüst-Hinweis (Stand der Technik) im HV-Ergebnis.
+  if (isMod) {
+    y -= 8; ensure(46);
+    draw('Normen & Stand der Technik', M, y, bold, 12, INK); y -= 16;
+    const normTxt = 'Eine Modernisierung bringt die Aufzugsanlage auf den aktuellen Stand der Technik. Das empfohlene Angebot ist auf die Erfüllung der einschlägigen Normen und Betreiberpflichten ausgelegt — insbesondere EN 81-20/50 (Sicherheit von Aufzügen), der Betriebssicherheitsverordnung (BetrSichV) sowie der TRBS 1201. Bestehende Nachrüstpflichten (z. B. Zweiwege-Notruf nach EN 81-28, Schutz vor unkontrollierten Aufwärtsbewegungen, Nachrüstung nach ASR/Gefährdungsbeurteilung) werden im Rahmen des angebotenen Leistungsumfangs berücksichtigt. Die konkrete Bewertung etwaiger Restpflichten obliegt der zugelassenen Überwachungsstelle (ZÜS) im Rahmen der wiederkehrenden Prüfung.';
+    for (const l of wrap(normTxt, helv, 9.5, W - 2*M)) { ensure(13); draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+    y -= 4;
   }
   // Einschätzung
   if (s.einschaetzung) {
@@ -35957,6 +35977,11 @@ function _eiErgDefaultAnschreiben(s, chosen, orig, ang, ersparnis) {
       + 'im Auftrag der Hausverwaltung ' + (s.hvName || '') + ' hat Liftaro fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' ein vergleichbares Wartungsvertrags-Angebot zum bestehenden Wartungsvertrag eingeholt.\n\n'
       + 'Auf Basis des bestehenden Leistungsumfangs wurde eine Jahrespauschale bei einem qualifizierten Wartungsbetrieb angefragt. Das nachstehende Ergebnis stellt die empfohlene Jahrespauschale dem jahrlichen Preis des bestehenden Wartungsvertrags gegenuber.';
   }
+  if (s && s.isMod) {
+    return 'Sehr geehrte Damen und Herren,\n\n'
+      + 'im Auftrag der Hausverwaltung ' + (s.hvName || '') + ' hat Liftaro fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' ein vergleichbares Modernisierungs-Angebot zur vorliegenden Modernisierung eingeholt.\n\n'
+      + 'Auf Basis eines neutralen Leistungsverzeichnisses wurden die angefragten Modernisierungs-Leistungen an qualifizierte Fachbetriebe ubermittelt. Das nachstehende Ergebnis stellt das empfohlene Angebot dem ursprunglich vorliegenden Angebot gegenuber.';
+  }
   return 'Sehr geehrte Damen und Herren,\n\n'
     + 'im Auftrag der Hausverwaltung ' + (s.hvName || '') + ' hat Liftaro fur den Aufzug Fn ' + (s.snap.fabriknummer || '') + (s.snap.standort ? ' am Standort ' + s.snap.standort : '') + ' ein vergleichbares Alternativangebot zur vorliegenden Reparatur eingeholt.\n\n'
     + 'Auf Basis eines neutralen Leistungsverzeichnisses wurden die angefragten Leistungen an qualifizierte Fachbetriebe ubermittelt. Das nachstehende Ergebnis stellt das empfohlene Angebot dem ursprunglich vorliegenden Angebot gegenuber.';
@@ -35966,6 +35991,11 @@ function _eiErgDefaultBeauftragung(s, chosen) {
     return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Wartungsvertrags-Angebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
       + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + String(_eiErgProvPct(s)).replace('.', ',') + ' % der realisierten jahrlichen Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
       + 'Der verbindliche Abschluss des Wartungsvertrags erfolgt separat im Rahmen des angenommenen Angebots. Diese Bestatigung betrifft ausschliesslich die Annahme des Angebots und die Zustimmung zur Liftaro-Beraterverguetung.';
+  }
+  if (s && s.isMod) {
+    return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Modernisierungs-Angebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
+      + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + String(_eiErgProvPct(s)).replace('.', ',') + ' % der realisierten Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
+      + 'Die verbindliche Beauftragung der Modernisierung gegenuber dem Fachbetrieb erfolgt separat im Rahmen des angenommenen Angebots. Diese Bestatigung betrifft ausschliesslich die Annahme des Angebots und die Zustimmung zur Liftaro-Beraterverguetung.';
   }
   return 'Mit der nachstehenden Unterschrift bestatigt die Hausverwaltung ' + (s.hvName || '') + ', dass sie das von Liftaro eingeholte Alternativangebot der Firma ' + (chosen ? chosen.wnFirma : '') + ' annehmen und den Konditionen der Liftaro GmbH zustimmen mochte.\n\n'
     + 'Mit der Annahme dieses Angebots stimmt die Hausverwaltung zugleich der erfolgsbasierten Liftaro-Beraterverguetung in Hohe von ' + String(_eiErgProvPct(s)).replace('.', ',') + ' % der realisierten Nettoeinsparung zu. Ohne erzielte Einsparung entstehen keine Kosten.\n\n'
