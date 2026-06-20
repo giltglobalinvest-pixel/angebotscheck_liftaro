@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.13.3';
+  const APP_VERSION = 'v1.13.4';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -358,6 +358,8 @@
     // V12.460: Modernisierung Gesamtpreis-Variante — Bausteine read-only, EIN Gesamtpreis statt Einzelpreisen.
     const isGesamt = String((lv && lv.vorlage_id) || '') === 'lvv_modernisierung_gesamt_default';
     ctx.isGesamt = isGesamt;
+    // V12.463 / v1.13.4: Modernisierung (beide Varianten) → „Bauzeit/Stillstand" statt „Lieferzeit".
+    const isMod = String((lv && lv.vorlage_id) || '').indexOf('lvv_modernisierung') === 0;
     const positionenHtml = positionen.map((p, idx) => {
       const nr = String(p.pos_nr || (idx + 1));
       const titel = String(p.titel || '').trim();
@@ -462,9 +464,9 @@
         </div>` : ''}
 
         <div class="card">
-          <h2>📅 Lieferzeit / Ausführungstermin</h2>
-          <div class="muted" style="margin-bottom:10px">Wann können Sie die Leistung erbringen? Freier Text — z. B. „in ca. 10 Werktagen nach Auftragserteilung", „nach Absprache", „sofort verfügbar".</div>
-          <div class="field"><input type="text" id="lieferzeitGesamt" placeholder="z. B. ca. 10 Werktage nach Auftragserteilung" autocomplete="off"></div>
+          <h2>${isMod ? '🏗 Bauzeit / Stillstandsdauer' : '📅 Lieferzeit / Ausführungstermin'}</h2>
+          <div class="muted" style="margin-bottom:10px">${isMod ? 'Voraussichtliche Bauzeit der Modernisierung und Stillstandsdauer der Anlage. Freier Text — z. B. „ca. 3 Wochen Bauzeit, davon ca. 5 Werktage Aufzug-Stillstand", „nach Absprache".' : 'Wann können Sie die Leistung erbringen? Freier Text — z. B. „in ca. 10 Werktagen nach Auftragserteilung", „nach Absprache", „sofort verfügbar".'}</div>
+          <div class="field"><input type="text" id="lieferzeitGesamt" placeholder="${isMod ? 'z. B. ca. 3 Wochen Bauzeit, davon 5 Tage Stillstand' : 'z. B. ca. 10 Werktage nach Auftragserteilung'}" autocomplete="off"></div>
         </div>
 
         ${klauseln ? `
