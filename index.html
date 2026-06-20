@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.466';
+const APP_VERSION = 'V12.467';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35897,23 +35897,29 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
   } else {
     ensure(46);
     draw('Leistungsumfang der Angebote', M, y, bold, 12, INK); y -= 16;
-    const leistIntro = _origFirma
-      ? 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Angebot der Firma ' + _origFirma + ' per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:'
-      : 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Original-Angebot per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:';
-    for (const l of wrap(leistIntro, helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
-    y -= 6;
-    // Quelle: bevorzugt das neutrale LV (Titel + Beschreibung), sonst die Antwort-Positionen (nur Titel)
-    const leistPos = (chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || []);
-    for (let pi = 0; pi < leistPos.length; pi++) {
-      const p = leistPos[pi];
-      const titel = String(p.titel || '').trim();
-      const besch = String(p.beschreibung || '').trim();
-      const nr = String(p.pos_nr || (pi + 1));
-      const tl = wrap(nr + '. ' + titel, bold, 10.5, W - 2*M);
-      ensure(tl.length * 13 + 6);
-      for (const l of tl) { draw(l, M, y, bold, 10.5, INK); y -= 13; }
-      if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
-      y -= 8;
+    if (isMod) {
+      // V12.467: Modernisierung — KEINE detaillierte Positionsliste im Check (steht im beigefügten Angebot, sonst doppelt). Nur Verweis.
+      for (const l of wrap('Der detaillierte Leistungsumfang (alle Bausteine) ist im beigefügten Modernisierungs-Angebot des Wartungsnehmers aufgeführt. Im Check wird ausschliesslich der Gesamtpreis gegenübergestellt.', helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+      y -= 6;
+    } else {
+      const leistIntro = _origFirma
+        ? 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Angebot der Firma ' + _origFirma + ' per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:'
+        : 'Der nachstehende Leistungsumfang wurde aus dem vorliegenden Original-Angebot per KI extrahiert und analysiert. Beide Angebote beziehen sich auf diesen neutral erstellten Leistungsumfang:';
+      for (const l of wrap(leistIntro, helv, 9.5, W - 2*M)) { draw(l, M, y, helv, 9.5, MUTE); y -= 12; }
+      y -= 6;
+      // Quelle: bevorzugt das neutrale LV (Titel + Beschreibung), sonst die Antwort-Positionen (nur Titel)
+      const leistPos = (chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || []);
+      for (let pi = 0; pi < leistPos.length; pi++) {
+        const p = leistPos[pi];
+        const titel = String(p.titel || '').trim();
+        const besch = String(p.beschreibung || '').trim();
+        const nr = String(p.pos_nr || (pi + 1));
+        const tl = wrap(nr + '. ' + titel, bold, 10.5, W - 2*M);
+        ensure(tl.length * 13 + 6);
+        for (const l of tl) { draw(l, M, y, bold, 10.5, INK); y -= 13; }
+        if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
+        y -= 8;
+      }
     }
     if (chosen.lieferzeit) { y -= 2; ensure(20); draw((isMod ? 'Termine (empfohlenes Angebot): ' : 'Lieferzeit (empfohlenes Angebot): ') + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
   }
