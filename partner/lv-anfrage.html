@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.13.4';
+  const APP_VERSION = 'v1.13.5';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -358,8 +358,9 @@
     // V12.460: Modernisierung Gesamtpreis-Variante — Bausteine read-only, EIN Gesamtpreis statt Einzelpreisen.
     const isGesamt = String((lv && lv.vorlage_id) || '') === 'lvv_modernisierung_gesamt_default';
     ctx.isGesamt = isGesamt;
-    // V12.463 / v1.13.4: Modernisierung (beide Varianten) → „Bauzeit/Stillstand" statt „Lieferzeit".
+    // V12.463 / v1.13.4: Modernisierung (beide Varianten) → eigene Termin-Felder (Stillstand + Lieferzeit).
     const isMod = String((lv && lv.vorlage_id) || '').indexOf('lvv_modernisierung') === 0;
+    ctx.isMod = isMod;
     const positionenHtml = positionen.map((p, idx) => {
       const nr = String(p.pos_nr || (idx + 1));
       const titel = String(p.titel || '').trim();
@@ -463,11 +464,20 @@
           <div class="field field-wrap pos-preis-wrap" style="max-width:280px"><input type="text" inputmode="decimal" id="gesamtPreis" placeholder="0,00" autocomplete="off" aria-label="Gesamtpreis netto"><span class="suffix">€</span></div>
         </div>` : ''}
 
+        ${isMod ? `
         <div class="card">
-          <h2>${isMod ? '🏗 Bauzeit / Stillstandsdauer' : '📅 Lieferzeit / Ausführungstermin'}</h2>
-          <div class="muted" style="margin-bottom:10px">${isMod ? 'Voraussichtliche Bauzeit der Modernisierung und Stillstandsdauer der Anlage. Freier Text — z. B. „ca. 3 Wochen Bauzeit, davon ca. 5 Werktage Aufzug-Stillstand", „nach Absprache".' : 'Wann können Sie die Leistung erbringen? Freier Text — z. B. „in ca. 10 Werktagen nach Auftragserteilung", „nach Absprache", „sofort verfügbar".'}</div>
-          <div class="field"><input type="text" id="lieferzeitGesamt" placeholder="${isMod ? 'z. B. ca. 3 Wochen Bauzeit, davon 5 Tage Stillstand' : 'z. B. ca. 10 Werktage nach Auftragserteilung'}" autocomplete="off"></div>
-        </div>
+          <h2>🗓 Termine</h2>
+          <div class="muted" style="margin-bottom:10px">Bitte geben Sie zwei Zeitangaben an — als freien Text.</div>
+          <div style="margin-bottom:4px;font-size:12.5px;font-weight:700;color:var(--ink)">🏗 Stillstandsdauer der Anlage</div>
+          <div class="field" style="margin-bottom:12px"><input type="text" id="stillstandMod" placeholder="z. B. ca. 5 Werktage Aufzug-Stillstand" autocomplete="off"></div>
+          <div style="margin-bottom:4px;font-size:12.5px;font-weight:700;color:var(--ink)">📅 Lieferzeit / Ausführungstermin</div>
+          <div class="field"><input type="text" id="lieferzeitMod" placeholder="z. B. ca. 6 Wochen nach Auftragserteilung" autocomplete="off"></div>
+        </div>` : `
+        <div class="card">
+          <h2>📅 Lieferzeit / Ausführungstermin</h2>
+          <div class="muted" style="margin-bottom:10px">Wann können Sie die Leistung erbringen? Freier Text — z. B. „in ca. 10 Werktagen nach Auftragserteilung", „nach Absprache", „sofort verfügbar".</div>
+          <div class="field"><input type="text" id="lieferzeitGesamt" placeholder="z. B. ca. 10 Werktage nach Auftragserteilung" autocomplete="off"></div>
+        </div>`}
 
         ${klauseln ? `
         <div class="card">
@@ -674,7 +684,18 @@
     const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = '📤 Angebot absenden'; } };
 
     // Validierung
-    const lieferzeitGesamt = String($('lieferzeitGesamt')?.value || '').trim();
+    // V12.464 / v1.13.5: Modernisierung — zwei Termin-Felder (Stillstand + Lieferzeit) → in lieferzeit_gesamt kombiniert (kein Schema-/Val-Change).
+    let lieferzeitGesamt;
+    if (ctx.isMod) {
+      const _st = String($('stillstandMod')?.value || '').trim();
+      const _lz = String($('lieferzeitMod')?.value || '').trim();
+      const _parts = [];
+      if (_st) _parts.push('Stillstand: ' + _st);
+      if (_lz) _parts.push('Lieferzeit: ' + _lz);
+      lieferzeitGesamt = _parts.join(' · ');
+    } else {
+      lieferzeitGesamt = String($('lieferzeitGesamt')?.value || '').trim();
+    }
     let response;
     if (ctx.isGesamt) {
       // V12.460: Gesamtpreis-Variante — EIN Pauschalpreis für den gesamten Leistungsumfang.
