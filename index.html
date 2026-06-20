@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.460';
+const APP_VERSION = 'V12.461';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12559,6 +12559,9 @@ function _eiLvRenderEditorBody() {
   const { snap, positionen, vorlage } = s;
   // V12.439: Wartungsvertrag → 9-Optionen-Wizard statt Positionsliste
   if (vorlage && vorlage.typ === 'wartungsvertrag') { _eiWvRenderEditorBody(body, s); return; }
+  // V12.461: Modernisierung Gesamtpreis-Variante — Positionen bleiben, aber KEIN Einzel-Originalpreis je Position;
+  // stattdessen EIN Original-Gesamtpreis-Feld (unten). Dienstleister gibt später ebenfalls nur einen Gesamtpreis ab.
+  const isGesamt = !!(vorlage && vorlage.id === 'lvv_modernisierung_gesamt_default');
   // Kontext-Snapshot (read-only Karten)
   const kCard = (icon, label, val) => '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;min-width:0">'
     + '<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:4px"><span>' + icon + '</span><span>' + label + '</span></div>'
@@ -12583,13 +12586,13 @@ function _eiLvRenderEditorBody() {
         + '<td style="padding:8px 10px;border-right:1px solid #f1f5f9;vertical-align:top">'
         +   '<input type="text" placeholder="Posten-Titel (z. B. Erneuerung Hauptschütze)" value="' + _esc(String(p.titel || '')) + '" oninput="_eiLvPosEdit(' + idx + ',\'titel\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:13px;font-weight:700;color:#0f172a;background:#fff;outline:none;box-sizing:border-box" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
         +   '<textarea placeholder="Leistungsbeschreibung — alle Unter-Schritte (Konfektionierung, Montage, Entsorgung, Inbetriebnahme …) als Fließtext oder Bullet-Liste" oninput="_eiLvPosEdit(' + idx + ',\'beschreibung\',this.value)" rows="4" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12px;resize:vertical;background:#fafbfc;line-height:1.5;outline:none;box-sizing:border-box;color:#334155" onfocus="this.style.borderColor=\'#7c3aed\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'#e2e8f0\';this.style.background=\'#fafbfc\'">' + _esc(String(p.beschreibung || '')) + '</textarea>'
-        // V12.392: Originalpreis aus PDF (KI-extrahiert) — editierbar
-        +   '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b">'
+        // V12.392/461: Originalpreis pro Position — bei Gesamtpreis-Variante ausgeblendet (ein Original-Gesamtpreis unten).
+        +   (isGesamt ? '' : ('<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b">'
         +     '<span style="font-weight:600;color:#475569">📎 Original (aus PDF):</span>'
         +     '<input type="text" inputmode="decimal" placeholder="—" value="' + (p.preis_eur != null ? String(p.preis_eur).replace('.', ',') : '') + '" oninput="_eiLvPosEdit(' + idx + ',\'preis_eur\',this.value)" style="width:90px;padding:4px 7px;border:1px solid #e2e8f0;border-radius:4px;font-family:var(--dr-f-mono);font-size:11.5px;text-align:right;background:#fff;outline:none" onfocus="this.style.borderColor=\'#7c3aed\'" onblur="this.style.borderColor=\'#e2e8f0\'">'
         +     '<span style="color:#94a3b8">€</span>'
         +     (p.preis_eur != null && p.preis_eur > 0 ? '<span style="margin-left:auto;background:#f0fdfa;color:#0e7490;border-radius:4px;padding:2px 7px;font-weight:600">→ Wunschpreis −30 %: ' + (p.preis_eur * 0.7).toFixed(2).replace('.', ',') + ' €</span>' : '')
-        +   '</div>'
+        +   '</div>'))
         + '</td>'
         + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.menge || '1')) + '" oninput="_eiLvPosEdit(' + idx + ',\'menge\',this.value)" style="width:70px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:var(--dr-f-mono);font-size:12px;text-align:right;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
         + '<td style="padding:8px 8px;border-right:1px solid #f1f5f9;vertical-align:top"><input type="text" value="' + _esc(String(p.einheit || 'Pauschal')) + '" oninput="_eiLvPosEdit(' + idx + ',\'einheit\',this.value)" style="width:95px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-family:inherit;font-size:12px;background:transparent" onfocus="this.style.borderColor=\'#cbd5e1\'" onblur="this.style.borderColor=\'transparent\'"></td>'
@@ -12617,9 +12620,27 @@ function _eiLvRenderEditorBody() {
     + '</div>';
   // Klauseln-Vorschau (Accordion)
   const klauselnHtml = '<details style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-top:14px"><summary style="cursor:pointer;padding:12px 14px;font-size:12.5px;font-weight:700;color:#475569;list-style:none;outline:none">📜 Klauseln (aus Vorlage „' + _esc(vorlage.name) + '") · zur Vorschau aufklappen</summary><div style="padding:0 16px 14px;font-size:12.5px;color:#0f172a;line-height:1.55">' + (vorlage.klauseln_html || '<em style="color:#94a3b8">(keine Klauseln definiert — pflegen unter Werkzeuge → LV-Vorlagen)</em>') + '</div></details>';
-  body.innerHTML = ctxHtml + titelHtml + tableHtml + klauselnHtml;
+  // V12.461: Gesamtpreis-Variante — EIN Original-Gesamtpreis (aus PDF, KI-extrahiert, editierbar) statt Einzelpreisen.
+  const gesamtOrigHtml = isGesamt
+    ? '<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:12px 14px;margin-top:14px">'
+      + '<div style="font-size:10.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📎 Original-Gesamtpreis (aus PDF)</div>'
+      + '<div style="font-size:11.5px;color:#7c2d12;margin-bottom:8px;line-height:1.45">Pauschal-Variante: Der Dienstleister gibt EINEN Gesamtpreis ab (keine Einzelpreise je Position). Hier der Netto-Gesamtpreis des vorliegenden Original-Angebots — Vergleichswert im Ergebnis-Check. Wird automatisch aus dem PDF gelesen, bei Bedarf korrigieren.</div>'
+      + '<div style="display:flex;align-items:center;gap:8px"><input type="text" id="lvEdGesamtOrig" inputmode="decimal" placeholder="0,00" value="' + (s.snap.orig_gesamtpreis_eur != null && s.snap.orig_gesamtpreis_eur !== '' ? String(s.snap.orig_gesamtpreis_eur).replace('.', ',') : '') + '" oninput="_eiLvGesamtOrigEdit(this.value)" style="width:170px;padding:7px 10px;border:1px solid #fdba74;border-radius:6px;font-family:var(--dr-f-mono);font-size:13px;text-align:right;background:#fff;outline:none"><span style="color:#9a3412;font-weight:600">€ netto</span></div>'
+      + '</div>'
+    : '';
+  body.innerHTML = ctxHtml + titelHtml + tableHtml + gesamtOrigHtml + klauselnHtml;
 }
 window._eiLvRenderEditorBody = _eiLvRenderEditorBody;
+
+// V12.461: Original-Gesamtpreis (Gesamtpreis-Variante) editieren → in den Kontext-Snapshot (wird gespeichert + vom Ergebnis-Check als Vergleichswert gelesen).
+function _eiLvGesamtOrigEdit(v) {
+  const s = window._eiLvEditorState; if (!s) return;
+  const raw = String(v || '').replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(raw);
+  s.snap = s.snap || {};
+  s.snap.orig_gesamtpreis_eur = (isNaN(n) || n <= 0) ? '' : n;
+}
+window._eiLvGesamtOrigEdit = _eiLvGesamtOrigEdit;
 
 function _eiLvPosEdit(idx, field, value) {
   const s = window._eiLvEditorState; if (!s || !s.positionen[idx]) return;
@@ -12924,7 +12945,11 @@ async function _eiLvExtractPositions() {
           const gp = parseNum(mp.gesamtpreis_eur);
           if (anb) s.snap.orig_anbieter = anb;
           if (anr) s.snap.orig_angebot_nr = anr;
-          if (gp != null) s.snap.orig_gesamtpreis_eur = gp;
+          if (gp != null) {
+            s.snap.orig_gesamtpreis_eur = gp;
+            // V12.461: Gesamtpreis-Variante — extrahierten Original-Gesamtpreis ins sichtbare Feld spiegeln
+            const _go = document.getElementById('lvEdGesamtOrig'); if (_go && !_go.value) _go.value = String(gp).replace('.', ',');
+          }
           window._eiLvLastDiagnostics.meta = { anbieter: anb, angebotsnummer: anr, gesamtpreis_eur: gp };
           const parts = []; if (anb) parts.push(anb); if (anr) parts.push('Nr. ' + anr);
           if (parts.length) metaInfo = ' · ' + parts.join(' · ');
