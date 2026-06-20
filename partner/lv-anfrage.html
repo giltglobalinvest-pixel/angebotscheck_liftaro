@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.13.2';
+  const APP_VERSION = 'v1.13.3';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -355,12 +355,23 @@
     const einleitung       = String(anf.einleitung_snapshot_html || (vorlage && vorlage.einleitung_html)  || '');
     const unterschriftText = String(anf.unterschrift_snapshot    || (vorlage && vorlage.unterschrift_text) || 'Mit der Unterzeichnung dieses Leistungsverzeichnisses gebe ich ein verbindliches Angebot ab. Die genannten Preise sind exkl. MwSt.');
 
+    // V12.460: Modernisierung Gesamtpreis-Variante — Bausteine read-only, EIN Gesamtpreis statt Einzelpreisen.
+    const isGesamt = String((lv && lv.vorlage_id) || '') === 'lvv_modernisierung_gesamt_default';
+    ctx.isGesamt = isGesamt;
     const positionenHtml = positionen.map((p, idx) => {
       const nr = String(p.pos_nr || (idx + 1));
       const titel = String(p.titel || '').trim();
       const desc = String(p.beschreibung || '').trim();
       const menge = String(p.menge || '1');
       const einheit = String(p.einheit || 'Pauschal');
+      if (isGesamt) {
+        return `
+        <tr class="pos-row" data-idx="${idx}">
+          <td class="pos-nr">${esc(nr)}.</td>
+          <td><div class="pos-title">${esc(titel || '(Position)')}</div>${desc ? `<div class="pos-desc">${esc(desc)}</div>` : ''}</td>
+          <td class="pos-menge">${esc(menge)}<br><span style="color:#94a3b8">${esc(einheit)}</span></td>
+        </tr>`;
+      }
       // v1.2: Wunschpreis = Original × 0.7 (wenn vorhanden)
       const origPreis = (p.preis_eur != null && p.preis_eur > 0) ? Number(p.preis_eur) : null;
       const wunsch = origPreis != null ? (origPreis * 0.7) : null;
@@ -429,19 +440,26 @@
         </div>
 
         <div class="card">
-          <h2>📋 Positionen</h2>
-          <div class="muted" style="margin-bottom:14px">Tragen Sie pro Position Ihren Netto-Preis (EUR), die Lieferzeit (Werktage) und ggf. eine Bemerkung ein. Alle Preise verstehen sich zzgl. MwSt.</div>
+          <h2>📋 ${isGesamt ? 'Leistungsumfang (Bausteine)' : 'Positionen'}</h2>
+          <div class="muted" style="margin-bottom:14px">${isGesamt ? 'Dieses Angebot wird als <strong>Gesamtpreis (Pauschale)</strong> für den vollständigen Leistungsumfang abgegeben. Die folgenden Bausteine dienen nur der Übersicht — Ihren Netto-Gesamtpreis tragen Sie weiter unten ein.' : 'Tragen Sie pro Position Ihren Netto-Preis (EUR), die Lieferzeit (Werktage) und ggf. eine Bemerkung ein. Alle Preise verstehen sich zzgl. MwSt.'}</div>
           <table class="pos-table">
             <thead>
-              <tr><th>Nr.</th><th>Leistung</th><th>Menge</th><th>Preis (netto)</th></tr>
+              <tr><th>Nr.</th><th>Leistung</th><th>Menge</th>${isGesamt ? '' : '<th>Preis (netto)</th>'}</tr>
             </thead>
             <tbody>${positionenHtml}</tbody>
           </table>
-          <div class="summe-bar">
+          ${isGesamt ? '' : `<div class="summe-bar">
             <span class="lbl">Gesamtsumme (Netto)</span>
             <span class="val" id="summeAnzeige">— €</span>
-          </div>
+          </div>`}
         </div>
+
+        ${isGesamt ? `
+        <div class="card">
+          <h2>💶 Gesamtpreis (netto)</h2>
+          <div class="muted" style="margin-bottom:10px">Netto-Pauschalpreis für den gesamten oben aufgeführten Leistungsumfang (alle Bausteine). Zzgl. MwSt.</div>
+          <div class="field field-wrap pos-preis-wrap" style="max-width:280px"><input type="text" inputmode="decimal" id="gesamtPreis" placeholder="0,00" autocomplete="off" aria-label="Gesamtpreis netto"><span class="suffix">€</span></div>
+        </div>` : ''}
 
         <div class="card">
           <h2>📅 Lieferzeit / Ausführungstermin</h2>
@@ -654,24 +672,41 @@
     const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = '📤 Angebot absenden'; } };
 
     // Validierung
-    const response = ctx.positionen.map((p, idx) => ({
-      pos_nr:     String(p.pos_nr || (idx + 1)),
-      titel:      String(p.titel || ''),
-      menge:      String(p.menge || '1'),
-      einheit:    String(p.einheit || 'Pauschal'),
-      beschreibung: String(p.beschreibung || ''),
-      preis_eur:  parseEur($('preis_' + idx)?.value),
-      bemerkung:  String($('bemerkung_' + idx)?.value || '').trim(),
-    }));
     const lieferzeitGesamt = String($('lieferzeitGesamt')?.value || '').trim();
-    const leerePos = response.filter(r => !r.preis_eur || r.preis_eur <= 0);
-    if (leerePos.length === response.length) {
-      alert('Bitte mindestens einen Preis eintragen.');
-      return;
-    }
-    if (leerePos.length) {
-      const ok = confirm('⚠ ' + leerePos.length + ' Position' + (leerePos.length === 1 ? '' : 'en') + ' ohne Preis (' + leerePos.map(r => r.pos_nr).join(', ') + ').\n\nTrotzdem absenden?');
-      if (!ok) return;
+    let response;
+    if (ctx.isGesamt) {
+      // V12.460: Gesamtpreis-Variante — EIN Pauschalpreis für den gesamten Leistungsumfang.
+      // response_json bleibt ein 1-Element-Array (kompatibel mit Val + Ergebnis-Check).
+      const gesamt = parseEur($('gesamtPreis')?.value);
+      if (!gesamt || gesamt <= 0) { alert('Bitte einen Netto-Gesamtpreis eintragen.'); $('gesamtPreis')?.focus(); return; }
+      response = [{
+        pos_nr: '1',
+        titel: 'Modernisierung — Gesamtpreis (Pauschalangebot)',
+        menge: '1',
+        einheit: 'Pauschal',
+        beschreibung: 'Netto-Gesamtpreis (Pauschale) für den gesamten Leistungsumfang gemäß Leistungsverzeichnis (' + ctx.positionen.length + ' Bausteine).',
+        preis_eur: gesamt,
+        bemerkung: '',
+      }];
+    } else {
+      response = ctx.positionen.map((p, idx) => ({
+        pos_nr:     String(p.pos_nr || (idx + 1)),
+        titel:      String(p.titel || ''),
+        menge:      String(p.menge || '1'),
+        einheit:    String(p.einheit || 'Pauschal'),
+        beschreibung: String(p.beschreibung || ''),
+        preis_eur:  parseEur($('preis_' + idx)?.value),
+        bemerkung:  String($('bemerkung_' + idx)?.value || '').trim(),
+      }));
+      const leerePos = response.filter(r => !r.preis_eur || r.preis_eur <= 0);
+      if (leerePos.length === response.length) {
+        alert('Bitte mindestens einen Preis eintragen.');
+        return;
+      }
+      if (leerePos.length) {
+        const ok = confirm('⚠ ' + leerePos.length + ' Position' + (leerePos.length === 1 ? '' : 'en') + ' ohne Preis (' + leerePos.map(r => r.pos_nr).join(', ') + ').\n\nTrotzdem absenden?');
+        if (!ok) return;
+      }
     }
     const sigName = $('sigName')?.value.trim() || '';
     if (!sigName) { alert('Bitte den Namen des Unterzeichners eintragen.'); $('sigName')?.focus(); return; }
