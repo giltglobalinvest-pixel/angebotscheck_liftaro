@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.459';
+const APP_VERSION = 'V12.460';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -11481,6 +11481,25 @@ function _eiLvDefaultModernisierungVorlage() {
 }
 window._eiLvDefaultModernisierungVorlage = _eiLvDefaultModernisierungVorlage;
 
+// V12.460: Modernisierung — Gesamtpreis-Variante. Positionen werden weiterhin extrahiert/angezeigt
+// (Bausteine), aber der Dienstleister trägt KEINE Einzelpreise ein, sondern EINEN Gesamtpreis (Pauschal).
+// Erkennung auf der Landing über vorlage_id 'lvv_modernisierung_gesamt_default'.
+function _eiLvDefaultModernisierungGesamtVorlage() {
+  const base = _eiLvDefaultModernisierungVorlage();
+  base.id   = 'lvv_modernisierung_gesamt_default';
+  base.name = 'Modernisierungsangebot — Gesamtpreis (Pauschal)';
+  base.einleitung_html =
+    '<p>Sehr geehrte Damen und Herren,</p>'
+  + '<p>im Auftrag unseres Kunden — der unten genannten Hausverwaltung — bitten wir Sie um ein verbindliches <strong>Pauschalangebot (Gesamtpreis)</strong> für die nachfolgend aufgeführte Modernisierung der o. g. Aufzugsanlage.</p>'
+  + '<p>Die einzelnen Bausteine dienen nur der Übersicht — bitte tragen Sie online <strong>einen Netto-Gesamtpreis</strong> für den gesamten Leistungsumfang sowie die voraussichtliche <strong>Bauzeit / Stillstandsdauer</strong> ein.</p>'
+  + '<p>Es gelten die unten aufgeführten Vertragsbedingungen.</p>';
+  base.unterschrift_text =
+    'Mit meiner Unterschrift bestätige ich verbindlich den vorgenannten Gesamtpreis (Pauschale) für den gesamten Leistungsumfang sowie die angegebene Bauzeit / Stillstandsdauer. Das Angebot ist 30 Tage ab Datum gültig.';
+  base.savedAt = new Date().toISOString();
+  return base;
+}
+window._eiLvDefaultModernisierungGesamtVorlage = _eiLvDefaultModernisierungGesamtVorlage;
+
 // ════════════════════════════════════════════════════════════════════════════
 // V12.439: WARTUNGSVERTRAGS-CHECK — Phase 1: Vorlage + Conditional-Renderer
 // LV-Typ „wartungsvertrag": Liftaro fixiert 9 Leistungsoptionen (Spec aus Alt-Vertrag),
@@ -12428,8 +12447,12 @@ async function startLvErstellen(emailId, vorlageId) {
     vorlagen.push(_eiLvDefaultWartungsvertragVorlage());
   }
   // V12.457: Modernisierungs-Vorlage (Code-Default) immer anbieten, falls (noch) nicht in der DB.
-  if (typeof _eiLvDefaultModernisierungVorlage === 'function' && !vorlagen.some(v => String(v.typ) === 'modernisierung')) {
+  if (typeof _eiLvDefaultModernisierungVorlage === 'function' && !vorlagen.some(v => String(v.id) === 'lvv_modernisierung_default')) {
     vorlagen.push(_eiLvDefaultModernisierungVorlage());
+  }
+  // V12.460: Modernisierung — Gesamtpreis-Variante (Code-Default) als weitere Auswahl anbieten.
+  if (typeof _eiLvDefaultModernisierungGesamtVorlage === 'function' && !vorlagen.some(v => String(v.id) === 'lvv_modernisierung_gesamt_default')) {
+    vorlagen.push(_eiLvDefaultModernisierungGesamtVorlage());
   }
   if (!vorlagen.length) { showToast('Keine aktive LV-Vorlage vorhanden — bitte unter Werkzeuge → LV-Vorlagen anlegen', 'warning', 7000); return; }
   let chosen = null;
@@ -13841,6 +13864,9 @@ async function openLvForEmail(emailId, lvId) {
     // zurück → typ='modernisierung' verloren → Bauzeit-Label + Normen-Abschnitt würden nicht greifen.
     if (!vorlage && String(lv.vorlage_id || '') === 'lvv_modernisierung_default' && typeof _eiLvDefaultModernisierungVorlage === 'function') {
       vorlage = _eiLvDefaultModernisierungVorlage();
+    }
+    if (!vorlage && String(lv.vorlage_id || '') === 'lvv_modernisierung_gesamt_default' && typeof _eiLvDefaultModernisierungGesamtVorlage === 'function') {
+      vorlage = _eiLvDefaultModernisierungGesamtVorlage();
     }
     if (!vorlage) vorlage = vorlagen[0];
     if (!vorlage) {
