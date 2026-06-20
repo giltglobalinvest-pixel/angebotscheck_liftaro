@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.458';
+const APP_VERSION = 'V12.459';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -12645,9 +12645,36 @@ window._eiLvPosMove = _eiLvPosMove;
 async function _eiLvExtractPositions() {
   const s = window._eiLvEditorState; if (!s) return;
   const btn = document.getElementById('lvEdExtractBtn');
-  const setBtn = (txt, dis) => { if (!btn) return; btn.disabled = !!dis; btn.style.opacity = dis ? '.7' : '1'; btn.textContent = txt; };
+  // V12.459: Extract-Button wird zur Fortschritts-Anzeige — Füllbalken hinter dem Phasen-Label.
+  // Echter %-Wert eines LLM-Calls ist nicht messbar → „Creep" (kriecht über die erwartete Dauer
+  // Richtung ~90 %, springt bei Fertigstellung auf 100 %).
+  let extractOk = false;
+  const _ensureProg = () => {
+    if (!btn || btn.querySelector('.lvxp-lbl')) return;
+    btn._origHTML = btn.innerHTML;
+    btn.style.position = 'relative'; btn.style.overflow = 'hidden'; btn.style.minWidth = '250px';
+    btn.innerHTML = '<span class="lvxp-fill" style="position:absolute;left:0;top:0;bottom:0;width:5%;background:rgba(255,255,255,.32);transition:width .6s ease;z-index:0"></span>'
+      + '<span class="lvxp-lbl" style="position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;white-space:nowrap"></span>';
+  };
+  const setProg = (pct, ms) => {
+    if (!btn) return; _ensureProg();
+    const fill = btn.querySelector('.lvxp-fill'); if (!fill) return;
+    fill.style.transition = 'width ' + (ms != null ? ms : 600) + 'ms ' + ((ms || 0) > 2500 ? 'ease-out' : 'ease');
+    fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  };
+  const _restoreBtn = () => {
+    if (!btn) return;
+    if (btn._origHTML != null) { btn.innerHTML = btn._origHTML; btn._origHTML = null; }
+    btn.style.overflow = ''; btn.style.minWidth = ''; btn.style.position = '';
+  };
+  const setBtn = (txt, dis) => {
+    if (!btn) return;
+    btn.disabled = !!dis; btn.style.opacity = dis ? '.92' : '1';
+    if (dis) { _ensureProg(); const lbl = btn.querySelector('.lvxp-lbl'); if (lbl) lbl.textContent = txt; }
+    else { _restoreBtn(); }
+  };
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt — bitte im Setup eintragen', 'error', 4500); return; }
-  setBtn('⏳ Lade PDFs …', true);
+  setBtn('⏳ Lade PDFs …', true); setProg(6);
   try {
     const r = (_eiAllRecords || []).find(x => x._id === s.emailId);
     if (!r) throw new Error('Email nicht gefunden');
@@ -12673,7 +12700,8 @@ async function _eiLvExtractPositions() {
       const a = pdfs[i];
       const fn = a.filename || a.name || ('Anhang ' + (i + 1));
       if (!a.url) { skipped.push(fn + ' (keine URL)'); continue; }
-      setBtn('⏳ Lade ' + (i + 1) + '/' + Math.min(pdfs.length, MAX_FILES) + ' …', true);
+      setBtn('⏳ Lade PDF ' + (i + 1) + '/' + Math.min(pdfs.length, MAX_FILES) + ' …', true);
+      setProg(6 + Math.round((i + 1) / Math.min(pdfs.length, MAX_FILES) * 16), 400);
       try {
         const resp = await fetch(a.url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -12709,7 +12737,7 @@ async function _eiLvExtractPositions() {
     } else {
       throw new Error('Weder DB-Prompt noch Code-Default vorhanden');
     }
-    setBtn('⏳ Claude liest PDF …', true);
+    setBtn('⏳ Claude liest das Angebot …', true); setProg(25); setProg(90, 22000);
     const userText = 'Analysiere die obigen PDF-Anhänge sorgfältig und extrahiere die Reparatur-/Erneuerungs-Positionen exakt nach deiner Anweisung.\n\n'
       + 'WICHTIG:\n'
       + '- Liefere für jede Position UNBEDINGT die Felder `titel` (Substantiv-Phrase) und `beschreibung` (Fließtext mit allen Unter-Schritten).\n'
@@ -12841,13 +12869,14 @@ async function _eiLvExtractPositions() {
     }
     s.positionen = norm;
     _eiLvRenderEditorBody();
+    setProg(93);
     // V12.458: Bei geretteter (abgeschnittener) KI-Antwort warnen — letzte Position(en) können fehlen.
     if (salvaged) showToast('⚠ KI-Antwort war abgeschnitten — ' + norm.length + ' Position(en) gerettet. Bitte auf Vollständigkeit prüfen (ggf. letzte Position manuell ergänzen).', 'warning', 9000);
     // V12.414: Kopfdaten (Anbieter, Angebotsnummer, Netto-Gesamtpreis) zusätzlich extrahieren
     // und im Kontext-Snapshot ablegen → der Ergebnis-Check füllt damit Original-Anbieter/-Nr. automatisch.
     let metaInfo = '';
     try {
-      setBtn('⏳ Lese Anbieter / Angebotsnr. …', true);
+      setBtn('⏳ Lese Anbieter / Angebotsnr. …', true); setProg(99, 8000);
       const metaSys = 'Du extrahierst die Kopfdaten aus einem Reparatur-/Erneuerungs-Angebot für eine Aufzugsanlage. '
         + 'Antworte AUSSCHLIESSLICH mit gültigem JSON: {"anbieter":"...","angebotsnummer":"...","gesamtpreis_eur":<zahl oder null>}. '
         + 'anbieter = Name des anbietenden Fachbetriebs/Unternehmens (das das Angebot stellt), NICHT der Kunde/die Hausverwaltung. '
@@ -12879,6 +12908,7 @@ async function _eiLvExtractPositions() {
         }
       }
     } catch (e) { console.warn('[V12.414] LV-Meta-Extraktion:', e.message); }
+    extractOk = true;
     const _priceCnt = norm.filter(p => p.preis_eur != null).length;
     let toast = '✓ ' + norm.length + ' Position' + (norm.length === 1 ? '' : 'en') + ' extrahiert · ' + _priceCnt + '/' + norm.length + ' mit Einzelpreis' + (_priceCnt === 0 ? ' (PDF enthält evtl. keine Einzelpreise — „🔬 Diagnose" prüfen)' : '') + metaInfo;
     if (promptWarning) toast += ' · ⚠ ' + promptWarning;
@@ -12889,7 +12919,9 @@ async function _eiLvExtractPositions() {
     console.error('[V12.379] _eiLvExtractPositions:', e);
     showToast('Extraktion fehlgeschlagen: ' + e.message + ' — „🔬 Diagnose" klicken für Details.', 'error', 7500);
   } finally {
-    setBtn('🤖 KI: Positionen aus Anhang', false);
+    // V12.459: bei Erfolg kurz 100 % zeigen, dann Button zurücksetzen; bei Fehler sofort zurück.
+    if (extractOk) { setProg(100, 250); setTimeout(() => setBtn('🤖 KI: Positionen aus Anhang', false), 380); }
+    else setBtn('🤖 KI: Positionen aus Anhang', false);
   }
 }
 window._eiLvExtractPositions = _eiLvExtractPositions;
