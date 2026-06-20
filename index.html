@@ -6489,7 +6489,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.464';
+const APP_VERSION = 'V12.465';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35915,7 +35915,7 @@ async function _eiBuildErgebnisCheckPDF(s, chosen) {
       if (besch) { for (const l of wrap(besch, helv, 9.5, W - 2*M - 14)) { ensure(12); draw(l, M + 14, y, helv, 9.5, MUTE); y -= 12; } }
       y -= 8;
     }
-    if (chosen.lieferzeit) { y -= 2; ensure(20); draw((isMod ? 'Bauzeit / Stillstand (empfohlenes Angebot): ' : 'Lieferzeit (empfohlenes Angebot): ') + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
+    if (chosen.lieferzeit) { y -= 2; ensure(20); draw((isMod ? 'Termine (empfohlenes Angebot): ' : 'Lieferzeit (empfohlenes Angebot): ') + chosen.lieferzeit, M, y, helv, 10, INK); y -= 16; }
   }
   // V12.463: Modernisierung — neutraler Normen-/Nachrüst-Hinweis (Stand der Technik) im HV-Ergebnis.
   if (isMod) {
