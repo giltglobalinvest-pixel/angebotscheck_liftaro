@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.472';
+const APP_VERSION = 'V12.473';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35181,23 +35181,9 @@ function _renderEmailLvSection(r) {
     ? 'Leistungsverzeichnis aus den PDF-Anhängen extrahieren und bearbeiten'
     : pre.reason;
   const createBtn = '<button ' + (pre.ok ? '' : 'disabled ') + 'onclick="startLvErstellen(\'' + r._id + '\')" title="' + _esc(btnTitle) + '" style="' + btnStyle + ';border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;font-family:\'DM Sans\',sans-serif;display:inline-flex;align-items:center;gap:6px">📋 LV erstellen</button>';
-  // V12.402: Ergebnis-Banner — erscheint sobald mind. 1 Angebot eingegangen ist
-  let ergebnisBanner = '';
-  if (typeof _eiLvEmailHasSubmitted === 'function' && _eiLvEmailHasSubmitted(r._id)) {
-    const cnt = (typeof _eiLvEmailSubmittedCount === 'function') ? _eiLvEmailSubmittedCount(r._id) : 0;
-    const hasSavedCheck = !!String(r.ergebnis_check_json || '').trim();   // V12.413: gespeicherter Check vorhanden?
-    ergebnisBanner = '<div style="margin-top:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
-      + '<div style="min-width:0">'
-      +   '<div style="font-size:12.5px;font-weight:700;color:#15803d">💰 ' + cnt + ' Angebot' + (cnt === 1 ? '' : 'e') + ' eingegangen' + (hasSavedCheck ? ' · <span style="color:#0369a1">💾 Check gespeichert</span>' : '') + '</div>'
-      +   '<div style="font-size:11.5px;color:#166534;margin-top:1px">' + (hasSavedCheck ? 'Mit „Prüfen & senden" das Ergebnis als Vorschau öffnen und mit einem Klick versenden — oder manuell bearbeiten.' : 'Mit „Prüfen & senden" das fertige Ergebnis sofort als Vorschau öffnen und mit einem Klick an die Hausverwaltung senden.') + '</div>'
-      + '</div>'
-      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
-      +   (hasSavedCheck ? '<button onclick="_eiErgebnisDownloadSaved(\'' + r._id + '\')" title="Gespeichertes Ergebnis-PDF direkt herunterladen" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">📄 PDF</button>' : '')
-      +   '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" title="Ergebnis manuell anpassen (Auswahl, Beträge, Texte, KI-Einschätzung)" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">✏️ ' + (hasSavedCheck ? 'Bearbeiten' : 'Anpassen') + '</button>'
-      +   '<button onclick="_eiErgebnisQuickPreview(\'' + r._id + '\')" title="Fertiges Ergebnis sofort als Vorschau öffnen und mit einem Klick senden" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">⚡ Prüfen &amp; senden</button>'
-      + '</div>'
-      + '</div>';
-  }
+  // V12.473: Ergebnis-Aktionen („Prüfen & senden" etc.) wurden in die prominente Top-Kachel
+  // verschoben (_eiErgebnisTopCard, ganz oben in renderEmailInboxDetail). Hier daher nichts mehr.
+  const ergebnisBanner = '';
   return '<div class="dr-section" data-feature="ei_lv" style="margin-bottom:14px;padding:14px 16px;border-left:3px solid #7c3aed;background:#faf5ff">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:' + (lvs.length ? '10' : '6') + 'px;flex-wrap:wrap">'
     +   '<div>'
@@ -41176,6 +41162,43 @@ function _eiUpdateOverlayNavButtons() {
   }
 }
 
+// V12.473: Prominente Ergebnis-Check-Aktionskachel GANZ OBEN — immer dann sichtbar, wenn ein Check
+// verarbeitet & versendet werden kann (Angebot eingegangen) oder bereits erstellt/versendet wurde.
+// Ersetzt das alte Banner unten in der LV-Sektion + den alten Top-Banner (für gespeicherte Checks).
+function _eiErgebnisTopCard(r) {
+  if (!r) return '';
+  const hasSubmitted = (typeof _eiLvEmailHasSubmitted === 'function') && _eiLvEmailHasSubmitted(r._id);
+  const hasSaved = !!String(r.ergebnis_check_json || '').trim();
+  if (!hasSubmitted && !hasSaved) return '';
+  const cnt = (typeof _eiLvEmailSubmittedCount === 'function') ? _eiLvEmailSubmittedCount(r._id) : 0;
+  const sent = hasSaved && ((r.status === 'geantwortet') || (String(r.check_status || '') === 'gecheckt'));
+  const sentAt = String(r.status_at || '').replace('T', ' ').slice(0, 16);
+  let head, sub;
+  if (sent) {
+    head = '✓ Ergebnis-Check erstellt & an die Hausverwaltung versendet';
+    sub  = 'Versendet' + (sentAt ? ' am ' + _esc(sentAt) : '') + ' · in Kopie an service@liftaro.de · PDF jederzeit erneut herunterladbar.';
+  } else if (hasSaved) {
+    head = '💾 Ergebnis-Check gespeichert — noch nicht versendet';
+    sub  = 'Mit „Prüfen & senden" als Vorschau öffnen und mit einem Klick an die Hausverwaltung senden — oder anpassen.';
+  } else {
+    head = '💰 ' + cnt + ' Angebot' + (cnt === 1 ? '' : 'e') + ' eingegangen — bereit zum Versand';
+    sub  = 'Mit „Prüfen & senden" das fertige Ergebnis sofort als Vorschau öffnen und mit einem Klick an die Hausverwaltung senden.';
+  }
+  const btnPdf  = '<button onclick="_eiErgebnisDownloadSaved(\'' + r._id + '\')" title="Ergebnis-PDF herunterladen" style="background:#fff;color:#15803d;border:1.5px solid #16a34a;border-radius:8px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">📄 PDF</button>';
+  const btnEdit = '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" title="Ergebnis manuell anpassen (Auswahl, Beträge, Texte, KI-Einschätzung)" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:8px;padding:9px 15px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">✏️ Anpassen</button>';
+  const btnSend = '<button onclick="_eiErgebnisQuickPreview(\'' + r._id + '\')" title="Fertiges Ergebnis sofort als Vorschau öffnen und mit einem Klick senden" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">⚡ Prüfen &amp; senden</button>';
+  const btnOpen = '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 Ergebnis öffnen</button>';
+  const actions = sent ? (btnPdf + btnOpen) : (hasSaved ? (btnPdf + btnEdit + btnSend) : (btnEdit + btnSend));
+  return '<div data-feature="ei_lv" style="margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#dcfce7,#f0fdf4);border:1px solid #86efac;border-left:4px solid #16a34a;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(22,163,74,.12)">'
+    + '<div style="min-width:0">'
+    +   '<div style="font-size:13.5px;font-weight:800;color:#15803d">' + head + '</div>'
+    +   '<div style="font-size:11.5px;color:#166534;margin-top:2px">' + sub + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + actions + '</div>'
+    + '</div>';
+}
+window._eiErgebnisTopCard = _eiErgebnisTopCard;
+
 function renderEmailInboxDetail() {
   const detEl = document.getElementById('emailInboxDetail');
   if (!_eiSelectedId) {
@@ -41253,25 +41276,8 @@ function renderEmailInboxDetail() {
     <button onclick="_eiResetDetailLayout()" title="Block-Reihenfolge & Auf/Zu auf Standard zurücksetzen" style="background:#fff;border:1px solid #d1d5db;color:#475569;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↺ Standard</button>
     <button class="ei-layout-save" onclick="_eiSaveDetailLayout()" title="Aktuelle Reihenfolge + Auf/Zu-Zustand als Standard für alle Emails speichern" style="background:#fff;border:1px solid #16a34a;color:#15803d;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💾 Layout speichern</button>
   </div>`;
-  // V12.429: Prominenter Ergebnis-Check-Banner GANZ OBEN — wenn ein Ergebnis-Check erstellt/versendet wurde
-  if (String(r.ergebnis_check_json || '').trim()) {
-    const _ergSent = (r.status === 'geantwortet') || (String(r.check_status || '') === 'gecheckt');
-    const _ergAt = String(r.status_at || '').replace('T', ' ').slice(0, 16);
-    const _ergHead = _ergSent ? '✓ Ergebnis-Check erstellt & an die Hausverwaltung versendet' : '💾 Ergebnis-Check gespeichert — noch nicht versendet';
-    const _ergSub  = _ergSent
-      ? ('Versendet' + (_ergAt ? ' am ' + _esc(_ergAt) : '') + ' · in Kopie an service@liftaro.de · PDF jederzeit erneut herunterladbar.')
-      : 'Gespeicherter Ergebnis-Check — zum Weiterbearbeiten oder Versenden öffnen.';
-    html += `<div style="margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#dcfce7,#f0fdf4);border:1px solid #86efac;border-left:4px solid #16a34a;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(22,163,74,.12)">
-      <div style="min-width:0">
-        <div style="font-size:13.5px;font-weight:800;color:#15803d">${_ergHead}</div>
-        <div style="font-size:11.5px;color:#166534;margin-top:2px">${_ergSub}</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button onclick="_eiErgebnisDownloadSaved('${r._id}')" title="Ergebnis-PDF herunterladen" style="background:#fff;color:#15803d;border:1.5px solid #16a34a;border-radius:8px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">📄 PDF herunterladen</button>
-        <button onclick="openErgebnisCheckModal('${r._id}')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 Ergebnis öffnen</button>
-      </div>
-    </div>`;
-  }
+  // V12.473: Prominente Ergebnis-Check-Aktionskachel GANZ OBEN (Angebot eingegangen / gespeichert / versendet)
+  html += _eiErgebnisTopCard(r);
   // V12.314: Slot für den (weiter unten zusammengebauten) „Zuordnungen ..."-Details-Block.
   // Wir bauen ihn unten in seiner ursprünglichen Reihenfolge und verschieben am Ende
   // den ganzen <details>...</details>-Block per String-Marker hierher hoch.
