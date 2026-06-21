@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.470';
+const APP_VERSION = 'V12.471';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35806,7 +35806,7 @@ async function _eiErgebnisQuickPreview(emailId) {
   if (ov) ov.remove();
   ov = document.createElement('div');
   ov.id = 'eiErgebnisModal';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.78);display:flex;justify-content:center;align-items:center;z-index:100000;padding:24px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.78);display:flex;justify-content:center;align-items:center;z-index:100000;padding:16px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
   ov.onclick = (e) => { if (e.target === ov) _eiErgebnisPreviewClose(); };
   document.body.appendChild(ov);
   _eiErgebnisRenderPreview();
@@ -35835,7 +35835,7 @@ function _eiErgebnisRenderPreview() {
   const noOrig = !(orig > 0);
   const recipient = isTest ? (s.testEmail || '⚠ Test-Adresse fehlt') : (s.hvEmail || '⚠ keine HV-Email');
   const url = window._eiErgPreviewUrl || '';
-  ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:880px;width:100%;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:1040px;width:100%;height:92vh;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
     + '<div style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
     +   '<div style="min-width:0"><div style="font-size:11px;font-weight:700;color:#bbf7d0;letter-spacing:.08em;text-transform:uppercase">⚡ Ergebnis prüfen &amp; senden</div><div style="font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(chosen ? chosen.wnFirma : 'Angebot') + ' · ' + (s.isWv ? 'Ersparnis/Jahr ' : 'Ersparnis ') + esc(_eiErgFmtEur(netto)) + '</div></div>'
     +   '<button onclick="_eiErgebnisPreviewClose()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0">✕</button>'
@@ -35848,8 +35848,8 @@ function _eiErgebnisRenderPreview() {
     + '</div>'
     + (noOrig ? '<div style="padding:8px 22px;background:#fff7ed;border-bottom:1px solid #fed7aa;font-size:11.5px;color:#9a3412">⚠ Kein Vergleichspreis hinterlegt — Ersparnis evtl. unvollständig. Über „Anpassen" korrigieren.</div>' : '')
     + (moreOffers ? '<div style="padding:8px 22px;background:#eff6ff;border-bottom:1px solid #bfdbfe;font-size:11.5px;color:#1e40af">ℹ ' + s.enriched.length + ' Angebote eingegangen — automatisch das günstigste gewählt. Andere Auswahl über „Anpassen".</div>' : '')
-    + '<div style="flex:1;min-height:320px;background:#525659;overflow:hidden">'
-    +   (url ? '<iframe src="' + esc(url) + '#toolbar=1&navpanes=0" style="width:100%;height:100%;border:none;display:block" title="Ergebnis-Vorschau"></iframe>' : '<div style="color:#fff;padding:30px;text-align:center">Vorschau nicht verfügbar — bitte „PDF" herunterladen.</div>')
+    + '<div style="flex:1;min-height:0;background:#eef1f4;overflow:hidden;display:flex">'
+    +   (url ? '<iframe src="' + esc(url) + '#toolbar=1&navpanes=0" style="flex:1;width:100%;height:100%;border:none;display:block" title="Ergebnis-Vorschau"></iframe>' : '<div style="color:#475569;margin:auto;padding:30px;text-align:center">Vorschau nicht verfügbar — bitte „PDF" herunterladen.</div>')
     + '</div>'
     + '<div style="border-top:1px solid #fcd34d;background:#fffbeb;padding:8px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
     +   '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#92400e;font-weight:700;cursor:pointer;white-space:nowrap"><input type="checkbox" id="ergTestMode" ' + (isTest ? 'checked' : '') + ' onchange="_eiErgebnisPreviewToggleTest(this.checked)" style="width:15px;height:15px;cursor:pointer"> 🧪 Test-Versand</label>'
