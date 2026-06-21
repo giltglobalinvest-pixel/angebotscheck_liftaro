@@ -154,7 +154,7 @@
   const BASE_ID  = 'apprX1EwclCYzR2bF';
   const MASTER_BASE_ID = 'appzhNrhkLSTEaNFW';
   const PROJECT_ID = 'p_1777239396379';
-  const APP_VERSION = 'v1.14.0';
+  const APP_VERSION = 'v1.14.1';
 
   // ──────────────────────────────────────────────────────────────────────────
   // Utils
@@ -1521,6 +1521,7 @@ function renderWvForm(ctx) {
     ['Notruf- & GSM-Service', yn(o.notruf)],
     ['Montage Notrufgerät inkl.', yn(o.notruf && o.notruf_montage)],
     ['ZÜS-Organisation komplett', yn(o.zues)],
+    ['Vertragsbeginn', (o.vertragsbeginn ? _eiWvFmtDate(o.vertragsbeginn) : 'nächstmöglich')],
     ['Vertragslaufzeit', (o.laufzeit_jahre ? o.laufzeit_jahre + ' Jahre' : '–')],
     ['Abrechnungsturnus', (o.abrechnung_turnus === 'quartalsweise' ? 'Quartalsweise' : 'Jährlich')],
   ];
