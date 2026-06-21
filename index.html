@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.475';
+const APP_VERSION = 'V12.476';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32476,7 +32476,9 @@ function _eiUpdateSidebarCounts() {
   const chatReplyCnt = all.filter(r => r && r.direction !== 'outgoing' && (typeof _eiHasChatReply === 'function') && _eiHasChatReply(r)).length;
   set('eiSideCnt_chat_antwort', chatReplyCnt);
   // V12.453: Counter „📥 Angebote eingegangen" — offene Vorgänge mit submitted WN-Angebot
-  const offerOpenCnt = all.filter(r => (typeof _eiLvEmailHasOpenOffer === 'function') && _eiLvEmailHasOpenOffer(r)).length;
+  // V12.476: threaded-/Chat-Antworten NICHT mitzählen — die Liste droppt sie via dropThreaded,
+  // sonst zeigt das Badge mehr als sichtbar ist (gleiche Entschärfung wie bei den Status-Countern, V12.362).
+  const offerOpenCnt = all.filter(r => !threadedIds.has(r._id) && !chatReplyIds.has(r._id) && (typeof _eiLvEmailHasOpenOffer === 'function') && _eiLvEmailHasOpenOffer(r)).length;
   set('eiSideCnt_angebot_eingegangen', offerOpenCnt);
   // V12.469: mobiles Status-Dropdown — Labels mit Zählern + aktiven Filter spiegeln
   if (typeof _eiSyncMobileFilter === 'function') _eiSyncMobileFilter();
