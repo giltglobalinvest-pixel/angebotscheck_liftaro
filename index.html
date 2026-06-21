@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.471';
+const APP_VERSION = 'V12.472';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13610,6 +13610,41 @@ function _eiLvCheckSbPflicht(sb) {
 }
 
 // V12.383: Picker auf Wartungsnehmer umgestellt (Servicebetriebe = Wartungsnehmer)
+// V12.472: Pflicht-Check vor Versand an den Wartungsnehmer — stellt sicher, dass alles,
+// was der (auto-)Ergebnis-Check braucht, schon da ist. hard = blockiert den Versand; soft = nur Hinweis.
+// Wichtigster Fall (vom Nutzer benannt): ohne Vergleichs-/Zielpreis kann keine Ersparnis berechnet werden.
+function _eiLvCheckPflichtVorVersand(s) {
+  const hard = [], soft = [];
+  if (!s) return { hard, soft };
+  const snap = s.snap || {};
+  const isWv = !!(s.vorlage && s.vorlage.typ === 'wartungsvertrag');
+  const vid = String((s.vorlage && s.vorlage.id) || '');
+  const isGesamtMod = vid === 'lvv_modernisierung_gesamt_default';
+  // --- Vergleichs-/Zielpreis (HARD — im Editor korrigierbar) ---
+  if (isWv) {
+    const jp = Number((s.wvOptionen && s.wvOptionen.jahrespreis_netto) || 0);
+    if (!(jp > 0)) hard.push('Jahrespreis des bestehenden Wartungsvertrags fehlt — ohne ihn lässt sich die Ersparnis nicht berechnen. Bitte im Wartungsvertrags-Assistenten „Jahrespreis (netto)" eintragen.');
+  } else if (isGesamtMod) {
+    const g = Number(snap.orig_gesamtpreis_eur || 0);
+    if (!(g > 0)) hard.push('Original-Gesamtpreis (aus dem vorliegenden Angebot) fehlt — ohne ihn lässt sich die Ersparnis nicht berechnen. Bitte das Feld „📎 Original-Gesamtpreis" ausfüllen.');
+  } else {
+    const pos = s.positionen || [];
+    const sum = pos.reduce((acc, p) => { const m = parseFloat(String(p.menge || '1').replace(',', '.')) || 1; return acc + ((Number(p.preis_eur) || 0) * m); }, 0);
+    const ohnePreis = pos.filter(p => p.preis_eur == null || String(p.preis_eur).trim() === '').length;
+    if (!(sum > 0)) {
+      hard.push('Vergleichspreis fehlt — bei den Positionen sind keine Original-Preise hinterlegt, daher kann der Zielpreis nicht berechnet werden. Bitte die Original-Preise (aus dem vorliegenden Angebot) bei den Positionen eintragen.');
+    } else if (ohnePreis > 0) {
+      hard.push(ohnePreis + ' Position(en) ohne Original-Preis — sonst ist der Vergleichspreis unvollständig und die Ersparnis falsch. Bitte ergänzen (bewusst kostenlose Position: „0" eintragen).');
+    }
+  }
+  // --- Identifikation / Empfänger (SOFT — kommt aus Aufzug/Pipedrive, hier nicht editierbar) ---
+  if (!String(snap.fabriknummer || '').trim()) soft.push('Fabriknummer fehlt (aus dem Aufzug) — erscheint im Ergebnis als „?".');
+  if (!String(snap.standort || '').trim()) soft.push('Standort fehlt (aus dem Aufzug) — erscheint im Ergebnis als „?".');
+  if (!String(snap.hv_email || '').trim()) soft.push('Keine HV-E-Mail hinterlegt — das Ergebnis ginge später an den Absender der Eingangs-Mail (Fallback).');
+  return { hard, soft };
+}
+window._eiLvCheckPflichtVorVersand = _eiLvCheckPflichtVorVersand;
+
 async function openLvSendPicker() {
   const s = window._eiLvEditorState; if (!s) return;
   // V12.448: Wartungsvertrag hat keine Positionen (nutzt wvOptionen) — Positions-Check nur für Reparatur-LVs
@@ -13619,6 +13654,17 @@ async function openLvSendPicker() {
     showToast('Bitte erst „💾 Speichern" klicken, damit das LV einen Datensatz hat', 'warning', 4000);
     return;
   }
+  // V12.472: Pflichtfelder für den (auto-)Ergebnis-Check VOR Versand prüfen
+  const _pf = _eiLvCheckPflichtVorVersand(s);
+  if (_pf.hard.length) {
+    alert('⛔ Versand noch nicht möglich — erforderliche Angaben für den Ergebnis-Check fehlen:\n\n  • ' + _pf.hard.join('\n\n  • ') + '\n\nBitte im LV-Editor ergänzen.');
+    return;
+  }
+  if (_pf.soft.length) {
+    if (!confirm('⚠ Hinweis — folgende Angaben fehlen (Versand trotzdem möglich):\n\n  • ' + _pf.soft.join('\n  • ') + '\n\nTrotzdem fortfahren?')) return;
+  }
+  // V12.472: aktuellen Stand sichern, damit der Ergebnis-Check später die geprüften Preise liest
+  try { await _eiLvSave(); } catch (_) {}
   let wnRecs = [];
   try { wnRecs = await loadWartungsnehmer(); } catch (_) {}
   const items = (wnRecs || []).map(r => ({ ...r.fields, _recordId: r.id }))
@@ -35475,6 +35521,62 @@ function _eiErgebnisProvisionEdit(v) {
 }
 window._eiErgebnisProvisionEdit = _eiErgebnisProvisionEdit;
 
+// V12.472: DOM-freier KI-Kern — Prompt + Fetch + Parse. Nutzbar im Editor UND in der 1-Klick-Vorschau.
+// Liefert {einschaetzung, empfehlung} oder wirft. Setzt KEIN State, kein DOM, kein Re-Render.
+async function _eiErgebnisGenerateKICore(s, opts) {
+  opts = opts || {};
+  const mode = opts.mode || 'fresh';
+  const userHint = String(opts.userHint || '');
+  if (!APP_KEYS.anthropicKey) throw new Error('Anthropic-Key fehlt');
+  const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+  if (!chosen) throw new Error('Kein Angebot gewählt');
+  const orig = Number(s.originalEur) || 0;
+  const ang = chosen ? chosen.angebotSumme : 0;
+  const ersparnis = Math.max(0, orig - ang);
+  const isWv = !!s.isWv;
+  const isRefine = (mode === 'refine') && (String(s.einschaetzung || '').trim() || String(s.empfehlung || '').trim());
+  const leistListe = isWv
+    ? (function(){ const o = s.wvOptionen || (chosen && chosen.wvOptionen) || {}; const tl = (typeof _eiWvTypLabel === 'function') ? _eiWvTypLabel(o.wartungstyp) : String(o.wartungstyp || ''); const tu = (typeof _eiWvTurnusLabel === 'function') ? _eiWvTurnusLabel(o.abrechnung_turnus) : String(o.abrechnung_turnus || ''); return [ (o.wartungen_pro_jahr || '?') + 'x Wartung/Jahr', 'Wartungstyp: ' + tl, o.notruf ? 'inkl. Notruf-/GSM-Service' : 'ohne Notruf-Service', o.zues ? 'inkl. ZUES-Organisation' : 'ohne ZUES-Organisation', 'Laufzeit ' + (o.laufzeit_jahre || '?') + ' Jahre', 'Abrechnung ' + tu ].map((l, i) => (i + 1) + '. ' + l).join('\n'); })()
+    : ((chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || [])).map((p, i) => (i + 1) + '. ' + (p.titel || '') + (p.beschreibung ? ' — ' + String(p.beschreibung).slice(0, 160) : '')).join('\n');
+  const sys = 'Du bist Berater bei Liftaro, einer neutralen Vermittlungsplattform für Aufzug-' + (isWv ? 'Wartung und -Reparaturen' : 'Reparaturen') + '. '
+    + 'Du schreibst für eine Hausverwaltung eine kurze, NEUTRALE und sachliche Einschätzung zu einem eingeholten Alternativangebot. '
+    + 'WICHTIG: Du DRÄNGST den Kunden NICHT und gibst KEINE Verkaufs-/Abschluss-Aufforderung. '
+    + 'Du beurteilst neutral und weist die VORTEILE des Angebots sachlich aus (z. B. Preisvorteil, Lieferzeit, geprüfter Leistungsumfang). '
+    + 'Die Entscheidung liegt ausdrücklich bei der Hausverwaltung. '
+    + 'Schreibstil: professionell, vertrauensvoll, knapp, kein Marketing-Geschwafel, keine Superlative. Neutrale 3. Person. '
+    + 'Antworte AUSSCHLIESSLICH mit gültigem JSON: {"einschaetzung":"...","empfehlung":"..."} — keine Markdown-Fences, kein Vortext.';
+  const usr = 'Aufzug Fn ' + (s.snap.fabriknummer || '?') + ' am Standort ' + (s.snap.standort || '?') + '.\n'
+    + 'Hausverwaltung: ' + (s.hvName || '?') + '\n\n'
+    + (isWv ? 'Bestehender Wartungsvertrag (jaehrlich): ' : 'Original-Angebot (vorliegend): ') + _eiErgFmtEur(orig) + ' netto\n'
+    + (isWv ? 'Eingeholte Jahrespauschale von ' : 'Eingeholtes Alternativangebot von ') + chosen.wnFirma + ': ' + _eiErgFmtEur(ang) + ' netto' + (isWv ? ' pro Jahr' : '') + '\n'
+    + (!isWv && chosen.lieferzeit ? 'Lieferzeit: ' + chosen.lieferzeit + '\n' : '')
+    + (isWv ? 'Jaehrliche Differenz zugunsten der HV: ' : 'Differenz zugunsten der HV: ') + _eiErgFmtEur(ersparnis) + '\n\n'
+    + (isWv ? 'Geforderter Wartungsumfang (von Liftaro festgelegt):\n' : 'Leistungsumfang (neutral erstellt):\n') + leistListe + '\n\n'
+    + (isRefine
+        ? ('AKTUELLE TEXTE (vom Bearbeiter ggf. manuell angepasst), die du ÜBERARBEITEN sollst:\n'
+           + 'Einschaetzung: ' + (String(s.einschaetzung || '').trim() || '(leer)') + '\n'
+           + 'Empfehlung: ' + (String(s.empfehlung || '').trim() || '(leer)') + '\n\n'
+           + (userHint ? 'Anweisung des Bearbeiters zur Überarbeitung: ' + userHint + '\n\n' : 'Verbessere Klarheit, Ton und Prägnanz, ohne Fakten zu erfinden.\n\n')
+           + 'Überarbeite beide Texte gemäß der Anweisung. Behalte korrekte Fakten/Zahlen bei und bleibe neutral.\n')
+        : (userHint ? 'Zusätzlicher Hinweis des Bearbeiters: ' + userHint + '\n\n' : ''))
+    + '"einschaetzung": 2-4 Sätze neutrale Bewertung — Preis-Leistung, Vergleichbarkeit des Leistungsumfangs, Plausibilität. '
+    + '"empfehlung": 1-2 Sätze, die die VORTEILE sachlich zusammenfassen und die Entscheidung der Hausverwaltung überlassen (NICHT drängen, keine Aufforderung wie „beauftragen Sie jetzt").';
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': APP_KEYS.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 800, system: sys, messages: [{ role: 'user', content: usr }] }),
+  });
+  if (!resp.ok) { const t = await resp.text().catch(()=>''); throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 150)); }
+  const data = await resp.json();
+  const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  let parsed = null;
+  try { parsed = JSON.parse(cleaned); } catch(_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch(_) {} } }
+  if (!parsed) throw new Error('KI-Antwort nicht lesbar');
+  return { einschaetzung: String(parsed.einschaetzung || '').trim(), empfehlung: String(parsed.empfehlung || '').trim() };
+}
+window._eiErgebnisGenerateKICore = _eiErgebnisGenerateKICore;
+
 async function _eiErgebnisGenerateKI(mode) {
   const s = window._eiErgebnisState; if (!s) return;
   if (!APP_KEYS.anthropicKey) { showToast('Anthropic-Key fehlt', 'error', 3500); return; }
@@ -35484,55 +35586,13 @@ async function _eiErgebnisGenerateKI(mode) {
   const isRefine = (mode === 'refine') && (String(s.einschaetzung || '').trim() || String(s.empfehlung || '').trim());
   const btn = document.getElementById(isRefine ? 'ergKiRefineBtn' : 'ergKiBtn');
   const btnLabel = isRefine ? '✏️ Mit KI überarbeiten' : '🤖 Einschätzung generieren';
-  const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
-  const orig = Number(s.originalEur) || 0;
-  const ang = chosen ? chosen.angebotSumme : 0;
-  const ersparnis = Math.max(0, orig - ang);
   const userHint = document.getElementById('ergPromptInput')?.value || '';
   if (mode === 'refine' && !isRefine) { showToast('Noch keine Texte vorhanden — zuerst „Einschätzung generieren"', 'info', 3500); return; }
   if (btn) { btn.disabled = true; btn.textContent = isRefine ? '⏳ Überarbeite …' : '⏳ Generiere …'; }
   try {
-    const isWv = !!s.isWv;
-    const leistListe = isWv
-      ? (function(){ const o = s.wvOptionen || (chosen && chosen.wvOptionen) || {}; const tl = (typeof _eiWvTypLabel === 'function') ? _eiWvTypLabel(o.wartungstyp) : String(o.wartungstyp || ''); const tu = (typeof _eiWvTurnusLabel === 'function') ? _eiWvTurnusLabel(o.abrechnung_turnus) : String(o.abrechnung_turnus || ''); return [ (o.wartungen_pro_jahr || '?') + 'x Wartung/Jahr', 'Wartungstyp: ' + tl, o.notruf ? 'inkl. Notruf-/GSM-Service' : 'ohne Notruf-Service', o.zues ? 'inkl. ZUES-Organisation' : 'ohne ZUES-Organisation', 'Laufzeit ' + (o.laufzeit_jahre || '?') + ' Jahre', 'Abrechnung ' + tu ].map((l, i) => (i + 1) + '. ' + l).join('\n'); })()
-      : ((chosen.origPos && chosen.origPos.length) ? chosen.origPos : (chosen.resp || [])).map((p, i) => (i + 1) + '. ' + (p.titel || '') + (p.beschreibung ? ' — ' + String(p.beschreibung).slice(0, 160) : '')).join('\n');
-    const sys = 'Du bist Berater bei Liftaro, einer neutralen Vermittlungsplattform für Aufzug-' + (isWv ? 'Wartung und -Reparaturen' : 'Reparaturen') + '. '
-      + 'Du schreibst für eine Hausverwaltung eine kurze, NEUTRALE und sachliche Einschätzung zu einem eingeholten Alternativangebot. '
-      + 'WICHTIG: Du DRÄNGST den Kunden NICHT und gibst KEINE Verkaufs-/Abschluss-Aufforderung. '
-      + 'Du beurteilst neutral und weist die VORTEILE des Angebots sachlich aus (z. B. Preisvorteil, Lieferzeit, geprüfter Leistungsumfang). '
-      + 'Die Entscheidung liegt ausdrücklich bei der Hausverwaltung. '
-      + 'Schreibstil: professionell, vertrauensvoll, knapp, kein Marketing-Geschwafel, keine Superlative. Neutrale 3. Person. '
-      + 'Antworte AUSSCHLIESSLICH mit gültigem JSON: {"einschaetzung":"...","empfehlung":"..."} — keine Markdown-Fences, kein Vortext.';
-    const usr = 'Aufzug Fn ' + (s.snap.fabriknummer || '?') + ' am Standort ' + (s.snap.standort || '?') + '.\n'
-      + 'Hausverwaltung: ' + (s.hvName || '?') + '\n\n'
-      + (isWv ? 'Bestehender Wartungsvertrag (jaehrlich): ' : 'Original-Angebot (vorliegend): ') + _eiErgFmtEur(orig) + ' netto\n'
-      + (isWv ? 'Eingeholte Jahrespauschale von ' : 'Eingeholtes Alternativangebot von ') + chosen.wnFirma + ': ' + _eiErgFmtEur(ang) + ' netto' + (isWv ? ' pro Jahr' : '') + '\n'
-      + (!isWv && chosen.lieferzeit ? 'Lieferzeit: ' + chosen.lieferzeit + '\n' : '')
-      + (isWv ? 'Jaehrliche Differenz zugunsten der HV: ' : 'Differenz zugunsten der HV: ') + _eiErgFmtEur(ersparnis) + '\n\n'
-      + (isWv ? 'Geforderter Wartungsumfang (von Liftaro festgelegt):\n' : 'Leistungsumfang (neutral erstellt):\n') + leistListe + '\n\n'
-      + (isRefine
-          ? ('AKTUELLE TEXTE (vom Bearbeiter ggf. manuell angepasst), die du ÜBERARBEITEN sollst:\n'
-             + 'Einschaetzung: ' + (String(s.einschaetzung || '').trim() || '(leer)') + '\n'
-             + 'Empfehlung: ' + (String(s.empfehlung || '').trim() || '(leer)') + '\n\n'
-             + (userHint ? 'Anweisung des Bearbeiters zur Überarbeitung: ' + userHint + '\n\n' : 'Verbessere Klarheit, Ton und Prägnanz, ohne Fakten zu erfinden.\n\n')
-             + 'Überarbeite beide Texte gemäß der Anweisung. Behalte korrekte Fakten/Zahlen bei und bleibe neutral.\n')
-          : (userHint ? 'Zusätzlicher Hinweis des Bearbeiters: ' + userHint + '\n\n' : ''))
-      + '"einschaetzung": 2-4 Sätze neutrale Bewertung — Preis-Leistung, Vergleichbarkeit des Leistungsumfangs, Plausibilität. '
-      + '"empfehlung": 1-2 Sätze, die die VORTEILE sachlich zusammenfassen und die Entscheidung der Hausverwaltung überlassen (NICHT drängen, keine Aufforderung wie „beauftragen Sie jetzt").';
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': APP_KEYS.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 800, system: sys, messages: [{ role: 'user', content: usr }] }),
-    });
-    if (!resp.ok) { const t = await resp.text().catch(()=>''); throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 150)); }
-    const data = await resp.json();
-    const raw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-    let parsed = null;
-    try { parsed = JSON.parse(cleaned); } catch(_) { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch(_) {} } }
-    if (!parsed) throw new Error('KI-Antwort nicht lesbar');
-    s.einschaetzung = String(parsed.einschaetzung || '').trim();
-    s.empfehlung = String(parsed.empfehlung || '').trim();
+    const out = await _eiErgebnisGenerateKICore(s, { mode: mode, userHint: userHint });
+    s.einschaetzung = out.einschaetzung;
+    s.empfehlung = out.empfehlung;
     // Prompt erhalten beim Re-Render
     _eiErgebnisRenderModal();
     const pf = document.getElementById('ergPromptInput'); if (pf) pf.value = userHint;
@@ -35796,6 +35856,14 @@ async function _eiErgebnisQuickPreview(emailId) {
   const s = window._eiErgebnisState;
   const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
   if (!chosen) { showToast('Kein Angebot gefunden', 'warning', 4000); return; }
+  // V12.472: KI-Einschätzung automatisch erzeugen (nur wenn noch leer + Key vorhanden) — Fehler NICHT blockierend
+  if (APP_KEYS.anthropicKey && !String(s.einschaetzung || '').trim() && !String(s.empfehlung || '').trim()) {
+    showToast('🤖 KI-Einschätzung wird erstellt …', 'info', 4000);
+    try {
+      const ki = await _eiErgebnisGenerateKICore(s, { mode: 'fresh' });
+      s.einschaetzung = ki.einschaetzung; s.empfehlung = ki.empfehlung;
+    } catch (e) { console.warn('[V12.472] Auto-KI übersprungen:', e.message); showToast('KI-Einschätzung übersprungen — über „Anpassen" nachholbar', 'warning', 4500); }
+  }
   let built;
   try { built = await _eiErgebnisBuildMergedPdf(s, chosen); }
   catch (e) { console.error('[V12.470] Vorschau-PDF:', e); showToast('Vorschau fehlgeschlagen: ' + e.message, 'error', 6000); return; }
@@ -35878,9 +35946,17 @@ window._eiErgebnisPreviewToggleTest = _eiErgebnisPreviewToggleTest;
 
 function _eiErgebnisPreviewEdit() {
   const s = window._eiErgebnisState;
-  const emailId = s && s.emailId;
+  if (!s) return;
   try { if (window._eiErgPreviewUrl) { URL.revokeObjectURL(window._eiErgPreviewUrl); window._eiErgPreviewUrl = null; } } catch(_) {}
-  if (emailId) openErgebnisCheckModal(emailId);
+  // V12.472: Voll-Editor mit AKTUELLEM State öffnen — KEIN Re-Assemble, sonst gingen die in der Vorschau erzeugten KI-Texte verloren
+  let ov = document.getElementById('eiErgebnisModal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'eiErgebnisModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.78);display:flex;justify-content:center;align-items:center;z-index:100000;padding:24px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  _eiErgebnisRenderModal();
 }
 window._eiErgebnisPreviewEdit = _eiErgebnisPreviewEdit;
 
