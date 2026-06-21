@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.473';
+const APP_VERSION = 'V12.474';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13961,6 +13961,16 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
       try { await atUpdate('Leistungsverzeichnisse', s.recordId, { status: 'versendet', savedAt: sentAt }); s.status = 'versendet'; }
       catch (_) {}
     }
+    // V12.474: Vorgang automatisch auf „wartend" — wir warten jetzt auf das Angebot des Wartungsnehmers.
+    // (Bereits beantwortete/verworfene Vorgänge NICHT zurücksetzen.)
+    try {
+      const _emRec = (_eiAllRecords || []).find(x => x._id === s.emailId);
+      const _curSt = _emRec ? String(_emRec.status || '') : '';
+      if (_curSt !== 'geantwortet' && _curSt !== 'verworfen') {
+        await atUpdate('Emails', s.emailId, { status: 'wartend', status_at: sentAt }, { typecast: true });
+        if (_emRec) { _emRec.status = 'wartend'; _emRec.status_at = sentAt; }
+      }
+    } catch (e) { console.warn('[V12.474] Status→wartend:', e.message); }
     document.getElementById('eiLvSendDraftOv')?.remove();
     document.getElementById('lvEditorModal')?.remove();
     showToast('✓ LV-Anfrage an „' + wn.email + '" gesendet (' + anfrageId + ')', 'success', 5500);
@@ -13974,6 +13984,8 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
       (typeof loadWartungsnehmerChat === 'function' ? loadWartungsnehmerChat(s.emailId) : Promise.resolve()).catch(() => {}),
     ]);
     if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();         // V12.474: Status-Pille „wartend" in der Liste aktualisieren
+    if (typeof _eiUpdateSidebarCounts === 'function') _eiUpdateSidebarCounts();      // V12.474: Postfach-Zähler aktualisieren
   } catch (e) {
     console.error('[V12.387] _eiLvCreateAnfrage:', e);
     // Wenn die Anfrage angelegt wurde aber Send fehlschlug, bleibt sie status='pending' — User kann erneut senden
