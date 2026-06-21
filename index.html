@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.474';
+const APP_VERSION = 'V12.475';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13723,6 +13723,25 @@ window._eiLvCheckSbPflicht = _eiLvCheckSbPflicht;
 window._eiLvGenerateToken = _eiLvGenerateToken;
 
 // Email-Body-Template — baut das Anschreiben für den Servicebetrieb
+// V12.475: Landing-Link in der WN-HTML-Mail durch einen gestylten Button ersetzen.
+// _eiResolveSignatureForSend linkifyt die URL nur zu einem schlichten <a>; hier wird daraus
+// ein schöner Button. Der Plain-Text-Body behält die URL (Fallback für Clients ohne HTML).
+function _eiLandingButtonHtml(url, label) {
+  return '<div style="margin:22px 0 6px">'
+    +   '<a href="' + url + '" target="_blank" rel="noopener" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;line-height:1.2;padding:14px 30px;border-radius:8px;font-family:Arial,Helvetica,sans-serif;box-shadow:0 2px 6px rgba(22,163,74,.28)">' + (label || 'Online ausfüllen →') + '</a>'
+    + '</div>'
+    + '<div style="font-family:Arial,Helvetica,sans-serif;color:#94a3b8;font-size:11px;margin:0 0 6px">Falls der Button nicht angezeigt wird: <a href="' + url + '" target="_blank" rel="noopener" style="color:#2456E5;word-break:break-all">' + url + '</a></div>';
+}
+function _eiInjectLandingButton(html, label) {
+  if (!html) return html;
+  // Den (linkifizierten) Anchor zur Landing-Anfrage finden und durch den Button ersetzen.
+  const re = /<a href="(https?:\/\/[^"]*\/partner\/lv-anfrage\.html\?t=[^"]+)"[^>]*>[^<]*<\/a>/;
+  const m = html.match(re);
+  if (!m) return html;
+  return html.replace(re, _eiLandingButtonHtml(m[1], label));
+}
+window._eiInjectLandingButton = _eiInjectLandingButton;
+
 function _eiLvBuildSendEmail(s, sb, landingUrl) {
   const titel = s.titel || 'LV';
   const hv = s.snap.hv_name || '(Hausverwaltung)';
@@ -13896,6 +13915,11 @@ async function _eiLvCreateAnfrage(wnRecordId, token, anfrageId) {
     const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
     const subjectSafe = (typeof _eiSanitizeSubjectForEmail === 'function') ? _eiSanitizeSubjectForEmail(betreff) : betreff;
     const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig: '', htmlBody: '' };
+    // V12.475: Landing-Link in der HTML-Mail durch einen schönen Button ersetzen (Text-Variante behält die URL)
+    if (sig.htmlBody) {
+      const _btnLabel = (s.vorlage && s.vorlage.typ === 'wartungsvertrag') ? 'Wartungspauschale online eintragen →' : 'Preis online eintragen →';
+      sig.htmlBody = _eiInjectLandingButton(sig.htmlBody, _btnLabel);
+    }
     const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
     const payload = {
       to:        wn.email,
