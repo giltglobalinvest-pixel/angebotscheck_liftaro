@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.469';
+const APP_VERSION = 'V12.470';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35143,11 +35143,12 @@ function _renderEmailLvSection(r) {
     ergebnisBanner = '<div style="margin-top:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
       + '<div style="min-width:0">'
       +   '<div style="font-size:12.5px;font-weight:700;color:#15803d">💰 ' + cnt + ' Angebot' + (cnt === 1 ? '' : 'e') + ' eingegangen' + (hasSavedCheck ? ' · <span style="color:#0369a1">💾 Check gespeichert</span>' : '') + '</div>'
-      +   '<div style="font-size:11.5px;color:#166534;margin-top:1px">' + (hasSavedCheck ? 'Gespeicherten Ergebnis-Check öffnen und weiterbearbeiten oder senden.' : 'Ergebnis-Check für die Hausverwaltung erstellen — Vergleich, Ersparnis & Empfehlung als PDF.') + '</div>'
+      +   '<div style="font-size:11.5px;color:#166534;margin-top:1px">' + (hasSavedCheck ? 'Mit „Prüfen & senden" das Ergebnis als Vorschau öffnen und mit einem Klick versenden — oder manuell bearbeiten.' : 'Mit „Prüfen & senden" das fertige Ergebnis sofort als Vorschau öffnen und mit einem Klick an die Hausverwaltung senden.') + '</div>'
       + '</div>'
       + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
-      +   (hasSavedCheck ? '<button onclick="_eiErgebnisDownloadSaved(\'' + r._id + '\')" title="Gespeichertes Ergebnis-PDF direkt herunterladen" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">📄 PDF herunterladen</button>' : '')
-      +   '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">📊 ' + (hasSavedCheck ? 'Ergebnis bearbeiten' : 'Ergebnis erstellen') + '</button>'
+      +   (hasSavedCheck ? '<button onclick="_eiErgebnisDownloadSaved(\'' + r._id + '\')" title="Gespeichertes Ergebnis-PDF direkt herunterladen" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">📄 PDF</button>' : '')
+      +   '<button onclick="openErgebnisCheckModal(\'' + r._id + '\')" title="Ergebnis manuell anpassen (Auswahl, Beträge, Texte, KI-Einschätzung)" style="background:#fff;color:#15803d;border:1.5px solid #86efac;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">✏️ ' + (hasSavedCheck ? 'Bearbeiten' : 'Anpassen') + '</button>'
+      +   '<button onclick="_eiErgebnisQuickPreview(\'' + r._id + '\')" title="Fertiges Ergebnis sofort als Vorschau öffnen und mit einem Klick senden" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(22,163,74,.3)">⚡ Prüfen &amp; senden</button>'
       + '</div>'
       + '</div>';
   }
@@ -35630,41 +35631,9 @@ async function _eiErgebnisCreateAndSend(doSend) {
   if (btn && doSend) { btn.disabled = true; btn.textContent = '⏳ Erstelle …'; }
   try {
     const _arrB64 = (view) => { let bin = ''; for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode.apply(null, view.subarray(i, i + 0x8000)); return btoa(bin); };
-    // V12.412: Ergebnis + Alternativangebot zu EINER PDF mergen (Original-Angebot wird nur erwähnt, NICHT mehr angehängt)
+    // V12.470: Bau + Merge ausgelagert nach _eiErgebnisBuildMergedPdf (gemeinsam mit der 1-Klick-Vorschau)
     if (btn) btn.textContent = '⏳ Erstelle PDF …';
-    const ergBytes = new Uint8Array(await (await _eiBuildErgebnisCheckPDF(s, chosen)).arrayBuffer());
-    // Alternativangebot — V12.450: WV = fertiger Wartungsvertrag (_eiWvBuildVertragPdf, mit WN-Jahrespauschale); Reparatur = Antwort-PDF
-    let altBytes = null;
-    try {
-      const a = chosen.rawAnf || {};
-      if (s.isWv && typeof _eiWvBuildVertragPdf === 'function') {
-        const wvO = Object.assign({}, chosen.wvOptionen || (chosen.wvBlob && chosen.wvBlob.optionen) || {}, { jahrespreis_netto: chosen.angebotSumme });
-        const _wvWn = chosen.wn || {};
-        const wvP = Object.assign({}, (chosen.wvBlob && chosen.wvBlob.parties) || {}, { firma_name: _wvWn.firma || String(a.signatur_name || ''), firma_strasse: String(_wvWn.strasse || ''), firma_plz: String(_wvWn.plz || ''), firma_ort: String(_wvWn.ort || ''), vertragsnummer: String(a.id || '') });
-        const _wvb = await _eiWvBuildVertragPdf(wvO, wvP);
-        altBytes = (_wvb instanceof Uint8Array) ? _wvb : new Uint8Array(await _wvb.arrayBuffer());
-      } else {
-        const subAlt = {
-          anf: a, lv: chosen.lv, snap: s.snap, wn: chosen.wn || {}, response: chosen.resp || [], sum: chosen.angebotSumme,
-          sigMode: String(a.signatur_methode || 'digital'), sigName: String(a.signatur_name || ''),
-          signaturDataUrl: String(a.signatur_dataurl || ''), lieferzeitGesamt: String(a.lieferzeit_gesamt || ''),
-          klauseln: String(a.klauseln_snapshot_html || ''),
-        };
-        if (typeof _eiLvBuildAntwortPdf === 'function') altBytes = new Uint8Array(await (await _eiLvBuildAntwortPdf(subAlt)).arrayBuffer());
-      }
-    } catch (e) { console.warn('[V12.450] Alternativangebot/WV-Vertrag:', e.message); }
-    // Merge zu EINER Datei (Original-Angebot bewusst NICHT mehr enthalten)
-    if (btn) btn.textContent = '⏳ Füge PDF zusammen …';
-    const { PDFDocument } = window.PDFLib;
-    const merged = await PDFDocument.create();
-    for (const bytes of [ergBytes, altBytes]) {
-      if (!bytes) continue;
-      try { const src = await PDFDocument.load(bytes, { ignoreEncryption: true }); const ps = await merged.copyPages(src, src.getPageIndices()); ps.forEach(p => merged.addPage(p)); }
-      catch (e) { console.warn('[V12.408] Merge übersprungen:', e.message); }
-    }
-    const mergedBytes = await merged.save();
-    const mergedBlob = new Blob([mergedBytes], { type: 'application/pdf' });
-    const fnSafe = 'Liftaro_Ergebnis_' + String(s.snap.fabriknummer || s.emailId).replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf';
+    const { mergedBytes, mergedBlob, fnSafe } = await _eiErgebnisBuildMergedPdf(s, chosen);
     // Immer Download anbieten
     const url = URL.createObjectURL(mergedBlob);
     const a = document.createElement('a'); a.href = url; a.download = fnSafe;
@@ -35774,6 +35743,146 @@ async function _eiErgebnisCreateAndSend(doSend) {
   }
 }
 window._eiErgebnisCreateAndSend = _eiErgebnisCreateAndSend;
+
+// V12.470: Ergebnis- + Alternativ-PDF bauen und zu EINER Datei mergen.
+// Ausgelagert aus _eiErgebnisCreateAndSend, damit Senden UND 1-Klick-Vorschau
+// EXAKT dieselbe Datei erzeugen (keine zwei Builder mehr). KEIN Download, KEIN Versand.
+async function _eiErgebnisBuildMergedPdf(s, chosen) {
+  const ergBytes = new Uint8Array(await (await _eiBuildErgebnisCheckPDF(s, chosen)).arrayBuffer());
+  // Alternativangebot — WV = fertiger Wartungsvertrag (_eiWvBuildVertragPdf); Reparatur/Mod = Antwort-PDF
+  let altBytes = null;
+  try {
+    const a = chosen.rawAnf || {};
+    if (s.isWv && typeof _eiWvBuildVertragPdf === 'function') {
+      const wvO = Object.assign({}, chosen.wvOptionen || (chosen.wvBlob && chosen.wvBlob.optionen) || {}, { jahrespreis_netto: chosen.angebotSumme });
+      const _wvWn = chosen.wn || {};
+      const wvP = Object.assign({}, (chosen.wvBlob && chosen.wvBlob.parties) || {}, { firma_name: _wvWn.firma || String(a.signatur_name || ''), firma_strasse: String(_wvWn.strasse || ''), firma_plz: String(_wvWn.plz || ''), firma_ort: String(_wvWn.ort || ''), vertragsnummer: String(a.id || '') });
+      const _wvb = await _eiWvBuildVertragPdf(wvO, wvP);
+      altBytes = (_wvb instanceof Uint8Array) ? _wvb : new Uint8Array(await _wvb.arrayBuffer());
+    } else {
+      const subAlt = {
+        anf: a, lv: chosen.lv, snap: s.snap, wn: chosen.wn || {}, response: chosen.resp || [], sum: chosen.angebotSumme,
+        sigMode: String(a.signatur_methode || 'digital'), sigName: String(a.signatur_name || ''),
+        signaturDataUrl: String(a.signatur_dataurl || ''), lieferzeitGesamt: String(a.lieferzeit_gesamt || ''),
+        klauseln: String(a.klauseln_snapshot_html || ''),
+      };
+      if (typeof _eiLvBuildAntwortPdf === 'function') altBytes = new Uint8Array(await (await _eiLvBuildAntwortPdf(subAlt)).arrayBuffer());
+    }
+  } catch (e) { console.warn('[V12.450] Alternativangebot/WV-Vertrag:', e.message); }
+  const { PDFDocument } = window.PDFLib;
+  const merged = await PDFDocument.create();
+  for (const bytes of [ergBytes, altBytes]) {
+    if (!bytes) continue;
+    try { const src = await PDFDocument.load(bytes, { ignoreEncryption: true }); const ps = await merged.copyPages(src, src.getPageIndices()); ps.forEach(p => merged.addPage(p)); }
+    catch (e) { console.warn('[V12.408] Merge übersprungen:', e.message); }
+  }
+  const mergedBytes = await merged.save();
+  const mergedBlob = new Blob([mergedBytes], { type: 'application/pdf' });
+  const fnSafe = 'Liftaro_Ergebnis_' + String(s.snap.fabriknummer || s.emailId).replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf';
+  return { mergedBytes, mergedBlob, fnSafe };
+}
+window._eiErgebnisBuildMergedPdf = _eiErgebnisBuildMergedPdf;
+
+// ============================================================================
+// V12.470: 1-Klick-Ergebnis — fertiges Ergebnis sofort als PDF-Vorschau, dann
+// mit einem Klick senden. KEINE Formular-Eingaben: günstigstes Angebot ist
+// vorgewählt, alle Texte kommen aus den Defaults. Versand/Status/Idempotenz
+// laufen unverändert über _eiErgebnisCreateAndSend. „Anpassen" = voller Editor.
+// ============================================================================
+async function _eiErgebnisQuickPreview(emailId) {
+  if (!window.PDFLib) { showToast('PDF-Bibliothek nicht verfügbar', 'error', 3500); return; }
+  showToast('⏳ Ergebnis wird vorbereitet …', 'info', 2500);
+  if (!(await _eiErgebnisAssembleState(emailId))) return;
+  const s = window._eiErgebnisState;
+  const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+  if (!chosen) { showToast('Kein Angebot gefunden', 'warning', 4000); return; }
+  let built;
+  try { built = await _eiErgebnisBuildMergedPdf(s, chosen); }
+  catch (e) { console.error('[V12.470] Vorschau-PDF:', e); showToast('Vorschau fehlgeschlagen: ' + e.message, 'error', 6000); return; }
+  try { if (window._eiErgPreviewUrl) URL.revokeObjectURL(window._eiErgPreviewUrl); } catch(_) {}
+  window._eiErgPreviewUrl = URL.createObjectURL(built.mergedBlob);
+  window._eiErgPreviewFn = built.fnSafe;
+  let ov = document.getElementById('eiErgebnisModal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'eiErgebnisModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.78);display:flex;justify-content:center;align-items:center;z-index:100000;padding:24px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  ov.onclick = (e) => { if (e.target === ov) _eiErgebnisPreviewClose(); };
+  document.body.appendChild(ov);
+  _eiErgebnisRenderPreview();
+}
+window._eiErgebnisQuickPreview = _eiErgebnisQuickPreview;
+
+function _eiErgebnisPreviewClose() {
+  try { if (window._eiErgPreviewUrl) { URL.revokeObjectURL(window._eiErgPreviewUrl); window._eiErgPreviewUrl = null; } } catch(_) {}
+  document.getElementById('eiErgebnisModal')?.remove();
+}
+window._eiErgebnisPreviewClose = _eiErgebnisPreviewClose;
+
+function _eiErgebnisRenderPreview() {
+  const s = window._eiErgebnisState;
+  const ov = document.getElementById('eiErgebnisModal');
+  if (!s || !ov) return;
+  const esc = _esc;
+  const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+  const orig = Number(s.originalEur) || 0;
+  const ang  = chosen ? chosen.angebotSumme : 0;
+  const diff = Math.max(0, orig - ang);
+  const provision = diff * (_eiErgProvPct(s) / 100);
+  const netto = Math.max(0, diff - provision);
+  const isTest = !!s.testMode;
+  const moreOffers = s.enriched.length > 1;
+  const noOrig = !(orig > 0);
+  const recipient = isTest ? (s.testEmail || '⚠ Test-Adresse fehlt') : (s.hvEmail || '⚠ keine HV-Email');
+  const url = window._eiErgPreviewUrl || '';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:880px;width:100%;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
+    + '<div style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
+    +   '<div style="min-width:0"><div style="font-size:11px;font-weight:700;color:#bbf7d0;letter-spacing:.08em;text-transform:uppercase">⚡ Ergebnis prüfen &amp; senden</div><div style="font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(chosen ? chosen.wnFirma : 'Angebot') + ' · ' + (s.isWv ? 'Ersparnis/Jahr ' : 'Ersparnis ') + esc(_eiErgFmtEur(netto)) + '</div></div>'
+    +   '<button onclick="_eiErgebnisPreviewClose()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0">✕</button>'
+    + '</div>'
+    + '<div style="display:flex;gap:18px;flex-wrap:wrap;padding:10px 22px;background:#f0fdf4;border-bottom:1px solid #dcfce7;font-size:12.5px;color:#166534">'
+    +   '<span>' + (s.isWv ? 'Bestand/Jahr' : 'Original') + ': <b style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(orig)) + '</b></span>'
+    +   '<span>Empfohlen: <b style="font-family:var(--dr-f-mono)">' + esc(_eiErgFmtEur(ang)) + '</b></span>'
+    +   '<span style="color:#15803d;font-weight:700">' + (s.isWv ? 'Ersparnis/Jahr' : 'Ersparnis') + ': ' + esc(_eiErgFmtEur(netto)) + '</span>'
+    +   (chosen && chosen.lieferzeit ? '<span style="color:#475569">📅 ' + esc(chosen.lieferzeit) + '</span>' : '')
+    + '</div>'
+    + (noOrig ? '<div style="padding:8px 22px;background:#fff7ed;border-bottom:1px solid #fed7aa;font-size:11.5px;color:#9a3412">⚠ Kein Vergleichspreis hinterlegt — Ersparnis evtl. unvollständig. Über „Anpassen" korrigieren.</div>' : '')
+    + (moreOffers ? '<div style="padding:8px 22px;background:#eff6ff;border-bottom:1px solid #bfdbfe;font-size:11.5px;color:#1e40af">ℹ ' + s.enriched.length + ' Angebote eingegangen — automatisch das günstigste gewählt. Andere Auswahl über „Anpassen".</div>' : '')
+    + '<div style="flex:1;min-height:320px;background:#525659;overflow:hidden">'
+    +   (url ? '<iframe src="' + esc(url) + '#toolbar=1&navpanes=0" style="width:100%;height:100%;border:none;display:block" title="Ergebnis-Vorschau"></iframe>' : '<div style="color:#fff;padding:30px;text-align:center">Vorschau nicht verfügbar — bitte „PDF" herunterladen.</div>')
+    + '</div>'
+    + '<div style="border-top:1px solid #fcd34d;background:#fffbeb;padding:8px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    +   '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#92400e;font-weight:700;cursor:pointer;white-space:nowrap"><input type="checkbox" id="ergTestMode" ' + (isTest ? 'checked' : '') + ' onchange="_eiErgebnisPreviewToggleTest(this.checked)" style="width:15px;height:15px;cursor:pointer"> 🧪 Test-Versand</label>'
+    +   '<input type="email" id="ergTestEmail" value="' + esc(s.testEmail || '') + '" placeholder="test@meine-adresse.de" oninput="_eiErgebnisSetTestEmail(this.value)" style="flex:1;min-width:180px;padding:7px 10px;border:1px solid #fcd34d;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;background:#fff' + (isTest ? '' : ';opacity:.55') + '">'
+    +   '<span style="font-size:10.5px;color:#b45309">geht an deine Adresse, NICHT an den Kunden</span>'
+    + '</div>'
+    + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+    +   '<div style="font-size:11.5px;color:#64748b">' + (isTest ? '🧪 Test an: <b style="color:#92400e">' + esc(s.testEmail || '⚠ Test-Adresse fehlt') + '</b>' : 'Empfänger: <b>' + esc(recipient) + '</b>') + '</div>'
+    +   '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +     '<a href="' + esc(url) + '" download="' + esc(window._eiErgPreviewFn || 'Ergebnis.pdf') + '" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none">📄 PDF</a>'
+    +     '<button onclick="_eiErgebnisPreviewEdit()" title="Auswahl, Beträge, Texte und KI-Einschätzung manuell anpassen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">✏️ Anpassen</button>'
+    +     '<button id="ergSendBtn" onclick="_eiErgebnisCreateAndSend(true)" style="background:' + (isTest ? '#d97706' : '#16a34a') + ';color:#fff;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' + (isTest ? '🧪 Test senden' : '📤 An HV senden') + '</button>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+}
+window._eiErgebnisRenderPreview = _eiErgebnisRenderPreview;
+
+function _eiErgebnisPreviewToggleTest(on) {
+  const s = window._eiErgebnisState; if (!s) return;
+  const te = document.getElementById('ergTestEmail'); if (te) s.testEmail = te.value.trim();
+  s.testMode = !!on;
+  _eiErgebnisRenderPreview();
+}
+window._eiErgebnisPreviewToggleTest = _eiErgebnisPreviewToggleTest;
+
+function _eiErgebnisPreviewEdit() {
+  const s = window._eiErgebnisState;
+  const emailId = s && s.emailId;
+  try { if (window._eiErgPreviewUrl) { URL.revokeObjectURL(window._eiErgPreviewUrl); window._eiErgPreviewUrl = null; } } catch(_) {}
+  if (emailId) openErgebnisCheckModal(emailId);
+}
+window._eiErgebnisPreviewEdit = _eiErgebnisPreviewEdit;
 
 // V12.404: Liftaro-Fußzeilen-Stammdaten für Ergebnis-PDFs (localStorage)
 function _eiPdfFooterDefault() {
