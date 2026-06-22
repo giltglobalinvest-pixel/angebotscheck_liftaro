@@ -6543,7 +6543,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.488';
+const APP_VERSION = 'V12.489';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -30910,7 +30910,10 @@ function renderDashboard() {
   // V12.9: 4 Postfächer entlang des Workflows — mutually exclusive. Jede Email
   //        landet in GENAU EINEM Postfach. "Mit Check verknüpft" wird zur
   //        Section-Info-Zeile (Annotation) + bleibt als Badge auf jeder Karte.
-  const emails = Array.isArray(_eiAllRecords) ? _eiAllRecords : [];
+  // V12.489: Dashboard-Postfächer zählen NUR eingehende Vorgänge — ausgehende Mails (unsere LV-Anfragen
+  // an Wartungsnehmer + Ergebnis-Mails an die HV, von check@liftaro.de) gehören NICHT in „Neu/Triage".
+  const emails = (Array.isArray(_eiAllRecords) ? _eiAllRecords : [])
+    .filter(e => e && e.direction !== 'outgoing' && String(e.from_email || '').toLowerCase().trim() !== 'check@liftaro.de');
   const peNeu        = emails.filter(e => (e.status || 'neu') === 'neu').length;
   const peInBearb    = emails.filter(e => e.status === 'in_bearbeitung' || e.status === 'gesichtet').length;
   const peErledigt   = emails.filter(e => e.status === 'geantwortet').length;
