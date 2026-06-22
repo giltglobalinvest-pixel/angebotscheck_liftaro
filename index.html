@@ -6531,7 +6531,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.482';
+const APP_VERSION = 'V12.483';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13173,6 +13173,10 @@ window._eiWvSet = _eiWvSet;
 function _eiWvRenderEditorBody(body, s) {
   s.wvOptionen = s.wvOptionen || _eiWvDefaultOptions();
   const o = s.wvOptionen;
+  // V12.483: Bei leerem/ungültigem Wert zeigt das <select> kosmetisch die erste Option (1), committet sie aber NICHT
+  // → beim Speichern blieb wartungen_pro_jahr falsy und die Landing zeigte „–". Auf eine gültige Option normalisieren,
+  // damit Anzeige = State = gespeicherter Wert (und nie wieder „–" trotz angezeigter Zahl).
+  if ([1, 2, 3, 4, 6, 12].indexOf(Number(o.wartungen_pro_jahr)) < 0) o.wartungen_pro_jahr = 1;
   const snap = s.snap || {};
   // V12.445: HV-Adresse einmalig laden — aus HV_Adressen (zentral pro Org), Fallback Snapshot
   if (s.hvAdresse === undefined) {
