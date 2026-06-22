@@ -4208,7 +4208,7 @@ const pdfWorkerReady = Promise.resolve();</script>
             </button>
             <div class="ei-mob-hide" style="font-size:13px;color:#475569;display:flex;align-items:center;gap:8px">
               <span style="color:#94a3b8">Sortieren nach:</span>
-              <strong style="color:#0f172a">Neueste zuerst</strong>
+              <strong id="eiSortTopLabel" style="color:#0f172a">Neueste zuerst</strong>
               <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" style="color:#475569"><polyline points="18 15 12 9 6 15"/></svg>
             </div>
             <!-- V12.215: Email-Typ-Filter -->
@@ -4283,6 +4283,8 @@ const pdfWorkerReady = Promise.resolve();</script>
               <div id="eiFltSortList" style="display:flex;flex-direction:column;gap:4px">
                 <button class="ei-flt-srt" data-sort="newest" onclick="setEiSortFilter('newest')">Neueste zuerst</button>
                 <button class="ei-flt-srt" data-sort="oldest" onclick="setEiSortFilter('oldest')">Älteste zuerst</button>
+                <button class="ei-flt-srt" data-sort="id_desc" onclick="setEiSortFilter('id_desc')">Check-ID (höchste zuerst)</button>
+                <button class="ei-flt-srt" data-sort="id_asc" onclick="setEiSortFilter('id_asc')">Check-ID (niedrigste zuerst)</button>
               </div>
             </div>
             <!-- Werkzeuge -->
@@ -6529,7 +6531,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.481';
+const APP_VERSION = 'V12.482';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -6956,7 +6958,7 @@ async function doLogin() {
 // ── Airtable CRUD ─────────────────────────────────────────────────
 async function atRead(table, filter, opts) {
   const base = APP_KEYS.appBaseId || APP_CONFIG.APP_BASE_ID;
-  let url = 'https://api.airtable.com/v0/' + base + '/' + encodeURIComponent(table);
+  const baseUrl = 'https://api.airtable.com/v0/' + base + '/' + encodeURIComponent(table);
   const params = [];
   if (filter) params.push('filterByFormula=' + encodeURIComponent(filter));
   // Default-Sort nach savedAt (für Checks/Rechnungen). Tabellen ohne dieses Feld
@@ -6964,10 +6966,23 @@ async function atRead(table, filter, opts) {
   if (!opts || opts.sort !== false) {
     params.push('sort%5B0%5D%5Bfield%5D=savedAt&sort%5B0%5D%5Bdirection%5D=desc');
   }
-  if (params.length) url += '?' + params.join('&');
-  const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + APP_CONFIG.AIRTABLE_READ_KEY } });
-  const d = await res.json();
-  return d.records || [];
+  params.push('pageSize=100');
+  // V12.482: Airtable liefert max. 100 Records pro Seite + einen `offset`-Cursor für die nächste.
+  // Vorher wurde NUR die erste Seite zurückgegeben → alle Records jenseits der ersten 100 gingen
+  // STILL verloren (verschwundene L-Nummern, „Alle" unvollständig). Jetzt: alle Seiten holen.
+  let all = [];
+  let offset = '';
+  for (let guard = 0; guard < 100; guard++) {   // Schutz: bis 10.000 Records
+    let url = baseUrl;
+    const p = params.slice();
+    if (offset) p.push('offset=' + encodeURIComponent(offset));
+    url += '?' + p.join('&');
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + APP_CONFIG.AIRTABLE_READ_KEY } });
+    const d = await res.json().catch(() => ({}));
+    if (d && Array.isArray(d.records)) all = all.concat(d.records);
+    if (d && d.offset) { offset = d.offset; } else { break; }
+  }
+  return all;
 }
 
 async function atWrite(table, fields) {
@@ -33174,6 +33189,11 @@ function setEiRangeFilter(v) {
 }
 function setEiSortFilter(v) {
   window._eiSortMode = String(v || 'newest');
+  // V12.482: Top-Label „Sortieren nach …" spiegeln
+  try {
+    const _lbl = { newest: 'Neueste zuerst', oldest: 'Älteste zuerst', id_desc: 'Check-ID ↓', id_asc: 'Check-ID ↑' }[window._eiSortMode] || 'Neueste zuerst';
+    const _el = document.getElementById('eiSortTopLabel'); if (_el) _el.textContent = _lbl;
+  } catch (_) {}
   _eiUpdateFilterPaneActive();
   if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
 }
@@ -33354,9 +33374,13 @@ function _eiFiltered() {
       });
     }
   }
-  // V12.247: Sortierung — älteste zuerst möglich
-  if (String(window._eiSortMode || 'newest') === 'oldest') {
+  // V12.247: Sortierung — älteste zuerst möglich; V12.482: + Check-ID (L-XX) auf-/absteigend
+  const _sm = String(window._eiSortMode || 'newest');
+  if (_sm === 'oldest') {
     base = base.slice().sort((a, b) => String(a.received_at || a.sent_at || '').localeCompare(String(b.received_at || b.sent_at || '')));
+  } else if (_sm === 'id_desc' || _sm === 'id_asc') {
+    const _idNum = (r) => { const m = String(r && r.email_id || '').match(/(\d+)/); return m ? parseInt(m[1], 10) : -1; };
+    base = base.slice().sort((a, b) => _sm === 'id_asc' ? (_idNum(a) - _idNum(b)) : (_idNum(b) - _idNum(a)));
   }
   const q = String(window._eiSearchQ || '').toLowerCase().trim();
   if (!q) return base;
