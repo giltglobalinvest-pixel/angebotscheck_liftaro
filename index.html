@@ -6531,7 +6531,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.486';
+const APP_VERSION = 'V12.487';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32457,9 +32457,6 @@ function _eiUpdateSidebarCounts() {
     if (!r) continue;
     // V12.214: outgoing-Records zählen nur für den "Gesendet"-Filter — nicht für die Status-Counter
     if (r.direction === 'outgoing') { cSent++; continue; }
-    // V12.362: Thread- und Chat-Antworten skippen (siehe oben)
-    if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
-    cAlle++;
     // V12.371: Normalisierung — 'gesichtet'/'geantwortet' → 'in_bearbeitung'
     let s = _eiNormStatus(r.status || 'neu');
     // V12.373: Wiedervorlage-Datum erreicht? Sofort auf 'neu' zurück (lokal + async DB-Patch)
@@ -32472,6 +32469,10 @@ function _eiUpdateSidebarCounts() {
         s = 'neu';
       }
     }
+    // V12.362/487: Thread-/Chat-Antworten skippen — ABER 'neu' (= unbearbeitet) NIE verstecken,
+    // sonst verschwinden neu eingegangene Mails (z. B. Auto-Antworten auf Ergebnis-Mails) aus „Neu".
+    if (s !== 'neu' && (threadedIds.has(r._id) || chatReplyIds.has(r._id))) continue;
+    cAlle++;
     if (s in byStatus) byStatus[s]++;
   }
   // V12.373: Abgelaufene Wiedervorlagen in Airtable persistieren (Best-Effort, async)
@@ -32512,7 +32513,8 @@ function _eiUpdateSidebarCounts() {
     let cK = 0, cI = 0, cG = 0, cB = 0, cA = 0;
     for (const r of all) {
       if (!r || r.direction === 'outgoing') continue;
-      if (threadedIds.has(r._id) || chatReplyIds.has(r._id)) continue;
+      // V12.487: 'neu' nie verstecken (analog Status-Counter + dropThreaded)
+      if (_eiNormStatus(r.status || 'neu') !== 'neu' && (threadedIds.has(r._id) || chatReplyIds.has(r._id))) continue;
       const cs = String(r.check_status || '');
       if (cs === 'gecheckt') cG++;
       else if (cs === 'beauftragt') cB++;
@@ -33310,7 +33312,9 @@ function _eiFiltered() {
       }
     }
   }
-  const dropThreaded = (arr) => arr.filter(r => !threadedIds.has(r._id) && !chatReplyIds.has(r._id));
+  // V12.487: 'neu' (= unbearbeitete Mails) NIE wegen Thread-/Chat-Antwort-Heuristik aus der Liste werfen —
+  // sonst verschwinden neu eingegangene Mails (z. B. Auto-Antworten auf Ergebnis-Mails) aus dem „Neu"-Filter.
+  const dropThreaded = (arr) => arr.filter(r => (typeof _eiNormStatus === 'function' && _eiNormStatus(r.status || 'neu') === 'neu') || (!threadedIds.has(r._id) && !chatReplyIds.has(r._id)));
   // V12.167/197: zuerst Status, dann Volltextsuche
   // V12.214: outgoing-Records (selbst gesendete Forwards/Replies) gehören NICHT in den Hauptposteingang.
   // Eigener Filter "gesendet" zeigt sie an; in allen anderen Filtern werden sie ausgeblendet.
