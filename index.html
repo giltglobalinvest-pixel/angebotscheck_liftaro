@@ -6543,7 +6543,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.489';
+const APP_VERSION = 'V12.490';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -30507,6 +30507,18 @@ function toggleDashPeFilter(filterKey) {
   if (typeof renderDashboard === 'function') renderDashboard();
 }
 
+// V12.490: „Checks pro Kunde"-Statistik — Filter nach Check-Typ + Sortierung (viele↔wenige).
+function setDashCheckTypeFilter(t) {
+  window._dashCheckTypeFilter = (String(window._dashCheckTypeFilter || '') === String(t || '')) ? '' : String(t || '');
+  if (typeof renderDashboard === 'function') renderDashboard();
+}
+window.setDashCheckTypeFilter = setDashCheckTypeFilter;
+function toggleDashCheckSort() {
+  window._dashCheckSortAsc = !window._dashCheckSortAsc;
+  if (typeof renderDashboard === 'function') renderDashboard();
+}
+window.toggleDashCheckSort = toggleDashCheckSort;
+
 // V12.7: Klick auf Posteingang-Karte → Inbox öffnen + diese Email selektieren.
 //        Filter wird auf 'alle' gesetzt, damit auch geantwortete Mails sichtbar sind.
 function openEmailInboxModalAt(recId) {
@@ -31017,6 +31029,53 @@ function renderDashboard() {
       </div>
     </div>`;
 
+  // V12.490: „Checks pro Kunde" — Statistik je HV, nach Check-Typ filterbar + nach Anzahl sortiert (viele↔wenige).
+  const _ctLabel = (t) => ({ reparatur: 'Reparatur', wartung: 'Wartung/Vertrag', modernisierung: 'Modernisierung' })[t] || (t ? (t.charAt(0).toUpperCase() + t.slice(1)) : t);
+  const _statBase0 = checks; // respektiert die Status-Filter-Chips oben
+  const _ctFilter = String(window._dashCheckTypeFilter || '');
+  const _typesPresent = [...new Set(_statBase0.map(c => c.checkType || 'reparatur'))].sort();
+  const _statBase = _ctFilter ? _statBase0.filter(c => (c.checkType || 'reparatur') === _ctFilter) : _statBase0;
+  const _kMap = new Map();
+  for (const c of _statBase) {
+    const firma = String(c.firma || '').trim() || '(ohne Kunde)';
+    if (!_kMap.has(firma)) _kMap.set(firma, { firma, total: 0, byType: {} });
+    const g = _kMap.get(firma); g.total++;
+    const t = c.checkType || 'reparatur'; g.byType[t] = (g.byType[t] || 0) + 1;
+  }
+  const _sortAsc = !!window._dashCheckSortAsc;
+  const _kList = [..._kMap.values()].sort((a, b) => _sortAsc ? (a.total - b.total || a.firma.localeCompare(b.firma)) : (b.total - a.total || a.firma.localeCompare(b.firma)));
+  const _maxCnt = _kList.reduce((m, k) => Math.max(m, k.total), 0) || 1;
+  const _typeChip = (val, label, count) => {
+    const on = _ctFilter === val;
+    return `<button onclick="setDashCheckTypeFilter('${_esc(val)}')" class="dr-pill" style="${on ? 'background:var(--dr-blue);color:#fff;border-color:var(--dr-blue);' : ''}">${_esc(label)} <b style="font-variant-numeric:tabular-nums">${count}</b></button>`;
+  };
+  const _typeChips = _typeChip('', 'Alle', _statBase0.length)
+    + _typesPresent.map(t => _typeChip(t, _ctLabel(t), _statBase0.filter(c => (c.checkType || 'reparatur') === t).length)).join('');
+  const _kRows = _kList.map((k, i) => {
+    const bar = Math.round((k.total / _maxCnt) * 100);
+    const badges = Object.keys(k.byType).sort().map(t => `<span style="font-size:10px;color:var(--dr-ink-mute);background:var(--dr-bg-soft);border:1px solid var(--dr-border);border-radius:999px;padding:1px 7px;white-space:nowrap">${_esc(_ctLabel(t))} ${k.byType[t]}</span>`).join(' ');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:8px 4px;border-bottom:1px solid var(--dr-border)">
+      <span style="font-family:var(--dr-f-mono);font-size:11px;color:var(--dr-ink-mute);width:22px;text-align:right;flex-shrink:0">${i + 1}.</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--dr-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(k.firma)}</div>
+        <div style="height:6px;background:var(--dr-bg-soft);border-radius:99px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${bar}%;background:linear-gradient(90deg,#7dc242,#16a34a);border-radius:99px"></div></div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:46%;overflow:hidden">${badges}</div>
+      <span style="font-size:17px;font-weight:800;color:var(--dr-ink);width:34px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums">${k.total}</span>
+    </div>`;
+  }).join('');
+  const perKundePanel = `
+    <div style="margin-top:16px;background:var(--dr-surface);border:1px solid var(--dr-border);border-radius:var(--dr-r-md);padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="font-size:13.5px;font-weight:700;color:var(--dr-ink)">📊 Checks pro Kunde <span style="color:var(--dr-ink-mute);font-weight:500">· ${_kList.length} Kunde${_kList.length === 1 ? '' : 'n'}</span></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${_typeChips}
+          <button onclick="toggleDashCheckSort()" class="dr-pill" title="Sortierung umschalten">${_sortAsc ? '↑ wenige zuerst' : '↓ viele zuerst'}</button>
+        </div>
+      </div>
+      ${_kList.length ? _kRows : '<div style="padding:18px;text-align:center;color:var(--dr-ink-mute);font-style:italic;font-size:12.5px">Keine Checks für diesen Filter.</div>'}
+    </div>`;
+
   // V12.7: Neue Dashboard-Reihenfolge — Posteingang ganz oben (wichtigste Section),
   // dann Checks-Übersicht, dann Fälligkeiten, dann Vorabchecks/Verträge/Ersparnisse weiter unten.
   content.innerHTML = `
@@ -31038,6 +31097,7 @@ function renderDashboard() {
         ${kachel('Checks gesamt',     checks.length,    '#7dc242', `${checksReparatur} Reparatur · ${checksWartung} Vertrag`)}
         ${kachel('Verknüpfte Checks', `${matched} <span style="font-size:14px;color:var(--dr-ink-mute);font-weight:400">/ ${checks.length}</span>`, '#1a3a5c', `${matchPct}% Vertragskunden-Treffer`)}
       </div>
+      ${perKundePanel}
     </div>
 
     ${billingBlock}
