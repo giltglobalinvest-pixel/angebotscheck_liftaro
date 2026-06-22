@@ -4316,6 +4316,18 @@ const pdfWorkerReady = Promise.resolve();</script>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <!-- V12.488: Status-Schnellumschalter oben rechts -->
+      <div style="display:inline-flex;align-items:center;gap:7px;flex-shrink:0">
+        <span class="ei-mob-hide" style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">Status</span>
+        <select id="emailDetailOverlayStatusSel" onchange="_eiOverlayStatusChange(this.value)" title="Status schnell umschalten" style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:8px;height:36px;padding:0 10px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;outline:none">
+          <option value="neu">Neu</option>
+          <option value="in_bearbeitung">In Bearbeitung</option>
+          <option value="wartend">Wartend</option>
+          <option value="wiedervorlage">📅 Auf Wiedervorlage</option>
+          <option value="geantwortet">✓ Erledigt</option>
+          <option value="verworfen">Archiviert</option>
+        </select>
+      </div>
       <!-- V12.277: Schnell-Check-Button — sichtbar nur bei Check-Typ-klassifizierter Email -->
       <button id="emailDetailOverlaySchnellCheckBtn" onclick="openSchnellCheck()" title="⚡ Schnell-Check generieren — KI erzeugt Ergebnis aus Email + Anhang + Chats" style="display:none;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#fff;border-radius:8px;padding:0 14px;height:36px;cursor:pointer;font-size:12.5px;font-weight:700;align-items:center;gap:6px;font-family:inherit;box-shadow:0 1px 3px rgba(217,119,6,.35)" onmouseover="this.style.opacity='.92'" onmouseout="this.style.opacity='1'">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
@@ -6531,7 +6543,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.487';
+const APP_VERSION = 'V12.488';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -41241,6 +41253,26 @@ function _eiOpenChatForVorgang(recId) {
 }
 window._eiOpenChatForVorgang = _eiOpenChatForVorgang;
 
+// V12.488: Status-Schnellumschalter oben rechts im Detail-Overlay
+function _eiOverlayStatusChange(val) {
+  if (_eiSelectedId && typeof setEmailStatus === 'function') setEmailStatus(_eiSelectedId, val);
+}
+window._eiOverlayStatusChange = _eiOverlayStatusChange;
+function _eiSyncOverlayStatusSel() {
+  try {
+    const sel = document.getElementById('emailDetailOverlayStatusSel');
+    if (!sel) return;
+    const r = (_eiAllRecords || []).find(x => x._id === _eiSelectedId);
+    if (!r) return;
+    const ns = (typeof _eiNormStatus === 'function') ? _eiNormStatus(r.status || 'neu') : String(r.status || 'neu');
+    if (![...sel.options].some(o => o.value === ns)) {
+      const o = document.createElement('option'); o.value = ns; o.textContent = ({ gesendet: 'Gesendet' })[ns] || ns; sel.appendChild(o);
+    }
+    sel.value = ns;
+  } catch (_) {}
+}
+window._eiSyncOverlayStatusSel = _eiSyncOverlayStatusSel;
+
 // V12.247: Vollbild-Detail-Overlay
 function openEmailDetailOverlay() {
   const ov = document.getElementById('emailInboxDetailOverlay');
@@ -41256,6 +41288,7 @@ function openEmailDetailOverlay() {
   const body = document.getElementById('emailInboxDetail');
   if (body) body.scrollTop = 0;
   _eiUpdateOverlayNavButtons();
+  if (typeof _eiSyncOverlayStatusSel === 'function') _eiSyncOverlayStatusSel();   // V12.488: Status-Schalter oben rechts auf aktuellen Stand
   // ESC schließt das Overlay
   if (!window._eiOverlayEscBound) {
     window._eiOverlayEscBound = true;
