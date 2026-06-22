@@ -6531,7 +6531,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.485';
+const APP_VERSION = 'V12.486';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33048,8 +33048,22 @@ function setEiAufzugFilter(v) {
 window.setEiAufzugFilter = setEiAufzugFilter;
 
 // V12.300: Sammelt distinct (Fabriknummer + Standort) aus den Inbox-Records
-function _eiCollectAufzugChoices() {
-  const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+// V12.486: Basis für Facetten-Zähler (HV/Aufzug-Dropdown) — exakt die AKTUELL sichtbare Liste (gleiche
+// _eiFiltered-Pipeline inkl. Status-Filter + dropThreaded), aber OHNE den jeweiligen Facetten-Filter.
+// Vorher wurde über ALLE _eiAllRecords gezählt → Dropdown zeigte „1", aber Auswahl ergab nichts
+// (z. B. weil der Vorgang threaded/chat-reply ist oder in einem anderen Status liegt).
+function _eiFacetBase(skipKey) {
+  const saveHv = window._eiHvFilter, saveAz = window._eiAufzugFilter;
+  try {
+    if (skipKey === 'hv') window._eiHvFilter = '';
+    if (skipKey === 'aufzug') window._eiAufzugFilter = '';
+    return (typeof _eiFiltered === 'function') ? _eiFiltered() : ((_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing'));
+  } finally { window._eiHvFilter = saveHv; window._eiAufzugFilter = saveAz; }
+}
+window._eiFacetBase = _eiFacetBase;
+
+function _eiCollectAufzugChoices(list) {
+  const all = Array.isArray(list) ? list : (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
   const m = new Map();
   for (const r of all) {
     const fn = String(r.aufzug_fabriknummer || '').trim();
@@ -33061,8 +33075,8 @@ function _eiCollectAufzugChoices() {
 }
 
 // V12.300: Sammelt distinct (HV-Name + Org-ID) aus den Inbox-Records über _eiDisplayHV
-function _eiCollectHvChoices() {
-  const all = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+function _eiCollectHvChoices(list) {
+  const all = Array.isArray(list) ? list : (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
   const m = new Map();
   for (const r of all) {
     const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
@@ -33076,9 +33090,10 @@ function _eiCollectHvChoices() {
 
 function openEiAufzugFilterMenu(anchorEl) {
   document.querySelectorAll('.ei-filter-popover').forEach(el => el.remove());
-  const choices = _eiCollectAufzugChoices();
-  const cntAll = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing').length;
-  const cntOhne = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && !String(r.aufzug_fabriknummer || '').trim()).length;
+  const _vis = _eiFacetBase('aufzug');   // V12.486: Zähler = aktuell sichtbare Liste
+  const choices = _eiCollectAufzugChoices(_vis);
+  const cntAll = _vis.length;
+  const cntOhne = _vis.filter(r => r && !String(r.aufzug_fabriknummer || '').trim()).length;
   const pop = document.createElement('div');
   pop.className = 'ei-filter-popover';
   pop.style.cssText = 'position:absolute;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px;min-width:280px;max-height:60vh;overflow-y:auto;z-index:6300;font-family:"DM Sans",sans-serif';
@@ -33125,10 +33140,10 @@ window.openEiAufzugFilterMenu = openEiAufzugFilterMenu;
 
 function openEiHvFilterMenu(anchorEl) {
   document.querySelectorAll('.ei-filter-popover').forEach(el => el.remove());
-  const choices = _eiCollectHvChoices();
-  const cntAll = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing').length;
-  const cntOhne = (_eiAllRecords || []).filter(r => {
-    if (!r || r.direction === 'outgoing') return false;
+  const _vis = _eiFacetBase('hv');   // V12.486: Zähler = aktuell sichtbare Liste (ohne HV-Filter)
+  const choices = _eiCollectHvChoices(_vis);
+  const cntAll = _vis.length;
+  const cntOhne = _vis.filter(r => {
     const hv = (typeof _eiDisplayHV === 'function') ? _eiDisplayHV(r) : null;
     return !(hv && hv.primary && String(hv.primary).trim());
   }).length;
