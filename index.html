@@ -6531,7 +6531,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.484';
+const APP_VERSION = 'V12.485';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -41214,13 +41214,11 @@ function selectEmailRow(recId) {
 
 // V12.484: Chat-Antwort-Klick → Vorgang öffnen UND direkt zum Chat-Block scrollen + aufklappen.
 function _eiOpenChatForVorgang(recId) {
+  // V12.485: Flag setzen — der Detail-Render scrollt danach zuverlässig zum Chat-Block
+  // (überlebt den openEmailDetailOverlay-Scroll-Reset + Lazy-Re-Renders). Nach 2s wieder löschen.
+  window._eiPendingChatScroll = recId;
   selectEmailRow(recId);
-  setTimeout(() => {
-    try {
-      const b = document.querySelector('[data-eiblock="chats"]');
-      if (b) { b.classList.remove('ei-collapsed'); b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-    } catch (_) {}
-  }, 250);
+  setTimeout(() => { if (window._eiPendingChatScroll === recId) window._eiPendingChatScroll = null; }, 2000);
 }
 window._eiOpenChatForVorgang = _eiOpenChatForVorgang;
 
@@ -42067,6 +42065,20 @@ function renderEmailInboxDetail() {
   } catch (_) {}
   // V12.434: Verschieb-/Einklapp-Chrome + gespeichertes Layout auf die Blöcke anwenden
   if (typeof _eiApplyDetailLayout === 'function') _eiApplyDetailLayout(detEl, r._id);
+  // V12.485: Nach jedem Render zum Chat-Block scrollen, wenn per „💬 CHAT-ANTWORT"-Klick angefordert.
+  // Überlebt den Scroll-Reset von openEmailDetailOverlay UND die Lazy-Re-Renders (die den Scroll sonst auf 0 setzen).
+  try {
+    if (window._eiPendingChatScroll && window._eiPendingChatScroll === r._id) {
+      const _cb = detEl.querySelector('[data-eiblock="chats"]');
+      if (_cb) {
+        _cb.classList.remove('ei-collapsed');
+        setTimeout(() => { try {
+          const cr = detEl.getBoundingClientRect(), br = _cb.getBoundingClientRect();
+          detEl.scrollTo({ top: detEl.scrollTop + (br.top - cr.top) - 10, behavior: 'smooth' });
+        } catch (_) {} }, 40);
+      }
+    }
+  } catch (_) {}
 }
 
 // ════════════════════════════════════════════════════════════════════════
