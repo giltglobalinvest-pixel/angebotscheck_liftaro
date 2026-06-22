@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.480';
+const APP_VERSION = 'V12.481';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32469,7 +32469,9 @@ function _eiUpdateSidebarCounts() {
   set('eiSideCnt_wiedervorlage',  byStatus.wiedervorlage);
   set('eiSideCnt_geantwortet',    byStatus.geantwortet);
   set('eiSideCnt_verworfen',      byStatus.verworfen);
-  set('eiSideCnt_alle',           cAlle);
+  // V12.481: „Alle"-Zähler exakt wie die „Alle"-Liste (nicht-outgoing, nicht verworfen) — inkl. Thread-/Chat-Antworten, damit Badge und Liste übereinstimmen.
+  const _cAlleList = (all || []).filter(r => r && r.direction !== 'outgoing' && r.status !== 'verworfen').length;
+  set('eiSideCnt_alle',           _cAlleList);
   set('eiSideCnt_gesendet',       cSent);
   // V12.197: Counter "ungesichtete Antworten"
   const unseenCnt = all.filter(r => _eiHasUnseenReplies(r) && r.direction !== 'outgoing').length;
@@ -33302,7 +33304,7 @@ function _eiFiltered() {
     // V12.371: Normalisierung — alte „gesichtet"/„geantwortet"-Records erscheinen unter „in_bearbeitung"
     base = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing' && _eiNormStatus(r.status || 'neu') === _eiFilter);
   }
-  base = dropThreaded(base);
+  base = (_eiFilter === 'alle') ? base : dropThreaded(base);   // V12.481: „Alle" zeigt ALLES (auch Thread-/Chat-Antworten) — nichts wird versteckt
   // V12.215: Email-Typ-Filter (gilt für alle Status-Filter außer "gesendet")
   if (window._eiTypFilter && _eiFilter !== 'gesendet') {
     const tf = window._eiTypFilter;
@@ -33360,8 +33362,12 @@ function _eiFiltered() {
   if (!q) return base;
   // Mehrere Wörter → alle müssen vorkommen (UND-Suche, in beliebigem Feld)
   const terms = q.split(/\s+/).filter(Boolean);
-  return base.filter(r => {
+  // V12.481: Suche ist GLOBAL über ALLE eingehenden Vorgänge — unabhängig vom aktiven Filter, Thread-/Chat-Status
+  // und auch verworfene — damit nichts „unauffindbar" wird. Check-ID „L-XX" (email_id) wird mitgesucht.
+  const searchBase = (_eiAllRecords || []).filter(r => r && r.direction !== 'outgoing');
+  return searchBase.filter(r => {
     const hay = [
+      r.email_id,                     // V12.481: Liftaro-Check-ID „L-XX" mitsuchen
       r.subject, r.ai_subject, r.from_name, r.from_email, r.to_email, r.bcc_email,
       r.body, r.body_text, r.body_preview,
       r.ki_classification, r.ki_summary,
