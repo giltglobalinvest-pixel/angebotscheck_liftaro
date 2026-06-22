@@ -6529,7 +6529,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.479';
+const APP_VERSION = 'V12.480';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -13640,7 +13640,10 @@ function _eiLvCheckPflichtVorVersand(s) {
   // --- Identifikation / Empfänger (SOFT — kommt aus Aufzug/Pipedrive, hier nicht editierbar) ---
   if (!String(snap.fabriknummer || '').trim()) soft.push('Fabriknummer fehlt (aus dem Aufzug) — erscheint im Ergebnis als „?".');
   if (!String(snap.standort || '').trim()) soft.push('Standort fehlt (aus dem Aufzug) — erscheint im Ergebnis als „?".');
-  if (!String(snap.hv_email || '').trim()) soft.push('Keine HV-E-Mail hinterlegt — das Ergebnis ginge später an den Absender der Eingangs-Mail (Fallback).');
+  // V12.480: HV-E-Mail ist PFLICHT — ohne sie kann das Ergebnis später nicht an die HV gesendet werden.
+  const _liveR = (_eiAllRecords || []).find(x => x._id === s.emailId);
+  const _hvMail = String(snap.hv_email || (_liveR && _liveR.confirmed_hv_email) || (_liveR && _liveR.real_hv_email) || '').trim();
+  if (!_hvMail) hard.push('HV-E-Mail fehlt — ohne sie kann das Ergebnis später nicht an die Hausverwaltung gesendet werden. Bitte in der Hausverwaltungs-Kachel des Vorgangs eintragen und speichern.');
   return { hard, soft };
 }
 window._eiLvCheckPflichtVorVersand = _eiLvCheckPflichtVorVersand;
@@ -34966,6 +34969,23 @@ async function assignAufzugToEmail(aufzugRecordId) {
   }
 }
 
+// V12.480: HV-E-Mail muss am Vorgang IMMER hinterlegt sein — editierbar in der HV-Kachel,
+// persistiert in confirmed_hv_email (wird beim Ergebnis-Versand bevorzugt gelesen).
+async function saveHvEmail(recId) {
+  const inp = document.getElementById('hvEmailInput_' + recId);
+  if (!inp) return;
+  const val = String(inp.value || '').trim();
+  if (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showToast('Bitte eine gültige E-Mail-Adresse eingeben', 'warning', 3500); inp.focus(); return; }
+  try {
+    await atUpdate('Emails', recId, { confirmed_hv_email: val }, { typecast: true });
+    const r = (_eiAllRecords || []).find(x => x._id === recId);
+    if (r) r.confirmed_hv_email = val;
+    showToast(val ? '✓ HV-E-Mail gespeichert' : 'HV-E-Mail entfernt', 'success', 2500);
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) { showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000); }
+}
+window.saveHvEmail = saveHvEmail;
+
 function _renderEmailAssignmentCards(r) {
   // HV-Daten ermitteln
   let hvFirma = '', hvOrgId = '', hvEmail = '', hvSource = '';
@@ -34994,6 +35014,8 @@ function _renderEmailAssignmentCards(r) {
     hvEmail = String(r.real_hv_email || '').trim();
     if (hvFirma) hvSource = 'ai';
   }
+  // V12.480: manuell gepflegte HV-E-Mail (confirmed_hv_email) hat Vorrang — sie wird in der Kachel editiert/gespeichert.
+  { const _cfm = String(r.confirmed_hv_email || '').trim(); if (_cfm) hvEmail = _cfm; }
   // Aufzug-Daten
   const afn = String(r.aufzug_fabriknummer || '').trim();
   const ast = String(r.aufzug_standort || '').trim();
@@ -35014,7 +35036,7 @@ function _renderEmailAssignmentCards(r) {
         <div style="flex:1;min-width:0">
           <div style="font-size:10.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:.06em">Hausverwaltung · KI-Vorschlag</div>
           <div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvFirma)}</div>
-          ${hvEmail ? `<div style="font-size:12px;color:#475569;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvEmail)}</div>` : ''}
+          <div style="display:flex;align-items:center;gap:6px;margin-top:5px"><input type="email" id="hvEmailInput_${r._id}" value="${_esc(hvEmail)}" placeholder="kunde@hausverwaltung.de" onkeydown="if(event.key==='Enter'){event.preventDefault();saveHvEmail('${r._id}');}" style="flex:1;min-width:0;padding:5px 9px;border:1px solid ${hvEmail ? '#cbd5e1' : '#fca5a5'};border-radius:6px;font-size:12px;outline:none;font-family:inherit;background:#fff" aria-label="HV-E-Mail"><button onclick="saveHvEmail('${r._id}')" title="HV-E-Mail speichern" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">✓</button></div>${hvEmail ? '' : `<div style="font-size:11px;color:#dc2626;margin-top:3px;font-weight:600">⚠ HV-E-Mail fehlt — für den Ergebnis-Versand erforderlich</div>`}
           <div style="font-size:11px;color:#9a3412;margin-top:4px;font-weight:600">⚠ Nicht in Pipedrive zugeordnet — bitte manuell auswählen</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -35027,7 +35049,7 @@ function _renderEmailAssignmentCards(r) {
         <div style="flex:1;min-width:0">
           <div style="font-size:10.5px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.06em">Hausverwaltung${hvSource === 'ai' ? ' · KI' : ''}</div>
           <div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvFirma)}</div>
-          ${hvEmail ? `<div style="font-size:12px;color:#475569;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(hvEmail)}</div>` : ''}
+          <div style="display:flex;align-items:center;gap:6px;margin-top:5px"><input type="email" id="hvEmailInput_${r._id}" value="${_esc(hvEmail)}" placeholder="kunde@hausverwaltung.de" onkeydown="if(event.key==='Enter'){event.preventDefault();saveHvEmail('${r._id}');}" style="flex:1;min-width:0;padding:5px 9px;border:1px solid ${hvEmail ? '#cbd5e1' : '#fca5a5'};border-radius:6px;font-size:12px;outline:none;font-family:inherit;background:#fff" aria-label="HV-E-Mail"><button onclick="saveHvEmail('${r._id}')" title="HV-E-Mail speichern" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">✓</button></div>${hvEmail ? '' : `<div style="font-size:11px;color:#dc2626;margin-top:3px;font-weight:600">⚠ HV-E-Mail fehlt — für den Ergebnis-Versand erforderlich</div>`}
           ${hvOrgId ? `<div style="font-family:var(--dr-f-mono);font-size:10.5px;color:#64748b;margin-top:4px;letter-spacing:.04em">Pipedrive-ID ${_esc(hvOrgId)}</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -35309,7 +35331,7 @@ async function _eiErgebnisAssembleState(emailId) {
   let snap = {};
   const firstLv = enriched.find(e => e.lv && e.lv.kontext_snapshot_json);
   if (firstLv) { try { snap = JSON.parse(firstLv.lv.kontext_snapshot_json || '{}'); } catch(_) {} }
-  const hvEmail = String(snap.hv_email || r.from_email || '').trim();
+  const hvEmail = String(r.confirmed_hv_email || snap.hv_email || r.real_hv_email || r.from_email || '').trim();   // V12.480: gepflegte HV-E-Mail bevorzugen
   const hvName  = String(snap.hv_name || r.real_hv_firma || '').trim();
   // HV-Adresse (sofern bekannt) aus Snapshot/Email
   const hvAnsprech = String(snap.hv_ansprechperson || r.real_hv_ansprechperson || r.from_name || '').trim();
