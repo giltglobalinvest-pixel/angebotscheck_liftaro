@@ -6531,7 +6531,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.483';
+const APP_VERSION = 'V12.484';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -33680,7 +33680,7 @@ function renderEmailInboxList() {
     // V12.454: Pille + direkter ✓-Button („als gelesen markieren") in der Übersicht — ohne den Vorgang zu öffnen.
     const chatReplyChip = _hasChatReply
       ? `<span style="display:inline-flex;align-items:center;gap:3px">`
-          + `<span title="Neue Chat-Antwort von einem Service-Partner — Klick öffnet die Email" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;animation:eiNeuPulse 1.6s ease-in-out infinite">💬 CHAT-ANTWORT</span>`
+          + `<span onclick="event.stopPropagation();_eiOpenChatForVorgang('${r._id}')" title="Neue Chat-Antwort — Klick öffnet den Chat direkt" style="background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;animation:eiNeuPulse 1.6s ease-in-out infinite">💬 CHAT-ANTWORT</span>`
           + `<button onclick="event.stopPropagation();markChatRepliesAsSeen('${r._id}')" title="Als gelesen markieren — entfernt die Markierung (Vorgang wird NICHT geöffnet)" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;border-radius:999px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:800;line-height:1;padding:0;font-family:inherit" onmouseover="this.style.background='#cffafe'" onmouseout="this.style.background='#fff'">✓</button>`
         + `</span>`
       : '';
@@ -39403,6 +39403,20 @@ function _eiSynthesizeIncomingChatItems(emailId, existingItems) {
       chat_partner_telefon:        String(sb.telefon || ''),
     });
   }
+  // (d) V12.484: Partner aus AUSGEHENDEN Chat-Records (chat_email_id===emailId) ableiten — sonst zeigt
+  // die CHAT-ANTWORT-Pille zwar an, aber der Chat bleibt leer („kein Chat-Partner"), z. B. wenn der
+  // gestartete Tab (localStorage) verloren ging. HV-Adressen + check@liftaro.de ausschließen, damit
+  // Ergebnis-Mails (chat_email_id an die HV) NICHT als Service-Chat auftauchen.
+  const _hvSkip = new Set([r.from_email, r.confirmed_hv_email, r.real_hv_email]
+    .map(x => String(x || '').toLowerCase().trim()).filter(Boolean));
+  for (const e of (Array.isArray(_eiAllRecords) ? _eiAllRecords : [])) {
+    if (e && e.direction === 'outgoing' && String(e.chat_email_id || '').trim() === emailId) {
+      const to = String(e.to_email || '').trim().toLowerCase();
+      if (to && to !== 'check@liftaro.de' && !_hvSkip.has(to)) {
+        addPartner(to, { partner_typ: 'servicebetrieb', servicebetrieb_id: '', chat_partner_firma: String(e.to_name || to), chat_partner_ansprechperson: '', chat_partner_telefon: '' });
+      }
+    }
+  }
   if (partnerByEmail.size === 0) return [];
 
   // V12.230: Dedup-Set — bereits in existingItems vorhandene message_ids (echte Chat-Records)
@@ -41180,11 +41194,35 @@ function selectEmailRow(recId) {
   window._eiComposerMode = 'reply';
   // V12.190: NEU-Marker entfernen — User hat diese Mail gesehen
   if (window._eiFreshIds && window._eiFreshIds.has(recId)) window._eiFreshIds.delete(recId);
+  // V12.484: Chat-Antwort beim Öffnen automatisch als gelesen markieren — der Chat ist jetzt sichtbar,
+  // also soll die „💬 CHAT-ANTWORT"-Pille verschwinden (still, ohne Toast).
+  try {
+    const _r = (_eiAllRecords || []).find(x => x._id === recId);
+    if (_r && typeof _eiHasChatReply === 'function' && _eiHasChatReply(_r)) {
+      const _now = new Date().toISOString();
+      _r.chat_replies_seen_at = _now;
+      if (typeof _eiClearChatReplyCache === 'function') _eiClearChatReplyCache();
+      atUpdate('Emails', recId, { chat_replies_seen_at: _now }).catch(() => {});
+      if (typeof _eiUpdateSidebarCounts === 'function') setTimeout(() => { try { _eiUpdateSidebarCounts(); } catch (_) {} }, 0);
+    }
+  } catch (_) {}
   renderEmailInboxList();
   renderEmailInboxDetail();
   // V12.247: Vollbild-Detail-Overlay öffnen (statt rechter Spalte)
   openEmailDetailOverlay();
 }
+
+// V12.484: Chat-Antwort-Klick → Vorgang öffnen UND direkt zum Chat-Block scrollen + aufklappen.
+function _eiOpenChatForVorgang(recId) {
+  selectEmailRow(recId);
+  setTimeout(() => {
+    try {
+      const b = document.querySelector('[data-eiblock="chats"]');
+      if (b) { b.classList.remove('ei-collapsed'); b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    } catch (_) {}
+  }, 250);
+}
+window._eiOpenChatForVorgang = _eiOpenChatForVorgang;
 
 // V12.247: Vollbild-Detail-Overlay
 function openEmailDetailOverlay() {
