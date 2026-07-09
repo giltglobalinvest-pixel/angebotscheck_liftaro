@@ -4328,6 +4328,8 @@ const pdfWorkerReady = Promise.resolve();</script>
           <option value="verworfen">Archiviert</option>
         </select>
       </div>
+      <!-- V12.491: „In anderen Vorgang integrieren" (z. B. Beauftragung → Ergebnis-Check) — manuell -->
+      <button onclick="if(_eiSelectedId)openLinkEmailModal(_eiSelectedId)" title="Diese Email in einen anderen Vorgang integrieren (z. B. eine Beauftragung in den zugehörigen Ergebnis-Check). Der Inhalt bleibt erhalten und erscheint im Verlauf des Ziel-Vorgangs." style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:8px;height:36px;padding:0 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px" onmouseover="this.style.borderColor='#1a3a5c';this.style.color='#1a3a5c'" onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#475569'">🔗 <span class="ei-mob-hide">Integrieren</span></button>
       <!-- V12.277: Schnell-Check-Button — sichtbar nur bei Check-Typ-klassifizierter Email -->
       <button id="emailDetailOverlaySchnellCheckBtn" onclick="openSchnellCheck()" title="⚡ Schnell-Check generieren — KI erzeugt Ergebnis aus Email + Anhang + Chats" style="display:none;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#fff;border-radius:8px;padding:0 14px;height:36px;cursor:pointer;font-size:12.5px;font-weight:700;align-items:center;gap:6px;font-family:inherit;box-shadow:0 1px 3px rgba(217,119,6,.35)" onmouseover="this.style.opacity='.92'" onmouseout="this.style.opacity='1'">
         <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
@@ -6543,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.490';
+const APP_VERSION = 'V12.491';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -32546,6 +32548,7 @@ function _eiUpdateSidebarCounts() {
     }
     // V12.362/487: Thread-/Chat-Antworten skippen — ABER 'neu' (= unbearbeitet) NIE verstecken,
     // sonst verschwinden neu eingegangene Mails (z. B. Auto-Antworten auf Ergebnis-Mails) aus „Neu".
+    if (String(r.manual_thread_parent_id || '').trim()) continue;   // V12.491: manuell integriert → nicht in den Status-Zählern
     if (s !== 'neu' && (threadedIds.has(r._id) || chatReplyIds.has(r._id))) continue;
     cAlle++;
     if (s in byStatus) byStatus[s]++;
@@ -32589,6 +32592,7 @@ function _eiUpdateSidebarCounts() {
     for (const r of all) {
       if (!r || r.direction === 'outgoing') continue;
       // V12.487: 'neu' nie verstecken (analog Status-Counter + dropThreaded)
+      if (String(r.manual_thread_parent_id || '').trim()) continue;   // V12.491: manuell integriert → nicht zählen
       if (_eiNormStatus(r.status || 'neu') !== 'neu' && (threadedIds.has(r._id) || chatReplyIds.has(r._id))) continue;
       const cs = String(r.check_status || '');
       if (cs === 'gecheckt') cG++;
@@ -32906,6 +32910,7 @@ function _eiLinkRenderResults(currentId, q) {
     const terms = norm.split(/\s+/).filter(Boolean);
     list = candidates.filter(x => {
       const hay = [
+        x.email_id, x.aufzug_fabriknummer, x.aufzug_standort,   /* V12.491: Check-ID L-XX + Aufzug mitsuchen */
         x.subject, x.ai_subject, x.from_name, x.from_email, x.body_preview, x.body_text,
       ].filter(Boolean).join(' \n ').toLowerCase();
       return terms.every(t => hay.includes(t));
@@ -33389,7 +33394,11 @@ function _eiFiltered() {
   }
   // V12.487: 'neu' (= unbearbeitete Mails) NIE wegen Thread-/Chat-Antwort-Heuristik aus der Liste werfen —
   // sonst verschwinden neu eingegangene Mails (z. B. Auto-Antworten auf Ergebnis-Mails) aus dem „Neu"-Filter.
-  const dropThreaded = (arr) => arr.filter(r => (typeof _eiNormStatus === 'function' && _eiNormStatus(r.status || 'neu') === 'neu') || (!threadedIds.has(r._id) && !chatReplyIds.has(r._id)));
+  const dropThreaded = (arr) => arr.filter(r => {
+    if (String(r.manual_thread_parent_id || '').trim()) return false;   // V12.491: manuell in einen anderen Vorgang integriert → IMMER aus der Liste (explizite Entscheidung, auch bei 'neu')
+    if (typeof _eiNormStatus === 'function' && _eiNormStatus(r.status || 'neu') === 'neu') return true;   // heuristik-'neu' nie verstecken
+    return !threadedIds.has(r._id) && !chatReplyIds.has(r._id);
+  });
   // V12.167/197: zuerst Status, dann Volltextsuche
   // V12.214: outgoing-Records (selbst gesendete Forwards/Replies) gehören NICHT in den Hauptposteingang.
   // Eigener Filter "gesendet" zeigt sie an; in allen anderen Filtern werden sie ausgeblendet.
