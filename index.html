@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.491';
+const APP_VERSION = 'V12.492';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -38921,7 +38921,8 @@ function _eiLvRenderAnfrageBubble(it, emailId, isOut, accent, accentDeep) {
       +   (lz ? '<div style="font-size:11px;opacity:.85;margin-bottom:3px">📅 Lieferzeit: ' + _esc(lz) + '</div>' : '')
       +   (sigInfo ? '<div style="font-size:11px;opacity:.85;margin-bottom:3px">' + _esc(sigInfo) + '</div>' : '')
       + '</div>'
-      + '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">'
+      + '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap">'
+      +   (anf.id ? '<button onclick="event.stopPropagation();openDienstleisterBeauftragung(\'' + _esc(anf.id) + '\',\'' + emailId + '\')" title="Diesen Dienstleister verbindlich mit der Ausführung beauftragen — Freitext + Signatur, Link zum Angebots-PDF, Rechnungsempfänger = Hausverwaltung" style="background:#fff;border:1px solid #fff;color:#15803d;border-radius:6px;padding:4px 11px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">📋 Beauftragen</button>' : '')
       +   (anf.id ? '<button onclick="event.stopPropagation();_eiLvDownloadAntwortPdf(\'' + _esc(anf.id) + '\')" title="Antwort-PDF herunterladen" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:4px 10px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit">📄 Antwort-PDF</button>' : '')
       + '</div>';
   }
@@ -39061,6 +39062,160 @@ async function _eiLvDownloadAntwortPdf(anfId) {
   }
 }
 window._eiLvDownloadAntwortPdf = _eiLvDownloadAntwortPdf;
+
+// V12.492: Dienstleister (Wartungsnehmer) mit der Ausführung beauftragen — Freitext + Signatur,
+// Rechnungsempfänger = Hausverwaltung, direkter Link zum WN-Angebots-PDF (Token-Landing) + Angebots-PDF als Anhang.
+// Nach Versand: Check-Status → beauftragt + Verlauf-Notiz.
+async function openDienstleisterBeauftragung(anfId, emailId) {
+  const list = (window._eiLvAnfragenByEmail && window._eiLvAnfragenByEmail[emailId]) || [];
+  const anf = list.find(a => String(a.id) === String(anfId));
+  if (!anf) { showToast('Anfrage nicht gefunden — bitte Vorgang neu laden', 'error', 3500); return; }
+  let wn = {}; try { wn = JSON.parse(anf.servicebetrieb_snapshot_json || '{}'); } catch (_) {}
+  let response = []; try { response = JSON.parse(anf.response_json || '[]'); } catch (_) {}
+  const lvs = (window._eiLvByEmail && window._eiLvByEmail[emailId]) || [];
+  const lv = lvs.find(x => String(x.id) === String(anf.lv_id)) || (lvs.length === 1 ? lvs[0] : null);
+  let snap = {}; try { if (lv) snap = JSON.parse(lv.kontext_snapshot_json || '{}'); } catch (_) {}
+  const r = (_eiAllRecords || []).find(x => x._id === emailId) || {};
+  const sum = (response || []).reduce((acc, p) => { const m = parseFloat(String(p.menge || '1').replace(',', '.')) || 1; return acc + ((Number(p.preis_eur) || 0) * m); }, 0);
+  const fmtEur = (n) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n || 0);
+  const base = window.location.origin + window.location.pathname.replace(/[^\/]*$/, '');
+  const landingUrl = anf.token ? (base + 'partner/lv-anfrage.html?t=' + anf.token) : '';
+  const hvName = String(snap.hv_name || r.confirmed_hv_org_name || r.real_hv_firma || '').trim();
+  const hvStr = String(snap.hv_strasse || r.real_hv_strasse || '').trim();
+  const hvPlzOrt = [String(snap.hv_plz || r.real_hv_plz || '').trim(), String(snap.hv_ort || r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
+  const fn = String(snap.fabriknummer || r.aufzug_fabriknummer || '').trim();
+  const standort = String(snap.standort || r.aufzug_standort || '').trim();
+  const datum = anf.submitted_at ? new Date(anf.submitted_at).toLocaleDateString('de-DE') : '';
+  const lz = String(anf.lieferzeit_gesamt || '').trim();
+  const wnFirma = String(wn.firma || anf.servicebetrieb_id || 'Wartungsnehmer');
+  const wnEmail = String(wn.email || '').trim();
+  const wnAnsprech = String(wn.ansprechperson || '').trim();
+  const posLines = (response || []).map((p, i) => {
+    const m = parseFloat(String(p.menge || '1').replace(',', '.')) || 1;
+    const lp = (Number(p.preis_eur) || 0) * m;
+    return '- ' + String(p.titel || ('Position ' + (i + 1))) + (lp ? ' (' + fmtEur(lp) + ' netto)' : '');
+  }).join('\n');
+  const anrede = wnAnsprech ? ('Sehr geehrte/r Frau/Herr ' + wnAnsprech) : 'Sehr geehrte Damen und Herren';
+  const defaultText = anrede + ',\n\n'
+    + 'im Auftrag der Hausverwaltung ' + (hvName || '') + ' beauftragen wir Sie hiermit verbindlich mit der Ausführung der nachstehenden Leistungen gemäß Ihrem Angebot' + (datum ? ' vom ' + datum : '') + ' für den Aufzug Fn ' + (fn || '?') + (standort ? ' am Standort ' + standort : '') + ':\n\n'
+    + (posLines ? posLines + '\n\n' : '')
+    + 'Netto-Gesamtsumme: ' + fmtEur(sum) + ' (zzgl. MwSt.)\n'
+    + (lz ? 'Ausführung / Termin: ' + lz + '\n' : '')
+    + '\nRechnungsempfänger:\n' + (hvName || '(Hausverwaltung)') + (hvStr ? '\n' + hvStr : '') + (hvPlzOrt ? '\n' + hvPlzOrt : '') + '\n\n'
+    + (landingUrl ? 'Ihr verbindliches Angebot können Sie hier jederzeit einsehen und als PDF herunterladen:\n' + landingUrl + '\n\n' : '')
+    + 'Bitte bestätigen Sie den Auftrag kurz und nennen Sie uns einen konkreten Ausführungstermin.\n\nMit freundlichen Grüßen';
+  const subject = 'Beauftragung - Aufzug Fn ' + (fn || '') + (hvName ? ' - ' + hvName : '');
+  window._eiBeauftrState = { anfId, emailId, wnEmail, wnFirma, subject, sum, fn, anf, wn, response, lv, snap, landingUrl,
+    testEmail: (function () { try { return localStorage.getItem('liftaroTestEmail') || ''; } catch (_) { return ''; } })() };
+  let ov = document.getElementById('eiBeauftrModal'); if (ov) ov.remove();
+  ov = document.createElement('div'); ov.id = 'eiBeauftrModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.78);display:flex;justify-content:center;align-items:center;z-index:100000;padding:20px;backdrop-filter:blur(6px);font-family:"DM Sans",sans-serif';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const esc = _esc;
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden">'
+    + '<div style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
+    +   '<div style="min-width:0"><div style="font-size:11px;font-weight:700;color:#bbf7d0;letter-spacing:.08em;text-transform:uppercase">📋 Dienstleister beauftragen</div><div style="font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(wnFirma) + ' · ' + esc(fmtEur(sum)) + ' netto</div></div>'
+    +   '<button onclick="document.getElementById(\'eiBeauftrModal\').remove()" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0">✕</button>'
+    + '</div>'
+    + '<div style="flex:1;overflow-y:auto;padding:18px 22px;background:#fafbfc">'
+    +   '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">'
+    +     '<span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:7px;padding:5px 10px">An Dienstleister: <b>' + esc(wnEmail || '⚠ keine Email') + '</b></span>'
+    +     '<span style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:7px;padding:5px 10px">Rechnungsempfänger: <b>' + esc(hvName || '—') + '</b></span>'
+    +   '</div>'
+    +   '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Betreff</div>'
+    +   '<input type="text" id="eiBeauftrSubject" value="' + esc(subject) + '" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px">'
+    +   '<div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Beauftragungstext (frei editierbar — Signatur wird automatisch angehängt)</div>'
+    +   '<textarea id="eiBeauftrBody" rows="15" style="width:100%;padding:11px 13px;border:1px solid #cbd5e1;border-radius:7px;font-size:12.5px;line-height:1.5;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box">' + esc(defaultText) + '</textarea>'
+    +   '<label style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#475569;margin-top:10px;cursor:pointer"><input type="checkbox" id="eiBeauftrAttach" checked style="width:15px;height:15px"> Angebots-PDF des Dienstleisters anhängen</label>'
+    + '</div>'
+    + '<div style="border-top:1px solid #fcd34d;background:#fffbeb;padding:8px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    +   '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#92400e;font-weight:700;cursor:pointer;white-space:nowrap"><input type="checkbox" id="eiBeauftrTest" onchange="_eiBeauftrToggleTest(this.checked)" style="width:15px;height:15px"> 🧪 Test-Versand</label>'
+    +   '<input type="email" id="eiBeauftrTestEmail" value="' + esc(window._eiBeauftrState.testEmail || '') + '" placeholder="test@meine-adresse.de" oninput="try{localStorage.setItem(\'liftaroTestEmail\',this.value.trim())}catch(_){}" style="flex:1;min-width:180px;padding:7px 10px;border:1px solid #fcd34d;border-radius:7px;font-size:12.5px;outline:none;font-family:inherit;background:#fff;opacity:.55">'
+    +   '<span style="font-size:10.5px;color:#b45309">geht an deine Adresse, NICHT an den Dienstleister</span>'
+    + '</div>'
+    + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+    +   '<div id="eiBeauftrRecipInfo" style="font-size:11.5px;color:#64748b">Empfänger: <b>' + esc(wnEmail || '⚠ keine Dienstleister-Email') + '</b></div>'
+    +   '<button id="eiBeauftrSendBtn" onclick="_eiBeauftrSend()" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📤 Beauftragung senden</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(ov);
+}
+window.openDienstleisterBeauftragung = openDienstleisterBeauftragung;
+
+function _eiBeauftrToggleTest(on) {
+  const s = window._eiBeauftrState; if (!s) return;
+  const te = document.getElementById('eiBeauftrTestEmail'); if (te) te.style.opacity = on ? '1' : '.55';
+  const info = document.getElementById('eiBeauftrRecipInfo');
+  if (info) info.innerHTML = on ? '🧪 Test an: <b style="color:#92400e">' + _esc((te && te.value) || '⚠ Test-Adresse fehlt') + '</b>' : 'Empfänger: <b>' + _esc(s.wnEmail || '⚠ keine Dienstleister-Email') + '</b>';
+  const btn = document.getElementById('eiBeauftrSendBtn'); if (btn) { btn.style.background = on ? '#d97706' : '#16a34a'; btn.textContent = on ? '🧪 Test senden' : '📤 Beauftragung senden'; }
+}
+window._eiBeauftrToggleTest = _eiBeauftrToggleTest;
+
+async function _eiBeauftrSend() {
+  const s = window._eiBeauftrState; if (!s) return;
+  const btn = document.getElementById('eiBeauftrSendBtn');
+  const isTest = !!(document.getElementById('eiBeauftrTest') || {}).checked;
+  const testEmail = String((document.getElementById('eiBeauftrTestEmail') || {}).value || '').trim();
+  const sendTo = isTest ? testEmail : s.wnEmail;
+  if (!sendTo) { showToast(isTest ? 'Test-Adresse fehlt' : 'Keine Dienstleister-Email hinterlegt', 'warning', 4500); return; }
+  const subject = String((document.getElementById('eiBeauftrSubject') || {}).value || s.subject).trim();
+  const body = String((document.getElementById('eiBeauftrBody') || {}).value || '').trim();
+  if (!body) { showToast('Text ist leer', 'warning', 3000); return; }
+  const attach = !!(document.getElementById('eiBeauftrAttach') || {}).checked;
+  if (!APP_KEYS.emailSenderUrl || !APP_KEYS.emailSenderSecret) { showToast('Email-Sender nicht konfiguriert', 'error', 4500); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sende …'; }
+  try {
+    const userName = (typeof _eiCurrentUserName === 'function' ? _eiCurrentUserName() : '') || 'Liftaro';
+    const subjectSafe = (typeof _eiSanitizeSubjectForEmail === 'function') ? _eiSanitizeSubjectForEmail(subject) : subject;
+    const sig = (typeof _eiResolveSignatureForSend === 'function') ? _eiResolveSignatureForSend(body, userName) : { textSig: '', htmlBody: '' };
+    const finalText = sig.textSig ? body + '\n\n' + sig.textSig : body;
+    let html = sig.htmlBody;
+    if (html && typeof _eiInjectLandingButton === 'function') html = _eiInjectLandingButton(html, 'Angebot ansehen / PDF herunterladen →');
+    const attachments = [];
+    if (attach && typeof _eiLvBuildAntwortPdf === 'function' && window.PDFLib) {
+      if (btn) btn.textContent = '⏳ Erstelle Angebots-PDF …';
+      try {
+        const sub = { anf: s.anf, lv: s.lv, snap: s.snap, wn: s.wn, response: s.response, sum: s.sum,
+          sigMode: String(s.anf.signatur_methode || 'digital'), sigName: String(s.anf.signatur_name || ''),
+          signaturDataUrl: String(s.anf.signatur_dataurl || ''), lieferzeitGesamt: String(s.anf.lieferzeit_gesamt || ''),
+          klauseln: String(s.anf.klauseln_snapshot_html || '') };
+        const blob = await _eiLvBuildAntwortPdf(sub);
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        attachments.push({ filename: 'Angebot_' + String(s.fn || s.anf.id).replace(/[^A-Za-z0-9_-]+/g, '_') + '.pdf', contentType: 'application/pdf', contentBase64: btoa(bin) });
+      } catch (e) { console.warn('[V12.492] Angebots-PDF-Anhang:', e.message); }
+    }
+    if (btn) btn.textContent = isTest ? '⏳ Sende Test …' : '⏳ Sende an Dienstleister …';
+    const payload = { to: sendTo, subject: subjectSafe, text: finalText, replyTo: 'check@liftaro.de', attachments: attachments };
+    if (html) payload.html = html;
+    if (!isTest) payload.bcc = 'service@liftaro.de';
+    const resp = await fetch(APP_KEYS.emailSenderUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_KEYS.emailSenderSecret }, body: JSON.stringify(payload) });
+    if (!resp.ok) { const t = await resp.text().catch(() => ''); throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 150)); }
+    const now = new Date().toISOString();
+    if (isTest) { document.getElementById('eiBeauftrModal')?.remove(); showToast('🧪 Test-Beauftragung an „' + sendTo + '" gesendet — Dienstleister NICHT benachrichtigt', 'success', 6000); return; }
+    try {
+      await atWrite('Emails', { direction: 'outgoing', from_email: 'check@liftaro.de', to_email: sendTo, subject: subjectSafe, body: finalText, sent_at: now, bearbeiter_name: userName, chat_email_id: s.emailId, attachment_filenames: attachments.map(a => a.filename).join(', ') });
+    } catch (e) { console.warn('[V12.492] Outgoing-Record:', e.message); }
+    try {
+      const rr = (_eiAllRecords || []).find(x => x._id === s.emailId);
+      if (rr) {
+        let comments = []; try { comments = (typeof _parseEmailComments === 'function' ? _parseEmailComments(rr) : JSON.parse(rr.comments_json || '[]')) || []; } catch (_) { comments = []; }
+        comments.push({ id: Math.random().toString(36).slice(2, 10), author: userName, text: '📋 Dienstleister beauftragt: ' + (s.wnFirma || '') + ' · ' + sendTo + '\nBetreff: ' + subject + '\n\n' + finalText, created_at: now });
+        const cj = JSON.stringify(comments); await atUpdate('Emails', s.emailId, { comments_json: cj }); rr.comments_json = cj;
+      }
+    } catch (e) { console.warn('[V12.492] Verlauf-Notiz:', e.message); }
+    if (typeof setEmailCheckStatus === 'function') { try { await setEmailCheckStatus(s.emailId, 'beauftragt'); } catch (_) {} }
+    document.getElementById('eiBeauftrModal')?.remove();
+    showToast('✓ Beauftragung an „' + (s.wnFirma || sendTo) + '" gesendet · Check-Status → Beauftragt', 'success', 6500);
+    if (typeof renderEmailInboxList === 'function') renderEmailInboxList();
+    if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
+  } catch (e) {
+    console.error('[V12.492] Beauftragung:', e);
+    showToast('Versand fehlgeschlagen: ' + e.message, 'error', 7000);
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Beauftragung senden'; }
+  }
+}
+window._eiBeauftrSend = _eiBeauftrSend;
 
 function _eiLvHtmlToText(html) {
   if (!html) return '';
