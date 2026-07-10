@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.492';
+const APP_VERSION = 'V12.493';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35317,11 +35317,16 @@ function _renderEmailLvSection(r) {
               const archBtn = (a.status === 'submitted')
                 ? '<button onclick="event.stopPropagation();_eiLvAnfrageArchive(\'' + r._id + '\',\'' + _esc(String(a.id)) + '\')" title="Eingegangenes Angebot archivieren (ausblenden)" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:12px;padding:0 2px;line-height:1">🗄</button>'
                 : '';
-              return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#475569">'
+              // V12.493: Dienstleister direkt aus der LV-Kachel beauftragen (sichtbar sobald Antwort eingegangen)
+              const beauftrBtn = (a.status === 'submitted' && a.id)
+                ? '<button onclick="event.stopPropagation();openDienstleisterBeauftragung(\'' + _esc(String(a.id)) + '\',\'' + r._id + '\')" title="Diesen Dienstleister verbindlich mit der Ausführung beauftragen — Freitext + Signatur, Angebots-PDF + Link, Rechnungsempfänger = Hausverwaltung" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(22,163,74,.3)">📋 Beauftragen</button>'
+                : '';
+              return '<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#475569;flex-wrap:wrap">'
                 +     '<span style="color:#7c3aed">→</span>'
                 +     '<span style="font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + _esc(firma) + (email ? ' <span style="color:#94a3b8;font-weight:400">· ' + _esc(email) + '</span>' : '') + '</span>'
                 +     '<span style="background:' + sBg + ';color:' + sFg + ';border-radius:9px;padding:1px 7px;font-size:9.5px;font-weight:700;white-space:nowrap">' + sLbl + '</span>'
                 +     (zeit ? '<span style="color:#94a3b8;font-size:10.5px;white-space:nowrap">' + _esc(zeit) + '</span>' : '')
+                +     beauftrBtn
                 +     archBtn
                 + '</div>';
             }).join('')
