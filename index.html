@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.493';
+const APP_VERSION = 'V12.494';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35476,7 +35476,10 @@ async function _eiErgebnisAssembleState(emailId) {
   const hvEmail = String(r.confirmed_hv_email || snap.hv_email || r.real_hv_email || r.from_email || '').trim();   // V12.480: gepflegte HV-E-Mail bevorzugen
   const hvName  = String(snap.hv_name || r.real_hv_firma || '').trim();
   // HV-Adresse (sofern bekannt) aus Snapshot/Email
-  const hvAnsprech = String(snap.hv_ansprechperson || r.real_hv_ansprechperson || r.from_name || '').trim();
+  // V12.494: z.Hd. muss ein echter Personen-Name sein — NIE eine E-Mail-Adresse (r.from_name kann eine Mail
+  //          wie "sb@liftaro.de" enthalten) und nie identisch zu Firma/HV-Mail. Sonst leer → keine z.Hd.-Zeile.
+  const _apCand = String(snap.hv_ansprechperson || r.real_hv_ansprechperson || r.from_name || '').trim();
+  const hvAnsprech = (_apCand && _apCand.indexOf('@') < 0 && _apCand.toLowerCase() !== hvName.toLowerCase() && _apCand.toLowerCase() !== hvEmail.toLowerCase()) ? _apCand : '';
   const hvStrasse  = String(snap.hv_strasse || r.real_hv_strasse || '').trim();
   const hvPlzOrt   = [String(snap.hv_plz || r.real_hv_plz || '').trim(), String(snap.hv_ort || r.real_hv_ort || '').trim()].filter(Boolean).join(' ');
   // Default: günstigstes Angebot vorauswählen
@@ -35630,7 +35633,10 @@ function _eiErgebnisRenderModal() {
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:13px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
     +   (s.testMode
         ? '<div style="font-size:11.5px;color:#64748b">🧪 Test an: <b style="color:#92400e">' + esc(s.testEmail || '⚠ Test-Adresse fehlt') + '</b></div>'
-        : '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#64748b;flex-wrap:wrap"><span style="font-weight:700">An HV:</span><input type="email" id="ergHvEmail" value="' + esc(s.hvEmail || '') + '" placeholder="kunde@hausverwaltung.de" oninput="if(window._eiErgebnisState)window._eiErgebnisState.hvEmail=this.value.trim()" style="min-width:240px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;outline:none;font-family:inherit"></div>')
+        : '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#64748b;flex-wrap:wrap">'
+          + '<span style="font-weight:700">z.Hd.:</span><input type="text" id="ergHvAnsprech" value="' + esc(s.hvAnsprech || '') + '" placeholder="Name Verwalter/in (optional)" title="Name der Ansprechperson bei der Hausverwaltung — erscheint als „z.Hd." im PDF" oninput="if(window._eiErgebnisState)window._eiErgebnisState.hvAnsprech=this.value.trim()" style="min-width:170px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;outline:none;font-family:inherit">'
+          + '<span style="font-weight:700">An HV:</span><input type="email" id="ergHvEmail" value="' + esc(s.hvEmail || '') + '" placeholder="kunde@hausverwaltung.de" oninput="if(window._eiErgebnisState)window._eiErgebnisState.hvEmail=this.value.trim()" style="min-width:220px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;outline:none;font-family:inherit">'
+          + '</div>')
     +   '<div style="display:flex;gap:8px">'
     +     '<button id="ergSaveBtn" onclick="_eiErgebnisSaveCheck()" title="Auswahl, Beträge und Texte speichern — der Ergebnis-Check kann später wieder geöffnet werden" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">💾 Speichern</button>'
     +     '<button onclick="_eiErgebnisCreateAndSend(false)" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">📄 Nur PDF</button>'
@@ -35808,6 +35814,7 @@ function _eiErgebnisCollectState() {
   const hint = g('ergPromptInput'); if (hint != null) s.kiHint = hint;
   const te = g('ergTestEmail'); if (te != null) s.testEmail = te.trim();
   const he = g('ergHvEmail'); if (he != null) s.hvEmail = he.trim();   // V12.479: HV-Empfänger manuell editierbar
+  const ha = g('ergHvAnsprech'); if (ha != null) s.hvAnsprech = ha.trim();   // V12.494: z.Hd.-Name manuell editierbar
   const tm = document.getElementById('ergTestMode'); if (tm) s.testMode = !!tm.checked;
   return s;
 }
@@ -36118,7 +36125,10 @@ function _eiErgebnisRenderPreview() {
     + '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
     +   (isTest
         ? '<div style="font-size:11.5px;color:#64748b">🧪 Test an: <b style="color:#92400e">' + esc(s.testEmail || '⚠ Test-Adresse fehlt') + '</b></div>'
-        : '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#64748b;flex-wrap:wrap"><span style="font-weight:700">An HV:</span><input type="email" id="ergHvEmail" value="' + esc(s.hvEmail || '') + '" placeholder="kunde@hausverwaltung.de" oninput="if(window._eiErgebnisState)window._eiErgebnisState.hvEmail=this.value.trim()" style="min-width:240px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;outline:none;font-family:inherit"></div>')
+        : '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#64748b;flex-wrap:wrap">'
+          + '<span style="font-weight:700">z.Hd.:</span><input type="text" id="ergHvAnsprech" value="' + esc(s.hvAnsprech || '') + '" placeholder="Name Verwalter/in (optional)" title="Name der Ansprechperson bei der Hausverwaltung — erscheint als „z.Hd." im PDF. Nach Eingabe kurz aus dem Feld klicken, dann aktualisiert sich die Vorschau." oninput="if(window._eiErgebnisState)window._eiErgebnisState.hvAnsprech=this.value.trim()" onchange="_eiErgebnisRebuildPreview()" style="min-width:170px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;outline:none;font-family:inherit">'
+          + '<span style="font-weight:700">An HV:</span><input type="email" id="ergHvEmail" value="' + esc(s.hvEmail || '') + '" placeholder="kunde@hausverwaltung.de" oninput="if(window._eiErgebnisState)window._eiErgebnisState.hvEmail=this.value.trim()" style="min-width:220px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;outline:none;font-family:inherit">'
+          + '</div>')
     +   '<div style="display:flex;gap:8px;flex-wrap:wrap">'
     +     '<a href="' + esc(url) + '" download="' + esc(window._eiErgPreviewFn || 'Ergebnis.pdf') + '" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none">📄 PDF</a>'
     +     '<button onclick="_eiErgebnisPreviewEdit()" title="Auswahl, Beträge, Texte und KI-Einschätzung manuell anpassen" style="background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">✏️ Anpassen</button>'
@@ -36128,6 +36138,25 @@ function _eiErgebnisRenderPreview() {
     + '</div>';
 }
 window._eiErgebnisRenderPreview = _eiErgebnisRenderPreview;
+
+// V12.494: Vorschau-PDF mit aktuellen Feldwerten (z.Hd.-Name / HV-Mail) neu bauen — ohne Voll-Editor,
+// ohne State-Neu-Assemblierung (KI-Texte & Auswahl bleiben erhalten). Ausgelöst durch onchange des z.Hd.-Feldes.
+async function _eiErgebnisRebuildPreview() {
+  const s = window._eiErgebnisState;
+  if (!s || !window.PDFLib) return;
+  const apEl = document.getElementById('ergHvAnsprech'); if (apEl) s.hvAnsprech = apEl.value.trim();
+  const emEl = document.getElementById('ergHvEmail');    if (emEl) s.hvEmail   = emEl.value.trim();
+  const chosen = s.enriched.find(e => e.anfId === s.chosenAnfId) || s.enriched[0];
+  if (!chosen) return;
+  let built;
+  try { built = await _eiErgebnisBuildMergedPdf(s, chosen); }
+  catch (e) { console.error('[V12.494] Vorschau-Neuaufbau:', e); showToast('Vorschau-Neuaufbau fehlgeschlagen: ' + e.message, 'error', 5000); return; }
+  try { if (window._eiErgPreviewUrl) URL.revokeObjectURL(window._eiErgPreviewUrl); } catch(_) {}
+  window._eiErgPreviewUrl = URL.createObjectURL(built.mergedBlob);
+  window._eiErgPreviewFn = built.fnSafe;
+  _eiErgebnisRenderPreview();
+}
+window._eiErgebnisRebuildPreview = _eiErgebnisRebuildPreview;
 
 function _eiErgebnisPreviewToggleTest(on) {
   const s = window._eiErgebnisState; if (!s) return;
