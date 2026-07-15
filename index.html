@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.494';
+const APP_VERSION = 'V12.495';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -35473,6 +35473,12 @@ async function _eiErgebnisAssembleState(emailId) {
   let snap = {};
   const firstLv = enriched.find(e => e.lv && e.lv.kontext_snapshot_json);
   if (firstLv) { try { snap = JSON.parse(firstLv.lv.kontext_snapshot_json || '{}'); } catch(_) {} }
+  // V12.495: Aufzug-Identität (Fabriknummer/Standort/Hersteller) IMMER live aus dem Email-Record ziehen —
+  // der LV-Snapshot ist eingefroren und zeigt nachträglich korrigierte Werte (z.B. neue Fn) NICHT.
+  // Gleiche Quelle wie die Aufzug-Kachel in der Detailansicht (r.aufzug_*).
+  { const _fn = String(r.aufzug_fabriknummer || '').trim(); if (_fn) snap.fabriknummer = _fn; }
+  { const _st = String(r.aufzug_standort   || '').trim(); if (_st) snap.standort     = _st; }
+  { const _hr = String(r.aufzug_hersteller || '').trim(); if (_hr) snap.hersteller   = _hr; }
   const hvEmail = String(r.confirmed_hv_email || snap.hv_email || r.real_hv_email || r.from_email || '').trim();   // V12.480: gepflegte HV-E-Mail bevorzugen
   const hvName  = String(snap.hv_name || r.real_hv_firma || '').trim();
   // HV-Adresse (sofern bekannt) aus Snapshot/Email
