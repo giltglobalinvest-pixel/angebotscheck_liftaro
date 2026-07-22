@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.496';
+const APP_VERSION = 'V12.497';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -23056,6 +23056,81 @@ async function _fetchOrgDetails(orgId) {
 
 // V12.496: Detailansicht einer Hausverwaltung — alle Kontaktdaten (Organisation + Ansprechpartner)
 // aus Pipedrive. Dynamisches Overlay (kein statisches Modal im HTML). Öffnet über Klick auf die HV-Karte.
+// ── V12.497: Direkter Pipedrive-Zugriff (Browser → Pipedrive REST, OHNE val.town) ──
+// Nutzt die bereits im Client geladenen Keys (APP_KEYS.pipedriveDomain/pipedriveApiToken, index.html:6914).
+function _pdCfg() {
+  const domain = String(APP_KEYS.pipedriveDomain || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const token  = String(APP_KEYS.pipedriveApiToken || '').trim();
+  return (domain && token) ? { domain, token } : null;
+}
+async function _pdFetch(method, path, body) {
+  const cfg = _pdCfg();
+  if (!cfg) throw new Error('Pipedrive-Zugang fehlt (Domain/Token nicht konfiguriert)');
+  const sep = path.indexOf('?') >= 0 ? '&' : '?';
+  const url = 'https://' + cfg.domain + '/api/v1' + path + sep + 'api_token=' + encodeURIComponent(cfg.token);
+  const opts = { method: method, headers: {} };
+  if (body != null) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(url, opts);
+  let d = null; try { d = await r.json(); } catch (_) {}
+  if (!r.ok || (d && d.success === false)) {
+    const msg = (d && (d.error || d.error_info)) || ('HTTP ' + r.status);
+    throw new Error(msg);
+  }
+  return d;
+}
+function _pdParseOrgAddress(org) {
+  let strasse = '', plz = '', ort = '';
+  if (org.address_route || org.address_street_number) {
+    strasse = (String(org.address_route || '') + ' ' + String(org.address_street_number || '')).trim();
+  }
+  plz = String(org.address_postal_code || '').trim();
+  ort = String(org.address_locality || org.address_sublocality || '').trim();
+  if (!strasse && !plz && !ort) {
+    const addr = String(org.address || '').trim();
+    if (addr) {
+      const parts = addr.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        strasse = parts[0];
+        const m = parts[1].match(/^(\d{4,5})\s+(.+)$/);
+        if (m) { plz = m[1]; ort = m[2]; } else ort = parts[1];
+      } else { strasse = addr; }
+    }
+  } else if (!strasse) {
+    strasse = (String(org.address || '').split(',')[0] || '').trim();
+  }
+  return { strasse, plz, ort };
+}
+function _pdMapPersons(persons) {
+  return (Array.isArray(persons) ? persons : []).map(p => {
+    const emails = Array.isArray(p.email) ? p.email : [];
+    const phones = Array.isArray(p.phone) ? p.phone : [];
+    const em = (emails.find(e => e && e.primary && e.value) || emails.find(e => e && e.value) || {}).value || '';
+    const ph = (phones.find(x => x && x.primary && x.value) || phones.find(x => x && x.value) || {}).value || '';
+    return {
+      id: p.id || null,
+      name: String(p.name || '').replace(/\s*\(Allgemein\)\s*$/i, '').trim(),
+      email: String(em || ''), tel: String(ph || ''), is_generic: false,
+    };
+  }).filter(p => p.name || p.email || p.tel);
+}
+// Liest Org + Personen DIREKT von Pipedrive (voller Datensatz). Wirft bei CORS/Netz/Fehler.
+async function _pdGetOrgDetailsDirect(oid) {
+  const oRes = await _pdFetch('GET', '/organizations/' + oid);
+  const org = (oRes && oRes.data) || {};
+  let persons = [];
+  try { const pRes = await _pdFetch('GET', '/organizations/' + oid + '/persons'); persons = (pRes && pRes.data) || []; } catch (_) {}
+  const personsOut = _pdMapPersons(persons);
+  const a = _pdParseOrgAddress(org);
+  const first = personsOut[0] || null;
+  return {
+    org_id: org.id, firma: String(org.name || ''), gf: (first && first.name) || '',
+    strasse: a.strasse, plz: a.plz, ort: a.ort,
+    email: (first && first.email) || '', tel: (first && first.tel) || '',
+    contact_person_id: (first && first.id) || null,
+    persons: personsOut, _direct: true,
+  };
+}
+
 async function openHvDetail(orgId) {
   const oid = String(orgId);
   const org = (window._pipedriveOrgsCache || []).find(o => String(o.org_id) === oid) || { org_id: oid, name: '(Hausverwaltung)' };
@@ -23066,80 +23141,187 @@ async function openHvDetail(orgId) {
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:16px;font-family:"DM Sans",sans-serif';
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
   document.body.appendChild(ov);
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;padding:34px;text-align:center;color:#64748b;font-size:13px">⏳ Lade Kontaktdaten aus Pipedrive …</div>';
+  // 1) Direkt von Pipedrive lesen (= CORS-Test). Klappt es → volle Daten + Bearbeiten frei.
+  //    Klappt es nicht → Fallback auf den bewährten Proxy (nur Anzeige, Bearbeiten gesperrt).
+  let details = null, directOk = false;
+  if (_pdCfg()) {
+    try { details = await _pdGetOrgDetailsDirect(oid); directOk = true; }
+    catch (e) { console.warn('[V12.497] Pipedrive-Direktzugriff nicht möglich, Fallback auf Proxy:', e.message); }
+  }
+  if (!directOk) { try { details = await _fetchOrgDetails(oid); } catch (_) {} }
+  if (!document.getElementById('hvDetailModal')) return;   // zwischenzeitlich geschlossen
+  window._hvDetail = { oid: oid, orgName: (details && details.firma) || org.name || '', details: details, directOk: directOk, mode: 'view' };
+  if (!details) {
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;padding:30px;text-align:center;color:#a8312f;font-size:13px">Kontaktdaten konnten nicht geladen werden.<br><span style="font-size:12px;color:#64748b">Später erneut versuchen.</span></div>';
+    return;
+  }
+  _hvDetailRender();
+}
+window.openHvDetail = openHvDetail;
+
+function _hvDetailRender() {
+  const st = window._hvDetail; if (!st) return;
+  const ov = document.getElementById('hvDetailModal'); if (!ov) return;
   const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s) => String(s == null ? '' : s);
+  const oid = st.oid, d = st.details || {};
   const closeAttr = 'document.getElementById(\'hvDetailModal\')?.remove()';
   const shell = (bodyHtml, footerHtml) => {
     ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden">'
       + '<div style="background:var(--navy,#1e293b);color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
       +   '<div style="min-width:0"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#cbd5e1">Hausverwaltung · Pipedrive-ID ' + esc(oid) + '</div>'
-      +   '<div style="font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(org.name || '–') + '</div></div>'
+      +   '<div style="font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(st.orgName || '–') + '</div></div>'
       +   '<button onclick="' + closeAttr + '" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0">✕</button>'
       + '</div>'
       + '<div style="flex:1;min-height:0;overflow-y:auto;padding:18px 22px;background:var(--dr-bg-soft,#f8fafc)">' + bodyHtml + '</div>'
       + (footerHtml || '')
       + '</div>';
   };
-  shell('<div style="text-align:center;padding:34px;color:#64748b;font-size:13px">⏳ Lade Kontaktdaten aus Pipedrive …</div>');
-  let details = null;
-  try { details = await _fetchOrgDetails(oid); } catch (_) {}
-  if (!document.getElementById('hvDetailModal')) return;   // zwischenzeitlich geschlossen
-  if (!details) {
-    shell('<div style="text-align:center;padding:30px;color:#a8312f;font-size:13px">Kontaktdaten konnten nicht geladen werden.<br><span style="font-size:12px;color:#64748b">Pipedrive-Proxy prüfen oder später erneut versuchen.</span></div>');
+  const link = (href, text) => '<a href="' + esc(href) + '" style="color:#7c3aed;text-decoration:none">' + esc(text) + '</a>';
+
+  // ── EDIT-MODUS ──
+  if (st.mode === 'edit') {
+    const inRow = (label, id, val, ph, type) =>
+      '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">'
+      + '<span style="width:130px;flex-shrink:0;color:#64748b;font-weight:600">' + label + '</span>'
+      + '<input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '" placeholder="' + (ph || '') + '" style="flex:1;min-width:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;outline:none;font-family:inherit">'
+      + '</div>';
+    let body = '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:9px 12px;margin-bottom:14px;font-size:11.5px;color:#1e40af">✏️ Änderungen werden mit „Speichern" direkt in Pipedrive geschrieben.</div>'
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:12px 16px;margin-bottom:14px">'
+      + '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Organisation</div>'
+      + inRow('Firma', 'hvE_firma', d.firma, 'Firmenname')
+      + inRow('Straße', 'hvE_strasse', d.strasse, 'Straße + Nr.')
+      + inRow('PLZ', 'hvE_plz', d.plz, 'PLZ')
+      + inRow('Ort', 'hvE_ort', d.ort, 'Ort')
+      + '</div>'
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:12px 16px">'
+      + '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Hauptkontakt' + (d.contact_person_id ? '' : ' (wird neu angelegt)') + '</div>'
+      + inRow('Name', 'hvE_cname', (d.persons && d.persons[0] && d.persons[0].name) || d.gf, 'Ansprechpartner/in')
+      + inRow('E-Mail', 'hvE_cemail', d.email, 'name@firma.de', 'email')
+      + inRow('Telefon', 'hvE_ctel', d.tel, '030 …')
+      + '</div>';
+    const footer = '<div id="hvE_status" style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center">'
+      + '<span id="hvE_msg" style="margin-right:auto;font-size:11.5px;color:#64748b"></span>'
+      + '<button onclick="_hvDetailCancelEdit()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Abbrechen</button>'
+      + '<button id="hvE_saveBtn" onclick="_hvDetailSave()" style="background:#16a34a;border:none;color:#fff;border-radius:7px;padding:9px 18px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">💾 In Pipedrive speichern</button>'
+      + '</div>';
+    shell(body, footer);
     return;
   }
+
+  // ── VIEW-MODUS ──
   const row = (label, valHtml) => valHtml
     ? '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #eef2f7;font-size:13px"><span style="width:130px;flex-shrink:0;color:#64748b;font-weight:600">' + label + '</span><span style="flex:1;color:#0f172a;word-break:break-word">' + valHtml + '</span></div>'
     : '';
-  const link = (href, text) => '<a href="' + esc(href) + '" style="color:#7c3aed;text-decoration:none">' + esc(text) + '</a>';
-  const addr = [details.strasse, [details.plz, details.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-  const webRaw = String(details.website || '').trim();
-  const webHref = webRaw ? (/^https?:\/\//i.test(webRaw) ? webRaw : 'https://' + webRaw) : '';
-  let body = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:14px 16px;margin-bottom:16px">'
+  const addr = [d.strasse, [d.plz, d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  let body = '';
+  if (!st.directOk) {
+    body += '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 12px;margin-bottom:14px;font-size:11.5px;color:#9a3412">ℹ Direktzugriff auf Pipedrive derzeit nicht möglich — es werden zwischengespeicherte Daten angezeigt. Bearbeiten ist deshalb hier gesperrt.</div>';
+  }
+  body += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:14px 16px;margin-bottom:16px">'
     + '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Organisation</div>'
-    + row('Firma', esc(details.firma || org.name))
-    + row('Geschäftsführung', details.gf ? esc(details.gf) : '')
-    + row('Adresse', addr ? esc(addr) : '')
-    + row('E-Mail', details.email ? link('mailto:' + details.email, details.email) : '')
-    + row('Telefon', details.tel ? link('tel:' + String(details.tel).replace(/\s+/g, ''), details.tel) : '')
-    + row('Website', webHref ? '<a href="' + esc(webHref) + '" target="_blank" rel="noopener" style="color:#7c3aed;text-decoration:none">' + esc(webRaw) + '</a>' : '')
+    + row('Firma', esc(d.firma || st.orgName))
+    + row('Adresse', addr ? esc(addr) : '<span style="opacity:.5">— nicht hinterlegt —</span>')
+    + row('E-Mail', d.email ? link('mailto:' + d.email, d.email) : '')
+    + row('Telefon', d.tel ? link('tel:' + String(d.tel).replace(/\s+/g, ''), d.tel) : '')
     + '</div>';
-  const persons = Array.isArray(details.persons) ? details.persons : [];
+  const persons = Array.isArray(d.persons) ? d.persons : [];
   body += '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Ansprechpartner (' + persons.length + ')</div>';
   if (!persons.length) {
-    body += '<div style="font-size:12.5px;color:#64748b;padding:6px 2px 4px">Keine Personen in Pipedrive hinterlegt. Kontakte werden in Pipedrive gepflegt.</div>';
+    body += '<div style="font-size:12.5px;color:#64748b;padding:6px 2px 4px">Keine Personen in Pipedrive hinterlegt.' + (st.directOk ? ' Über „Bearbeiten" einen Hauptkontakt anlegen.' : '') + '</div>';
   } else {
     body += persons.map(p => {
-      const gen = p.is_generic ? '<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:700;padding:1px 6px;border-radius:6px;text-transform:uppercase;margin-left:6px">generisch</span>' : '';
       const pMail = p.email ? link('mailto:' + p.email, p.email) : '<span style="opacity:.5">—</span>';
       const pTel  = p.tel ? link('tel:' + String(p.tel).replace(/\s+/g, ''), p.tel) : '<span style="opacity:.5">—</span>';
       return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:11px 13px;margin-bottom:8px">'
-        + '<div style="font-weight:700;font-size:13.5px;color:#0f172a">' + esc(p.name || '—') + gen + '</div>'
+        + '<div style="font-weight:700;font-size:13.5px;color:#0f172a">' + esc(p.name || '—') + '</div>'
         + '<div style="font-size:12.5px;color:#475569;margin-top:5px;display:flex;flex-direction:column;gap:3px">'
         +   '<div>✉ ' + pMail + '</div>'
         +   '<div>📞 ' + pTel + '</div>'
         + '</div></div>';
     }).join('');
   }
-  // Aktions-Fußzeile (Vollmacht / EuC / Rahmen) — nutzt die vorhandenen Caches + Handler
   const vm  = (window._vmByOrgIdCache  || {})[oid];
   const euc = (window._eucByOrgIdCache || {})[oid];
-  const safeName = String(org.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  const safeName = String(st.orgName || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
   const vmRec = (vm && vm._recordId) ? vm._recordId : '';
   let eucBtn;
   if (euc && euc._recordId) {
     const lvIdEsc = String(euc.id || '').replace(/'/g, "\\'");
-    eucBtn = '<button onclick="' + closeAttr + ';openExistingLightVertrag(\'' + lvIdEsc + '\')" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🛡 EuC öffnen</button>';
+    eucBtn = '<button onclick="' + closeAttr + ';openExistingLightVertrag(\'' + lvIdEsc + '\')" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🛡 EuC</button>';
   } else {
-    eucBtn = '<button onclick="' + closeAttr + ';openLightVertragForOrg(' + oid + ')" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🛡 + EuC</button>';
+    eucBtn = '<button onclick="' + closeAttr + ';openLightVertragForOrg(' + oid + ')" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🛡 + EuC</button>';
   }
-  const footer = '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;gap:8px;flex-wrap:wrap">'
-    + '<button onclick="' + closeAttr + ';openVollmachtEditorForOrg(\'' + oid + '\',\'' + safeName + '\',\'' + vmRec + '\')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📜 Vollmacht</button>'
+  const editBtn = st.directOk
+    ? '<button onclick="_hvDetailEnterEdit()" style="background:#2563eb;border:none;color:#fff;border-radius:7px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-right:auto">✏️ Bearbeiten</button>'
+    : '<span style="margin-right:auto"></span>';
+  const footer = '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+    + editBtn
+    + '<button onclick="' + closeAttr + ';openVollmachtEditorForOrg(\'' + oid + '\',\'' + safeName + '\',\'' + vmRec + '\')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📜 Vollmacht</button>'
     + eucBtn
-    + '<button onclick="' + closeAttr + ';openVertragForOrg(' + oid + ')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📑 Rahmenvertrag</button>'
+    + '<button onclick="' + closeAttr + ';openVertragForOrg(' + oid + ')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📑 Rahmen</button>'
     + '</div>';
   shell(body, footer);
 }
-window.openHvDetail = openHvDetail;
+window._hvDetailRender = _hvDetailRender;
+
+function _hvDetailEnterEdit() {
+  const st = window._hvDetail; if (!st || !st.directOk) return;
+  st.mode = 'edit'; _hvDetailRender();
+}
+window._hvDetailEnterEdit = _hvDetailEnterEdit;
+function _hvDetailCancelEdit() {
+  const st = window._hvDetail; if (!st) return;
+  st.mode = 'view'; _hvDetailRender();
+}
+window._hvDetailCancelEdit = _hvDetailCancelEdit;
+
+async function _hvDetailSave() {
+  const st = window._hvDetail; if (!st || !st.directOk) return;
+  const g = (id) => (document.getElementById(id)?.value || '').trim();
+  const oid = st.oid;
+  const firma = g('hvE_firma');
+  const strasse = g('hvE_strasse'), plz = g('hvE_plz'), ort = g('hvE_ort');
+  const cName = g('hvE_cname'), cEmail = g('hvE_cemail'), cTel = g('hvE_ctel');
+  const btn = document.getElementById('hvE_saveBtn'); const msg = document.getElementById('hvE_msg');
+  if (msg) { msg.style.color = '#64748b'; msg.textContent = 'Speichere in Pipedrive …'; }
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  try {
+    // 1) Organisation (Name + Adresse)
+    const address = [strasse, [plz, ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    await _pdFetch('PUT', '/organizations/' + oid, { name: firma || st.orgName, address: address });
+    // 2) Hauptkontakt (Person) upserten — nur wenn Name/E-Mail/Telefon angegeben
+    if (cName || cEmail || cTel) {
+      const payload = {};
+      if (cName)  payload.name  = cName;
+      if (cEmail) payload.email = [{ value: cEmail, primary: true, label: 'work' }];
+      if (cTel)   payload.phone = [{ value: cTel,   primary: true, label: 'work' }];
+      const pid = st.details && st.details.contact_person_id;
+      if (pid) {
+        await _pdFetch('PUT', '/persons/' + pid, payload);
+      } else {
+        payload.org_id = Number(oid) || oid;
+        if (!payload.name) payload.name = firma || st.orgName || 'Kontakt';
+        await _pdFetch('POST', '/persons', payload);
+      }
+    }
+    // 3) Frisch nachladen + Liste aktualisieren
+    let fresh = null;
+    try { fresh = await _pdGetOrgDetailsDirect(oid); } catch (_) {}
+    if (fresh) { st.details = fresh; st.orgName = fresh.firma || st.orgName; }
+    const cacheOrg = (window._pipedriveOrgsCache || []).find(o => String(o.org_id) === String(oid));
+    if (cacheOrg && firma) { cacheOrg.name = firma; cacheOrg.address = [strasse, [plz, ort].filter(Boolean).join(' ')].filter(Boolean).join(', '); }
+    if (window._pipedrivePersonCache) delete window._pipedrivePersonCache[String(oid)];
+    if (typeof renderKundenList === 'function') renderKundenList();
+    if (typeof showToast === 'function') showToast('✓ In Pipedrive gespeichert', 'success', 3000);
+    st.mode = 'view'; _hvDetailRender();
+  } catch (e) {
+    if (msg) { msg.style.color = '#a8312f'; msg.textContent = '⚠ ' + e.message; }
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    if (typeof showToast === 'function') showToast('Speichern fehlgeschlagen: ' + e.message, 'error', 5000);
+  }
+}
+window._hvDetailSave = _hvDetailSave;
 
 // ── Live-HV-Suche im Vertragseditor-Firma-Feld (debounced Suggestions) ──
 let _hvPickerTimer = null;
