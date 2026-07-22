@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.495';
+const APP_VERSION = 'V12.496';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -22538,18 +22538,77 @@ async function openKundenModal() {
     return;
   }
   try {
-    const r = await fetch(proxyUrl, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'list_property_managers', start: 0, limit: 500 }),
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || 'API-Fehler');
-    window._pipedriveOrgsCache = d.results || [];
-    renderKundenList();
+    await _kundenLoadPage(true);
   } catch (e) {
     list.innerHTML = '<div style="text-align:center;padding:24px;color:#a8312f;font-size:13px">Konnte HVs nicht laden: ' + escapeHtml(e.message) + '</div>';
   }
 }
+
+// V12.496: Pipedrive-HVs seitenweise laden. Die Org-Liste kann > 500 Einträge haben —
+// vorher wurden nur die ersten 500 geladen. Jetzt start-Cursor + „Mehr laden"/„Alle laden",
+// dedupe nach org_id. hasMore aus Backend-Signal (more_items_in_collection/next_start)
+// ODER Heuristik (volle Seite UND neue Einträge dazugekommen) als Fallback.
+const KUNDEN_PAGE_SIZE = 500;
+async function _kundenLoadPage(reset) {
+  const proxyUrl = APP_KEYS.vorabcheckProxyUrl || '';
+  if (!proxyUrl) throw new Error('Pipedrive-Proxy nicht konfiguriert');
+  if (reset) {
+    window._pipedriveOrgsCache = [];
+    window._kundenNextStart = 0;
+    window._kundenHasMore = true;
+    window._pipedrivePersonCache = {};
+  }
+  window._kundenLoading = true;
+  if (!reset && typeof renderKundenList === 'function') renderKundenList();   // Button auf „lädt…" umstellen
+  const start = window._kundenNextStart || 0;
+  try {
+    const r = await fetch(proxyUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'list_property_managers', start: start, limit: KUNDEN_PAGE_SIZE }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'API-Fehler');
+    const batch = Array.isArray(d.results) ? d.results : [];
+    const existing = new Set((window._pipedriveOrgsCache || []).map(o => String(o.org_id)));
+    const fresh = batch.filter(o => !existing.has(String(o.org_id)));
+    window._pipedriveOrgsCache = (window._pipedriveOrgsCache || []).concat(fresh);
+    // hasMore + nextStart bestimmen
+    const pag = d.pagination || d.additional_data || {};
+    const backendMoreKnown = (d.more_items_in_collection !== undefined) || (pag.more_items_in_collection !== undefined);
+    const backendMore = (d.more_items_in_collection === true) || (pag.more_items_in_collection === true);
+    const backendNext = (typeof d.next_start === 'number') ? d.next_start
+                      : (typeof pag.next_start === 'number' ? pag.next_start : null);
+    window._kundenNextStart = (backendNext != null) ? backendNext : (start + batch.length);
+    if (backendMoreKnown) window._kundenHasMore = backendMore;
+    else window._kundenHasMore = (batch.length >= KUNDEN_PAGE_SIZE) && (fresh.length > 0);
+    if (!reset && fresh.length === 0) window._kundenHasMore = false;   // Sicherheitsnetz gegen Endlos-„Mehr laden"
+  } finally {
+    window._kundenLoading = false;
+  }
+  renderKundenList();
+}
+window._kundenLoadPage = _kundenLoadPage;
+
+async function loadMoreKunden() {
+  if (window._kundenLoading || !window._kundenHasMore) return;
+  try { await _kundenLoadPage(false); }
+  catch (e) { showToast('Weitere HVs konnten nicht geladen werden: ' + e.message, 'error', 4000); }
+}
+window.loadMoreKunden = loadMoreKunden;
+
+async function loadAllKunden() {
+  if (window._kundenLoading) return;
+  let guard = 0;
+  const before = (window._pipedriveOrgsCache || []).length;
+  while (window._kundenHasMore && guard < 60) {
+    guard++;
+    try { await _kundenLoadPage(false); }
+    catch (e) { showToast('Laden gestoppt: ' + e.message, 'error', 4000); break; }
+  }
+  const total = (window._pipedriveOrgsCache || []).length;
+  showToast('✓ ' + total + ' Hausverwaltungen geladen (' + (total - before >= 0 ? '+' + (total - before) : '±0') + ')', 'success', 3000);
+}
+window.loadAllKunden = loadAllKunden;
 
 async function renderKundenList() {
   const list = document.getElementById('kundenList');
@@ -22561,7 +22620,7 @@ async function renderKundenList() {
     if (orgs.length > 0) { badge.textContent = String(orgs.length); badge.style.display = 'inline-block'; }
     else badge.style.display = 'none';
   }
-  if (stats) stats.textContent = orgs.length + ' Hausverwaltung' + (orgs.length === 1 ? '' : 'en') + ' geladen';
+  if (stats) stats.textContent = orgs.length + ' Hausverwaltung' + (orgs.length === 1 ? '' : 'en') + ' geladen' + (window._kundenHasMore ? ' · weitere verfügbar' : '');
   if (!orgs.length) {
     list.innerHTML = '<div style="text-align:center;padding:36px 20px;color:var(--muted);font-size:13px;line-height:1.5">Keine Hausverwaltungen in Pipedrive gefunden.<br><span style="font-size:12px">Lege Organizations in Pipedrive an — sie erscheinen dann automatisch hier.</span></div>';
     return;
@@ -22737,12 +22796,15 @@ async function renderKundenList() {
       vmBtn = `<button onclick="openVollmachtEditorForOrg('${oid}','${safeName}','')" title="Vollmacht für diese HV hinterlegen" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">📜 Vollmacht +</button>`;
     }
     return `<div style="background:var(--sky);border:1px solid var(--border);border-radius:9px;padding:12px 14px;display:flex;gap:14px;align-items:flex-start">
-      <div style="width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${(o.name||'?').charAt(0).toUpperCase()}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:var(--text);word-break:break-word">${escapeHtml(o.name || '–')}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5">
-          ${o.address ? `<div>📍 ${escapeHtml(o.address)}</div>` : ''}
-          ${contactLine}
+      <div onclick="openHvDetail('${oid}')" title="Alle Kontaktdaten dieser Hausverwaltung anzeigen" style="flex:1;min-width:0;display:flex;gap:14px;align-items:flex-start;cursor:pointer">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${(o.name||'?').charAt(0).toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;color:var(--text);word-break:break-word">${escapeHtml(o.name || '–')}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5">
+            ${o.address ? `<div>📍 ${escapeHtml(o.address)}</div>` : ''}
+            ${contactLine}
+            <div style="color:#7c3aed;font-weight:600;margin-top:3px">📇 Alle Kontaktdaten ›</div>
+          </div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -22768,6 +22830,19 @@ async function renderKundenList() {
       </div>
     </div>`;
   }).join('') || '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Kein Treffer für die Suche.</div>';
+
+  // V12.496: Pagination-Fußzeile — „Mehr laden" / „Alle laden", solange Pipedrive weitere Orgs hat
+  if (window._kundenLoading) {
+    list.insertAdjacentHTML('beforeend', '<div style="text-align:center;padding:14px;color:var(--muted);font-size:12.5px">⏳ Lade weitere Hausverwaltungen …</div>');
+  } else if (window._kundenHasMore) {
+    list.insertAdjacentHTML('beforeend',
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 10px 6px">'
+      + (q ? '<div style="font-size:11.5px;color:var(--muted);text-align:center;max-width:440px">Die Suche prüft nur die ' + orgs.length + ' bereits geladenen HVs — für vollständige Treffer weitere laden.</div>' : '')
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">'
+      +   '<button onclick="loadMoreKunden()" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">⬇ Mehr laden (+' + KUNDEN_PAGE_SIZE + ')</button>'
+      +   '<button onclick="loadAllKunden()" style="background:#fff;border:1px solid var(--border);color:var(--navy);border-radius:8px;padding:9px 18px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">⏬ Alle laden</button>'
+      + '</div></div>');
+  }
 
   // V12.165: Lazy-Load Ansprechpartner für die sichtbaren Treffer (≤20)
   _lazyLoadPmContacts(filtered.slice(0, 20));
@@ -22913,17 +22988,9 @@ async function submitPmCreate() {
     if (!d.ok) throw new Error(d.error || 'Anlegen fehlgeschlagen');
     // HV-Cache neu laden + Filter auf neue HV
     try {
-      const rl = await fetch(proxyUrl, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'list_property_managers', start: 0, limit: 500 }),
-      });
-      const dl = await rl.json();
-      if (dl.ok) {
-        window._pipedriveOrgsCache = dl.results || [];
-        const sEl = document.getElementById('kundenSearch');
-        if (sEl) sEl.value = firma;
-        renderKundenList();
-      }
+      const sEl = document.getElementById('kundenSearch');
+      if (sEl) sEl.value = firma;
+      await _kundenLoadPage(true);
     } catch (_) {}
     document.getElementById('pmCreateModal').style.display = 'none';
     showToast('Hausverwaltung „' + firma + '" angelegt', 'success');
@@ -22986,6 +23053,93 @@ async function _fetchOrgDetails(orgId) {
     return d.ok ? d.details : null;
   } catch (e) { console.warn('_fetchOrgDetails:', e); return null; }
 }
+
+// V12.496: Detailansicht einer Hausverwaltung — alle Kontaktdaten (Organisation + Ansprechpartner)
+// aus Pipedrive. Dynamisches Overlay (kein statisches Modal im HTML). Öffnet über Klick auf die HV-Karte.
+async function openHvDetail(orgId) {
+  const oid = String(orgId);
+  const org = (window._pipedriveOrgsCache || []).find(o => String(o.org_id) === oid) || { org_id: oid, name: '(Hausverwaltung)' };
+  let ov = document.getElementById('hvDetailModal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'hvDetailModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,24,48,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:16px;font-family:"DM Sans",sans-serif';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s) => String(s == null ? '' : s);
+  const closeAttr = 'document.getElementById(\'hvDetailModal\')?.remove()';
+  const shell = (bodyHtml, footerHtml) => {
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden">'
+      + '<div style="background:var(--navy,#1e293b);color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
+      +   '<div style="min-width:0"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#cbd5e1">Hausverwaltung · Pipedrive-ID ' + esc(oid) + '</div>'
+      +   '<div style="font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(org.name || '–') + '</div></div>'
+      +   '<button onclick="' + closeAttr + '" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0">✕</button>'
+      + '</div>'
+      + '<div style="flex:1;min-height:0;overflow-y:auto;padding:18px 22px;background:var(--dr-bg-soft,#f8fafc)">' + bodyHtml + '</div>'
+      + (footerHtml || '')
+      + '</div>';
+  };
+  shell('<div style="text-align:center;padding:34px;color:#64748b;font-size:13px">⏳ Lade Kontaktdaten aus Pipedrive …</div>');
+  let details = null;
+  try { details = await _fetchOrgDetails(oid); } catch (_) {}
+  if (!document.getElementById('hvDetailModal')) return;   // zwischenzeitlich geschlossen
+  if (!details) {
+    shell('<div style="text-align:center;padding:30px;color:#a8312f;font-size:13px">Kontaktdaten konnten nicht geladen werden.<br><span style="font-size:12px;color:#64748b">Pipedrive-Proxy prüfen oder später erneut versuchen.</span></div>');
+    return;
+  }
+  const row = (label, valHtml) => valHtml
+    ? '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #eef2f7;font-size:13px"><span style="width:130px;flex-shrink:0;color:#64748b;font-weight:600">' + label + '</span><span style="flex:1;color:#0f172a;word-break:break-word">' + valHtml + '</span></div>'
+    : '';
+  const link = (href, text) => '<a href="' + esc(href) + '" style="color:#7c3aed;text-decoration:none">' + esc(text) + '</a>';
+  const addr = [details.strasse, [details.plz, details.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const webRaw = String(details.website || '').trim();
+  const webHref = webRaw ? (/^https?:\/\//i.test(webRaw) ? webRaw : 'https://' + webRaw) : '';
+  let body = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:14px 16px;margin-bottom:16px">'
+    + '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Organisation</div>'
+    + row('Firma', esc(details.firma || org.name))
+    + row('Geschäftsführung', details.gf ? esc(details.gf) : '')
+    + row('Adresse', addr ? esc(addr) : '')
+    + row('E-Mail', details.email ? link('mailto:' + details.email, details.email) : '')
+    + row('Telefon', details.tel ? link('tel:' + String(details.tel).replace(/\s+/g, ''), details.tel) : '')
+    + row('Website', webHref ? '<a href="' + esc(webHref) + '" target="_blank" rel="noopener" style="color:#7c3aed;text-decoration:none">' + esc(webRaw) + '</a>' : '')
+    + '</div>';
+  const persons = Array.isArray(details.persons) ? details.persons : [];
+  body += '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Ansprechpartner (' + persons.length + ')</div>';
+  if (!persons.length) {
+    body += '<div style="font-size:12.5px;color:#64748b;padding:6px 2px 4px">Keine Personen in Pipedrive hinterlegt. Kontakte werden in Pipedrive gepflegt.</div>';
+  } else {
+    body += persons.map(p => {
+      const gen = p.is_generic ? '<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:700;padding:1px 6px;border-radius:6px;text-transform:uppercase;margin-left:6px">generisch</span>' : '';
+      const pMail = p.email ? link('mailto:' + p.email, p.email) : '<span style="opacity:.5">—</span>';
+      const pTel  = p.tel ? link('tel:' + String(p.tel).replace(/\s+/g, ''), p.tel) : '<span style="opacity:.5">—</span>';
+      return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:11px 13px;margin-bottom:8px">'
+        + '<div style="font-weight:700;font-size:13.5px;color:#0f172a">' + esc(p.name || '—') + gen + '</div>'
+        + '<div style="font-size:12.5px;color:#475569;margin-top:5px;display:flex;flex-direction:column;gap:3px">'
+        +   '<div>✉ ' + pMail + '</div>'
+        +   '<div>📞 ' + pTel + '</div>'
+        + '</div></div>';
+    }).join('');
+  }
+  // Aktions-Fußzeile (Vollmacht / EuC / Rahmen) — nutzt die vorhandenen Caches + Handler
+  const vm  = (window._vmByOrgIdCache  || {})[oid];
+  const euc = (window._eucByOrgIdCache || {})[oid];
+  const safeName = String(org.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  const vmRec = (vm && vm._recordId) ? vm._recordId : '';
+  let eucBtn;
+  if (euc && euc._recordId) {
+    const lvIdEsc = String(euc.id || '').replace(/'/g, "\\'");
+    eucBtn = '<button onclick="' + closeAttr + ';openExistingLightVertrag(\'' + lvIdEsc + '\')" style="background:#fff;border:1px solid #86efac;color:#15803d;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🛡 EuC öffnen</button>';
+  } else {
+    eucBtn = '<button onclick="' + closeAttr + ';openLightVertragForOrg(' + oid + ')" style="background:#fff;border:1px dashed #16a34a;color:#15803d;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🛡 + EuC</button>';
+  }
+  const footer = '<div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 22px;display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button onclick="' + closeAttr + ';openVollmachtEditorForOrg(\'' + oid + '\',\'' + safeName + '\',\'' + vmRec + '\')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📜 Vollmacht</button>'
+    + eucBtn
+    + '<button onclick="' + closeAttr + ';openVertragForOrg(' + oid + ')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📑 Rahmenvertrag</button>'
+    + '</div>';
+  shell(body, footer);
+}
+window.openHvDetail = openHvDetail;
 
 // ── Live-HV-Suche im Vertragseditor-Firma-Feld (debounced Suggestions) ──
 let _hvPickerTimer = null;
