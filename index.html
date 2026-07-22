@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.497';
+const APP_VERSION = 'V12.498';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -42792,11 +42792,15 @@ function _eiApplyDetailLayout(detEl, emailId) {
       el.appendChild(bar);
       el.appendChild(content);
     });
-    // 2) Auf/Zu-Zustand: gespeichert > data-eiblock-collapsed-Default
+    // 2) Auf/Zu-Zustand: transiente Session-Öffnung > gespeichert > data-eiblock-collapsed-Default
+    //    V12.498: Spontan geöffnete/geschlossene Kacheln bleiben über Re-Renders (nach Aktionen)
+    //    erhalten und fallen NICHT auf den gespeicherten Default zurück.
+    const sess = window._eiBlockStateSession || {};
     blocks.forEach(el => {
       const key = el.getAttribute('data-eiblock');
       let collapsed;
-      if (saved && saved.collapsed && Object.prototype.hasOwnProperty.call(saved.collapsed, key)) collapsed = !!saved.collapsed[key];
+      if (Object.prototype.hasOwnProperty.call(sess, key)) collapsed = !!sess[key];
+      else if (saved && saved.collapsed && Object.prototype.hasOwnProperty.call(saved.collapsed, key)) collapsed = !!saved.collapsed[key];
       else collapsed = el.getAttribute('data-eiblock-collapsed') === '1';
       el.classList.toggle('ei-collapsed', collapsed);
     });
@@ -42842,6 +42846,11 @@ function _eiMoveBlock(el, dir) {
 }
 function _eiToggleBlock(el) {
   el.classList.toggle('ei-collapsed');
+  // V12.498: spontane Auf/Zu-Änderung transient merken → überlebt Re-Render nach Aktionen
+  try {
+    const key = el.getAttribute('data-eiblock');
+    if (key) { window._eiBlockStateSession = window._eiBlockStateSession || {}; window._eiBlockStateSession[key] = el.classList.contains('ei-collapsed'); }
+  } catch (_) {}
   _eiMarkLayoutDirty(true);
 }
 function _eiRefreshMoveButtons(host) {
@@ -42867,12 +42876,14 @@ function _eiSaveDetailLayout() {
   if (!cfg) { showToast('Kein Layout zum Speichern gefunden.', 'error'); return; }
   try {
     localStorage.setItem(EI_LAYOUT_KEY, JSON.stringify(cfg));
+    window._eiBlockStateSession = {};   // V12.498: gespeicherter Stand ist jetzt die Basis
     _eiMarkLayoutDirty(false);
     showToast('✓ Layout gespeichert — gilt für alle Email-Ansichten.', 'success');
   } catch (e) { showToast('Layout speichern fehlgeschlagen: ' + e.message, 'error'); }
 }
 function _eiResetDetailLayout() {
   try { localStorage.removeItem(EI_LAYOUT_KEY); } catch (_) {}
+  window._eiBlockStateSession = {};   // V12.498: transiente Öffnungen mit zurücksetzen → wirklich alles auf Default
   showToast('↺ Layout auf Standard zurückgesetzt.', 'info');
   if (typeof renderEmailInboxDetail === 'function') renderEmailInboxDetail();
 }
