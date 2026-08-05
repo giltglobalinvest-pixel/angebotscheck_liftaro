@@ -2269,7 +2269,15 @@ async function buildVorabcheckPdfBytes(r, ctx) {
   const cGreenSoft = rgb(0.83, 0.96, 0.78);
 
   // Helper
-  const drawText = (txt, x, y, size, font, color) => page.drawText(String(txt), { x, y, size, font, color: color || cInk });
+  // WinAnsi-Sanitisierung: pdf-lib-Standardschriften (Helvetica) können NUR WinAnsi/CP1252 kodieren.
+  // Zeichen wie ✓ (U+2713), ▶, ✉, 🌐 oder Emojis aus dynamischen Feldern (Adresse/Zusammenfassung)
+  // ließen die PDF-Erstellung sonst mit "WinAnsi cannot encode …" abstürzen.
+  const _pdfSafe = (t) => String(t == null ? '' : t)
+    .replace(/[✓✔✅☑]/g, '•')          // ✓ ✔ ✅ ☑ → • (WinAnsi-Bullet)
+    .replace(/[▶►➤‣➔➜]/g, '»') // ▶ ► ➤ ‣ ➔ ➜ → »
+    .replace(/→/g, '->').replace(/⇒/g, '=>')          // → ⇒
+    .replace(/[^\t\n\r\x20-\x7E -ÿ€•–—‘’“”‚„…†‡‹›™]/g, ''); // Rest: nur WinAnsi-Kodierbares behalten (Emojis/Symbole raus)
+  const drawText = (txt, x, y, size, font, color) => page.drawText(_pdfSafe(txt), { x, y, size, font, color: color || cInk });
   const drawRect = (x, y, w, h, color) => page.drawRectangle({ x, y, width: w, height: h, color });
   const drawLine = (y, color, thickness) => page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: thickness || 0.5, color: color || cLine });
   // Wrap eine Textzeile auf max. width (in pt) bei gegebener font/size
