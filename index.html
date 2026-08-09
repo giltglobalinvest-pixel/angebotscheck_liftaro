@@ -2218,6 +2218,7 @@ const pdfWorkerReady = Promise.resolve();</script>
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Dashboard
         <span id="dashboardDueBadge" class="btn-badge" style="display:none">0</span>
+        <span id="kontaktBadge" class="btn-badge" title="Neue Kontakt-Anfragen (Startseiten-Formular)" style="display:none;background:#16a34a">0</span>
       </button>
       <span class="nav-shelf-divider"></span>
       <!-- Gruppe 2: Datenbestand -->
@@ -6545,7 +6546,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.499';
+const APP_VERSION = 'V12.500';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29928,6 +29929,7 @@ async function openDashboardData() {
   try { kontaktAnfragen = ((await atRead('Kontakt-Anfragen', null, { sort: false })) || []).map(r => r.fields); }
   catch(e) { console.warn('Kontakt-Anfragen load:', e.message); }
   window._dashKontaktAnfragen = kontaktAnfragen;
+  if (typeof _refreshKontaktBadge === 'function') _refreshKontaktBadge();
   // Light-WEGs für Aufzug-Summen
   try {
     const recs = await atRead('Light-WEGs', null, { sort: false });
@@ -29961,13 +29963,13 @@ function _dashKontaktMarkSeen() {
     const maxTs = list.reduce((m, k) => (String(k.savedAt || '') > m ? String(k.savedAt || '') : m), '');
     localStorage.setItem('dashKontaktSeenAt', maxTs || new Date().toISOString());
   } catch (e) {}
+  if (typeof _refreshKontaktBadge === 'function') _refreshKontaktBadge();
   if (typeof renderDashboard === 'function') renderDashboard();
 }
 window._dashKontaktMarkSeen = _dashKontaktMarkSeen;
 async function _dashKontaktRefresh() {
   try {
-    const recs = await atRead('Kontakt-Anfragen', null, { sort: false });
-    window._dashKontaktAnfragen = (recs || []).map(r => r.fields);
+    await _reloadKontaktAnfragen(false);
     if (typeof showToast === 'function') showToast('Kontakt-Anfragen aktualisiert', 'success', 1500);
   } catch (e) {
     if (typeof showToast === 'function') showToast('Aktualisieren fehlgeschlagen: ' + e.message, 'error', 3000);
@@ -29975,6 +29977,26 @@ async function _dashKontaktRefresh() {
   if (typeof renderDashboard === 'function') renderDashboard();
 }
 window._dashKontaktRefresh = _dashKontaktRefresh;
+// V12.500: Nav-Badge (Anzahl neuer Kontakt-Anfragen) + globaler Reload für Auto-Refresh
+function _refreshKontaktBadge() {
+  const badge = document.getElementById('kontaktBadge');
+  if (!badge) return;
+  let seen = ''; try { seen = localStorage.getItem('dashKontaktSeenAt') || ''; } catch (e) {}
+  const cnt = (window._dashKontaktAnfragen || []).filter(k => String(k.savedAt || '') > seen).length;
+  if (cnt > 0) { badge.textContent = String(cnt); badge.style.display = 'inline-flex'; }
+  else { badge.style.display = 'none'; }
+}
+window._refreshKontaktBadge = _refreshKontaktBadge;
+async function _reloadKontaktAnfragen(silent) {
+  try {
+    const recs = await atRead('Kontakt-Anfragen', null, { sort: false });
+    window._dashKontaktAnfragen = (recs || []).map(r => r.fields);
+    _refreshKontaktBadge();
+  } catch (e) {
+    if (!silent) { console.warn('Kontakt-Anfragen reload:', e.message); throw e; }
+  }
+}
+window._reloadKontaktAnfragen = _reloadKontaktAnfragen;
 
 function toggleDashStatus(v) {
   const set = window._dashStatusFilter;
@@ -30811,6 +30833,7 @@ async function refreshDashboardInbox(silent) {
     const [recs] = await Promise.all([
       atRead('Emails', null, { sort: false }),
       (typeof _eiLvLoadSubmittedAll === 'function' ? _eiLvLoadSubmittedAll(true) : Promise.resolve()).catch(() => {}),
+      (typeof _reloadKontaktAnfragen === 'function' ? _reloadKontaktAnfragen(true) : Promise.resolve()).catch(() => {}),  // V12.500: Kontakt-Anfragen mit-refreshen
     ]);
     _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }))
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
@@ -46430,6 +46453,7 @@ function _eiStartAutoPolling() {
       // Vor dem Reload: bekannte IDs merken
       const beforeIds = new Set((_eiAllRecords || []).map(r => r._id));
       await loadEmailInbox(true); // silent
+      if (typeof _reloadKontaktAnfragen === 'function') { try { await _reloadKontaktAnfragen(true); } catch (_) {} }  // V12.500: Kontakt-Badge global frisch halten
       // Neue eingegangene Mails (nicht outgoing, Status neu)
       const newOnes = (_eiAllRecords || []).filter(r =>
         r && !beforeIds.has(r._id)
@@ -46572,6 +46596,8 @@ async function _initEmailInboxBadge() {
     _eiAllRecords = (recs || []).map(r => ({ _id: r.id, ...r.fields }));
     _refreshEmailInboxBadge();
   } catch (_) { /* Tabelle ggf. noch nicht da — OK */ }
+  // V12.500: Kontakt-Anfragen-Badge beim App-Start initial füllen
+  if (typeof _reloadKontaktAnfragen === 'function') { _reloadKontaktAnfragen(true).catch(() => {}); }
 }
 
 // ════════════════════════════════════════════════════════════════
