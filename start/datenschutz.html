@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<!-- Google Tag Manager -->
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','GTM-M2B7G2T7');</script>
+<!-- Google Tag Manager (consent-gated, DSGVO) -->
+<script>
+window.dataLayer = window.dataLayer || [];
+function _lift_loadGTM(){
+  if (window._liftGtmLoaded) return; window._liftGtmLoaded = true;
+  (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});
+  var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;
+  j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-M2B7G2T7');
+}
+try{ if(localStorage.getItem('liftCookieConsent')==='granted'){ _lift_loadGTM(); } }catch(e){}
+</script>
 <!-- End Google Tag Manager -->
 
 <meta charset="UTF-8">
@@ -51,10 +57,6 @@ footer a:hover{color:var(--green)}
 </style>
 </head>
 <body>
-<!-- Google Tag Manager (noscript) -->
-<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-M2B7G2T7"
-height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-<!-- End Google Tag Manager (noscript) -->
 
 
 <header class="nav">
@@ -146,6 +148,33 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <a href="mailto:check@liftaro.de">Kontakt</a>
   <div style="margin-top:14px;color:rgba(255,255,255,.5);font-size:12px">© 2026 Liftaro GmbH · Made in Germany 🇩🇪</div>
 </footer>
+
+
+<!-- Liftaro Cookie-Consent Banner (DSGVO Opt-in) -->
+<script>
+(function(){
+  var KEY='liftCookieConsent';
+  function loadGTM(){ if(typeof _lift_loadGTM==='function'){ _lift_loadGTM(); } }
+  function hide(){ var b=document.getElementById('lift-cookie-banner'); if(b&&b.parentNode){ b.parentNode.removeChild(b); } }
+  function setConsent(v){ try{ localStorage.setItem(KEY,v); }catch(e){} if(v==='granted'){ loadGTM(); } hide(); }
+  function stored(){ try{ return localStorage.getItem(KEY); }catch(e){ return null; } }
+  function show(){
+    if(document.getElementById('lift-cookie-banner')) return;
+    var w=document.createElement('div'); w.id='lift-cookie-banner';
+    w.setAttribute('role','dialog'); w.setAttribute('aria-label','Cookie-Hinweis');
+    w.innerHTML='<style>#lift-cookie-banner{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#0f1c30;color:#eef2f7;box-shadow:0 -6px 24px rgba(0,0,0,.28);font-family:system-ui,-apple-system,Segoe UI,Roboto,\'DM Sans\',sans-serif;padding:15px 18px}#lift-cookie-banner .lc-in{max-width:1040px;margin:0 auto;display:flex;gap:16px;align-items:center;flex-wrap:wrap}#lift-cookie-banner .lc-txt{flex:1;min-width:250px;font-size:13px;line-height:1.55;color:#cfd8e6}#lift-cookie-banner .lc-txt strong{color:#fff}#lift-cookie-banner .lc-txt a{color:#9ec5ff;text-decoration:underline}#lift-cookie-banner .lc-btns{display:flex;gap:10px;flex-wrap:wrap}#lift-cookie-banner button{font-family:inherit;font-size:13px;font-weight:700;border-radius:9px;padding:11px 20px;cursor:pointer;border:1.5px solid transparent;transition:opacity .15s}#lift-cookie-banner button:hover{opacity:.9}#lift-cookie-banner .lc-deny{background:transparent;color:#eef2f7;border-color:rgba(255,255,255,.45)}#lift-cookie-banner .lc-accept{background:#38a169;color:#fff}@media(max-width:640px){#lift-cookie-banner .lc-btns{width:100%}#lift-cookie-banner .lc-btns button{flex:1}}</style>'
+      +'<div class="lc-in"><div class="lc-txt"><strong>Datenschutz &amp; Cookies.</strong> Wir nutzen Cookies und den Google Tag Manager (Statistik/Marketing), um unsere Website zu verbessern. Diese werden <strong>nur mit Ihrer Einwilligung</strong> geladen. Mehr dazu in der <a href="/start/datenschutz.html">Datenschutzerkl&auml;rung</a> &mdash; Ihre Wahl k&ouml;nnen Sie jederzeit &auml;ndern.</div>'
+      +'<div class="lc-btns"><button type="button" class="lc-deny">Nur notwendige</button><button type="button" class="lc-accept">Akzeptieren</button></div></div>';
+    document.body.appendChild(w);
+    w.querySelector('.lc-accept').addEventListener('click',function(){ setConsent('granted'); });
+    w.querySelector('.lc-deny').addEventListener('click',function(){ setConsent('denied'); });
+  }
+  window.liftCookieSettings=function(){ try{ localStorage.removeItem(KEY); }catch(e){} show(); };
+  function init(){ var s=stored(); if(s!=='granted'&&s!=='denied'){ show(); } }
+  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',init); } else { init(); }
+})();
+</script>
+<!-- End Liftaro Cookie-Consent Banner -->
 
 </body>
 </html>
