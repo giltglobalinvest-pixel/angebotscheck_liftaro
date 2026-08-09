@@ -6545,7 +6545,7 @@ body.feat-hidden-nav_rechnungen [data-feature="nav_rechnungen"] { display: none 
 // ═══════════════════════════════════════════════════════════════
 // APP CONFIG & AIRTABLE
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = 'V12.498';
+const APP_VERSION = 'V12.499';
 
 // ═══════════════════════════════════════════════════════════════
 // V12.248: Feature-Toggle-System
@@ -29923,6 +29923,11 @@ async function openDashboardData() {
   catch(e) { console.warn('Vorabchecks load:', e.message); }
   try { vorabcheckLeads = ((await atRead('Vorabcheck-Leads', null, { sort: false })) || []).map(r => r.fields); }
   catch(e) { console.warn('Vorabcheck-Leads load:', e.message); }
+  // Kontakt-Anfragen (Startseiten-Formular check.liftaro.de/start) fürs Dashboard-Panel
+  let kontaktAnfragen = [];
+  try { kontaktAnfragen = ((await atRead('Kontakt-Anfragen', null, { sort: false })) || []).map(r => r.fields); }
+  catch(e) { console.warn('Kontakt-Anfragen load:', e.message); }
+  window._dashKontaktAnfragen = kontaktAnfragen;
   // Light-WEGs für Aufzug-Summen
   try {
     const recs = await atRead('Light-WEGs', null, { sort: false });
@@ -29948,6 +29953,28 @@ async function openDashboardData() {
   window._dashAllLightWegs = lightWegs;
   renderDashboard();
 }
+
+// Kontakt-Anfragen: „neu" via localStorage-Zeitstempel (savedAt > zuletzt gesehen)
+function _dashKontaktMarkSeen() {
+  try {
+    const list = window._dashKontaktAnfragen || [];
+    const maxTs = list.reduce((m, k) => (String(k.savedAt || '') > m ? String(k.savedAt || '') : m), '');
+    localStorage.setItem('dashKontaktSeenAt', maxTs || new Date().toISOString());
+  } catch (e) {}
+  if (typeof renderDashboard === 'function') renderDashboard();
+}
+window._dashKontaktMarkSeen = _dashKontaktMarkSeen;
+async function _dashKontaktRefresh() {
+  try {
+    const recs = await atRead('Kontakt-Anfragen', null, { sort: false });
+    window._dashKontaktAnfragen = (recs || []).map(r => r.fields);
+    if (typeof showToast === 'function') showToast('Kontakt-Anfragen aktualisiert', 'success', 1500);
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Aktualisieren fehlgeschlagen: ' + e.message, 'error', 3000);
+  }
+  if (typeof renderDashboard === 'function') renderDashboard();
+}
+window._dashKontaktRefresh = _dashKontaktRefresh;
 
 function toggleDashStatus(v) {
   const set = window._dashStatusFilter;
@@ -31416,6 +31443,58 @@ function renderDashboard() {
 
   // V12.7: Neue Dashboard-Reihenfolge — Posteingang ganz oben (wichtigste Section),
   // dann Checks-Übersicht, dann Fälligkeiten, dann Vorabchecks/Verträge/Ersparnisse weiter unten.
+  // ── Kontakt-Anfragen-Panel (Startseiten-Formular) ──
+  const kontaktAnfragenList = (window._dashKontaktAnfragen || []).slice()
+    .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
+  const kaSeenAt = (function () { try { return localStorage.getItem('dashKontaktSeenAt') || ''; } catch (e) { return ''; } })();
+  const kaNewCount = kontaktAnfragenList.filter(k => String(k.savedAt || '') > kaSeenAt).length;
+  const kaShown = kontaktAnfragenList.slice(0, 12);
+  const _kaPaketBadge = (p) => {
+    const s = String(p || '').toLowerCase();
+    const c = s.indexOf('free') >= 0 ? ['#dcfce7', '#15803d'] : s.indexOf('light') >= 0 ? ['#dbeafe', '#1e40af'] : ['#f1f5f9', '#475569'];
+    return `<span style="background:${c[0]};color:${c[1]};border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;white-space:nowrap">${_esc(String(p || 'Andere'))}</span>`;
+  };
+  const kaRows = kaShown.map(k => {
+    const isNew = String(k.savedAt || '') > kaSeenAt;
+    const d = k.savedAt ? new Date(k.savedAt) : null;
+    const date = d ? d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–';
+    const firma = k.firma ? ' · ' + _esc(String(k.firma)) : '';
+    const tel = k.telefon ? `<a href="tel:${_esc(String(k.telefon).replace(/\s+/g, ''))}" onclick="event.stopPropagation()" style="color:#2d5f96;text-decoration:none">📞 ${_esc(String(k.telefon))}</a>` : '';
+    const mail = k.email ? `<a href="mailto:${_esc(String(k.email))}" onclick="event.stopPropagation()" style="color:#2d5f96;text-decoration:none">✉ ${_esc(String(k.email))}</a>` : '';
+    const anz = Number(k.anzahl_aufzuege || 0) > 0 ? `<span>🛗 ${Number(k.anzahl_aufzuege)} Aufz.</span>` : '';
+    const waNum = String(k.telefon || '').replace(/[^0-9]/g, '').replace(/^00/, '').replace(/^0/, '49');
+    const wa = waNum.length >= 8 ? `<a href="https://wa.me/${waNum}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#15803d;text-decoration:none;font-weight:600">💬 WhatsApp</a>` : '';
+    const msg = k.nachricht ? `<div style="margin-top:6px;font-size:12px;color:var(--text);background:var(--sky);border-radius:6px;padding:7px 10px;white-space:pre-wrap">${_esc(String(k.nachricht))}</div>` : '';
+    return `<div style="border-bottom:1px solid var(--border);padding:11px 14px;background:${isNew ? '#fffdf5' : '#fff'}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${isNew ? '<span style="background:#a8312f;color:#fff;border-radius:6px;padding:1px 6px;font-size:9.5px;font-weight:800;letter-spacing:.03em">NEU</span>' : ''}
+        <span style="font-weight:700;color:var(--text);font-size:13.5px">${_esc(String(k.name || '–'))}${firma}</span>
+        ${_kaPaketBadge(k.paket)}
+        <span style="margin-left:auto;color:var(--muted);font-family:'DM Mono',monospace;font-size:11px">${date}</span>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:5px;font-size:12.5px;color:var(--muted)">${tel}${mail}${anz}${wa}</div>
+      ${msg}
+    </div>`;
+  }).join('');
+  const kontaktAnfragenBlock = `
+    <div class="dr-section">
+      <div class="dr-section-head">
+        <div class="dr-section-title">
+          📇 Kontakt-Anfragen
+          <span class="dr-section-title__count">${kaNewCount > 0 ? kaNewCount + ' neu · ' : ''}${kontaktAnfragenList.length} gesamt</span>
+        </div>
+        <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
+          <button onclick="_dashKontaktRefresh()" title="Kontakt-Anfragen neu laden" style="background:var(--dr-surface,#fff);border:1px solid var(--dr-border-strong,#cbd5e1);color:var(--dr-ink,#0f172a);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Aktualisieren</button>
+          ${kaNewCount > 0 ? `<button onclick="_dashKontaktMarkSeen()" title="Alle als gesehen markieren" style="background:var(--navy);border:none;color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✓ Alle gesehen</button>` : ''}
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin:-2px 0 12px">Über das Kontaktformular auf der Startseite (<code>check.liftaro.de/start</code>) · zusätzlich als Pipedrive-Lead „[Inbound]" gespeichert.</div>
+      ${kontaktAnfragenList.length === 0
+        ? '<div style="background:#fff;border:1px dashed var(--border);border-radius:8px;padding:20px;text-align:center;color:var(--muted);font-size:12.5px">Noch keine Kontakt-Anfragen eingegangen.</div>'
+        : `<div style="background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden">${kaRows}</div>${kontaktAnfragenList.length > kaShown.length ? `<div style="text-align:center;color:var(--muted);font-size:11.5px;margin-top:8px">… und ${kontaktAnfragenList.length - kaShown.length} weitere (vollständig in Airtable „Kontakt-Anfragen")</div>` : ''}`
+      }
+    </div>`;
+
   content.innerHTML = `
     ${posteingangBlock}
 
@@ -31441,6 +31520,8 @@ function renderDashboard() {
     ${billingBlock}
 
     ${vcBlock}
+
+    ${kontaktAnfragenBlock}
 
     ${vertraegeBlock}
 
